@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ross Built - Invoice Approval</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <h1>Invoice Approval</h1>
+      <button class="btn btn-primary" onclick="showUploadInvoiceModal()">+ Upload Invoice</button>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Filters -->
+      <div class="table-toolbar">
+        <div class="filter-group">
+          <button class="filter-btn active" data-status="coded">Needs Approval</button>
+          <button class="filter-btn" data-status="approved">Approved</button>
+          <button class="filter-btn" data-status="in_draw">In Draw</button>
+          <button class="filter-btn" data-status="archive">Archive</button>
+        </div>
+        <select id="jobFilter" class="job-filter">
+          <option value="">All Jobs</option>
+        </select>
+      </div>
+
+      <!-- Invoice List -->
+      <div class="invoice-list" id="invoiceList">
+        <div class="loading">Loading invoices...</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Invoice Detail Modal (Split View with PDF) -->
+  <div id="invoiceModal" class="modal">
+    <div class="modal-content modal-xl">
+      <div class="modal-header">
+        <h2 id="invoiceModalTitle">Invoice Details</h2>
+        <button class="close-btn" onclick="closeModal('invoiceModal')">&times;</button>
+      </div>
+      <div class="modal-body split-view">
+        <div class="pdf-viewer-container" id="pdfViewerContainer">
+          <div class="pdf-placeholder">
+            <div class="pdf-icon">PDF</div>
+            <p>No PDF attached</p>
+          </div>
+        </div>
+        <div class="invoice-info-panel" id="invoiceInfoPanel">
+          <!-- Filled dynamically -->
+        </div>
+      </div>
+      <div class="modal-footer" id="invoiceModalFooter">
+        <!-- Action buttons -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Invoice Modal -->
+  <div id="uploadInvoiceModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Upload Invoice</h2>
+        <button class="close-btn" onclick="closeModal('uploadInvoiceModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="uploadInvoiceForm">
+          <!-- AI Toggle -->
+          <div class="form-group ai-toggle">
+            <label class="toggle-label">
+              <input type="checkbox" id="useAIProcessing" checked onchange="toggleAIMode(this.checked)">
+              <span class="toggle-text">Use AI Processing</span>
+              <span class="toggle-hint">Automatically extracts vendor, amount, job, and renames file</span>
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>PDF File *</label>
+            <div class="file-upload-area" id="fileUploadArea">
+              <input type="file" id="invoicePdfFile" accept=".pdf" required>
+              <div class="file-upload-text">
+                <span class="upload-icon">+</span>
+                <p>Click or drag PDF here</p>
+              </div>
+              <div class="file-name" id="uploadFileName"></div>
+            </div>
+          </div>
+
+          <!-- Manual fields (hidden when AI is enabled) -->
+          <div id="manualFields" style="display: none;">
+            <div class="form-group">
+              <label>Job *</label>
+              <select id="uploadJobId">
+                <option value="">Select job...</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Vendor</label>
+                <select id="uploadVendorId">
+                  <option value="">Select vendor...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Amount</label>
+                <input type="number" id="uploadAmount" step="0.01" placeholder="0.00">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Invoice #</label>
+                <input type="text" id="uploadInvoiceNumber" placeholder="e.g. INV-001">
+              </div>
+              <div class="form-group">
+                <label>Invoice Date</label>
+                <input type="date" id="uploadInvoiceDate">
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('uploadInvoiceModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitUploadInvoice()">Process with AI</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Denial Modal -->
+  <div id="denialModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Deny Invoice</h2>
+        <button class="close-btn" onclick="closeModal('denialModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Reason for Denial *</label>
+          <textarea id="denialReason" rows="3" required placeholder="Explain why..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('denialModal')">Cancel</button>
+        <button class="btn btn-danger" onclick="submitDenial()">Deny Invoice</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Container (for edit/job selection modals) -->
+  <div id="modal-container"></div>
+
+  <!-- Connection Status Indicator -->
+  <div class="connection-status" id="connectionStatus">
+    <span class="connection-dot" id="connectionDot"></span>
+    <span id="connectionText">Connecting...</span>
+  </div>
+
+  <!-- Core modules (load before app.js) -->
+  <script src="js/toasts.js"></script>
+  <script src="js/validation.js"></script>
+  <script src="js/cost-code-picker.js"></script>
+  <script src="js/realtime.js"></script>
+  <script src="js/modals.js"></script>
+
+  <!-- Main app -->
+  <script src="js/app.js"></script>
+
+  <!-- Initialize connection status indicator -->
+  <script>
+    // Update connection status UI
+    window.realtimeSync.on('connectionChange', (data) => {
+      const dot = document.getElementById('connectionDot');
+      const text = document.getElementById('connectionText');
+
+      dot.className = 'connection-dot ' + data.state;
+
+      const stateLabels = {
+        connected: 'Connected',
+        connecting: 'Connecting...',
+        reconnecting: 'Reconnecting...',
+        disconnected: 'Disconnected',
+        offline: 'Offline',
+        failed: 'Connection Failed'
+      };
+
+      text.textContent = stateLabels[data.state] || data.state;
+    });
+
+    // Listen for invoice updates to refresh list
+    window.realtimeSync.on('invoice_update', () => {
+      if (typeof loadInvoices === 'function') {
+        loadInvoices();
+      }
+    });
+
+    window.realtimeSync.on('invoice_change', () => {
+      if (typeof loadInvoices === 'function') {
+        loadInvoices();
+      }
+    });
+  </script>
+</body>
+</html>
