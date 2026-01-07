@@ -1556,6 +1556,8 @@ const Modals = {
             this.handleJobChange(jobId);
           }
         });
+        // Set initial value on hidden input
+        document.getElementById('edit-job').value = this.currentInvoice?.job_id || '';
       }
 
       // Initialize Vendor picker
@@ -1571,6 +1573,8 @@ const Modals = {
             this.markDirty();
           }
         });
+        // Set initial value on hidden input
+        document.getElementById('edit-vendor').value = this.currentInvoice?.vendor_id || '';
       }
 
       // Initialize PO picker
@@ -1587,6 +1591,8 @@ const Modals = {
             this.markDirty();
           }
         });
+        // Set initial value on hidden input
+        document.getElementById('edit-po').value = this.currentInvoice?.po_id || '';
       }
 
       // Initialize cost code pickers
