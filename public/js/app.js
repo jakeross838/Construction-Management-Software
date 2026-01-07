@@ -172,13 +172,13 @@ function renderInvoiceList() {
     else if (isClosedOut) {
       allocationInfo = `<span class="payment-badge closed-out" title="Closed out: ${inv.closed_out_reason || 'N/A'}">Closed Out - ${formatMoney(inv.write_off_amount || 0)} written off</span>`;
     }
-    // Priority 3: For in_draw with partial allocation - show draw amount prominently
-    else if (inv.status === 'in_draw' && isPartialAlloc) {
+    // Priority 3: For approved/in_draw with partial allocation - show allocated amount prominently
+    else if (['approved', 'in_draw'].includes(inv.status) && isPartialAlloc) {
       displayAmount = totalAllocated;
       amountSubtext = `<div class="amount-subtext">of ${formatMoney(invoiceAmount)}</div>`;
-      allocationInfo = `<span class="allocation-badge partial" title="${formatMoney(invoiceAmount - totalAllocated)} remaining after draw">${allocationPct}% of invoice</span>`;
+      allocationInfo = `<span class="allocation-badge partial" title="${formatMoney(invoiceAmount - totalAllocated)} remaining">${allocationPct}% of invoice</span>`;
     }
-    // Priority 4: Show allocation info for coded, approved statuses
+    // Priority 4: Show allocation info for coded status or full allocations
     else if (['coded', 'approved', 'in_draw'].includes(inv.status) && totalAllocated > 0) {
       const allocClass = isPartialAlloc ? 'partial' : 'full';
       allocationInfo = `<span class="allocation-badge ${allocClass}" title="Allocated: ${formatMoney(totalAllocated)} of ${formatMoney(invoiceAmount)}">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
