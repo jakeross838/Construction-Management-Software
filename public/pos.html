@@ -15,6 +15,7 @@
         <nav class="header-nav">
           <a href="index.html" class="nav-link">Invoices</a>
           <a href="pos.html" class="nav-link active">Purchase Orders</a>
+          <a href="draws.html" class="nav-link">Draws</a>
         </nav>
       </div>
       <button class="btn btn-primary" onclick="window.poModals.showCreateModal()">+ New PO</button>
@@ -22,26 +23,6 @@
 
     <!-- Main Content -->
     <main class="main">
-      <!-- Stats Cards -->
-      <div class="po-stats" id="poStats">
-        <div class="stat-card">
-          <div class="stat-label">Total Open</div>
-          <div class="stat-value" id="statTotalOpen">$0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Pending Approval</div>
-          <div class="stat-value" id="statPendingApproval">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Total Billed</div>
-          <div class="stat-value" id="statTotalBilled">$0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Remaining</div>
-          <div class="stat-value" id="statRemaining">$0</div>
-        </div>
-      </div>
-
       <!-- Filters -->
       <div class="table-toolbar">
         <div class="filter-group">
@@ -99,7 +80,7 @@
     <div class="modal-content modal-sm">
       <div class="modal-header">
         <h2 id="confirmTitle">Confirm</h2>
-        <button class="close-btn" onclick="closeModal('confirmDialog')">&times;</button>
+        <button class="close-btn" onclick="closeConfirmModal()">&times;</button>
       </div>
       <div class="modal-body">
         <p id="confirmMessage"></p>
@@ -109,7 +90,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('confirmDialog')">Cancel</button>
+        <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
         <button class="btn btn-primary" id="confirmBtn">Confirm</button>
       </div>
     </div>

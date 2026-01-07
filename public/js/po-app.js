@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
   loadVendors();
   loadCostCodes();
   loadPurchaseOrders();
-  loadStats();
   setupFilterButtons();
   setupSearchInput();
 });
@@ -188,7 +187,7 @@ function renderPOList() {
       <div>Amount</div>
       <div>Billed</div>
       <div>Remaining</div>
-      <div>Progress</div>
+      <div></div>
     </div>
     ${filtered.map(po => renderPORow(po)).join('')}
   `;
@@ -220,11 +219,10 @@ function renderPORow(po) {
       <div class="amount">${formatMoney(totalAmount)}</div>
       <div class="billed">${formatMoney(billedAmount)}</div>
       <div class="remaining ${remainingAmount < 0 ? 'negative' : ''}">${formatMoney(remainingAmount)}</div>
-      <div class="progress-cell">
-        <div class="mini-progress">
-          <div class="mini-progress-fill ${isOverBudget ? 'over' : ''}" style="width: ${Math.min(billedPercent, 100)}%"></div>
+      <div class="progress-mini">
+        <div class="progress-bar-mini">
+          <div class="progress-fill-mini ${isOverBudget ? 'over' : ''}" style="width: ${Math.min(billedPercent, 100)}%"></div>
         </div>
-        <span class="progress-text">${billedPercent}%</span>
       </div>
     </div>
   `;
