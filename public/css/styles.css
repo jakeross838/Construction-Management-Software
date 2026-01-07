@@ -169,13 +169,19 @@ body {
 }
 
 .job-filter {
-  background: var(--bg-card);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #d1d5db;
   padding: 0.5rem 1rem;
   border-radius: var(--radius);
   font-size: 0.9rem;
   min-width: 200px;
+}
+
+.job-filter option {
+  background: #ffffff;
+  color: #1f2937;
+  padding: 0.5rem;
 }
 
 /* ============================================================
@@ -538,11 +544,17 @@ body {
 .form-group textarea {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  background: var(--bg-dark);
-  border: 1px solid var(--border);
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   border-radius: var(--radius);
-  color: var(--text-primary);
+  color: #1f2937;
   font-size: 0.9rem;
+}
+
+.form-group select option {
+  background: #ffffff;
+  color: #1f2937;
+  padding: 0.5rem;
 }
 
 .form-group input:focus,
@@ -550,6 +562,7 @@ body {
 .form-group textarea:focus {
   outline: none;
   border-color: #3b82f6;
+  background: #ffffff;
 }
 
 .form-row {
@@ -1745,10 +1758,10 @@ body.modal-open {
 .form-group textarea {
   width: 100%;
   padding: 0.625rem 0.875rem;
-  background: var(--bg-dark);
-  border: 1px solid transparent;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
-  color: var(--text-primary);
+  color: #1f2937;
   font-size: 0.95rem;
   transition: all 0.15s;
 }
@@ -1756,7 +1769,7 @@ body.modal-open {
 .form-group input:hover,
 .form-group select:hover,
 .form-group textarea:hover {
-  border-color: var(--border);
+  border-color: #3b82f6;
 }
 
 .form-group input:focus,
@@ -1764,15 +1777,17 @@ body.modal-open {
 .form-group textarea:focus {
   outline: none;
   border-color: #3b82f6;
-  background: var(--bg-secondary);
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 .form-group input:read-only,
 .form-group select:disabled,
 .form-group textarea:read-only {
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
+  background: #f3f4f6;
+  color: #6b7280;
   cursor: not-allowed;
+  border-color: #e5e7eb;
 }
 
 .form-row {
