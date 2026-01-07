@@ -43,6 +43,17 @@ async function stampApproval(pdfBuffer, stampData) {
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
+  // Check if this is a partial approval (allocated < invoice amount)
+  const invoiceAmount = parseFloat(amount || 0);
+  const allocatedAmount = costCodes.reduce((sum, cc) => sum + parseFloat(cc.amount || 0), 0);
+  const isPartial = allocatedAmount > 0 && allocatedAmount < invoiceAmount - 0.01;
+  const remainingAmount = invoiceAmount - allocatedAmount;
+  const allocPct = invoiceAmount > 0 ? Math.round((allocatedAmount / invoiceAmount) * 100) : 0;
+
+  // Determine display status and color
+  const displayStatus = isPartial ? 'PARTIAL APPROVAL' : status;
+  const statusColor = isPartial ? rgb(0.9, 0.5, 0.1) : rgb(0.1, 0.5, 0.1); // Orange for partial, green for full
+
   // Stamp configuration
   const stampWidth = 240;
   const lineHeight = 13;
@@ -56,8 +67,17 @@ async function stampApproval(pdfBuffer, stampData) {
 
   // Header section
   const headerLines = [
-    { text: status, bold: true, size: 16, color: rgb(0.1, 0.5, 0.1) }
+    { text: displayStatus, bold: true, size: isPartial ? 14 : 16, color: statusColor }
   ];
+
+  // Add partial info right after status
+  if (isPartial) {
+    headerLines.push({
+      text: `${allocPct}% of invoice (${formatMoney(remainingAmount)} remaining)`,
+      size: 9,
+      color: rgb(0.7, 0.4, 0.1)
+    });
+  }
   if (date) headerLines.push({ text: `Date: ${date}`, size: 9 });
   if (approvedBy) headerLines.push({ text: `Approved By: ${approvedBy}`, size: 9 });
   sections.push({ lines: headerLines });
