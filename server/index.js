@@ -1501,6 +1501,31 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     throw new AppError('DATABASE_ERROR', 'Failed to update invoice');
   }
 
+  // Handle allocations if provided
+  if (updates.allocations && Array.isArray(updates.allocations)) {
+    // Delete existing allocations
+    await supabase.from('v2_invoice_allocations').delete().eq('invoice_id', invoiceId);
+
+    // Insert new allocations (only those with cost_code_id)
+    const allocsToInsert = updates.allocations
+      .filter(a => a.cost_code_id)
+      .map(a => ({
+        invoice_id: invoiceId,
+        cost_code_id: a.cost_code_id,
+        amount: parseFloat(a.amount) || 0,
+        notes: a.notes || null
+      }));
+
+    if (allocsToInsert.length > 0) {
+      const { error: allocError } = await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
+      if (allocError) {
+        console.error('Failed to save allocations:', allocError);
+      }
+    }
+
+    changes.allocations = { from: existing.allocations?.length || 0, to: allocsToInsert.length };
+  }
+
   // Log activity
   if (Object.keys(changes).length > 0) {
     await logActivity(invoiceId, 'edited', performedBy, { changes });
