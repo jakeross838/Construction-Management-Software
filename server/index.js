@@ -754,8 +754,9 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
       .from('v2_invoices')
       .select(`
         *,
+        vendor:v2_vendors(id, name),
         job:v2_jobs(id, name),
-        po:v2_purchase_orders(id, po_number, total_amount),
+        po:v2_purchase_orders(id, po_number, description, total_amount),
         allocations:v2_invoice_allocations(
           amount,
           cost_code_id,
@@ -1729,7 +1730,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
       *,
       job:v2_jobs(id, name),
       vendor:v2_vendors(id, name),
-      po:v2_purchase_orders(id, po_number, total_amount),
+      po:v2_purchase_orders(id, po_number, description, total_amount),
       allocations:v2_invoice_allocations(id, amount, cost_code_id, cost_code:v2_cost_codes(code, name))
     `)
     .eq('id', invoiceId)
