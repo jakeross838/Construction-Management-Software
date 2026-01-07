@@ -100,6 +100,48 @@ const Modals = {
   },
 
   /**
+   * Check if a field should show AI indicator (was AI-extracted and not overridden)
+   */
+  isAiGenerated(invoice, fieldName) {
+    // Must be AI processed
+    if (!invoice.ai_processed) return false;
+
+    // Check if field was overridden
+    if (invoice.ai_overrides && invoice.ai_overrides[fieldName]) {
+      return false; // Field was manually overridden
+    }
+
+    // Check if we have AI-extracted data for this field
+    const aiData = invoice.ai_extracted_data;
+    if (!aiData) return false;
+
+    // Map field names to AI extracted data keys
+    const fieldMap = {
+      'invoice_number': aiData.parsed_invoice_number,
+      'amount': aiData.parsed_amount,
+      'invoice_date': aiData.parsed_date,
+      'job_id': aiData.parsed_address || invoice.job_id,
+      'vendor_id': aiData.parsed_vendor_name || invoice.vendor_id
+    };
+
+    return fieldMap[fieldName] !== undefined;
+  },
+
+  /**
+   * Build AI indicator HTML for a field
+   */
+  buildAiIndicator(invoice, fieldName, showConfidence = false) {
+    if (!this.isAiGenerated(invoice, fieldName)) return '';
+
+    const confidence = invoice.ai_confidence?.[fieldName === 'invoice_number' ? 'invoiceNumber' :
+                                               fieldName === 'invoice_date' ? 'date' : fieldName];
+    const confidenceText = confidence ? ` (${Math.round(confidence * 100)}%)` : '';
+    const title = `AI-extracted${confidenceText} - Click to override`;
+
+    return `<span class="ai-indicator" title="${title}">✨</span>`;
+  },
+
+  /**
    * Build the edit modal HTML with PDF split-view
    */
   buildEditModal(invoice, allocations, activity = []) {
@@ -150,30 +192,30 @@ const Modals = {
                     <h3>Invoice Details</h3>
 
                     <div class="form-group">
-                      <label for="edit-invoice-number">Invoice Number *</label>
+                      <label for="edit-invoice-number">Invoice Number * ${this.buildAiIndicator(invoice, 'invoice_number')}</label>
                       <input type="text" id="edit-invoice-number" name="invoice_number"
                         value="${this.escapeHtml(invoice.invoice_number || '')}"
                         ${!canEdit ? 'readonly' : ''}
-                        onchange="Modals.markDirty()">
+                        onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_number')">
                       <div class="field-error" id="error-invoice_number"></div>
                     </div>
 
                     <div class="form-group">
-                      <label for="edit-amount">Amount *</label>
+                      <label for="edit-amount">Amount * ${this.buildAiIndicator(invoice, 'amount')}</label>
                       <input type="text" id="edit-amount" name="amount"
                         value="${window.Validation?.formatCurrency(invoice.amount) || ''}"
                         ${!canEdit ? 'readonly' : ''}
-                        onchange="Modals.handleAmountChange(this)">
+                        onchange="Modals.handleAmountChange(this); Modals.markFieldOverridden('amount')">
                       <div class="field-error" id="error-amount"></div>
                     </div>
 
                     <div class="form-row">
                       <div class="form-group">
-                        <label for="edit-invoice-date">Invoice Date *</label>
+                        <label for="edit-invoice-date">Invoice Date * ${this.buildAiIndicator(invoice, 'invoice_date')}</label>
                         <input type="date" id="edit-invoice-date" name="invoice_date"
                           value="${invoice.invoice_date || ''}"
                           ${!canEdit ? 'readonly' : ''}
-                          onchange="Modals.markDirty()">
+                          onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_date')">
                         <div class="field-error" id="error-invoice_date"></div>
                       </div>
 
@@ -192,10 +234,10 @@ const Modals = {
                     <h3>Assignment</h3>
 
                     <div class="form-group">
-                      <label for="edit-job">Job</label>
+                      <label for="edit-job">Job ${this.buildAiIndicator(invoice, 'job_id')}</label>
                       <div id="job-picker-container" class="search-picker-container"></div>
                       <input type="hidden" id="edit-job" name="job_id">
-                      ${invoice.ai_confidence?.job ?
+                      ${invoice.ai_confidence?.job && this.isAiGenerated(invoice, 'job_id') ?
                         `<div class="ai-confidence ${this.getConfidenceClass(invoice.ai_confidence.job)}">
                           AI Confidence: ${Math.round(invoice.ai_confidence.job * 100)}%
                         </div>` : ''}
@@ -203,10 +245,10 @@ const Modals = {
                     </div>
 
                     <div class="form-group">
-                      <label for="edit-vendor">Vendor</label>
+                      <label for="edit-vendor">Vendor ${this.buildAiIndicator(invoice, 'vendor_id')}</label>
                       <div id="vendor-picker-container" class="search-picker-container"></div>
                       <input type="hidden" id="edit-vendor" name="vendor_id">
-                      ${invoice.ai_confidence?.vendor ?
+                      ${invoice.ai_confidence?.vendor && this.isAiGenerated(invoice, 'vendor_id') ?
                         `<div class="ai-confidence ${this.getConfidenceClass(invoice.ai_confidence.vendor)}">
                           AI Confidence: ${Math.round(invoice.ai_confidence.vendor * 100)}%
                         </div>` : ''}
@@ -1722,6 +1764,40 @@ const Modals = {
    */
   markDirty() {
     this.isDirty = true;
+  },
+
+  /**
+   * Mark a field as manually overridden (removes AI indicator)
+   */
+  markFieldOverridden(fieldName) {
+    // Track which fields have been overridden in this session
+    if (!this.overriddenFields) {
+      this.overriddenFields = new Set();
+    }
+    this.overriddenFields.add(fieldName);
+
+    // Find and remove the AI indicator from the label
+    const fieldMap = {
+      'invoice_number': 'edit-invoice-number',
+      'amount': 'edit-amount',
+      'invoice_date': 'edit-invoice-date',
+      'job_id': 'edit-job',
+      'vendor_id': 'edit-vendor'
+    };
+
+    const inputId = fieldMap[fieldName];
+    if (inputId) {
+      const input = document.getElementById(inputId);
+      if (input) {
+        const label = input.closest('.form-group')?.querySelector('label');
+        if (label) {
+          const aiIndicator = label.querySelector('.ai-indicator');
+          if (aiIndicator) {
+            aiIndicator.remove();
+          }
+        }
+      }
+    }
   },
 
   /**

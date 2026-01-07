@@ -2114,6 +2114,27 @@ body.modal-open {
   color: var(--danger);
 }
 
+/* AI Generated Indicator (sparkle) */
+.ai-indicator {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.375rem;
+  font-size: 0.875rem;
+  cursor: help;
+  opacity: 0.9;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.ai-indicator:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+/* Label with AI indicator styling */
+label .ai-indicator {
+  vertical-align: middle;
+}
+
 /* ============================================
    LINE ITEMS - Adaptive.build Inspired
    ============================================ */
