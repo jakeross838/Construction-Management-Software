@@ -804,6 +804,7 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
             })) || [],
             amount: invoice.amount,
             poNumber: invoice.po?.po_number,
+            poDescription: invoice.po?.description,
             poTotal: poTotal,
             poBilledToDate: poBilledToDate
           });
@@ -1799,6 +1800,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
               costCodes: costCodesForStamp,
               amount: parseFloat(invoice.amount),
               poNumber: invoice.po?.po_number,
+              poDescription: invoice.po?.description,
               poTotal,
               poBilledToDate
             });

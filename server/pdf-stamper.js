@@ -22,6 +22,7 @@ async function stampApproval(pdfBuffer, stampData) {
     costCodes = [],
     amount,
     poNumber,
+    poDescription,
     poTotal,
     poBilledToDate
   } = stampData;
@@ -94,9 +95,13 @@ async function stampApproval(pdfBuffer, stampData) {
   // PO section
   if (poNumber) {
     const poLines = [
-      { text: 'PURCHASE ORDER', bold: true, size: 8, color: rgb(0.3, 0.3, 0.3) },
-      { text: `PO #: ${poNumber}`, size: 9 }
+      { text: 'LINKED PURCHASE ORDER', bold: true, size: 8, color: rgb(0.2, 0.4, 0.6) },
+      { text: `PO #: ${poNumber}`, bold: true, size: 10 }
     ];
+    if (poDescription) {
+      const truncDesc = poDescription.length > 35 ? poDescription.substring(0, 32) + '...' : poDescription;
+      poLines.push({ text: truncDesc, size: 8, color: rgb(0.4, 0.4, 0.4) });
+    }
     if (poTotal) {
       poLines.push({ text: `PO Total: ${formatMoney(poTotal)}`, size: 9 });
 
@@ -113,7 +118,7 @@ async function stampApproval(pdfBuffer, stampData) {
           size: 9
         });
         poLines.push({
-          text: `PO Remaining: ${formatMoney(remaining)}`,
+          text: `PO Balance: ${formatMoney(remaining)}`,
           bold: true,
           size: 10,
           color: remaining < 0 ? rgb(0.8, 0.1, 0.1) : rgb(0.1, 0.4, 0.1)
@@ -121,6 +126,14 @@ async function stampApproval(pdfBuffer, stampData) {
       }
     }
     sections.push({ lines: poLines });
+  } else {
+    // Show "No PO" indicator
+    sections.push({
+      lines: [
+        { text: 'PURCHASE ORDER', bold: true, size: 8, color: rgb(0.5, 0.5, 0.5) },
+        { text: 'No PO Linked', size: 9, color: rgb(0.5, 0.5, 0.5) }
+      ]
+    });
   }
 
   // Calculate total height
