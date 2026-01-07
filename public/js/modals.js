@@ -929,7 +929,7 @@ const Modals = {
           }
 
           window.toasts?.success('Invoice removed from draw');
-          this.closeModal();
+          this.closeActiveModal();
           if (typeof loadInvoices === 'function') loadInvoices();
         } catch (err) {
           console.error('Error removing from draw:', err);
