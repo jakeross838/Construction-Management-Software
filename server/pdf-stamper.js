@@ -17,6 +17,8 @@ async function stampApproval(pdfBuffer, stampData) {
     date,
     approvedBy,
     jobName,
+    vendorName,
+    invoiceNumber,
     costCodes = [],
     amount,
     poNumber,
@@ -51,14 +53,22 @@ async function stampApproval(pdfBuffer, stampData) {
   const headerLines = [
     { text: status, bold: true, size: 16, color: rgb(0.1, 0.5, 0.1) }
   ];
-  if (date) headerLines.push({ text: `Approved: ${date}`, size: 9 });
-  if (approvedBy) headerLines.push({ text: `By: ${approvedBy}`, size: 9 });
+  if (date) headerLines.push({ text: `Date: ${date}`, size: 9 });
+  if (approvedBy) headerLines.push({ text: `Approved By: ${approvedBy}`, size: 9 });
   sections.push({ lines: headerLines });
 
   // Invoice details section
   const detailLines = [];
-  if (jobName) detailLines.push({ text: `Job: ${jobName}`, size: 9 });
-  if (amount) detailLines.push({ text: `Invoice Amount: ${formatMoney(amount)}`, bold: true, size: 10 });
+  if (vendorName) {
+    const truncVendor = vendorName.length > 30 ? vendorName.substring(0, 27) + '...' : vendorName;
+    detailLines.push({ text: `Vendor: ${truncVendor}`, size: 9 });
+  }
+  if (invoiceNumber) detailLines.push({ text: `Invoice #: ${invoiceNumber}`, size: 9 });
+  if (jobName) {
+    const truncJob = jobName.length > 28 ? jobName.substring(0, 25) + '...' : jobName;
+    detailLines.push({ text: `Job: ${truncJob}`, size: 9 });
+  }
+  if (amount) detailLines.push({ text: `Total Amount: ${formatMoney(amount)}`, bold: true, size: 11 });
   if (detailLines.length > 0) sections.push({ lines: detailLines });
 
   // Cost codes section

@@ -794,6 +794,8 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
             status: 'APPROVED',
             date: new Date().toLocaleDateString(),
             approvedBy: approved_by,
+            vendorName: invoice.vendor?.name,
+            invoiceNumber: invoice.invoice_number,
             jobName: invoice.job?.name,
             costCodes: invoice.allocations?.map(a => ({
               code: a.cost_code?.code,
@@ -1791,6 +1793,8 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
               status: 'APPROVED',
               date: new Date().toLocaleDateString(),
               approvedBy: performedBy,
+              vendorName: invoice.vendor?.name,
+              invoiceNumber: invoice.invoice_number,
               jobName: invoice.job?.name,
               costCodes: costCodesForStamp,
               amount: parseFloat(invoice.amount),
