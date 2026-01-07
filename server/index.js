@@ -1211,15 +1211,81 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
 
     if (deleteError) throw deleteError;
 
-    // Update invoice status back to coded and clear the stamp
-    // Invoice needs to be re-approved after being removed from draw
+    // Get invoice data for re-stamping
+    const { data: invoice } = await supabase
+      .from('v2_invoices')
+      .select(`
+        *,
+        vendor:v2_vendors(id, name),
+        job:v2_jobs(id, name),
+        po:v2_purchase_orders(id, po_number, description, total_amount),
+        allocations:v2_invoice_allocations(
+          amount,
+          cost_code_id,
+          cost_code:v2_cost_codes(code, name)
+        )
+      `)
+      .eq('id', invoice_id)
+      .single();
+
+    // Re-stamp with just APPROVED (remove IN DRAW stamp)
+    let newStampedUrl = null;
+    if (invoice?.pdf_url) {
+      try {
+        const urlParts = invoice.pdf_url.split('/storage/v1/object/public/invoices/');
+        if (urlParts[1]) {
+          const storagePath = decodeURIComponent(urlParts[1].split('?')[0]);
+          const pdfBuffer = await downloadPDF(storagePath);
+
+          // Get PO billing info
+          let poTotal = null;
+          let poBilledToDate = 0;
+          if (invoice.po?.id) {
+            poTotal = invoice.po.total_amount;
+            const { data: priorInvoices } = await supabase
+              .from('v2_invoices')
+              .select('amount')
+              .eq('po_id', invoice.po.id)
+              .neq('id', invoice_id)
+              .in('status', ['approved', 'in_draw', 'paid']);
+            if (priorInvoices) {
+              poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+            }
+          }
+
+          const stampedBuffer = await stampApproval(pdfBuffer, {
+            status: 'APPROVED',
+            date: new Date().toLocaleDateString(),
+            approvedBy: invoice.approved_by || performed_by,
+            vendorName: invoice.vendor?.name,
+            invoiceNumber: invoice.invoice_number,
+            jobName: invoice.job?.name,
+            costCodes: (invoice.allocations || []).map(a => ({
+              code: a.cost_code?.code,
+              name: a.cost_code?.name,
+              amount: a.amount
+            })).filter(cc => cc.code),
+            amount: invoice.amount,
+            poNumber: invoice.po?.po_number,
+            poDescription: invoice.po?.description,
+            poTotal: poTotal,
+            poBilledToDate: poBilledToDate
+          });
+
+          const result = await uploadStampedPDF(stampedBuffer, storagePath);
+          newStampedUrl = result.url;
+        }
+      } catch (stampErr) {
+        console.error('Re-stamping failed when removing from draw:', stampErr.message);
+      }
+    }
+
+    // Update invoice status back to approved (keep approval info, re-stamp without IN DRAW)
     const { error: updateError } = await supabase
       .from('v2_invoices')
       .update({
-        status: 'coded',
-        pdf_stamped_url: null,
-        approved_at: null,
-        approved_by: null
+        status: 'approved',
+        pdf_stamped_url: newStampedUrl
       })
       .eq('id', invoice_id);
 
