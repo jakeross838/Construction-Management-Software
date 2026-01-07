@@ -117,12 +117,12 @@ test.describe('Ross Built CMS - Full App Test', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
-    // Look for a "coded" invoice that can be approved
-    const codedInvoice = page.locator('.invoice-card.status-coded').first();
+    // Look for a "needs_approval" invoice that can be approved
+    const needsApprovalInvoice = page.locator('.invoice-card.status-needs_approval').first();
 
-    if (await codedInvoice.count() > 0) {
+    if (await needsApprovalInvoice.count() > 0) {
       console.log('Found coded invoice, clicking...');
-      await codedInvoice.click();
+      await needsApprovalInvoice.click();
 
       // Wait for modal
       await page.waitForTimeout(3000);

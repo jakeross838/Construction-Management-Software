@@ -193,9 +193,9 @@ const Modals = {
   buildEditModal(invoice, allocations, activity = []) {
     const statusInfo = window.Validation?.getStatusInfo(invoice.status) || {};
     const isArchived = invoice.status === 'paid';
-    const canEdit = !isArchived && ['received', 'coded'].includes(invoice.status);
-    // Show original PDF for coded/received, stamped for approved+
-    const showOriginal = ['coded', 'received'].includes(invoice.status);
+    const canEdit = !isArchived && ['received', 'needs_approval', 'approved'].includes(invoice.status);
+    // Show original PDF for needs_approval/received, stamped for approved+
+    const showOriginal = ['needs_approval', 'received'].includes(invoice.status);
     const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
 
     // Payment tracking info
@@ -601,7 +601,7 @@ const Modals = {
     // Process activity log - filter out noise
     if (activity && activity.length) {
       // Status actions we care about (not "edited" which is redundant)
-      const statusActions = ['uploaded', 'coded', 'approved', 'denied', 'paid', 'added_to_draw', 'removed_from_draw'];
+      const statusActions = ['uploaded', 'needs_approval', 'approved', 'denied', 'paid', 'added_to_draw', 'removed_from_draw'];
 
       activity.forEach(a => {
         const action = a.action || 'note';
@@ -681,13 +681,13 @@ const Modals = {
   buildStatusPipeline(currentStatus) {
     const stages = [
       { id: 'received', label: 'Received', icon: '📥' },
-      { id: 'coded', label: 'Coded', icon: '🏷️' },
+      { id: 'needs_approval', label: 'Needs Approval', icon: '🏷️' },
       { id: 'approved', label: 'Approved', icon: '✓' },
       { id: 'in_draw', label: 'In Draw', icon: '📋' },
       { id: 'paid', label: 'Paid', icon: '💰' }
     ];
 
-    const statusOrder = ['received', 'coded', 'approved', 'in_draw', 'paid'];
+    const statusOrder = ['received', 'needs_approval', 'approved', 'in_draw', 'paid'];
     const currentIndex = statusOrder.indexOf(currentStatus);
 
     return stages.map((stage, index) => {
@@ -718,7 +718,7 @@ const Modals = {
   getActivityIcon(action) {
     const icons = {
       'uploaded': '📥',
-      'coded': '🏷️',
+      'needs_approval': '🏷️',
       'approved': '✅',
       'denied': '❌',
       'paid': '💰',
@@ -738,7 +738,7 @@ const Modals = {
   formatActivityAction(action) {
     const labels = {
       'uploaded': 'Uploaded',
-      'coded': 'Coded',
+      'needs_approval': 'Needs Approval',
       'approved': 'Approved',
       'denied': 'Denied',
       'paid': 'Marked as paid',
@@ -774,8 +774,8 @@ const Modals = {
 
   /**
    * Build status-based action buttons for the footer
-   * received → Code & Save | Deny | Delete
-   * coded → Approve | Save | Deny | Close Out (if partial)
+   * received → Submit | Deny | Delete
+   * needs_approval → Approve | Save | Deny | Close Out (if partial)
    * approved → Add to Draw | Unapprove | Save | Close Out (if partial)
    * in_draw → Remove from Draw (view only)
    * paid → View only
@@ -804,11 +804,11 @@ const Modals = {
       case 'received':
         // New invoice - needs coding
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
-        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveAndCode()">Code & Save</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveAndSubmit()">Submit</button>`);
         break;
 
-      case 'coded':
-        // Coded - ready for approval
+      case 'needs_approval':
+        // Needs Approval - ready for approval
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
         // Show Close Out button if there's a remaining balance to write off
         if (hasRemainingBalance) {
@@ -1089,42 +1089,135 @@ const Modals = {
   },
 
   /**
-   * Save and transition to 'coded' status
+   * Save and transition to 'needs_approval' status
    */
-  async saveAndCode() {
+  async saveAndSubmit() {
     // Validate required fields for coding
-    const errors = this.validateForStatus('coded');
+    const errors = this.validateForStatus('needs_approval');
     if (errors.length > 0) {
       window.toasts?.error('Missing required fields', { details: errors.join(', ') });
       return;
     }
 
-    await this.saveWithStatus('coded', 'Invoice coded successfully');
+    await this.saveWithStatus('needs_approval', 'Invoice submitted for approval');
   },
 
   /**
    * Approve the invoice
    */
   async approveInvoice() {
+    console.log('[APPROVE] approveInvoice called');
+    console.log('[APPROVE] currentInvoice:', this.currentInvoice?.id);
+    console.log('[APPROVE] currentAllocations:', this.currentAllocations);
     const errors = this.validateForStatus('approved');
+    console.log('[APPROVE] validation errors:', errors);
     if (errors.length > 0) {
       window.toasts?.error('Missing required fields for approval', { details: errors.join(', ') });
       return;
     }
 
-    this.showConfirmDialog({
-      title: 'Approve Invoice',
-      message: `Approve invoice #${this.currentInvoice?.invoice_number || 'N/A'} for ${window.Validation?.formatCurrency(this.currentInvoice?.amount)}?`,
-      confirmText: 'Approve',
-      type: 'info',
-      onConfirm: async () => {
-        await this.saveWithStatus('approved', 'Invoice approved');
-      }
+    // Check if this is a partial allocation
+    const allocations = this.currentAllocations || [];
+    const totalAllocated = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const invoiceAmount = parseFloat(this.currentInvoice?.amount || 0);
+    const isPartial = totalAllocated < invoiceAmount - 0.01;
+
+    console.log('[APPROVE] totalAllocated:', totalAllocated);
+    console.log('[APPROVE] invoiceAmount:', invoiceAmount);
+    console.log('[APPROVE] isPartial:', isPartial);
+
+    if (isPartial) {
+      console.log('[APPROVE] Showing partial approval dialog');
+      // Partial approval requires a note
+      this.showPartialApprovalDialog(totalAllocated, invoiceAmount);
+    } else {
+      console.log('[APPROVE] Showing regular confirm dialog');
+      this.showConfirmDialog({
+        title: 'Approve Invoice',
+        message: `Approve invoice #${this.currentInvoice?.invoice_number || 'N/A'} for ${window.Validation?.formatCurrency(this.currentInvoice?.amount)}?`,
+        confirmText: 'Approve',
+        type: 'info',
+        onConfirm: async () => {
+          await this.saveWithStatus('approved', 'Invoice approved');
+        }
+      });
+    }
+  },
+
+  /**
+   * Show dialog for partial approval (requires note)
+   */
+  showPartialApprovalDialog(allocatedAmount, invoiceAmount) {
+    const difference = invoiceAmount - allocatedAmount;
+    const pct = Math.round((allocatedAmount / invoiceAmount) * 100);
+
+    const modal = `
+      <div class="modal modal-small confirm-modal partial-approval-modal">
+        <div class="modal-header">
+          <h2>Partial Approval</h2>
+          <button class="modal-close" onclick="Modals.closeConfirmDialog()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="confirm-icon confirm-warning">⚠️</div>
+          <div class="confirm-message">
+            <p>This invoice is only partially allocated:</p>
+            <div class="partial-approval-summary">
+              <div><strong>Invoice Total:</strong> ${window.Validation?.formatCurrency(invoiceAmount)}</div>
+              <div><strong>Allocated:</strong> ${window.Validation?.formatCurrency(allocatedAmount)} (${pct}%)</div>
+              <div><strong>Unallocated:</strong> ${window.Validation?.formatCurrency(difference)}</div>
+            </div>
+            <p style="margin-top: 12px;"><strong>A note is required for partial approvals:</strong></p>
+            <textarea id="partialApprovalNote" class="partial-approval-note" rows="3"
+              placeholder="Explain why this invoice is being partially approved..."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="Modals.closeConfirmDialog()">Cancel</button>
+          <button class="btn btn-success" onclick="Modals.submitPartialApproval()">Approve Partial</button>
+        </div>
+      </div>
+    `;
+
+    // Show as overlay on top of current modal (like showConfirmDialog)
+    const overlay = document.createElement('div');
+    overlay.id = 'confirm-overlay';
+    overlay.innerHTML = modal;
+    document.body.appendChild(overlay);
+  },
+
+  /**
+   * Submit partial approval with note
+   */
+  async submitPartialApproval() {
+    const noteEl = document.getElementById('partialApprovalNote');
+    const note = noteEl?.value?.trim();
+
+    if (!note) {
+      window.toasts?.error('A note is required for partial approvals');
+      noteEl?.focus();
+      return;
+    }
+
+    this.closeConfirmDialog();
+
+    // Add partial approval note to the invoice notes
+    const allocations = this.currentAllocations || [];
+    const totalAllocated = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const invoiceAmount = parseFloat(this.currentInvoice?.amount || 0);
+    const pct = Math.round((totalAllocated / invoiceAmount) * 100);
+
+    const partialNote = `[PARTIAL APPROVAL - ${pct}%] ${note}`;
+
+    await this.saveWithStatus('approved', 'Invoice partially approved', {
+      partial_approval_note: partialNote,
+      partial_amount: totalAllocated
     });
   },
 
   /**
-   * Unapprove (revert to coded)
+   * Unapprove (revert to needs_approval)
    */
   async unapproveInvoice() {
     this.showConfirmDialog({
@@ -1133,7 +1226,7 @@ const Modals = {
       confirmText: 'Unapprove',
       type: 'warning',
       onConfirm: async () => {
-        await this.saveWithStatus('coded', 'Invoice unapproved');
+        await this.saveWithStatus('needs_approval', 'Invoice unapproved');
       }
     });
   },
@@ -1521,8 +1614,8 @@ const Modals = {
     if (!amount || amount <= 0) errors.push('Amount');
     if (!this.getFormValue('invoice_date')) errors.push('Invoice date');
 
-    // For 'coded' status - need job and allocations
-    if (targetStatus === 'coded') {
+    // For 'needs_approval' status - need job and allocations
+    if (targetStatus === 'needs_approval') {
       if (!this.getFormValue('job_id')) errors.push('Job');
       if (!this.currentAllocations?.length || !this.currentAllocations.some(a => a.cost_code_id)) {
         errors.push('At least one cost code allocation');

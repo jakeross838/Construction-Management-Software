@@ -10,7 +10,13 @@
   <div class="app">
     <!-- Header -->
     <header class="header">
-      <h1>Invoice Approval</h1>
+      <div class="header-left">
+        <h1>Invoice Approval</h1>
+        <nav class="header-nav">
+          <a href="index.html" class="nav-link active">Invoices</a>
+          <a href="pos.html" class="nav-link">Purchase Orders</a>
+        </nav>
+      </div>
       <button class="btn btn-primary" onclick="showUploadInvoiceModal()">+ Upload Invoice</button>
     </header>
 
@@ -19,8 +25,8 @@
       <!-- Filters -->
       <div class="table-toolbar">
         <div class="filter-group">
-          <button class="filter-btn active" data-status="coded">Needs Approval</button>
-          <button class="filter-btn" data-status="approved">Approved</button>
+          <button class="filter-btn active" data-status="approval">Invoicing</button>
+          
           <button class="filter-btn" data-status="in_draw">In Draw</button>
         </div>
         <select id="jobFilter" class="job-filter">

@@ -41,9 +41,9 @@ const VALIDATION_RULES = {
 // ============================================================
 
 const STATUS_TRANSITIONS = {
-  received: ['coded', 'deleted'],
-  coded: ['approved', 'received', 'deleted'],
-  approved: ['in_draw', 'coded'],
+  received: ['needs_approval', 'deleted'],
+  needs_approval: ['approved', 'received', 'deleted'],
+  approved: ['in_draw', 'needs_approval'],
   in_draw: ['paid', 'approved'],
   paid: []     // Archived - read only
 };
@@ -53,7 +53,7 @@ const STATUS_TRANSITIONS = {
 // ============================================================
 
 const PRE_TRANSITION_REQUIREMENTS = {
-  coded: ['job_id', 'vendor_id'],
+  needs_approval: ['job_id', 'vendor_id'],
   approved: ['job_id', 'vendor_id', 'allocations_balanced'],
   in_draw: ['draw_id'],
   paid: ['funded_draw']

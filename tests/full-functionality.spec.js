@@ -170,7 +170,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('8. Edit invoice number field', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -194,7 +194,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('9. Edit amount field', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -218,7 +218,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('10. Edit date fields', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -242,7 +242,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('11. Job dropdown selection', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -269,7 +269,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('12. Vendor dropdown selection', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -298,7 +298,7 @@ test.describe('Full Functionality Tests', () => {
   // ========== COST CODE ALLOCATIONS ==========
 
   test('13. Cost code picker functionality', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -330,7 +330,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('14. Add allocation button', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -357,7 +357,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('15. Fill remaining amount button', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -377,7 +377,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('16. Remove allocation button', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -409,7 +409,7 @@ test.describe('Full Functionality Tests', () => {
   // ========== SAVE & STATUS CHANGES ==========
 
   test('17. Save invoice button', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -427,10 +427,10 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('18. Approve invoice with confirmation', async ({ page }) => {
-    const codedInvoice = page.locator('.invoice-card.status-coded').first();
+    const needsApprovalInvoice = page.locator('.invoice-card.status-needs_approval').first();
 
-    if (await codedInvoice.count() > 0) {
-      await codedInvoice.click();
+    if (await needsApprovalInvoice.count() > 0) {
+      await needsApprovalInvoice.click();
       await page.waitForTimeout(2000);
 
       // Make sure allocation is set up
@@ -582,7 +582,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('24. Notes field exists', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -644,7 +644,7 @@ test.describe('Full Functionality Tests', () => {
   });
 
   test('27. Delete button on editable invoices', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -734,7 +734,7 @@ test.describe('Full Functionality Tests', () => {
   // ========== ALLOCATION SUMMARY ==========
 
   test('33. Allocation summary updates', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();

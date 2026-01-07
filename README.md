@@ -34,7 +34,7 @@ Server runs at http://localhost:3001
 
 - AI-powered invoice processing (PDF extraction)
 - Cost code allocation with searchable picker
-- Multi-status workflow: received → coded → approved → in_draw → paid
+- Multi-status workflow: received → needs_approval → approved → in_draw → paid
 - PDF viewer split-view modal
 - Real-time updates via SSE
 - Optimistic locking for concurrent edits

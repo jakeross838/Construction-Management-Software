@@ -47,14 +47,14 @@ test.describe('Debug Approve Flow', () => {
     }
 
     // Find a coded invoice (can be approved)
-    const codedInvoice = page.locator('.invoice-card.status-coded').first();
-    const codedCount = await page.locator('.invoice-card.status-coded').count();
-    console.log('Coded invoices found:', codedCount);
+    const needsApprovalInvoice = page.locator('.invoice-card.status-needs_approval').first();
+    const needsApprovalCount = await page.locator('.invoice-card.status-needs_approval').count();
+    console.log('Needs approval invoices found:', needsApprovalCount);
 
-    if (codedCount > 0) {
+    if (needsApprovalCount > 0) {
       // Click the invoice card
       console.log('\n=== CLICKING INVOICE ===');
-      await codedInvoice.click();
+      await needsApprovalInvoice.click();
 
       // Wait for modal
       await page.waitForTimeout(3000);

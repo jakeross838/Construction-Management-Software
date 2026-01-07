@@ -54,7 +54,7 @@ test.describe('Comprehensive App Tests', () => {
 
   test('2. Filter buttons work', async ({ page }) => {
     const filters = [
-      { text: 'Needs Approval', selector: '[data-status="coded"]' },
+      { text: 'Needs Approval', selector: '[data-status="needs_approval"]' },
       { text: 'Approved', selector: '[data-status="approved"]' },
       { text: 'In Draw', selector: '[data-status="in_draw"]' },
       { text: 'Archive', selector: '[data-status="archive"]' }
@@ -96,7 +96,7 @@ test.describe('Comprehensive App Tests', () => {
 
   test('4. Edit invoice fields', async ({ page }) => {
     // Find a received or coded invoice
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -137,7 +137,7 @@ test.describe('Comprehensive App Tests', () => {
   });
 
   test('5. Add cost code allocation', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -180,7 +180,7 @@ test.describe('Comprehensive App Tests', () => {
   });
 
   test('7. Save invoice changes', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();
@@ -203,10 +203,10 @@ test.describe('Comprehensive App Tests', () => {
   });
 
   test('8. Approve invoice flow', async ({ page }) => {
-    const codedInvoice = page.locator('.invoice-card.status-coded').first();
+    const needsApprovalInvoice = page.locator('.invoice-card.status-needs_approval').first();
 
-    if (await codedInvoice.count() > 0) {
-      await codedInvoice.click();
+    if (await needsApprovalInvoice.count() > 0) {
+      await needsApprovalInvoice.click();
       await page.waitForTimeout(2000);
 
       // Click Approve button
@@ -250,7 +250,7 @@ test.describe('Comprehensive App Tests', () => {
   });
 
   test('10. Delete invoice flow', async ({ page }) => {
-    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-coded').first();
+    const editableInvoice = page.locator('.invoice-card.status-received, .invoice-card.status-needs_approval').first();
 
     if (await editableInvoice.count() > 0) {
       await editableInvoice.click();

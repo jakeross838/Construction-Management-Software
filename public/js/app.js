@@ -9,7 +9,7 @@ let state = {
   costCodes: [],
   currentInvoiceId: null,
   currentJobFilter: '',
-  currentStatusFilter: 'coded' // Default to needs approval
+  currentStatusFilter: 'approval' // Default to needs approval
 };
 
 // ============================================================
@@ -116,9 +116,14 @@ function renderInvoiceList() {
   if (state.currentStatusFilter === 'archive') {
     // Archive = paid only
     filtered = filtered.filter(inv => inv.status === 'paid');
-  } else if (state.currentStatusFilter === 'coded') {
-    // "Needs Approval" includes both new (received) and coded invoices
-    filtered = filtered.filter(inv => inv.status === 'received' || inv.status === 'coded');
+  } else if (state.currentStatusFilter === 'approval') {
+    // "Invoicing" tab includes received, needs_approval, and approved
+    // Sort: needs_approval first, then approved, then received
+    filtered = filtered.filter(inv =>
+      inv.status === 'received' || inv.status === 'needs_approval' || inv.status === 'approved'
+    );
+    const statusOrder = { 'needs_approval': 0, 'received': 1, 'approved': 2 };
+    filtered.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
   } else {
     // Specific status
     filtered = filtered.filter(inv => inv.status === state.currentStatusFilter);
@@ -137,7 +142,39 @@ function renderInvoiceList() {
     return;
   }
 
-  container.innerHTML = filtered.map(inv => {
+  // For the Invoicing tab, render with group headers
+  if (state.currentStatusFilter === 'approval') {
+    const groups = {
+      needs_approval: filtered.filter(inv => inv.status === 'needs_approval'),
+      received: filtered.filter(inv => inv.status === 'received'),
+      approved: filtered.filter(inv => inv.status === 'approved')
+    };
+
+    let html = '';
+
+    if (groups.needs_approval.length > 0) {
+      html += '<div class="invoice-group-header">Needs Approval</div>';
+      html += groups.needs_approval.map(inv => renderInvoiceCard(inv)).join('');
+    }
+
+    if (groups.received.length > 0) {
+      html += '<div class="invoice-group-header">New / Processing</div>';
+      html += groups.received.map(inv => renderInvoiceCard(inv)).join('');
+    }
+
+    if (groups.approved.length > 0) {
+      html += '<div class="invoice-group-header">Approved - Ready for Draw</div>';
+      html += groups.approved.map(inv => renderInvoiceCard(inv)).join('');
+    }
+
+    container.innerHTML = html;
+    return;
+  }
+
+  container.innerHTML = filtered.map(inv => renderInvoiceCard(inv)).join('');
+}
+
+function renderInvoiceCard(inv) {
     // Build PO info if linked
     let poInfo = '';
     if (inv.po) {
@@ -176,10 +213,10 @@ function renderInvoiceList() {
     else if (['approved', 'in_draw'].includes(inv.status) && isPartialAlloc) {
       displayAmount = totalAllocated;
       amountSubtext = `<div class="amount-subtext">of ${formatMoney(invoiceAmount)}</div>`;
-      allocationInfo = `<span class="allocation-badge partial" title="${formatMoney(invoiceAmount - totalAllocated)} remaining">${allocationPct}% of invoice</span>`;
+      allocationInfo = `<span class="allocation-badge partial" title="${formatMoney(invoiceAmount - totalAllocated)} remaining">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
     }
-    // Priority 4: Show allocation info for coded status or full allocations
-    else if (['coded', 'approved', 'in_draw'].includes(inv.status) && totalAllocated > 0) {
+    // Priority 4: Show allocation info for needs_approval status or full allocations
+    else if (['needs_approval', 'approved', 'in_draw'].includes(inv.status) && totalAllocated > 0) {
       const allocClass = isPartialAlloc ? 'partial' : 'full';
       allocationInfo = `<span class="allocation-badge ${allocClass}" title="Allocated: ${formatMoney(totalAllocated)} of ${formatMoney(invoiceAmount)}">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
     }
@@ -200,99 +237,8 @@ function renderInvoiceList() {
       <div class="invoice-status">
         <span class="status-pill ${inv.status}">${formatStatus(inv.status)}</span>
       </div>
-      ${buildQuickActions(inv)}
     </div>
     `;
-  }).join('');
-}
-
-// ============================================================
-// QUICK ACTIONS
-// ============================================================
-
-function buildQuickActions(inv) {
-  const actions = [];
-
-  switch (inv.status) {
-    case 'received':
-      actions.push(`<button class="quick-btn quick-approve" onclick="event.stopPropagation(); quickCode('${inv.id}')" title="Code">Code</button>`);
-      actions.push(`<button class="quick-btn quick-delete" onclick="event.stopPropagation(); quickDelete('${inv.id}')" title="Delete">Delete</button>`);
-      break;
-    case 'coded':
-      actions.push(`<button class="quick-btn quick-approve" onclick="event.stopPropagation(); quickApprove('${inv.id}')" title="Approve">Approve</button>`);
-      actions.push(`<button class="quick-btn quick-delete" onclick="event.stopPropagation(); quickDelete('${inv.id}')" title="Delete">Delete</button>`);
-      break;
-    case 'approved':
-      actions.push(`<button class="quick-btn quick-approve" onclick="event.stopPropagation(); quickAddToDraw('${inv.id}')" title="Add to Draw">Add to Draw</button>`);
-      break;
-  }
-
-  if (actions.length === 0) return '';
-
-  return `<div class="quick-actions">${actions.join('')}</div>`;
-}
-
-async function quickCode(invoiceId) {
-  // For quick code, open the edit modal - user needs to add cost codes
-  openEditModal(invoiceId);
-}
-
-async function quickApprove(invoiceId) {
-  if (!confirm('Approve this invoice?')) return;
-
-  try {
-    const res = await fetch(`/api/invoices/${invoiceId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'approved' })
-    });
-
-    if (!res.ok) throw new Error('Approval failed');
-
-    window.toasts?.success('Invoice approved');
-    loadInvoices();
-  } catch (err) {
-    console.error('Quick approve failed:', err);
-    window.toasts?.error('Failed to approve invoice');
-  }
-}
-
-async function quickAddToDraw(invoiceId) {
-  if (!confirm('Add this invoice to the current draw?')) return;
-
-  try {
-    const res = await fetch(`/api/invoices/${invoiceId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'in_draw' })
-    });
-
-    if (!res.ok) throw new Error('Failed to add to draw');
-
-    window.toasts?.success('Invoice added to draw');
-    loadInvoices();
-  } catch (err) {
-    console.error('Quick add to draw failed:', err);
-    window.toasts?.error('Failed to add to draw');
-  }
-}
-
-async function quickDelete(invoiceId) {
-  if (!confirm('Are you sure you want to delete this invoice? This cannot be undone.')) return;
-
-  try {
-    const res = await fetch(`/api/invoices/${invoiceId}`, {
-      method: 'DELETE'
-    });
-
-    if (!res.ok) throw new Error('Delete failed');
-
-    window.toasts?.success('Invoice deleted');
-    loadInvoices();
-  } catch (err) {
-    console.error('Quick delete failed:', err);
-    window.toasts?.error('Failed to delete invoice');
-  }
 }
 
 // ============================================================
@@ -338,9 +284,9 @@ function renderInvoiceModal(invoice, activity) {
   const infoPanel = document.getElementById('invoiceInfoPanel');
   const footer = document.getElementById('invoiceModalFooter');
 
-  // PDF Viewer - show original for coded/received, stamped for approved+
+  // PDF Viewer - show original for needs_approval/received, stamped for approved+
   if (invoice.pdf_url || invoice.pdf_stamped_url) {
-    const showOriginal = ['coded', 'received'].includes(invoice.status);
+    const showOriginal = ['needs_approval', 'received'].includes(invoice.status);
     const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
     pdfContainer.innerHTML = `<iframe src="${pdfUrl}"></iframe>`;
   } else {
@@ -414,9 +360,9 @@ function renderInvoiceModal(invoice, activity) {
   `;
 
   // Footer buttons - based on status
-  const canEdit = ['received', 'coded'].includes(invoice.status);
-  const canApprove = invoice.status === 'coded';
-  const canDelete = ['received', 'coded'].includes(invoice.status);
+  const canEdit = ['received', 'needs_approval', 'approved'].includes(invoice.status);
+  const canApprove = invoice.status === 'needs_approval';
+  const canDelete = ['received', 'needs_approval'].includes(invoice.status);
 
   let buttons = [`<button class="btn btn-secondary" onclick="closeModal('invoiceModal')">Close</button>`];
 
@@ -836,7 +782,7 @@ function formatDateTime(dateStr) {
 function formatStatus(status) {
   const labels = {
     received: 'New',
-    coded: 'Needs Approval',
+    needs_approval: 'Needs Approval',
     approved: 'Approved',
     in_draw: 'In Draw',
     paid: 'Paid'
@@ -847,7 +793,7 @@ function formatStatus(status) {
 function formatAction(action) {
   const labels = {
     uploaded: 'Uploaded',
-    coded: 'Coded',
+    needs_approval: 'Needs Approval',
     approved: 'Approved',
     added_to_draw: 'Added to draw',
     paid: 'Paid'

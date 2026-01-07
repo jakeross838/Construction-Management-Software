@@ -52,9 +52,9 @@ const Validation = {
 
   // Status transitions allowed
   statusTransitions: {
-    received: ['coded', 'denied', 'deleted'],
-    coded: ['approved', 'denied', 'received'],
-    approved: ['in_draw', 'coded'],
+    received: ['needs_approval', 'denied', 'deleted'],
+    needs_approval: ['approved', 'denied', 'received'],
+    approved: ['in_draw', 'needs_approval'],
     in_draw: ['paid', 'approved'],
     denied: ['received'],
     paid: []
@@ -62,7 +62,7 @@ const Validation = {
 
   // Requirements before transition
   preTransitionRequirements: {
-    coded: {
+    needs_approval: {
       fields: ['job_id', 'vendor_id'],
       message: 'Job and vendor must be assigned before coding'
     },
@@ -266,9 +266,9 @@ const Validation = {
     });
 
     // Check balance
-    const diff = Math.abs(totalAllocated - totalAmount);
-    if (diff > 0.01) {
-      errors.push(`Allocations total ($${totalAllocated.toFixed(2)}) does not match invoice amount ($${totalAmount.toFixed(2)})`);
+    // Only reject over-allocation, allow under-allocation
+    if (totalAllocated > totalAmount + 0.01) {
+      errors.push(`Allocations total ($${totalAllocated.toFixed(2)}) exceeds invoice amount ($${totalAmount.toFixed(2)})`);
     }
 
     return {
@@ -319,7 +319,7 @@ const Validation = {
   getStatusInfo(status) {
     const statusMap = {
       received: { label: 'Received', color: 'gray', icon: '📥' },
-      coded: { label: 'Coded', color: 'blue', icon: '📋' },
+      needs_approval: { label: 'Needs Approval', color: 'blue', icon: '📋' },
       approved: { label: 'Approved', color: 'green', icon: '✅' },
       denied: { label: 'Denied', color: 'red', icon: '❌' },
       in_draw: { label: 'In Draw', color: 'purple', icon: '📊' },

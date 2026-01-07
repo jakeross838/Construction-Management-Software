@@ -35,7 +35,7 @@ When an invoice PDF is uploaded:
 ```
 Upload PDF → AI Processing → [received]
                                 ↓
-                           PM Codes → [coded]
+                           Reviewed → [needs_approval]
                                 ↓
                         PM Approves → [approved] → PDF Stamped
                                 ↓
@@ -79,7 +79,7 @@ Includes:
 
 ### 4. Filter System
 - **All Active**: Everything except paid
-- **Needs Approval**: Status = coded
+- **Needs Approval**: Status = needs_approval
 - **Approved**: Ready for draw
 - **In Draw**: Waiting on client funding
 - **New**: Just received
@@ -262,7 +262,7 @@ invoice_number TEXT
 invoice_date DATE
 due_date DATE
 amount DECIMAL
-status TEXT                  -- received, coded, approved, in_draw, paid
+status TEXT                  -- received, needs_approval, approved, in_draw, paid
 pdf_url TEXT                 -- Original PDF
 pdf_stamped_url TEXT         -- Stamped PDF
 
@@ -345,7 +345,7 @@ notes TEXT
 ```sql
 id UUID PRIMARY KEY
 invoice_id UUID REFERENCES v2_invoices
-action TEXT                  -- uploaded, coded, approved, denied, added_to_draw, paid
+action TEXT                  -- uploaded, needs_approval, approved, denied, added_to_draw, paid
 performed_by TEXT
 details JSONB
 created_at TIMESTAMPTZ
@@ -501,9 +501,9 @@ Invoices are flagged for review when:
 
 ### Valid Transitions
 ```
-received → coded, denied, deleted
-coded → approved, denied, received (recall)
-approved → in_draw, coded (recall)
+received → needs_approval, denied, deleted
+needs_approval → approved, denied, received (recall)
+approved → in_draw, needs_approval (recall)
 in_draw → paid, approved (recall)
 denied → received
 paid → (terminal state)
@@ -512,7 +512,7 @@ paid → (terminal state)
 ### Pre-Transition Requirements
 | Target Status | Requirements |
 |---------------|--------------|
-| coded | job_id, vendor_id assigned |
+| needs_approval | job_id, vendor_id assigned |
 | approved | job_id, vendor_id, balanced allocations |
 | in_draw | Must select draw to add to |
 | paid | Draw must be funded |

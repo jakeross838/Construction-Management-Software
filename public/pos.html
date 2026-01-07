@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ross Built - Purchase Orders</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <h1>Purchase Orders</h1>
+        <nav class="header-nav">
+          <a href="index.html" class="nav-link">Invoices</a>
+          <a href="pos.html" class="nav-link active">Purchase Orders</a>
+        </nav>
+      </div>
+      <button class="btn btn-primary" onclick="window.poModals.showCreateModal()">+ New PO</button>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Stats Cards -->
+      <div class="po-stats" id="poStats">
+        <div class="stat-card">
+          <div class="stat-label">Total Open</div>
+          <div class="stat-value" id="statTotalOpen">$0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Pending Approval</div>
+          <div class="stat-value" id="statPendingApproval">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Billed</div>
+          <div class="stat-value" id="statTotalBilled">$0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Remaining</div>
+          <div class="stat-value" id="statRemaining">$0</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="table-toolbar">
+        <div class="filter-group">
+          <button class="filter-btn active" data-status="all">All</button>
+          <button class="filter-btn" data-status="pending">Pending</button>
+          <button class="filter-btn" data-status="approved">Approved</button>
+          <button class="filter-btn" data-status="active">Active</button>
+          <button class="filter-btn" data-status="closed">Closed</button>
+        </div>
+        <div class="filter-selects">
+          <select id="jobFilter" class="job-filter">
+            <option value="">All Jobs</option>
+          </select>
+          <select id="vendorFilter" class="vendor-filter">
+            <option value="">All Vendors</option>
+          </select>
+        </div>
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="Search PO#, vendor, description..." class="search-input">
+        </div>
+      </div>
+
+      <!-- PO List -->
+      <div class="po-list" id="poList">
+        <div class="loading">Loading purchase orders...</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- PO Detail/Edit Modal -->
+  <div id="poModal" class="modal">
+    <div class="modal-content modal-xl">
+      <div class="modal-header">
+        <h2 id="poModalTitle">Purchase Order</h2>
+        <button class="close-btn" onclick="window.poModals.closeModal()">&times;</button>
+      </div>
+      <div class="modal-body split-view">
+        <!-- Left Panel: PO Summary -->
+        <div class="po-summary-panel" id="poSummaryPanel">
+          <div class="loading">Loading...</div>
+        </div>
+        <!-- Right Panel: Edit Form -->
+        <div class="po-edit-panel" id="poEditPanel">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+      <div class="modal-footer" id="poModalFooter">
+        <!-- Action buttons -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <div id="confirmDialog" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2 id="confirmTitle">Confirm</h2>
+        <button class="close-btn" onclick="closeModal('confirmDialog')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage"></p>
+        <div id="confirmInput" style="display: none;">
+          <label id="confirmInputLabel"></label>
+          <textarea id="confirmInputField" rows="3" class="form-control"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('confirmDialog')">Cancel</button>
+        <button class="btn btn-primary" id="confirmBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="js/toasts.js"></script>
+  <script src="js/searchable-picker.js"></script>
+  <script src="js/po-modals.js"></script>
+  <script src="js/po-app.js"></script>
+</body>
+</html>
