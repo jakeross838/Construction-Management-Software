@@ -1463,7 +1463,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
       // Find and delete the draw_invoice record
       const { data: drawInvoice } = await supabase
         .from('v2_draw_invoices')
-        .select('draw_id')
+        .select('draw_id, draw:v2_draws(draw_number)')
         .eq('invoice_id', invoiceId)
         .single();
 
@@ -1481,6 +1481,11 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
 
         const newTotal = remainingInvoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
         await supabase.from('v2_draws').update({ total_amount: newTotal }).eq('id', drawInvoice.draw_id);
+
+        // Log removed from draw activity
+        await logActivity(invoiceId, 'removed_from_draw', performedBy, {
+          draw_number: drawInvoice.draw?.draw_number
+        });
       }
     }
   }

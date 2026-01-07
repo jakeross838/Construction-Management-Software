@@ -1,9 +1,9 @@
 /**
  * Modal Management Module
  * Handles invoice edit modal, job selection modal, and other UI dialogs
- * LAST UPDATED: 2026-01-07 - Allocation warning fix + cancel button debug
+ * LAST UPDATED: 2026-01-06 - Activity timeline cleanup
  */
-console.log('[MODALS] Script loaded - version 2026-01-07 - ALLOCATION WARNING FIX');
+console.log('[MODALS] Script loaded - version 2026-01-06 - ACTIVITY CLEANUP');
 
 const Modals = {
   // Current state
@@ -366,11 +366,12 @@ const Modals = {
 
   /**
    * Build activity timeline from invoice data and activity records
+   * Shows only meaningful events - filters out redundant edits and status transitions
    */
   buildActivityTimeline(invoice, activity = []) {
     const events = [];
 
-    // Build events from invoice timestamps
+    // Add invoice creation event
     if (invoice.created_at) {
       events.push({
         type: 'created',
@@ -382,83 +383,34 @@ const Modals = {
       });
     }
 
-    if (invoice.coded_at) {
-      events.push({
-        type: 'coded',
-        icon: '🏷️',
-        label: 'Coded',
-        detail: invoice.allocations?.length ? `${invoice.allocations.length} cost code(s)` : null,
-        by: invoice.coded_by,
-        at: invoice.coded_at
-      });
-    }
-
-    if (invoice.approved_at) {
-      events.push({
-        type: 'approved',
-        icon: '✅',
-        label: 'Approved',
-        detail: null,
-        by: invoice.approved_by,
-        at: invoice.approved_at
-      });
-    }
-
-    if (invoice.status === 'in_draw') {
-      events.push({
-        type: 'in_draw',
-        icon: '📋',
-        label: 'Added to draw',
-        detail: null,
-        by: null,
-        at: invoice.updated_at
-      });
-    }
-
-    if (invoice.status === 'paid') {
-      events.push({
-        type: 'paid',
-        icon: '💰',
-        label: 'Paid',
-        detail: null,
-        by: null,
-        at: invoice.updated_at
-      });
-    }
-
-    // Add any activity records (notes, comments)
+    // Process activity log - filter out noise
     if (activity && activity.length) {
+      // Status actions we care about (not "edited" which is redundant)
+      const statusActions = ['uploaded', 'coded', 'approved', 'denied', 'paid', 'added_to_draw', 'removed_from_draw'];
+
       activity.forEach(a => {
-        // Format details - handle both string and object
-        let detail = a.notes;
-        if (!detail && a.details && typeof a.details === 'object') {
-          // Format common activity details nicely
-          const d = a.details;
-          const parts = [];
+        const action = a.action || 'note';
 
-          // Handle status changes
-          if (d.changes?.status) {
-            parts.push(`Status: ${d.changes.status.from} → ${d.changes.status.to}`);
-          } else if (d.status) {
-            parts.push(`Status: ${d.status}`);
-          }
+        // Skip "edited" entries - they're redundant with status-specific entries
+        // Exception: keep edits that have actual notes/comments
+        if (action === 'edited') {
+          // Only show edit if it has a user note
+          if (!a.notes) return;
+        }
 
-          // Handle amount
-          if (d.amount) parts.push(`Amount: ${d.amount}`);
-          if (d.invoice_number) parts.push(`Invoice: ${d.invoice_number}`);
+        // Skip "uploaded" if we already have "created"
+        if (action === 'uploaded' && invoice.created_at) return;
 
-          // Handle draw info
-          if (d.draw_number) parts.push(`Draw #${d.draw_number}`);
-
-          detail = parts.length > 0 ? parts.join(' • ') : null;
-        } else if (!detail && typeof a.details === 'string') {
-          detail = a.details;
+        // Format details
+        let detail = null;
+        if (a.notes && typeof a.notes === 'string') {
+          detail = a.notes;
         }
 
         events.push({
-          type: a.action || 'note',
-          icon: this.getActivityIcon(a.action),
-          label: this.formatActivityAction(a.action),
+          type: action,
+          icon: this.getActivityIcon(action),
+          label: this.formatActivityAction(action),
           detail: detail,
           by: a.performed_by,
           at: a.created_at
@@ -469,11 +421,31 @@ const Modals = {
     // Sort by date descending (newest first)
     events.sort((a, b) => new Date(b.at) - new Date(a.at));
 
-    if (events.length === 0) {
+    // Deduplicate: remove consecutive same-type events within 1 minute
+    const deduped = [];
+    events.forEach((e, i) => {
+      if (i === 0) {
+        deduped.push(e);
+        return;
+      }
+      const prev = deduped[deduped.length - 1];
+      const timeDiff = Math.abs(new Date(prev.at) - new Date(e.at));
+      const sameType = prev.type === e.type && prev.by === e.by;
+
+      // Skip if same type, same user, within 1 minute
+      if (sameType && timeDiff < 60000) return;
+
+      deduped.push(e);
+    });
+
+    if (deduped.length === 0) {
       return '<div class="activity-empty">No activity yet</div>';
     }
 
-    return events.map(e => `
+    // Limit to most recent 8 events
+    const limited = deduped.slice(0, 8);
+
+    return limited.map(e => `
       <div class="activity-event activity-${e.type}">
         <div class="activity-icon">${e.icon}</div>
         <div class="activity-content">
