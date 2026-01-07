@@ -233,7 +233,12 @@ const Modals = {
 
                   <div class="form-section activity-section">
                     <h3>Activity</h3>
-                    <div class="activity-timeline">
+                    <!-- Status Pipeline -->
+                    <div class="status-pipeline">
+                      ${this.buildStatusPipeline(invoice.status)}
+                    </div>
+                    <!-- Activity Feed -->
+                    <div class="activity-feed">
                       ${this.buildActivityTimeline(invoice, activity)}
                     </div>
                     ${!isArchived ? `
@@ -424,11 +429,37 @@ const Modals = {
     // Add any activity records (notes, comments)
     if (activity && activity.length) {
       activity.forEach(a => {
+        // Format details - handle both string and object
+        let detail = a.notes;
+        if (!detail && a.details && typeof a.details === 'object') {
+          // Format common activity details nicely
+          const d = a.details;
+          const parts = [];
+
+          // Handle status changes
+          if (d.changes?.status) {
+            parts.push(`Status: ${d.changes.status.from} → ${d.changes.status.to}`);
+          } else if (d.status) {
+            parts.push(`Status: ${d.status}`);
+          }
+
+          // Handle amount
+          if (d.amount) parts.push(`Amount: ${d.amount}`);
+          if (d.invoice_number) parts.push(`Invoice: ${d.invoice_number}`);
+
+          // Handle draw info
+          if (d.draw_number) parts.push(`Draw #${d.draw_number}`);
+
+          detail = parts.length > 0 ? parts.join(' • ') : null;
+        } else if (!detail && typeof a.details === 'string') {
+          detail = a.details;
+        }
+
         events.push({
-          type: 'note',
-          icon: '💬',
+          type: a.action || 'note',
+          icon: this.getActivityIcon(a.action),
           label: this.formatActivityAction(a.action),
-          detail: a.notes || a.details,
+          detail: detail,
           by: a.performed_by,
           at: a.created_at
         });
@@ -458,6 +489,61 @@ const Modals = {
   },
 
   /**
+   * Build status pipeline showing invoice workflow stages
+   */
+  buildStatusPipeline(currentStatus) {
+    const stages = [
+      { id: 'received', label: 'Received', icon: '📥' },
+      { id: 'coded', label: 'Coded', icon: '🏷️' },
+      { id: 'approved', label: 'Approved', icon: '✓' },
+      { id: 'in_draw', label: 'In Draw', icon: '📋' },
+      { id: 'paid', label: 'Paid', icon: '💰' }
+    ];
+
+    const statusOrder = ['received', 'coded', 'approved', 'in_draw', 'paid'];
+    const currentIndex = statusOrder.indexOf(currentStatus);
+
+    return stages.map((stage, index) => {
+      let stageClass = 'pipeline-stage';
+      if (index < currentIndex) {
+        stageClass += ' completed';
+      } else if (index === currentIndex) {
+        stageClass += ' current';
+      } else {
+        stageClass += ' pending';
+      }
+
+      return `
+        <div class="${stageClass}" data-stage="${stage.id}">
+          <div class="pipeline-dot">
+            ${index < currentIndex ? '✓' : stage.icon}
+          </div>
+          <span class="pipeline-label">${stage.label}</span>
+        </div>
+        ${index < stages.length - 1 ? '<div class="pipeline-connector' + (index < currentIndex ? ' completed' : '') + '"></div>' : ''}
+      `;
+    }).join('');
+  },
+
+  /**
+   * Get icon for activity action
+   */
+  getActivityIcon(action) {
+    const icons = {
+      'uploaded': '📥',
+      'coded': '🏷️',
+      'approved': '✅',
+      'denied': '❌',
+      'paid': '💰',
+      'added_to_draw': '📋',
+      'removed_from_draw': '📤',
+      'note': '💬',
+      'edited': '✏️'
+    };
+    return icons[action] || '📝';
+  },
+
+  /**
    * Format activity action into readable label
    */
   formatActivityAction(action) {
@@ -465,6 +551,7 @@ const Modals = {
       'uploaded': 'Uploaded',
       'coded': 'Coded',
       'approved': 'Approved',
+      'denied': 'Denied',
       'paid': 'Marked as paid',
       'added_to_draw': 'Added to draw',
       'removed_from_draw': 'Removed from draw',
