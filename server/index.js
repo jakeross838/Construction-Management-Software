@@ -1364,15 +1364,35 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
     if (drawInvoices && drawInvoices.length > 0) {
       const invoiceIds = drawInvoices.map(di => di.invoice_id);
 
-      // Get invoices with their stamped PDFs to add PAID stamp
+      // Get invoices with their amounts, allocations, and stamped PDFs
       const { data: invoicesForStamp } = await supabase
         .from('v2_invoices')
-        .select('id, pdf_stamped_url')
+        .select(`
+          id, amount, pdf_stamped_url,
+          allocations:v2_invoice_allocations(amount)
+        `)
         .in('id', invoiceIds);
 
-      // Add PAID stamp to each invoice
+      // Separate fully allocated vs partially allocated invoices
+      const fullyAllocatedIds = [];
+      const partiallyAllocatedIds = [];
+
+      for (const inv of invoicesForStamp || []) {
+        const totalAllocated = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+        const invoiceAmount = parseFloat(inv.amount || 0);
+
+        if (totalAllocated >= invoiceAmount - 0.01) {
+          fullyAllocatedIds.push(inv.id);
+        } else {
+          partiallyAllocatedIds.push(inv.id);
+        }
+      }
+
+      // Add PAID stamp to fully allocated invoices
       const paidDate = new Date().toLocaleDateString();
       for (const inv of invoicesForStamp || []) {
+        if (!fullyAllocatedIds.includes(inv.id)) continue;
+
         if (inv.pdf_stamped_url) {
           try {
             const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
@@ -1389,10 +1409,31 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
         await logActivity(inv.id, 'paid', 'System', { draw_id: drawId });
       }
 
-      await supabase
-        .from('v2_invoices')
-        .update({ status: 'paid' })
-        .in('id', invoiceIds);
+      // Mark fully allocated invoices as paid
+      if (fullyAllocatedIds.length > 0) {
+        await supabase
+          .from('v2_invoices')
+          .update({ status: 'paid' })
+          .in('id', fullyAllocatedIds);
+      }
+
+      // Return partially allocated invoices to 'coded' for remaining allocation
+      if (partiallyAllocatedIds.length > 0) {
+        await supabase
+          .from('v2_invoices')
+          .update({ status: 'coded' })
+          .in('id', partiallyAllocatedIds);
+
+        for (const invId of partiallyAllocatedIds) {
+          const inv = invoicesForStamp.find(i => i.id === invId);
+          const totalAllocated = (inv?.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+          await logActivity(invId, 'partial_payment', 'System', {
+            draw_id: drawId,
+            allocated_amount: totalAllocated,
+            remaining_amount: parseFloat(inv?.amount || 0) - totalAllocated
+          });
+        }
+      }
 
       // ==========================================
       // LIVE BUDGET UPDATES - Mark as paid

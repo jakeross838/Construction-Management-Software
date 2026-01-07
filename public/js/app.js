@@ -146,6 +146,19 @@ function renderInvoiceList() {
       poInfo = `<span class="po-badge ${poClass}" title="PO #${inv.po.po_number} - Remaining: ${formatMoney(poRemaining)}">PO: ${formatMoney(poRemaining)} left</span>`;
     }
 
+    // Calculate allocation info
+    const totalAllocated = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const invoiceAmount = parseFloat(inv.amount || 0);
+    const allocationPct = invoiceAmount > 0 ? Math.round((totalAllocated / invoiceAmount) * 100) : 0;
+    const isPartial = totalAllocated > 0 && totalAllocated < invoiceAmount - 0.01;
+
+    // Show allocation info for coded, approved, in_draw statuses
+    let allocationInfo = '';
+    if (['coded', 'approved', 'in_draw'].includes(inv.status) && totalAllocated > 0) {
+      const allocClass = isPartial ? 'partial' : 'full';
+      allocationInfo = `<span class="allocation-badge ${allocClass}" title="Allocated: ${formatMoney(totalAllocated)} of ${formatMoney(invoiceAmount)}">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
+    }
+
     return `
     <div class="invoice-card status-${inv.status}" onclick="openEditModal('${inv.id}')">
       <div class="invoice-main">
@@ -155,6 +168,7 @@ function renderInvoiceList() {
           <span>#${inv.invoice_number || 'N/A'}</span>
           <span>${formatDate(inv.invoice_date)}</span>
           ${poInfo}
+          ${allocationInfo}
         </div>
       </div>
       <div class="invoice-amount">${formatMoney(inv.amount)}</div>
