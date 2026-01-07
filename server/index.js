@@ -1109,11 +1109,42 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
     const drawId = req.params.id;
     const { invoice_ids } = req.body;
 
+    // Get draw info
+    const { data: draw } = await supabase
+      .from('v2_draws')
+      .select('draw_number')
+      .eq('id', drawId)
+      .single();
+
     const { error: linkError } = await supabase
       .from('v2_draw_invoices')
       .insert(invoice_ids.map(id => ({ draw_id: drawId, invoice_id: id })));
 
     if (linkError) throw linkError;
+
+    // Get invoices with their stamped PDFs
+    const { data: invoices } = await supabase
+      .from('v2_invoices')
+      .select('id, amount, pdf_stamped_url')
+      .in('id', invoice_ids);
+
+    // Stamp each invoice with "IN DRAW"
+    for (const inv of invoices) {
+      if (inv.pdf_stamped_url) {
+        try {
+          const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
+          if (urlParts[1]) {
+            const storagePath = decodeURIComponent(urlParts[1]).replace('_stamped.pdf', '.pdf');
+            const pdfBuffer = await downloadPDF(storagePath.replace('.pdf', '_stamped.pdf'));
+            const stampedBuffer = await stampInDraw(pdfBuffer, draw?.draw_number || 1);
+            await uploadStampedPDF(stampedBuffer, storagePath);
+          }
+        } catch (stampErr) {
+          console.error('IN DRAW stamp failed for invoice:', inv.id, stampErr.message);
+        }
+      }
+      await logActivity(inv.id, 'added_to_draw', 'System', { draw_number: draw?.draw_number });
+    }
 
     const { error: updateError } = await supabase
       .from('v2_invoices')
@@ -1121,22 +1152,6 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
       .in('id', invoice_ids);
 
     if (updateError) throw updateError;
-
-    // Log activity for each invoice
-    const { data: draw } = await supabase
-      .from('v2_draws')
-      .select('draw_number')
-      .eq('id', drawId)
-      .single();
-
-    for (const invId of invoice_ids) {
-      await logActivity(invId, 'added_to_draw', 'System', { draw_number: draw?.draw_number });
-    }
-
-    const { data: invoices } = await supabase
-      .from('v2_invoices')
-      .select('amount')
-      .in('id', invoice_ids);
 
     const total = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
 
@@ -1269,14 +1284,35 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
     if (drawInvoices && drawInvoices.length > 0) {
       const invoiceIds = drawInvoices.map(di => di.invoice_id);
 
+      // Get invoices with their stamped PDFs to add PAID stamp
+      const { data: invoicesForStamp } = await supabase
+        .from('v2_invoices')
+        .select('id, pdf_stamped_url')
+        .in('id', invoiceIds);
+
+      // Add PAID stamp to each invoice
+      const paidDate = new Date().toLocaleDateString();
+      for (const inv of invoicesForStamp || []) {
+        if (inv.pdf_stamped_url) {
+          try {
+            const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
+            if (urlParts[1]) {
+              const storagePath = decodeURIComponent(urlParts[1]).replace('_stamped.pdf', '.pdf');
+              const pdfBuffer = await downloadPDF(storagePath.replace('.pdf', '_stamped.pdf'));
+              const stampedBuffer = await stampPaid(pdfBuffer, paidDate);
+              await uploadStampedPDF(stampedBuffer, storagePath);
+            }
+          } catch (stampErr) {
+            console.error('PAID stamp failed for invoice:', inv.id, stampErr.message);
+          }
+        }
+        await logActivity(inv.id, 'paid', 'System', { draw_id: drawId });
+      }
+
       await supabase
         .from('v2_invoices')
         .update({ status: 'paid' })
         .in('id', invoiceIds);
-
-      for (const invId of invoiceIds) {
-        await logActivity(invId, 'paid', 'System', { draw_id: drawId });
-      }
 
       // ==========================================
       // LIVE BUDGET UPDATES - Mark as paid
@@ -1799,6 +1835,10 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
     case 'coded':
       updateData.coded_at = new Date().toISOString();
       updateData.coded_by = performedBy;
+      // Clear stamp when moving back to coded (needs approval)
+      updateData.pdf_stamped_url = null;
+      updateData.approved_at = null;
+      updateData.approved_by = null;
       break;
 
     case 'approved':
