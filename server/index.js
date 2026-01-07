@@ -316,6 +316,72 @@ app.get('/api/purchase-orders', async (req, res) => {
   }
 });
 
+// Get PO statistics (must be before /:id route)
+app.get('/api/purchase-orders/stats', asyncHandler(async (req, res) => {
+  const { job_id } = req.query;
+
+  let query = supabase
+    .from('v2_purchase_orders')
+    .select('id, total_amount, status, status_detail, approval_status')
+    .is('deleted_at', null);
+
+  if (job_id) {
+    query = query.eq('job_id', job_id);
+  }
+
+  const { data: pos, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Get billed amounts
+  const { data: invoices } = await supabase
+    .from('v2_invoices')
+    .select('po_id, amount, status')
+    .in('po_id', pos.map(p => p.id))
+    .is('deleted_at', null);
+
+  const billedByPO = {};
+  if (invoices) {
+    for (const inv of invoices) {
+      if (['approved', 'in_draw', 'paid'].includes(inv.status)) {
+        billedByPO[inv.po_id] = (billedByPO[inv.po_id] || 0) + parseFloat(inv.amount || 0);
+      }
+    }
+  }
+
+  const stats = {
+    total_count: pos.length,
+    total_value: pos.reduce((sum, p) => sum + parseFloat(p.total_amount || 0), 0),
+    total_billed: Object.values(billedByPO).reduce((sum, v) => sum + v, 0),
+    by_status: {
+      pending: { count: 0, value: 0 },
+      approved: { count: 0, value: 0 },
+      active: { count: 0, value: 0 },
+      closed: { count: 0, value: 0 },
+      cancelled: { count: 0, value: 0 }
+    },
+    pending_approval: pos.filter(p => p.approval_status === 'pending').length,
+    over_budget: 0
+  };
+
+  for (const po of pos) {
+    const status = po.status_detail || 'pending';
+    if (stats.by_status[status]) {
+      stats.by_status[status].count++;
+      stats.by_status[status].value += parseFloat(po.total_amount || 0);
+    }
+
+    // Check if over budget
+    const billed = billedByPO[po.id] || 0;
+    if (billed > parseFloat(po.total_amount || 0)) {
+      stats.over_budget++;
+    }
+  }
+
+  stats.total_remaining = stats.total_value - stats.total_billed;
+
+  res.json(stats);
+}));
+
 app.get('/api/purchase-orders/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -784,72 +850,6 @@ app.get('/api/purchase-orders/:id/invoices', asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
-}));
-
-// Get PO statistics
-app.get('/api/purchase-orders/stats', asyncHandler(async (req, res) => {
-  const { job_id } = req.query;
-
-  let query = supabase
-    .from('v2_purchase_orders')
-    .select('id, total_amount, status, status_detail, approval_status')
-    .is('deleted_at', null);
-
-  if (job_id) {
-    query = query.eq('job_id', job_id);
-  }
-
-  const { data: pos, error } = await query;
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  // Get billed amounts
-  const { data: invoices } = await supabase
-    .from('v2_invoices')
-    .select('po_id, amount, status')
-    .in('po_id', pos.map(p => p.id))
-    .is('deleted_at', null);
-
-  const billedByPO = {};
-  if (invoices) {
-    for (const inv of invoices) {
-      if (['approved', 'in_draw', 'paid'].includes(inv.status)) {
-        billedByPO[inv.po_id] = (billedByPO[inv.po_id] || 0) + parseFloat(inv.amount || 0);
-      }
-    }
-  }
-
-  const stats = {
-    total_count: pos.length,
-    total_value: pos.reduce((sum, p) => sum + parseFloat(p.total_amount || 0), 0),
-    total_billed: Object.values(billedByPO).reduce((sum, v) => sum + v, 0),
-    by_status: {
-      pending: { count: 0, value: 0 },
-      approved: { count: 0, value: 0 },
-      active: { count: 0, value: 0 },
-      closed: { count: 0, value: 0 },
-      cancelled: { count: 0, value: 0 }
-    },
-    pending_approval: pos.filter(p => p.approval_status === 'pending').length,
-    over_budget: 0
-  };
-
-  for (const po of pos) {
-    const status = po.status_detail || 'pending';
-    if (stats.by_status[status]) {
-      stats.by_status[status].count++;
-      stats.by_status[status].value += parseFloat(po.total_amount || 0);
-    }
-
-    // Check if over budget
-    const billed = billedByPO[po.id] || 0;
-    if (billed > parseFloat(po.total_amount || 0)) {
-      stats.over_budget++;
-    }
-  }
-
-  stats.total_remaining = stats.total_value - stats.total_billed;
-
-  res.json(stats);
 }));
 
 // Get PO attachments
