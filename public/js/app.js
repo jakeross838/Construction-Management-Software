@@ -160,6 +160,8 @@ function renderInvoiceList() {
 
     // Build status badges
     let allocationInfo = '';
+    let displayAmount = invoiceAmount;
+    let amountSubtext = '';
 
     // Priority 1: Show payment status for partially paid invoices
     if (hasPartialPayment && !isClosedOut) {
@@ -170,7 +172,13 @@ function renderInvoiceList() {
     else if (isClosedOut) {
       allocationInfo = `<span class="payment-badge closed-out" title="Closed out: ${inv.closed_out_reason || 'N/A'}">Closed Out - ${formatMoney(inv.write_off_amount || 0)} written off</span>`;
     }
-    // Priority 3: Show allocation info for coded, approved, in_draw statuses
+    // Priority 3: For in_draw with partial allocation - show draw amount prominently
+    else if (inv.status === 'in_draw' && isPartialAlloc) {
+      displayAmount = totalAllocated;
+      amountSubtext = `<div class="amount-subtext">of ${formatMoney(invoiceAmount)}</div>`;
+      allocationInfo = `<span class="allocation-badge partial" title="${formatMoney(invoiceAmount - totalAllocated)} remaining after draw">${allocationPct}% of invoice</span>`;
+    }
+    // Priority 4: Show allocation info for coded, approved statuses
     else if (['coded', 'approved', 'in_draw'].includes(inv.status) && totalAllocated > 0) {
       const allocClass = isPartialAlloc ? 'partial' : 'full';
       allocationInfo = `<span class="allocation-badge ${allocClass}" title="Allocated: ${formatMoney(totalAllocated)} of ${formatMoney(invoiceAmount)}">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
@@ -188,7 +196,7 @@ function renderInvoiceList() {
           ${allocationInfo}
         </div>
       </div>
-      <div class="invoice-amount">${formatMoney(inv.amount)}</div>
+      <div class="invoice-amount">${formatMoney(displayAmount)}${amountSubtext}</div>
       <div class="invoice-status">
         <span class="status-pill ${inv.status}">${formatStatus(inv.status)}</span>
       </div>

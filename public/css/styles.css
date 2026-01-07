@@ -306,6 +306,13 @@ body {
   text-align: right;
 }
 
+.amount-subtext {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-top: 0.125rem;
+}
+
 .invoice-status {
   text-align: right;
   min-width: 100px;
