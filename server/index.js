@@ -1185,10 +1185,16 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
 
     if (deleteError) throw deleteError;
 
-    // Update invoice status back to approved
+    // Update invoice status back to coded and clear the stamp
+    // Invoice needs to be re-approved after being removed from draw
     const { error: updateError } = await supabase
       .from('v2_invoices')
-      .update({ status: 'approved' })
+      .update({
+        status: 'coded',
+        pdf_stamped_url: null,
+        approved_at: null,
+        approved_by: null
+      })
       .eq('id', invoice_id);
 
     if (updateError) throw updateError;
