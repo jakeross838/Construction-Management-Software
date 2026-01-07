@@ -957,17 +957,29 @@ body.modal-open {
   height: 90vh;
   max-width: none;
   max-height: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-fullscreen .modal-header {
+  flex-shrink: 0;
+}
+
+.modal-fullscreen .modal-footer {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .modal-split-view {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   padding: 0 !important;
   overflow: hidden;
 }
-
 .pdf-panel {
   background: #1a1a1a;
   border-right: 1px solid var(--border);

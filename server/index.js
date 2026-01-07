@@ -202,6 +202,36 @@ app.get('/api/jobs/:id', async (req, res) => {
   }
 });
 
+// Get purchase orders for a specific job
+app.get('/api/jobs/:id/purchase-orders', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('v2_purchase_orders')
+      .select(`
+        id,
+        po_number,
+        description,
+        total_amount,
+        status,
+        vendor:v2_vendors(id, name)
+      `)
+      .eq('job_id', req.params.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    
+    // Flatten vendor name for easier frontend use
+    const result = (data || []).map(po => ({
+      ...po,
+      vendor_name: po.vendor?.name || null
+    }));
+    
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================
 // VENDORS API
 // ============================================================
@@ -466,6 +496,27 @@ app.get('/api/invoices/:id/activity', async (req, res) => {
 
     if (error) throw error;
     res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get invoice allocations
+app.get('/api/invoices/:id/allocations', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('v2_invoice_allocations')
+      .select(`
+        id,
+        amount,
+        notes,
+        cost_code_id,
+        cost_code:v2_cost_codes(id, code, name, category)
+      `)
+      .eq('invoice_id', req.params.id);
+
+    if (error) throw error;
+    res.json(data || []);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
