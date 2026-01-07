@@ -150,12 +150,29 @@ function renderInvoiceList() {
     const totalAllocated = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
     const invoiceAmount = parseFloat(inv.amount || 0);
     const allocationPct = invoiceAmount > 0 ? Math.round((totalAllocated / invoiceAmount) * 100) : 0;
-    const isPartial = totalAllocated > 0 && totalAllocated < invoiceAmount - 0.01;
+    const isPartialAlloc = totalAllocated > 0 && totalAllocated < invoiceAmount - 0.01;
 
-    // Show allocation info for coded, approved, in_draw statuses
+    // Calculate payment info
+    const paidAmount = parseFloat(inv.paid_amount || 0);
+    const remainingAmount = invoiceAmount - paidAmount;
+    const hasPartialPayment = paidAmount > 0 && remainingAmount > 0.01;
+    const isClosedOut = !!inv.closed_out_at;
+
+    // Build status badges
     let allocationInfo = '';
-    if (['coded', 'approved', 'in_draw'].includes(inv.status) && totalAllocated > 0) {
-      const allocClass = isPartial ? 'partial' : 'full';
+
+    // Priority 1: Show payment status for partially paid invoices
+    if (hasPartialPayment && !isClosedOut) {
+      const paidPct = invoiceAmount > 0 ? Math.round((paidAmount / invoiceAmount) * 100) : 0;
+      allocationInfo = `<span class="payment-badge partial" title="Partially paid - ${formatMoney(remainingAmount)} remaining">Paid: ${formatMoney(paidAmount)} / ${formatMoney(invoiceAmount)} (${paidPct}%) - ${formatMoney(remainingAmount)} remaining</span>`;
+    }
+    // Priority 2: Show closed-out status
+    else if (isClosedOut) {
+      allocationInfo = `<span class="payment-badge closed-out" title="Closed out: ${inv.closed_out_reason || 'N/A'}">Closed Out - ${formatMoney(inv.write_off_amount || 0)} written off</span>`;
+    }
+    // Priority 3: Show allocation info for coded, approved, in_draw statuses
+    else if (['coded', 'approved', 'in_draw'].includes(inv.status) && totalAllocated > 0) {
+      const allocClass = isPartialAlloc ? 'partial' : 'full';
       allocationInfo = `<span class="allocation-badge ${allocClass}" title="Allocated: ${formatMoney(totalAllocated)} of ${formatMoney(invoiceAmount)}">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
     }
 

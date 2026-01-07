@@ -110,6 +110,13 @@ const Modals = {
     const showOriginal = ['coded', 'received'].includes(invoice.status);
     const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
 
+    // Payment tracking info
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const paidAmount = parseFloat(invoice.paid_amount || 0);
+    const remainingAmount = invoiceAmount - paidAmount;
+    const hasPartialPayment = paidAmount > 0 && remainingAmount > 0.01;
+    const isClosedOut = !!invoice.closed_out_at;
+
     return `
       <div class="modal-backdrop">
         <div class="modal modal-fullscreen">
@@ -230,6 +237,45 @@ const Modals = {
                       ${this.buildAllocationSummary(allocations, invoice.amount)}
                     </div>
                   </div>
+
+                  ${hasPartialPayment || isClosedOut ? `
+                  <div class="form-section payment-info-section">
+                    <h3>Payment Status</h3>
+                    <div class="payment-info-card ${isClosedOut ? 'closed-out' : 'partial'}">
+                      <div class="payment-info-row">
+                        <span class="payment-label">Invoice Total:</span>
+                        <span class="payment-value">${window.Validation?.formatCurrency(invoiceAmount)}</span>
+                      </div>
+                      <div class="payment-info-row">
+                        <span class="payment-label">Amount Paid:</span>
+                        <span class="payment-value paid">${window.Validation?.formatCurrency(paidAmount)}</span>
+                      </div>
+                      ${!isClosedOut ? `
+                      <div class="payment-info-row highlight">
+                        <span class="payment-label">Remaining:</span>
+                        <span class="payment-value remaining">${window.Validation?.formatCurrency(remainingAmount)}</span>
+                      </div>
+                      ` : `
+                      <div class="payment-info-row">
+                        <span class="payment-label">Written Off:</span>
+                        <span class="payment-value written-off">${window.Validation?.formatCurrency(invoice.write_off_amount || 0)}</span>
+                      </div>
+                      <div class="payment-info-row closed-out-info">
+                        <span class="payment-label">Closed Out:</span>
+                        <span class="payment-value">${new Date(invoice.closed_out_at).toLocaleDateString()}</span>
+                      </div>
+                      <div class="payment-info-row closed-out-info">
+                        <span class="payment-label">By:</span>
+                        <span class="payment-value">${this.escapeHtml(invoice.closed_out_by || 'Unknown')}</span>
+                      </div>
+                      <div class="payment-info-row closed-out-info">
+                        <span class="payment-label">Reason:</span>
+                        <span class="payment-value">${this.escapeHtml(invoice.closed_out_reason || 'N/A')}</span>
+                      </div>
+                      `}
+                    </div>
+                  </div>
+                  ` : ''}
 
                   <div class="form-section activity-section">
                     <div class="section-header">
@@ -594,6 +640,8 @@ const Modals = {
       'approved': '✅',
       'denied': '❌',
       'paid': '💰',
+      'partial_payment': '💵',
+      'closed_out': '📕',
       'added_to_draw': '📋',
       'removed_from_draw': '📤',
       'note': '💬',
@@ -612,6 +660,8 @@ const Modals = {
       'approved': 'Approved',
       'denied': 'Denied',
       'paid': 'Marked as paid',
+      'partial_payment': 'Partial payment',
+      'closed_out': 'Closed out',
       'added_to_draw': 'Added to draw',
       'removed_from_draw': 'Removed from draw',
       'note': 'Note added',
@@ -643,8 +693,8 @@ const Modals = {
   /**
    * Build status-based action buttons for the footer
    * received → Code & Save | Deny | Delete
-   * coded → Approve | Save | Deny
-   * approved → Add to Draw | Unapprove | Save
+   * coded → Approve | Save | Deny | Close Out (if partial)
+   * approved → Add to Draw | Unapprove | Save | Close Out (if partial)
    * in_draw → Remove from Draw (view only)
    * paid → View only
    * denied → Resubmit | Save | Delete
@@ -653,6 +703,11 @@ const Modals = {
     const status = invoice.status;
     const isArchived = status === 'paid';
     const buttons = [];
+
+    // Check if invoice has remaining balance (for close-out option)
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const paidAmount = parseFloat(invoice.paid_amount || 0);
+    const hasRemainingBalance = invoiceAmount - paidAmount > 0.01;
 
     // For archived invoices, just show Close button
     if (isArchived) {
@@ -673,6 +728,10 @@ const Modals = {
       case 'coded':
         // Coded - ready for approval
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
+        // Show Close Out button if there's a remaining balance to write off
+        if (hasRemainingBalance) {
+          buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.showCloseOutDialog()">Close Out</button>`);
+        }
         buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
         buttons.push(`<button type="button" class="btn btn-success" onclick="Modals.approveInvoice()">Approve</button>`);
         break;
@@ -680,6 +739,10 @@ const Modals = {
       case 'approved':
         // Approved - can be added to draw
         buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.unapproveInvoice()">Unapprove</button>`);
+        // Show Close Out button if there's a remaining balance to write off
+        if (hasRemainingBalance) {
+          buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.showCloseOutDialog()">Close Out</button>`);
+        }
         buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
         buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.addToDraw()">Add to Draw</button>`);
         break;
@@ -1018,6 +1081,163 @@ const Modals = {
         }
       }
     });
+  },
+
+  /**
+   * Show close-out dialog for partial invoices
+   */
+  showCloseOutDialog() {
+    if (!this.currentInvoice?.id) {
+      window.toasts?.error('No invoice selected');
+      return;
+    }
+
+    const invoiceAmount = parseFloat(this.currentInvoice.amount || 0);
+    const paidAmount = parseFloat(this.currentInvoice.paid_amount || 0);
+    const writeOffAmount = invoiceAmount - paidAmount;
+
+    const closeOutReasons = [
+      'Work descoped / reduced scope',
+      'Vendor credit issued',
+      'Dispute resolved / settlement',
+      'Change order adjustment',
+      'Billing error corrected',
+      'Other'
+    ];
+
+    const modal = `
+      <div class="modal modal-medium close-out-modal">
+        <div class="modal-header">
+          <h2>Close Out Invoice</h2>
+          <button class="modal-close" onclick="Modals.closeCloseOutDialog()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="close-out-summary">
+            <div class="close-out-row">
+              <span class="close-out-label">Invoice Total:</span>
+              <span class="close-out-value">${window.Validation?.formatCurrency(invoiceAmount)}</span>
+            </div>
+            <div class="close-out-row">
+              <span class="close-out-label">Already Paid:</span>
+              <span class="close-out-value">${window.Validation?.formatCurrency(paidAmount)}</span>
+            </div>
+            <div class="close-out-row highlight">
+              <span class="close-out-label">Write-off Amount:</span>
+              <span class="close-out-value write-off">${window.Validation?.formatCurrency(writeOffAmount)}</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="close-out-reason">Reason for closing out: <span class="required">*</span></label>
+            <select id="close-out-reason" class="form-select" onchange="Modals.handleCloseOutReasonChange(this.value)">
+              <option value="">Select reason...</option>
+              ${closeOutReasons.map(r => `<option value="${r}">${r}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="form-group" id="close-out-notes-group">
+            <label for="close-out-notes">Additional Notes: <span id="notes-required" style="display: none;" class="required">*</span></label>
+            <textarea id="close-out-notes" class="form-textarea" rows="3" placeholder="Enter any additional notes..."></textarea>
+          </div>
+
+          <div class="close-out-warning">
+            <span class="warning-icon">⚠️</span>
+            <span>This will write off the remaining ${window.Validation?.formatCurrency(writeOffAmount)}. It will not be billed to the client.</span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="Modals.closeCloseOutDialog()">
+            Cancel
+          </button>
+          <button type="button" class="btn btn-warning" onclick="Modals.executeCloseOut()">
+            Close Out Invoice
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Show as overlay on top of current modal
+    const overlay = document.createElement('div');
+    overlay.id = 'close-out-overlay';
+    overlay.className = 'modal-backdrop';
+    overlay.innerHTML = modal;
+    document.body.appendChild(overlay);
+  },
+
+  /**
+   * Handle close-out reason change (show notes as required for "Other")
+   */
+  handleCloseOutReasonChange(reason) {
+    const notesRequired = document.getElementById('notes-required');
+    if (notesRequired) {
+      notesRequired.style.display = reason === 'Other' ? 'inline' : 'none';
+    }
+  },
+
+  /**
+   * Close the close-out dialog
+   */
+  closeCloseOutDialog() {
+    const overlay = document.getElementById('close-out-overlay');
+    if (overlay) overlay.remove();
+  },
+
+  /**
+   * Execute the close-out action
+   */
+  async executeCloseOut() {
+    const reason = document.getElementById('close-out-reason')?.value;
+    const notes = document.getElementById('close-out-notes')?.value?.trim();
+
+    // Validate
+    if (!reason) {
+      window.toasts?.error('Please select a reason for closing out');
+      return;
+    }
+
+    if (reason === 'Other' && !notes) {
+      window.toasts?.error('Notes are required when reason is "Other"');
+      return;
+    }
+
+    try {
+      const loadingToast = window.toasts?.showLoading('Closing out invoice...');
+
+      const response = await fetch(`/api/invoices/${this.currentInvoice.id}/close-out`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          closed_out_by: window.currentUser || 'Jake Ross',
+          reason,
+          notes: notes || null
+        })
+      });
+
+      window.toasts?.dismiss(loadingToast);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to close out invoice');
+      }
+
+      const result = await response.json();
+
+      window.toasts?.success('Invoice closed out successfully');
+      this.closeCloseOutDialog();
+      this.isDirty = false;
+
+      if (this.onSaveCallback) {
+        this.onSaveCallback(result);
+      }
+
+      this.closeActiveModal();
+      if (typeof loadInvoices === 'function') loadInvoices();
+    } catch (err) {
+      console.error('Close out failed:', err);
+      window.toasts?.error('Close out failed', { details: err.message });
+    }
   },
 
   /**

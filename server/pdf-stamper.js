@@ -282,6 +282,138 @@ async function stampPaid(pdfBuffer, paidDate) {
   return Buffer.from(stampedPdfBytes);
 }
 
+/**
+ * Add "PARTIALLY PAID" stamp to a PDF
+ * @param {Buffer} pdfBuffer - PDF as buffer
+ * @param {Object} paymentData - Payment information
+ * @returns {Promise<Buffer>}
+ */
+async function stampPartiallyPaid(pdfBuffer, paymentData) {
+  const {
+    paidDate,
+    drawNumber,
+    amountPaidThisDraw,
+    cumulativePaid,
+    invoiceTotal,
+    remaining,
+    costCodes = []
+  } = paymentData;
+
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const pages = pdfDoc.getPages();
+  const firstPage = pages[0];
+
+  const { width, height } = firstPage.getSize();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // Draw large "PARTIAL" watermark diagonally
+  firstPage.drawText('PARTIAL', {
+    x: width / 2 - 120,
+    y: height / 2,
+    size: 60,
+    font: boldFont,
+    color: rgb(0.9, 0.6, 0.1),
+    opacity: 0.25,
+    rotate: { type: 'degrees', angle: -45 }
+  });
+
+  // Add partial payment info box at bottom left
+  const boxWidth = 220;
+  const boxHeight = 100 + (costCodes.length * 12);
+  const boxX = 15;
+  const boxY = 15;
+
+  // Draw background
+  firstPage.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: boxWidth,
+    height: boxHeight,
+    color: rgb(1, 0.98, 0.9),
+    borderColor: rgb(0.9, 0.6, 0.1),
+    borderWidth: 2
+  });
+
+  // Draw header bar
+  firstPage.drawRectangle({
+    x: boxX,
+    y: boxY + boxHeight - 22,
+    width: boxWidth,
+    height: 22,
+    color: rgb(0.95, 0.85, 0.6)
+  });
+
+  let textY = boxY + boxHeight - 16;
+  const textX = boxX + 10;
+
+  // Header
+  firstPage.drawText('PARTIALLY PAID', {
+    x: textX,
+    y: textY,
+    size: 12,
+    font: boldFont,
+    color: rgb(0.6, 0.4, 0)
+  });
+  textY -= 18;
+
+  // Payment details
+  const lines = [
+    { label: 'Date:', value: paidDate || new Date().toLocaleDateString() },
+    { label: 'Draw #:', value: String(drawNumber || 'N/A') },
+    { label: 'This Payment:', value: formatMoney(amountPaidThisDraw || 0) },
+    { label: 'Total Paid:', value: formatMoney(cumulativePaid || 0) },
+    { label: 'Invoice Total:', value: formatMoney(invoiceTotal || 0) },
+    { label: 'REMAINING:', value: formatMoney(remaining || 0), bold: true, color: rgb(0.8, 0.2, 0.1) }
+  ];
+
+  lines.forEach(line => {
+    firstPage.drawText(line.label, {
+      x: textX,
+      y: textY,
+      size: 9,
+      font: font,
+      color: rgb(0.3, 0.3, 0.3)
+    });
+    firstPage.drawText(line.value, {
+      x: textX + 75,
+      y: textY,
+      size: line.bold ? 10 : 9,
+      font: line.bold ? boldFont : font,
+      color: line.color || rgb(0.1, 0.1, 0.1)
+    });
+    textY -= 12;
+  });
+
+  // Cost codes paid
+  if (costCodes.length > 0) {
+    textY -= 4;
+    firstPage.drawText('Cost Codes Paid:', {
+      x: textX,
+      y: textY,
+      size: 8,
+      font: boldFont,
+      color: rgb(0.4, 0.4, 0.4)
+    });
+    textY -= 10;
+
+    costCodes.forEach(cc => {
+      const ccText = `${cc.code} - ${formatMoney(cc.amount)}`;
+      firstPage.drawText(ccText, {
+        x: textX + 5,
+        y: textY,
+        size: 8,
+        font: font,
+        color: rgb(0.3, 0.3, 0.3)
+      });
+      textY -= 10;
+    });
+  }
+
+  const stampedPdfBytes = await pdfDoc.save();
+  return Buffer.from(stampedPdfBytes);
+}
+
 function formatMoney(amount) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -293,5 +425,6 @@ function formatMoney(amount) {
 module.exports = {
   stampApproval,
   stampInDraw,
-  stampPaid
+  stampPaid,
+  stampPartiallyPaid
 };

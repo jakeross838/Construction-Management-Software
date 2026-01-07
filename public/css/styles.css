@@ -278,6 +278,27 @@ body {
   color: var(--coded);
 }
 
+.payment-badge {
+  background: var(--bg-hover);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: 'SF Mono', Monaco, monospace;
+  border: 1px solid var(--border);
+}
+
+.payment-badge.partial {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: var(--coded);
+  color: var(--coded);
+}
+
+.payment-badge.closed-out {
+  background: rgba(100, 116, 139, 0.15);
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
+
 .invoice-amount {
   font-size: 1.25rem;
   font-weight: 700;
@@ -1410,6 +1431,192 @@ body.modal-open {
   text-align: center;
   color: var(--text-secondary);
   margin: 0;
+}
+
+/* Payment Info Section */
+.payment-info-section {
+  margin-top: 0.5rem;
+}
+
+.payment-info-card {
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  padding: 1rem;
+  border-left: 4px solid var(--coded);
+}
+
+.payment-info-card.partial {
+  border-left-color: var(--coded);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.payment-info-card.closed-out {
+  border-left-color: var(--text-secondary);
+  background: rgba(100, 116, 139, 0.1);
+}
+
+.payment-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.375rem 0;
+}
+
+.payment-info-row.highlight {
+  border-top: 1px solid var(--border);
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  font-weight: 600;
+}
+
+.payment-label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.payment-value {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 0.875rem;
+}
+
+.payment-value.paid {
+  color: var(--approved);
+}
+
+.payment-value.remaining {
+  color: var(--coded);
+  font-weight: 600;
+}
+
+.payment-value.written-off {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.closed-out-info {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+/* Close Out Dialog */
+#close-out-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.close-out-modal {
+  display: block;
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  max-width: 480px;
+  width: 90%;
+}
+
+.close-out-summary {
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.close-out-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+.close-out-row.highlight {
+  border-top: 1px solid var(--border);
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  font-weight: 600;
+}
+
+.close-out-label {
+  color: var(--text-secondary);
+}
+
+.close-out-value {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-weight: 500;
+}
+
+.close-out-value.write-off {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.close-out-warning {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-top: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.close-out-warning .warning-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.form-select {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.form-select:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-textarea:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.required {
+  color: var(--danger);
+}
+
+.btn-warning {
+  background: var(--warning);
+  color: white;
+  font-weight: 500;
+}
+
+.btn-warning:hover {
+  background: #d97706;
 }
 
 /* Activity Section - Monday.com Style */

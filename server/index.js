@@ -4,7 +4,7 @@ const path = require('path');
 const multer = require('multer');
 const { supabase, port } = require('../config');
 const { uploadPDF, uploadStampedPDF, downloadPDF } = require('./storage');
-const { stampApproval, stampInDraw, stampPaid } = require('./pdf-stamper');
+const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid } = require('./pdf-stamper');
 const { processInvoice } = require('./ai-processor');
 const standards = require('./standards');
 
@@ -976,6 +976,110 @@ app.patch('/api/invoices/:id/deny', async (req, res) => {
   }
 });
 
+// Close out invoice - write off remaining balance and mark as paid
+app.post('/api/invoices/:id/close-out', async (req, res) => {
+  try {
+    const invoiceId = req.params.id;
+    const { closed_out_by, reason, notes } = req.body;
+
+    // Validate required fields
+    if (!closed_out_by) {
+      return res.status(400).json({ error: 'closed_out_by is required' });
+    }
+    if (!reason) {
+      return res.status(400).json({ error: 'Reason is required for close-out' });
+    }
+
+    // Valid close-out reasons
+    const validReasons = [
+      'Work descoped / reduced scope',
+      'Vendor credit issued',
+      'Dispute resolved / settlement',
+      'Change order adjustment',
+      'Billing error corrected',
+      'Other'
+    ];
+
+    if (!validReasons.includes(reason)) {
+      return res.status(400).json({ error: 'Invalid close-out reason' });
+    }
+
+    // If reason is "Other", notes are required
+    if (reason === 'Other' && (!notes || notes.trim() === '')) {
+      return res.status(400).json({ error: 'Notes are required when reason is "Other"' });
+    }
+
+    // Get current invoice
+    const { data: invoice, error: getError } = await supabase
+      .from('v2_invoices')
+      .select('id, status, amount, paid_amount')
+      .eq('id', invoiceId)
+      .single();
+
+    if (getError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Only allow close-out from coded or approved status
+    const allowedStatuses = ['coded', 'approved'];
+    if (!allowedStatuses.includes(invoice.status)) {
+      return res.status(400).json({
+        error: `Cannot close out invoice in '${invoice.status}' status. Only coded or approved invoices can be closed out.`
+      });
+    }
+
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const paidAmount = parseFloat(invoice.paid_amount || 0);
+    const writeOffAmount = invoiceAmount - paidAmount;
+
+    // Validate there's actually something to write off
+    if (writeOffAmount <= 0.01) {
+      return res.status(400).json({
+        error: 'Invoice is already fully paid. Nothing to close out.'
+      });
+    }
+
+    // Build close-out reason with notes
+    const fullReason = notes ? `${reason}: ${notes}` : reason;
+
+    // Update invoice
+    const { data: updated, error: updateError } = await supabase
+      .from('v2_invoices')
+      .update({
+        status: 'paid',
+        paid_amount: invoiceAmount, // Set paid_amount to full amount (write-off counts as "paid")
+        closed_out_at: new Date().toISOString(),
+        closed_out_by,
+        closed_out_reason: fullReason,
+        write_off_amount: writeOffAmount
+      })
+      .eq('id', invoiceId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Clear any remaining allocations
+    await supabase
+      .from('v2_invoice_allocations')
+      .delete()
+      .eq('invoice_id', invoiceId);
+
+    // Log activity
+    await logActivity(invoiceId, 'closed_out', closed_out_by, {
+      invoice_amount: invoiceAmount,
+      total_paid: paidAmount,
+      write_off_amount: writeOffAmount,
+      reason,
+      notes: notes || null
+    });
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Allocate invoice to cost codes
 app.post('/api/invoices/:id/allocate', async (req, res) => {
   try {
@@ -1364,35 +1468,85 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
     if (drawInvoices && drawInvoices.length > 0) {
       const invoiceIds = drawInvoices.map(di => di.invoice_id);
 
-      // Get invoices with their amounts, allocations, and stamped PDFs
+      // Get invoices with their amounts, allocations, paid_amount, and stamped PDFs
       const { data: invoicesForStamp } = await supabase
         .from('v2_invoices')
         .select(`
-          id, amount, pdf_stamped_url,
-          allocations:v2_invoice_allocations(amount)
+          id, amount, paid_amount, pdf_stamped_url, vendor_id,
+          allocations:v2_invoice_allocations(amount, cost_code_id, cost_code:v2_cost_codes(code, name))
         `)
         .in('id', invoiceIds);
 
-      // Separate fully allocated vs partially allocated invoices
-      const fullyAllocatedIds = [];
-      const partiallyAllocatedIds = [];
+      // Separate fully paid vs partially paid invoices based on cumulative paid_amount
+      const fullyPaidInvoices = [];
+      const partiallyPaidInvoices = [];
+      const paidDate = new Date().toLocaleDateString();
 
       for (const inv of invoicesForStamp || []) {
         const totalAllocated = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
         const invoiceAmount = parseFloat(inv.amount || 0);
+        const previouslyPaid = parseFloat(inv.paid_amount || 0);
+        const cumulativePaid = previouslyPaid + totalAllocated;
+        const remaining = invoiceAmount - cumulativePaid;
 
-        if (totalAllocated >= invoiceAmount - 0.01) {
-          fullyAllocatedIds.push(inv.id);
+        if (remaining <= 0.01) {
+          // Fully paid after this draw
+          fullyPaidInvoices.push({
+            ...inv,
+            totalAllocated,
+            cumulativePaid,
+            remaining: 0
+          });
         } else {
-          partiallyAllocatedIds.push(inv.id);
+          // Still has remaining balance
+          partiallyPaidInvoices.push({
+            ...inv,
+            totalAllocated,
+            previouslyPaid,
+            cumulativePaid,
+            remaining
+          });
         }
       }
 
-      // Add PAID stamp to fully allocated invoices
-      const paidDate = new Date().toLocaleDateString();
-      for (const inv of invoicesForStamp || []) {
-        if (!fullyAllocatedIds.includes(inv.id)) continue;
+      // ==========================================
+      // LIVE BUDGET UPDATES - Must happen BEFORE deleting allocations
+      // ==========================================
 
+      // Get job_id for each invoice to update budget
+      const allInvoices = [...fullyPaidInvoices, ...partiallyPaidInvoices];
+      for (const inv of allInvoices) {
+        // Get job_id for this invoice
+        const { data: invData } = await supabase
+          .from('v2_invoices')
+          .select('job_id')
+          .eq('id', inv.id)
+          .single();
+
+        if (invData?.job_id && inv.allocations) {
+          for (const alloc of inv.allocations) {
+            if (!alloc.cost_code_id) continue;
+
+            const { data: budgetLine } = await supabase
+              .from('v2_budget_lines')
+              .select('id, paid_amount')
+              .eq('job_id', invData.job_id)
+              .eq('cost_code_id', alloc.cost_code_id)
+              .single();
+
+            if (budgetLine) {
+              const newPaid = (parseFloat(budgetLine.paid_amount) || 0) + parseFloat(alloc.amount || 0);
+              await supabase
+                .from('v2_budget_lines')
+                .update({ paid_amount: newPaid })
+                .eq('id', budgetLine.id);
+            }
+          }
+        }
+      }
+
+      // Process FULLY PAID invoices - Add PAID stamp
+      for (const inv of fullyPaidInvoices) {
         if (inv.pdf_stamped_url) {
           try {
             const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
@@ -1406,70 +1560,77 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
             console.error('PAID stamp failed for invoice:', inv.id, stampErr.message);
           }
         }
-        await logActivity(inv.id, 'paid', 'System', { draw_id: drawId });
-      }
 
-      // Mark fully allocated invoices as paid
-      if (fullyAllocatedIds.length > 0) {
+        // Update invoice: mark as paid and set paid_amount to full amount
         await supabase
           .from('v2_invoices')
-          .update({ status: 'paid' })
-          .in('id', fullyAllocatedIds);
+          .update({
+            status: 'paid',
+            paid_amount: parseFloat(inv.amount || 0)
+          })
+          .eq('id', inv.id);
+
+        await logActivity(inv.id, 'paid', 'System', {
+          draw_id: drawId,
+          draw_number: draw.draw_number,
+          amount_paid_this_draw: inv.totalAllocated,
+          cumulative_paid: inv.cumulativePaid
+        });
       }
 
-      // Return partially allocated invoices to 'coded' for remaining allocation
-      if (partiallyAllocatedIds.length > 0) {
-        await supabase
-          .from('v2_invoices')
-          .update({ status: 'coded' })
-          .in('id', partiallyAllocatedIds);
+      // Process PARTIALLY PAID invoices - Add PARTIALLY PAID stamp
+      for (const inv of partiallyPaidInvoices) {
+        // Build cost codes info for the stamp
+        const costCodesForStamp = (inv.allocations || []).map(a => ({
+          code: a.cost_code?.code || 'Unknown',
+          name: a.cost_code?.name || '',
+          amount: parseFloat(a.amount || 0)
+        }));
 
-        for (const invId of partiallyAllocatedIds) {
-          const inv = invoicesForStamp.find(i => i.id === invId);
-          const totalAllocated = (inv?.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
-          await logActivity(invId, 'partial_payment', 'System', {
-            draw_id: drawId,
-            allocated_amount: totalAllocated,
-            remaining_amount: parseFloat(inv?.amount || 0) - totalAllocated
-          });
-        }
-      }
-
-      // ==========================================
-      // LIVE BUDGET UPDATES - Mark as paid
-      // ==========================================
-
-      // Get all invoices with allocations to update paid_amount
-      for (const invId of invoiceIds) {
-        const { data: inv } = await supabase
-          .from('v2_invoices')
-          .select(`
-            job_id,
-            allocations:v2_invoice_allocations(amount, cost_code_id)
-          `)
-          .eq('id', invId)
-          .single();
-
-        if (inv?.allocations && inv.job_id) {
-          for (const alloc of inv.allocations) {
-            if (!alloc.cost_code_id) continue;
-
-            const { data: budgetLine } = await supabase
-              .from('v2_budget_lines')
-              .select('id, paid_amount')
-              .eq('job_id', inv.job_id)
-              .eq('cost_code_id', alloc.cost_code_id)
-              .single();
-
-            if (budgetLine) {
-              const newPaid = (parseFloat(budgetLine.paid_amount) || 0) + parseFloat(alloc.amount);
-              await supabase
-                .from('v2_budget_lines')
-                .update({ paid_amount: newPaid })
-                .eq('id', budgetLine.id);
+        if (inv.pdf_stamped_url) {
+          try {
+            const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
+            if (urlParts[1]) {
+              const storagePath = decodeURIComponent(urlParts[1]).replace('_stamped.pdf', '.pdf');
+              const pdfBuffer = await downloadPDF(storagePath.replace('.pdf', '_stamped.pdf'));
+              const stampedBuffer = await stampPartiallyPaid(pdfBuffer, {
+                paidDate,
+                drawNumber: draw.draw_number,
+                amountPaidThisDraw: inv.totalAllocated,
+                cumulativePaid: inv.cumulativePaid,
+                invoiceTotal: parseFloat(inv.amount || 0),
+                remaining: inv.remaining,
+                costCodes: costCodesForStamp
+              });
+              await uploadStampedPDF(stampedBuffer, storagePath);
             }
+          } catch (stampErr) {
+            console.error('PARTIALLY PAID stamp failed for invoice:', inv.id, stampErr.message);
           }
         }
+
+        // Update invoice: return to coded status and update paid_amount
+        await supabase
+          .from('v2_invoices')
+          .update({
+            status: 'coded',
+            paid_amount: inv.cumulativePaid
+          })
+          .eq('id', inv.id);
+
+        // Clear allocations since they've been paid - invoice needs fresh allocation for remaining
+        await supabase
+          .from('v2_invoice_allocations')
+          .delete()
+          .eq('invoice_id', inv.id);
+
+        await logActivity(inv.id, 'partial_payment', 'System', {
+          draw_id: drawId,
+          draw_number: draw.draw_number,
+          amount_paid_this_draw: inv.totalAllocated,
+          cumulative_paid: inv.cumulativePaid,
+          remaining: inv.remaining
+        });
       }
     }
 
