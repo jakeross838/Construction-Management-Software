@@ -900,13 +900,39 @@ const Modals = {
    * Remove invoice from draw
    */
   async removeFromDraw() {
+    if (!this.currentInvoice?.draw_id) {
+      window.toasts?.error('Invoice is not in a draw');
+      return;
+    }
+
     this.showConfirmDialog({
       title: 'Remove from Draw',
       message: 'Are you sure you want to remove this invoice from the draw?',
       confirmText: 'Remove',
       type: 'warning',
       onConfirm: async () => {
-        await this.saveWithStatus('approved', 'Invoice removed from draw');
+        try {
+          const response = await fetch(`/api/draws/${this.currentInvoice.draw_id}/remove-invoice`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invoice_id: this.currentInvoice.id,
+              performed_by: 'Jake Ross'
+            })
+          });
+
+          if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to remove from draw');
+          }
+
+          window.toasts?.success('Invoice removed from draw');
+          this.closeModal();
+          if (typeof loadInvoices === 'function') loadInvoices();
+        } catch (err) {
+          console.error('Error removing from draw:', err);
+          window.toasts?.error(err.message);
+        }
       }
     });
   },

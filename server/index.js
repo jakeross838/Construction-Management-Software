@@ -473,12 +473,20 @@ app.get('/api/invoices/:id', async (req, res) => {
         allocations:v2_invoice_allocations(
           id, amount, notes,
           cost_code:v2_cost_codes(id, code, name, category)
-        )
+        ),
+        draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
       `)
       .eq('id', req.params.id)
       .single();
 
     if (error) throw error;
+
+    // Flatten draw info for easier access
+    if (data.draw_invoices?.length > 0) {
+      data.draw_id = data.draw_invoices[0].draw_id;
+      data.draw = data.draw_invoices[0].draw;
+    }
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1138,6 +1146,73 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
 
     res.json({ success: true, total });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove invoice from draw
+app.post('/api/draws/:id/remove-invoice', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+    const { invoice_id, performed_by = 'System' } = req.body;
+
+    if (!invoice_id) {
+      return res.status(400).json({ error: 'invoice_id is required' });
+    }
+
+    // Get draw info for activity log
+    const { data: draw } = await supabase
+      .from('v2_draws')
+      .select('draw_number, status')
+      .eq('id', drawId)
+      .single();
+
+    if (!draw) {
+      return res.status(404).json({ error: 'Draw not found' });
+    }
+
+    if (draw.status === 'funded') {
+      return res.status(400).json({ error: 'Cannot remove invoices from a funded draw' });
+    }
+
+    // Remove from draw_invoices
+    const { error: deleteError } = await supabase
+      .from('v2_draw_invoices')
+      .delete()
+      .eq('draw_id', drawId)
+      .eq('invoice_id', invoice_id);
+
+    if (deleteError) throw deleteError;
+
+    // Update invoice status back to approved
+    const { error: updateError } = await supabase
+      .from('v2_invoices')
+      .update({ status: 'approved' })
+      .eq('id', invoice_id);
+
+    if (updateError) throw updateError;
+
+    // Log activity
+    await logActivity(invoice_id, 'removed_from_draw', performed_by, {
+      draw_number: draw.draw_number
+    });
+
+    // Recalculate draw total
+    const { data: remainingInvoices } = await supabase
+      .from('v2_draw_invoices')
+      .select('invoice:v2_invoices(amount)')
+      .eq('draw_id', drawId);
+
+    const newTotal = remainingInvoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
+
+    await supabase
+      .from('v2_draws')
+      .update({ total_amount: newTotal })
+      .eq('id', drawId);
+
+    res.json({ success: true, new_total: newTotal });
+  } catch (err) {
+    console.error('Error removing invoice from draw:', err);
     res.status(500).json({ error: err.message });
   }
 });

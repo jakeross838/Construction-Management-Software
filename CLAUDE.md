@@ -210,6 +210,7 @@ P:\Ross Built Construction Management Software\
 | GET | `/api/jobs/:id/draws` | List draws for job |
 | POST | `/api/jobs/:id/draws` | Create new draw |
 | POST | `/api/draws/:id/add-invoices` | Add invoices to draw |
+| POST | `/api/draws/:id/remove-invoice` | Remove invoice from draw |
 | PATCH | `/api/draws/:id/submit` | Submit draw |
 | PATCH | `/api/draws/:id/fund` | Mark draw as funded |
 
