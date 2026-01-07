@@ -227,7 +227,7 @@ window.CostCodePicker = {
   },
 
   /**
-   * Show dropdown with filtered results
+   * Show dropdown with filtered results (flat list, sorted by code)
    */
   showDropdown(picker, query) {
     const dropdown = picker.querySelector('.cc-picker-dropdown');
@@ -238,46 +238,25 @@ window.CostCodePicker = {
     this.filteredCodes = q
       ? this.costCodes.filter(cc =>
           cc.code.toLowerCase().includes(q) ||
-          cc.name.toLowerCase().includes(q) ||
-          (cc.category && cc.category.toLowerCase().includes(q))
+          cc.name.toLowerCase().includes(q)
         )
-      : this.costCodes;
+      : [...this.costCodes];
 
-    // Group filtered codes by category
-    const byCategory = {};
-    for (const cc of this.filteredCodes) {
-      const cat = cc.category || 'Uncategorized';
-      if (!byCategory[cat]) byCategory[cat] = [];
-      byCategory[cat].push(cc);
-    }
+    // Sort by code number
+    this.filteredCodes.sort((a, b) => a.code.localeCompare(b.code));
 
-    // Sort codes within each category by code number
-    for (const cat of Object.keys(byCategory)) {
-      byCategory[cat].sort((a, b) => a.code.localeCompare(b.code));
-    }
-
-    // Sort categories alphabetically (Uncategorized last)
-    const sortedCategories = Object.keys(byCategory).sort((a, b) => {
-      if (a === 'Uncategorized') return 1;
-      if (b === 'Uncategorized') return -1;
-      return a.localeCompare(b);
-    });
-
-    // Build HTML
+    // Build HTML - flat list without category headers
     let html = '';
     if (this.filteredCodes.length === 0) {
       html = '<div class="cc-picker-empty">No matching cost codes</div>';
     } else {
-      for (const cat of sortedCategories) {
-        html += `<div class="cc-picker-header">${cat}</div>`;
-        for (const cc of byCategory[cat]) {
-          html += `
-            <div class="cc-picker-item" data-id="${cc.id}">
-              <span class="cc-code">${cc.code}</span>
-              <span class="cc-name">${this.highlightMatch(cc.name, q)}</span>
-            </div>
-          `;
-        }
+      for (const cc of this.filteredCodes) {
+        html += `
+          <div class="cc-picker-item" data-id="${cc.id}">
+            <span class="cc-code">${cc.code}</span>
+            <span class="cc-name">${this.highlightMatch(cc.name, q)}</span>
+          </div>
+        `;
       }
     }
 

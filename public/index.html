@@ -93,16 +93,14 @@
           <div id="manualFields" style="display: none;">
             <div class="form-group">
               <label>Job *</label>
-              <select id="uploadJobId">
-                <option value="">Select job...</option>
-              </select>
+              <div id="upload-job-picker-container" class="search-picker-container"></div>
+              <input type="hidden" id="uploadJobId">
             </div>
             <div class="form-row">
               <div class="form-group">
                 <label>Vendor</label>
-                <select id="uploadVendorId">
-                  <option value="">Select vendor...</option>
-                </select>
+                <div id="upload-vendor-picker-container" class="search-picker-container"></div>
+                <input type="hidden" id="uploadVendorId">
               </div>
               <div class="form-group">
                 <label>Amount</label>
@@ -162,6 +160,7 @@
   <script src="js/toasts.js"></script>
   <script src="js/validation.js"></script>
   <script src="js/cost-code-picker.js"></script>
+  <script src="js/searchable-picker.js"></script>
   <script src="js/realtime.js"></script>
   <script src="js/modals.js"></script>
 

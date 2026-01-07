@@ -47,12 +47,17 @@ async function loadJobs() {
       renderInvoiceList();
     });
 
-    // Also populate upload modal
-    const uploadSelect = document.getElementById('uploadJobId');
-    uploadSelect.innerHTML = '<option value="">Select job...</option>';
-    state.jobs.forEach(job => {
-      uploadSelect.innerHTML += `<option value="${job.id}">${job.name}</option>`;
-    });
+    // Initialize upload modal job picker
+    const uploadJobContainer = document.getElementById('upload-job-picker-container');
+    if (uploadJobContainer && window.SearchablePicker) {
+      window.SearchablePicker.init(uploadJobContainer, {
+        type: 'jobs',
+        placeholder: 'Search jobs...',
+        onChange: (jobId) => {
+          document.getElementById('uploadJobId').value = jobId || '';
+        }
+      });
+    }
   } catch (err) {
     console.error('Failed to load jobs:', err);
   }
@@ -63,11 +68,17 @@ async function loadVendors() {
     const res = await fetch('/api/vendors');
     state.vendors = await res.json();
 
-    const select = document.getElementById('uploadVendorId');
-    select.innerHTML = '<option value="">Select vendor...</option>';
-    state.vendors.forEach(v => {
-      select.innerHTML += `<option value="${v.id}">${v.name}</option>`;
-    });
+    // Initialize upload modal vendor picker
+    const uploadVendorContainer = document.getElementById('upload-vendor-picker-container');
+    if (uploadVendorContainer && window.SearchablePicker) {
+      window.SearchablePicker.init(uploadVendorContainer, {
+        type: 'vendors',
+        placeholder: 'Search vendors...',
+        onChange: (vendorId) => {
+          document.getElementById('uploadVendorId').value = vendorId || '';
+        }
+      });
+    }
   } catch (err) {
     console.error('Failed to load vendors:', err);
   }
@@ -463,6 +474,20 @@ function showUploadInvoiceModal() {
   document.getElementById('uploadFileName').textContent = '';
   document.getElementById('fileUploadArea').classList.remove('has-file');
   document.getElementById('uploadInvoiceDate').value = new Date().toISOString().split('T')[0];
+
+  // Clear searchable pickers
+  const jobPicker = document.querySelector('#upload-job-picker-container .search-picker');
+  const vendorPicker = document.querySelector('#upload-vendor-picker-container .search-picker');
+  if (jobPicker) {
+    jobPicker.querySelector('.search-picker-input').value = '';
+    jobPicker.querySelector('.search-picker-value').value = '';
+    jobPicker.classList.remove('has-value');
+  }
+  if (vendorPicker) {
+    vendorPicker.querySelector('.search-picker-input').value = '';
+    vendorPicker.querySelector('.search-picker-value').value = '';
+    vendorPicker.classList.remove('has-value');
+  }
 
   // Reset AI mode (default: on)
   const aiCheckbox = document.getElementById('useAIProcessing');

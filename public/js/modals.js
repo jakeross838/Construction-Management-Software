@@ -1,9 +1,9 @@
 /**
  * Modal Management Module
  * Handles invoice edit modal, job selection modal, and other UI dialogs
- * LAST UPDATED: 2026-01-06 - Activity timeline cleanup
+ * LAST UPDATED: 2026-01-06 - Searchable dropdowns for Job/Vendor/PO
  */
-console.log('[MODALS] Script loaded - version 2026-01-06 - ACTIVITY CLEANUP');
+console.log('[MODALS] Script loaded - version 2026-01-06 - SEARCHABLE DROPDOWNS');
 
 const Modals = {
   // Current state
@@ -186,9 +186,8 @@ const Modals = {
 
                     <div class="form-group">
                       <label for="edit-job">Job</label>
-                      <select id="edit-job" name="job_id" onchange="Modals.handleJobChange(this)" ${isArchived ? 'disabled' : ''}>
-                        <option value="">-- Select Job --</option>
-                      </select>
+                      <div id="job-picker-container" class="search-picker-container"></div>
+                      <input type="hidden" id="edit-job" name="job_id">
                       ${invoice.ai_confidence?.job ?
                         `<div class="ai-confidence ${this.getConfidenceClass(invoice.ai_confidence.job)}">
                           AI Confidence: ${Math.round(invoice.ai_confidence.job * 100)}%
@@ -198,9 +197,8 @@ const Modals = {
 
                     <div class="form-group">
                       <label for="edit-vendor">Vendor</label>
-                      <select id="edit-vendor" name="vendor_id" onchange="Modals.markDirty()" ${isArchived ? 'disabled' : ''}>
-                        <option value="">-- Select Vendor --</option>
-                      </select>
+                      <div id="vendor-picker-container" class="search-picker-container"></div>
+                      <input type="hidden" id="edit-vendor" name="vendor_id">
                       ${invoice.ai_confidence?.vendor ?
                         `<div class="ai-confidence ${this.getConfidenceClass(invoice.ai_confidence.vendor)}">
                           AI Confidence: ${Math.round(invoice.ai_confidence.vendor * 100)}%
@@ -210,44 +208,52 @@ const Modals = {
 
                     <div class="form-group">
                       <label for="edit-po">Purchase Order</label>
-                      <select id="edit-po" name="po_id" onchange="Modals.markDirty()" ${isArchived ? 'disabled' : ''}>
-                        <option value="">-- No PO --</option>
-                      </select>
+                      <div id="po-picker-container" class="search-picker-container"></div>
+                      <input type="hidden" id="edit-po" name="po_id">
                       <div class="field-error" id="error-po_id"></div>
                     </div>
                   </div>
 
                   <div class="form-section">
-                    <h3>Cost Allocations</h3>
-                    <div id="allocations-container">
+                    <div class="section-header">
+                      <h3>Line Items</h3>
+                      ${!isArchived && invoice.status !== 'in_draw' ? `
+                        <button type="button" class="btn-add-line" onclick="Modals.addAllocation()">
+                          + Add line
+                        </button>
+                      ` : ''}
+                    </div>
+                    <div id="allocations-container" class="line-items-container">
                       ${this.buildAllocationsHtml(allocations, invoice.amount, isArchived)}
                     </div>
-                    ${!isArchived ? `
-                      <button type="button" class="btn btn-secondary btn-sm"
-                        onclick="Modals.addAllocation()" ${!canEdit ? 'disabled' : ''}>
-                        + Add Allocation
-                      </button>
-                    ` : ''}
                     <div class="allocation-summary" id="allocation-summary">
                       ${this.buildAllocationSummary(allocations, invoice.amount)}
                     </div>
                   </div>
 
                   <div class="form-section activity-section">
-                    <h3>Activity</h3>
-                    <!-- Status Pipeline -->
-                    <div class="status-pipeline">
-                      ${this.buildStatusPipeline(invoice.status)}
+                    <div class="section-header">
+                      <h3>Activity</h3>
+                      <button type="button" class="btn-link" onclick="Modals.toggleActivityExpand()">
+                        View history
+                      </button>
                     </div>
-                    <!-- Activity Feed -->
-                    <div class="activity-feed">
-                      ${this.buildActivityTimeline(invoice, activity)}
+                    <div class="activity-compact">
+                      ${this.buildCompactActivity(invoice, activity)}
+                    </div>
+                    <div class="activity-full" id="activity-full" style="display: none;">
+                      <div class="status-pipeline">
+                        ${this.buildStatusPipeline(invoice.status)}
+                      </div>
+                      <div class="activity-feed">
+                        ${this.buildActivityTimeline(invoice, activity)}
+                      </div>
                     </div>
                     ${!isArchived ? `
                       <div class="add-note-box">
-                        <textarea id="edit-notes" name="notes" rows="2"
+                        <input type="text" id="edit-notes" name="notes"
                           placeholder="Add a note..."
-                          onchange="Modals.markDirty()"></textarea>
+                          onchange="Modals.markDirty()">
                       </div>
                     ` : ''}
                   </div>
@@ -278,38 +284,62 @@ const Modals = {
   },
 
   /**
-   * Build allocations HTML
+   * Build allocations HTML - Adaptive.build inspired clean line items
    */
   buildAllocationsHtml(allocations, invoiceAmount, isArchived = false) {
-    if (!allocations || allocations.length === 0) {
+    const buildLineItem = (alloc, index) => {
+      const notes = alloc.notes || '';
+
       return `
-        <div class="allocation-row" data-index="0">
-          <div class="cc-picker-container" data-index="0"></div>
-          <div class="allocation-amount-group">
-            <input type="text" class="allocation-amount" placeholder="$0.00"
-              value="${window.Validation?.formatCurrency(invoiceAmount) || ''}"
-              onchange="Modals.updateAllocation(0, 'amount', this.value)"
-              ${isArchived ? 'readonly' : ''}>
-            ${!isArchived ? '<button type="button" class="btn-fill-remaining" onclick="Modals.fillRemaining(0)" title="Fill remaining amount">Fill</button>' : ''}
+        <div class="line-item" data-index="${index}">
+          <div class="line-item-header">
+            <div class="line-item-field flex-2">
+              <label class="field-label">Cost code / Account <span class="required">*</span></label>
+              <div class="cc-picker-container" data-index="${index}"></div>
+            </div>
+            <div class="line-item-field">
+              <label class="field-label">Amount <span class="required">*</span></label>
+              <div class="amount-input-group">
+                <span class="amount-prefix">$</span>
+                <input type="text" class="field-input amount-input" placeholder="0.00"
+                  value="${this.formatAmountInput(alloc.amount)}"
+                  onchange="Modals.updateAllocation(${index}, 'amount', this.value)"
+                  ${isArchived ? 'readonly' : ''}>
+              </div>
+            </div>
+            ${!isArchived ? `
+              <button type="button" class="btn-delete-row" onclick="Modals.removeAllocation(${index})" title="Delete">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            ` : ''}
           </div>
-          ${!isArchived ? '<button type="button" class="btn-icon btn-remove" onclick="Modals.removeAllocation(0)">×</button>' : ''}
+          <div class="line-item-details">
+            <input type="text" class="field-input" placeholder="e.g. Deliver and Install"
+              value="${this.escapeHtml(notes)}"
+              onchange="Modals.updateAllocation(${index}, 'notes', this.value)"
+              ${isArchived ? 'readonly' : ''}>
+          </div>
         </div>
       `;
+    };
+
+    if (!allocations || allocations.length === 0) {
+      return buildLineItem({ cost_code_id: null, amount: invoiceAmount || 0, notes: '' }, 0);
     }
 
-    return allocations.map((alloc, index) => `
-      <div class="allocation-row" data-index="${index}">
-        <div class="cc-picker-container" data-index="${index}"></div>
-        <div class="allocation-amount-group">
-          <input type="text" class="allocation-amount" placeholder="$0.00"
-            value="${window.Validation?.formatCurrency(alloc.amount) || ''}"
-            onchange="Modals.updateAllocation(${index}, 'amount', this.value)"
-            ${isArchived ? 'readonly' : ''}>
-          ${!isArchived ? `<button type="button" class="btn-fill-remaining" onclick="Modals.fillRemaining(${index})" title="Fill remaining amount">Fill</button>` : ''}
-        </div>
-        ${!isArchived ? `<button type="button" class="btn-icon btn-remove" onclick="Modals.removeAllocation(${index})">×</button>` : ''}
-      </div>
-    `).join('');
+    return allocations.map((alloc, index) => buildLineItem(alloc, index)).join('');
+  },
+
+  /**
+   * Format amount for input (no $ symbol, just number)
+   */
+  formatAmountInput(amount) {
+    if (!amount && amount !== 0) return '';
+    const num = parseFloat(amount);
+    if (isNaN(num)) return '';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   },
 
   /**
@@ -323,33 +353,43 @@ const Modals = {
     const diff = amount - total;
     const balanced = Math.abs(diff) < 0.01;
     const isOver = diff < -0.01;
-    // hasAllocations is true if user has selected at least one cost code
+    const isUnder = diff > 0.01;
     const hasAllocations = validAllocations.length > 0;
 
-    // Only show warning status if user has started allocating
-    const statusIcon = balanced ? '✓' : (hasAllocations ? (isOver ? '⚠' : '−') : '');
-    const statusLabel = balanced ? 'Balanced' : (hasAllocations ? (isOver ? 'Over allocated' : 'Under allocated') : 'No allocations yet');
-    const statusClass = balanced ? 'balanced' : (hasAllocations ? 'unbalanced' : 'pending');
+    // Calculate percentage for progress bar
+    const percentage = amount > 0 ? Math.min((total / amount) * 100, 100) : 0;
+
+    // Determine status
+    let statusClass = 'pending';
+    if (balanced) statusClass = 'balanced';
+    else if (isOver) statusClass = 'over';
+    else if (hasAllocations) statusClass = 'partial';
 
     return `
-      <div class="allocation-summary-inner ${statusClass}">
-        <div class="summary-row">
-          <span>Invoice Total:</span>
-          <span class="amount">${window.Validation?.formatCurrency(amount)}</span>
+      <div class="allocation-summary-card ${statusClass}">
+        <div class="summary-amounts">
+          <div class="summary-amount-item">
+            <span class="summary-label">Invoice Total</span>
+            <span class="summary-value">${window.Validation?.formatCurrency(amount)}</span>
+          </div>
+          <div class="summary-amount-item">
+            <span class="summary-label">Allocated</span>
+            <span class="summary-value ${statusClass}">${window.Validation?.formatCurrency(total)}</span>
+          </div>
+          ${isUnder || isOver ? `
+          <div class="summary-amount-item">
+            <span class="summary-label">${isOver ? 'Over by' : 'Remaining'}</span>
+            <span class="summary-value ${isOver ? 'over' : ''}">${window.Validation?.formatCurrency(Math.abs(diff))}</span>
+          </div>
+          ` : ''}
         </div>
-        <div class="summary-row">
-          <span>Allocated:</span>
-          <span class="amount">${window.Validation?.formatCurrency(total)}</span>
+        <div class="summary-progress">
+          <div class="progress-bar">
+            <div class="progress-fill ${statusClass}" style="width: ${percentage}%"></div>
+          </div>
+          <span class="progress-label">${Math.round(percentage)}% allocated</span>
         </div>
-        <div class="summary-row status-row ${statusClass}">
-          <span>${isOver ? 'Over by:' : 'Remaining:'}</span>
-          <span class="amount">${window.Validation?.formatCurrency(Math.abs(diff))}</span>
-        </div>
-        <div class="summary-status ${statusClass}">
-          <span class="status-icon">${statusIcon}</span>
-          <span class="status-label">${statusLabel}</span>
-        </div>
-        ${!balanced && hasAllocations ? `<div class="allocation-warning">Allocations must equal invoice total to approve</div>` : ''}
+        ${isOver ? `<div class="allocation-error">Cannot approve — allocations exceed invoice total</div>` : ''}
       </div>
     `;
   },
@@ -364,6 +404,51 @@ const Modals = {
       parts.push(`Last updated: ${new Date(invoice.updated_at).toLocaleString()}`);
     }
     return `<span class="version-info">${parts.join(' • ')}</span>`;
+  },
+
+  /**
+   * Build compact activity summary - just the latest status
+   */
+  buildCompactActivity(invoice, activity = []) {
+    const latest = activity && activity.length > 0 ? activity[0] : null;
+
+    if (!latest && invoice.created_at) {
+      return `
+        <div class="activity-compact-item">
+          <span class="activity-compact-label">Received</span>
+          <span class="activity-compact-time">${this.formatRelativeTime(invoice.created_at)}</span>
+        </div>
+      `;
+    }
+
+    if (!latest) {
+      return '<div class="activity-compact-empty">No activity</div>';
+    }
+
+    const action = this.formatActivityAction(latest.action || 'note');
+    const by = latest.performed_by ? ` by ${latest.performed_by}` : '';
+
+    return `
+      <div class="activity-compact-item">
+        <span class="activity-compact-label">${action}${by}</span>
+        <span class="activity-compact-time">${this.formatRelativeTime(latest.created_at)}</span>
+      </div>
+    `;
+  },
+
+  /**
+   * Toggle activity expanded view
+   */
+  toggleActivityExpand() {
+    const full = document.getElementById('activity-full');
+    const btn = document.querySelector('.activity-section .btn-link');
+    if (full.style.display === 'none') {
+      full.style.display = 'block';
+      btn.textContent = 'Hide history';
+    } else {
+      full.style.display = 'none';
+      btn.textContent = 'View history';
+    }
   },
 
   /**
@@ -616,7 +701,11 @@ const Modals = {
    * Add a new allocation row
    */
   addAllocation() {
-    this.currentAllocations.push({ cost_code_id: null, amount: 0, notes: '' });
+    this.currentAllocations.push({
+      cost_code_id: null,
+      amount: 0,
+      notes: ''
+    });
     this.refreshAllocationsUI();
     this.markDirty();
   },
@@ -681,23 +770,15 @@ const Modals = {
   /**
    * Handle job change - reload POs for job
    */
-  async handleJobChange(select) {
+  async handleJobChange(jobId) {
     this.markDirty();
-    const jobId = select.value;
-    const poSelect = document.getElementById('edit-po');
 
-    if (!jobId || !poSelect) return;
-
-    // Load POs for this job
-    try {
-      const response = await fetch(`/api/jobs/${jobId}/purchase-orders`);
-      if (response.ok) {
-        const pos = await response.json();
-        poSelect.innerHTML = '<option value="">-- No PO --</option>' +
-          pos.map(po => `<option value="${po.id}">${po.po_number} - ${po.vendor_name || 'Unknown Vendor'}</option>`).join('');
-      }
-    } catch (err) {
-      console.error('Failed to load POs:', err);
+    // Update the PO picker to use the new job
+    const poContainer = document.getElementById('po-picker-container');
+    if (poContainer && window.SearchablePicker) {
+      // Clear PO value and update jobId for filtering
+      document.getElementById('edit-po').value = '';
+      window.SearchablePicker.updateJobId(poContainer, jobId);
     }
   },
 
@@ -1125,10 +1206,10 @@ const Modals = {
         errors.push('At least one cost code allocation');
       }
 
-      // Verify allocations balance
+      // Verify allocations don't exceed invoice amount (under-allocation is allowed for partial work)
       const totalAllocated = this.currentAllocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
-      if (Math.abs(amount - totalAllocated) > 0.01) {
-        errors.push('Allocations must equal invoice amount');
+      if (totalAllocated > amount + 0.01) {
+        errors.push('Allocations cannot exceed invoice amount');
       }
     }
 
@@ -1456,52 +1537,56 @@ const Modals = {
   },
 
   /**
-   * Populate dropdowns (jobs, vendors, cost codes)
+   * Populate dropdowns (jobs, vendors, POs) using searchable pickers
    */
   async populateDropdowns() {
+    const isArchived = this.currentInvoice?.status === 'paid';
+
     try {
-      // Fetch jobs
-      const jobsRes = await fetch('/api/jobs?status=active');
-      if (jobsRes.ok) {
-        const jobs = await jobsRes.json();
-        const jobSelect = document.getElementById('edit-job');
-        if (jobSelect) {
-          jobSelect.innerHTML = '<option value="">-- Select Job --</option>' +
-            jobs.map(j => `<option value="${j.id}">${j.name}</option>`).join('');
-          if (this.currentInvoice?.job_id) {
-            jobSelect.value = this.currentInvoice.job_id;
+      // Initialize Job picker
+      const jobContainer = document.getElementById('job-picker-container');
+      if (jobContainer && window.SearchablePicker) {
+        window.SearchablePicker.init(jobContainer, {
+          type: 'jobs',
+          value: this.currentInvoice?.job_id || null,
+          placeholder: 'Search jobs...',
+          disabled: isArchived,
+          onChange: (jobId) => {
+            document.getElementById('edit-job').value = jobId || '';
+            this.handleJobChange(jobId);
           }
-        }
+        });
       }
 
-      // Fetch vendors
-      const vendorsRes = await fetch('/api/vendors');
-      if (vendorsRes.ok) {
-        const vendors = await vendorsRes.json();
-        const vendorSelect = document.getElementById('edit-vendor');
-        if (vendorSelect) {
-          vendorSelect.innerHTML = '<option value="">-- Select Vendor --</option>' +
-            vendors.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
-          if (this.currentInvoice?.vendor_id) {
-            vendorSelect.value = this.currentInvoice.vendor_id;
+      // Initialize Vendor picker
+      const vendorContainer = document.getElementById('vendor-picker-container');
+      if (vendorContainer && window.SearchablePicker) {
+        window.SearchablePicker.init(vendorContainer, {
+          type: 'vendors',
+          value: this.currentInvoice?.vendor_id || null,
+          placeholder: 'Search vendors...',
+          disabled: isArchived,
+          onChange: (vendorId) => {
+            document.getElementById('edit-vendor').value = vendorId || '';
+            this.markDirty();
           }
-        }
+        });
       }
 
-      // Fetch POs if job selected
-      if (this.currentInvoice?.job_id) {
-        const posRes = await fetch(`/api/jobs/${this.currentInvoice.job_id}/purchase-orders`);
-        if (posRes.ok) {
-          const pos = await posRes.json();
-          const poSelect = document.getElementById('edit-po');
-          if (poSelect) {
-            poSelect.innerHTML = '<option value="">-- No PO --</option>' +
-              pos.map(p => `<option value="${p.id}">${p.po_number} - ${p.vendor_name || ''}</option>`).join('');
-            if (this.currentInvoice?.po_id) {
-              poSelect.value = this.currentInvoice.po_id;
-            }
+      // Initialize PO picker
+      const poContainer = document.getElementById('po-picker-container');
+      if (poContainer && window.SearchablePicker) {
+        window.SearchablePicker.init(poContainer, {
+          type: 'pos',
+          value: this.currentInvoice?.po_id || null,
+          placeholder: 'Search purchase orders...',
+          disabled: isArchived,
+          jobId: this.currentInvoice?.job_id || null,
+          onChange: (poId) => {
+            document.getElementById('edit-po').value = poId || '';
+            this.markDirty();
           }
-        }
+        });
       }
 
       // Initialize cost code pickers
@@ -1536,6 +1621,20 @@ const Modals = {
       return await response.json();
     } catch (err) {
       console.error('Failed to fetch allocations:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Fetch all active jobs for allocation dropdowns
+   */
+  async fetchJobs() {
+    try {
+      const response = await fetch('/api/jobs?status=active');
+      if (!response.ok) return [];
+      return await response.json();
+    } catch (err) {
+      console.error('Failed to fetch jobs:', err);
       return [];
     }
   },

@@ -384,7 +384,7 @@ app.get('/api/invoices', async (req, res) => {
         job:v2_jobs(id, name),
         po:v2_purchase_orders(id, po_number),
         allocations:v2_invoice_allocations(
-          id, amount, notes,
+          id, amount, notes, job_id,
           cost_code:v2_cost_codes(id, code, name)
         )
       `)
@@ -471,7 +471,7 @@ app.get('/api/invoices/:id', async (req, res) => {
         job:v2_jobs(id, name, address),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
-          id, amount, notes,
+          id, amount, notes, job_id,
           cost_code:v2_cost_codes(id, code, name, category)
         ),
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
@@ -519,6 +519,7 @@ app.get('/api/invoices/:id/allocations', async (req, res) => {
         amount,
         notes,
         cost_code_id,
+        job_id,
         cost_code:v2_cost_codes(id, code, name, category)
       `)
       .eq('invoice_id', req.params.id);
@@ -725,7 +726,8 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
           invoice_id: invoiceId,
           cost_code_id: a.cost_code_id,
           amount: a.amount,
-          notes: a.notes
+          notes: a.notes,
+          job_id: a.job_id || null
         })));
     }
 
@@ -992,7 +994,8 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
           invoice_id: invoiceId,
           cost_code_id: a.cost_code_id,
           amount: a.amount,
-          notes: a.notes
+          notes: a.notes,
+          job_id: a.job_id || null
         })));
 
       if (error) throw error;
@@ -1993,7 +1996,8 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         invoice_id: invoiceId,
         cost_code_id: a.cost_code_id,
         amount: parseFloat(a.amount) || 0,
-        notes: a.notes || null
+        notes: a.notes || null,
+        job_id: a.job_id || null
       }));
 
     if (allocsToInsert.length > 0) {
@@ -2099,7 +2103,8 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
         invoice_id: invoiceId,
         cost_code_id: a.cost_code_id,
         amount: a.amount,
-        notes: a.notes
+        notes: a.notes,
+        job_id: a.job_id || null
       }));
       await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
     }
@@ -2206,7 +2211,8 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
           invoice_id: invoiceId,
           cost_code_id: a.cost_code_id,
           amount: a.amount,
-          notes: a.notes
+          notes: a.notes,
+          job_id: a.job_id || null
         }));
         await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
       }

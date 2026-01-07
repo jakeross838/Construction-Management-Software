@@ -1479,6 +1479,56 @@ body.modal-open {
   background: #00c875;
 }
 
+/* Link button */
+.btn-link {
+  background: none;
+  border: none;
+  color: #0073ea;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* Compact activity summary */
+.activity-compact {
+  margin-bottom: 0.75rem;
+}
+
+.activity-compact-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  font-size: 0.875rem;
+}
+
+.activity-compact-label {
+  color: #374151;
+}
+
+.activity-compact-time {
+  color: #9ca3af;
+  font-size: 0.8125rem;
+}
+
+.activity-compact-empty {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+/* Full activity view */
+.activity-full {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 0.75rem;
+  margin-top: 0.5rem;
+}
+
 /* Activity Feed */
 .activity-feed {
   display: flex;
@@ -1588,29 +1638,27 @@ body.modal-open {
 }
 
 .add-note-box {
-  border-top: 1px solid #e6e9ef;
-  padding-top: 0.75rem;
+  margin-top: 0.5rem;
 }
 
-.add-note-box textarea {
+.add-note-box input {
   width: 100%;
-  resize: none;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   background: #ffffff;
-  border: 1px solid #c5c7d0;
-  border-radius: 4px;
-  color: #323338;
-  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #374151;
+  padding: 0.625rem 0.75rem;
 }
 
-.add-note-box textarea:focus {
-  border-color: #0073ea;
-  box-shadow: 0 0 0 2px rgba(0, 115, 234, 0.15);
+.add-note-box input:focus {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
   outline: none;
 }
 
-.add-note-box textarea::placeholder {
-  color: #9699a6;
+.add-note-box input::placeholder {
+  color: #9ca3af;
 }
 
 /* Responsive split view */
@@ -1831,58 +1879,220 @@ body.modal-open {
   color: var(--danger);
 }
 
-/* Allocations - Monday.com style */
-.allocation-row {
+/* ============================================
+   LINE ITEMS - Adaptive.build Inspired
+   ============================================ */
+
+/* Section header with button */
+.section-header {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  justify-content: space-between;
   align-items: center;
+  margin-bottom: 1rem;
 }
 
-.allocation-code {
+.section-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.btn-add-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  background: #22c55e;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-add-line:hover {
+  background: #16a34a;
+}
+
+.btn-add-line:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+/* Line items container */
+.line-items-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Individual line item card */
+.line-item {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.line-item-header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.line-item-details {
+  margin-top: 0.75rem;
+}
+
+.line-item-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.line-item-field.flex-2 {
   flex: 2;
 }
 
-.allocation-amount {
-  flex: 1;
-  text-align: right;
+/* Delete row button - X icon */
+.btn-delete-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+  margin-bottom: 2px;
 }
 
-.allocation-amount-group {
+.btn-delete-row:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* Field labels */
+.field-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  margin-bottom: 0.375rem;
+}
+
+.field-label .required {
+  color: #dc2626;
+}
+
+/* Field inputs */
+.field-input,
+.field-select {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #111827;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field-input:focus,
+.field-select:focus {
+  outline: none;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.field-input::placeholder {
+  color: #9ca3af;
+}
+
+.field-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+  padding-right: 2.5rem;
+}
+
+/* Amount input group */
+.amount-input-group {
   display: flex;
-  gap: 0.375rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.amount-prefix {
+  color: #6b7280;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.amount-input {
   flex: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-fill {
+  padding: 0.5rem 0.75rem;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.btn-fill:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+/* Description row with delete button */
+.description-row {
+  display: flex;
+  gap: 0.5rem;
   align-items: center;
 }
 
-.allocation-amount-group .allocation-amount {
+.description-input {
   flex: 1;
+}
+
+.btn-delete-line {
   padding: 0.5rem 0.75rem;
   background: #ffffff;
-  border: 1px solid #c5c7d0;
-  border-radius: 4px;
-  color: #323338;
-  font-size: 0.875rem;
-}
-
-.btn-fill-remaining {
-  padding: 0.375rem 0.625rem;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #dc2626;
   font-size: 0.75rem;
-  background: #0073ea;
-  color: white;
-  border: none;
-  border-radius: 4px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  height: fit-content;
-  font-weight: 500;
-  transition: background 0.15s;
+  transition: all 0.15s ease;
 }
 
-.btn-fill-remaining:hover {
-  background: #0060c2;
+.btn-delete-line:hover {
+  background: #fef2f2;
+  border-color: #f87171;
 }
 
+/* Legacy styles - keep for backwards compatibility */
 .btn-icon {
   background: #ffffff;
   border: 1px solid #c5c7d0;
@@ -1911,56 +2121,124 @@ body.modal-open {
 
 .allocation-summary {
   margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e6e9ef;
 }
 
-.allocation-summary-inner {
-  padding: 0.75rem;
-  border-radius: 4px;
-  background: #f6f7fb;
+/* Adaptive-inspired allocation summary card */
+.allocation-summary-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+  transition: border-color 0.15s ease;
 }
 
-.allocation-summary-inner.balanced {
-  border-left: 3px solid #00c875;
-  background: rgba(0, 200, 117, 0.08);
+.allocation-summary-card.balanced {
+  border-color: #86efac;
+  background: linear-gradient(to right, rgba(134, 239, 172, 0.05), transparent);
 }
 
-.allocation-summary-inner.unbalanced {
-  border-left: 3px solid #d83a52;
-  background: rgba(216, 58, 82, 0.08);
+.allocation-summary-card.partial {
+  border-color: #e5e7eb;
 }
 
-.summary-status {
+.allocation-summary-card.over {
+  border-color: #fca5a5;
+  background: linear-gradient(to right, rgba(252, 165, 165, 0.05), transparent);
+}
+
+/* Summary amounts grid */
+.summary-amounts {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 0.875rem;
+}
+
+.summary-amount-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.summary-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.summary-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.summary-value.balanced {
+  color: #059669;
+}
+
+.summary-value.partial {
+  color: #111827;
+}
+
+.summary-value.over {
+  color: #dc2626;
+}
+
+/* Progress bar */
+.summary-progress {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.pending {
+  background: #d1d5db;
+}
+
+.progress-fill.partial {
+  background: linear-gradient(90deg, #a3e635, #84cc16);
+}
+
+.progress-fill.balanced {
+  background: linear-gradient(90deg, #34d399, #10b981);
+}
+
+.progress-fill.over {
+  background: linear-gradient(90deg, #f87171, #ef4444);
+}
+
+.progress-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* Error message */
+.allocation-error {
   margin-top: 0.75rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--border);
-  font-weight: 600;
-}
-
-.summary-status.balanced {
-  color: var(--approved);
-}
-
-.summary-status.unbalanced {
-  color: var(--danger);
-}
-
-.summary-status .status-icon {
-  font-size: 1.1rem;
-}
-
-.allocation-warning {
-  margin-top: 0.5rem;
-  padding: 0.5rem;
-  background: rgba(239, 68, 68, 0.15);
-  border-radius: 4px;
-  color: var(--danger);
-  font-size: 0.85rem;
-  text-align: center;
+  padding: 0.5rem 0.75rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 
 /* ============================================
@@ -2118,6 +2396,132 @@ body.modal-open {
   background: #ffffff;
 }
 
+/* ============================================
+   SEARCHABLE PICKER - Generic Dropdown
+   ============================================ */
+
+.search-picker-container {
+  width: 100%;
+}
+
+.search-picker {
+  position: relative;
+  width: 100%;
+}
+
+.search-picker-input {
+  width: 100%;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border: 1px solid #c5c7d0;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  background: #ffffff;
+  color: #323338;
+  cursor: text;
+  transition: all 0.15s;
+}
+
+.search-picker-input:hover {
+  border-color: #0073ea;
+}
+
+.search-picker-input:focus {
+  outline: none;
+  border-color: #0073ea;
+  box-shadow: 0 0 0 2px rgba(0, 115, 234, 0.15);
+}
+
+.search-picker.disabled .search-picker-input {
+  background: #f6f7fb;
+  color: #676879;
+  border-color: #e6e9ef;
+  cursor: not-allowed;
+}
+
+.search-picker-clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #676879;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.15s;
+}
+
+.search-picker.has-value .search-picker-clear {
+  display: flex;
+}
+
+.search-picker-clear:hover {
+  background: #f5f6f8;
+  color: #323338;
+}
+
+.search-picker.disabled .search-picker-clear {
+  display: none;
+}
+
+.search-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 250px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e6e9ef;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 10000;
+  display: none;
+  margin-top: 4px;
+}
+
+.search-picker-dropdown.visible {
+  display: block;
+}
+
+.search-picker-item {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  background: #ffffff;
+  transition: background 0.1s;
+  font-size: 0.875rem;
+  color: #323338;
+}
+
+.search-picker-item:last-child {
+  border-bottom: none;
+}
+
+.search-picker-item:hover,
+.search-picker-item.selected {
+  background: #f5f6f8;
+}
+
+.search-picker-item mark {
+  background: rgba(0, 115, 234, 0.15);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.search-picker-empty {
+  padding: 1rem;
+  text-align: center;
+  color: #676879;
+  font-style: italic;
+  background: #ffffff;
+}
+
 /* Ensure allocation row doesn't clip the dropdown */
 .allocation-row {
   position: relative;
@@ -2151,7 +2555,12 @@ body.modal-open {
   font-weight: 600;
 }
 
-.summary-row.unbalanced span:last-child {
+.summary-row.partial span:last-child {
+  color: #0073ea;
+  font-weight: 500;
+}
+
+.summary-row.over span:last-child {
   color: #d83a52;
   font-weight: 600;
 }
