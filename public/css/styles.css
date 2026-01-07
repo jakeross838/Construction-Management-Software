@@ -6,6 +6,7 @@
   --bg-dark: #0f172a;
   --bg-card: #1e293b;
   --bg-hover: #334155;
+  --bg-secondary: #2d3748;
   --border: #334155;
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
@@ -17,6 +18,11 @@
   --in-draw: #8b5cf6;
   --paid: #3b82f6;
   --danger: #ef4444;
+
+  /* Aliases for button styles */
+  --success: #22c55e;
+  --primary: #3b82f6;
+  --warning: #f59e0b;
 
   --radius: 8px;
   --shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
