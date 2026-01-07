@@ -799,6 +799,17 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
             }
           }
 
+          // Debug: Log data being passed to stamp
+          console.log('=== STAMP DEBUG ===');
+          console.log('Invoice allocations:', JSON.stringify(invoice.allocations, null, 2));
+          console.log('Invoice PO:', JSON.stringify(invoice.po, null, 2));
+          console.log('Cost codes for stamp:', invoice.allocations?.map(a => ({
+            code: a.cost_code?.code,
+            name: a.cost_code?.name,
+            amount: a.amount
+          })));
+          console.log('==================');
+
           const stampedBuffer = await stampApproval(pdfBuffer, {
             status: 'APPROVED',
             date: new Date().toLocaleDateString(),
@@ -1434,9 +1445,10 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     throw notFoundError('invoice', invoiceId);
   }
 
-  // Check if invoice is archived (read-only)
+  // Check if invoice is archived (read-only) - allow status changes to unarchive
   const archivedStatuses = ['paid', 'denied'];
-  if (archivedStatuses.includes(existing.status)) {
+  const allowedUnarchiveStatuses = ['approved', 'coded', 'in_draw'];
+  if (archivedStatuses.includes(existing.status) && !allowedUnarchiveStatuses.includes(updates.status)) {
     throw new AppError('ARCHIVED_INVOICE', `Cannot edit archived invoice (status: ${existing.status})`, { status: 400 });
   }
 
@@ -1554,7 +1566,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         updateFields.coded_at = new Date().toISOString();
         updateFields.coded_by = performedBy;
       },
-      // Approve: coded → approved
+      // Approve: coded → approved (stamping handled below)
       'coded_to_approved': () => {
         updateFields.approved_at = new Date().toISOString();
         updateFields.approved_by = performedBy;
@@ -1604,6 +1616,282 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         await logActivity(invoiceId, 'removed_from_draw', performedBy, {
           draw_number: drawInvoice.draw?.draw_number
         });
+      }
+    }
+
+    // Handle adding invoice to draw when transitioning TO in_draw
+    if (updates.status === 'in_draw' && existing.status === 'approved') {
+      // Find or create a draft draw for this job
+      let drawId;
+      let drawNumber;
+
+      // First, look for an existing draft draw for this job
+      const { data: existingDraw } = await supabase
+        .from('v2_draws')
+        .select('id, draw_number')
+        .eq('job_id', existing.job_id)
+        .eq('status', 'draft')
+        .single();
+
+      if (existingDraw) {
+        drawId = existingDraw.id;
+        drawNumber = existingDraw.draw_number;
+      } else {
+        // Create a new draft draw for this job
+        // Get the next draw number
+        const { data: lastDraw } = await supabase
+          .from('v2_draws')
+          .select('draw_number')
+          .eq('job_id', existing.job_id)
+          .order('draw_number', { ascending: false })
+          .limit(1)
+          .single();
+
+        drawNumber = (lastDraw?.draw_number || 0) + 1;
+
+        const { data: newDraw, error: createDrawError } = await supabase
+          .from('v2_draws')
+          .insert({
+            job_id: existing.job_id,
+            draw_number: drawNumber,
+            status: 'draft',
+            total_amount: 0
+          })
+          .select()
+          .single();
+
+        if (createDrawError) {
+          console.error('Failed to create draw:', createDrawError);
+          throw new Error('Failed to create draw for invoice');
+        }
+
+        drawId = newDraw.id;
+      }
+
+      // Add invoice to draw_invoices
+      const { error: linkError } = await supabase
+        .from('v2_draw_invoices')
+        .insert({ draw_id: drawId, invoice_id: invoiceId });
+
+      if (linkError && !linkError.message?.includes('duplicate')) {
+        console.error('Failed to link invoice to draw:', linkError);
+      }
+
+      // Update draw total
+      const { data: drawInvoices } = await supabase
+        .from('v2_draw_invoices')
+        .select('invoice:v2_invoices(amount)')
+        .eq('draw_id', drawId);
+
+      const newTotal = drawInvoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
+      await supabase.from('v2_draws').update({ total_amount: newTotal }).eq('id', drawId);
+
+      // Log activity
+      await logActivity(invoiceId, 'added_to_draw', performedBy, { draw_number: drawNumber });
+
+      // Add IN DRAW stamp to the PDF
+      try {
+        const pdfUrl = existing.pdf_stamped_url || existing.pdf_url;
+        if (pdfUrl) {
+          const urlParts = pdfUrl.split('/storage/v1/object/public/invoices/');
+          if (urlParts[1]) {
+            let storagePath = decodeURIComponent(urlParts[1].split('?')[0]); // Remove query params
+            const pdfBuffer = await downloadPDF(storagePath);
+            const stampedBuffer = await stampInDraw(pdfBuffer, drawNumber);
+
+            // Upload to stamped path
+            const basePath = storagePath.replace('_stamped.pdf', '.pdf');
+            const result = await uploadStampedPDF(stampedBuffer, basePath);
+            updateFields.pdf_stamped_url = result.url;
+          }
+        }
+      } catch (stampErr) {
+        console.error('IN DRAW stamp failed:', stampErr.message);
+      }
+    }
+
+    // Handle PDF stamping when transitioning TO approved
+    if (updates.status === 'approved' && existing.status !== 'in_draw') {
+      try {
+        // Fetch full invoice data with relations for stamping
+        const { data: fullInvoice } = await supabase
+          .from('v2_invoices')
+          .select(`
+            *,
+            vendor:v2_vendors(id, name),
+            job:v2_jobs(id, name),
+            po:v2_purchase_orders(id, po_number, description, total_amount),
+            allocations:v2_invoice_allocations(
+              amount,
+              cost_code_id,
+              cost_code:v2_cost_codes(code, name)
+            )
+          `)
+          .eq('id', invoiceId)
+          .single();
+
+        if (fullInvoice?.pdf_url) {
+          const urlParts = fullInvoice.pdf_url.split('/storage/v1/object/public/invoices/');
+          if (urlParts[1]) {
+            const storagePath = decodeURIComponent(urlParts[1]);
+            const pdfBuffer = await downloadPDF(storagePath);
+
+            // Get PO billing info
+            let poTotal = null;
+            let poBilledToDate = 0;
+
+            if (fullInvoice.po?.id) {
+              poTotal = fullInvoice.po.total_amount;
+              const { data: priorInvoices } = await supabase
+                .from('v2_invoices')
+                .select('amount')
+                .eq('po_id', fullInvoice.po.id)
+                .neq('id', invoiceId)
+                .in('status', ['approved', 'in_draw', 'paid']);
+
+              if (priorInvoices) {
+                poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+              }
+            }
+
+            // Build allocations with cost code details for stamping
+            let allocationsForStamp = [];
+
+            if (updates.allocations && updates.allocations.length > 0) {
+              // Allocations from request - need to fetch cost code details
+              const costCodeIds = updates.allocations
+                .filter(a => a.cost_code_id)
+                .map(a => a.cost_code_id);
+
+              if (costCodeIds.length > 0) {
+                const { data: costCodes } = await supabase
+                  .from('v2_cost_codes')
+                  .select('id, code, name')
+                  .in('id', costCodeIds);
+
+                const ccMap = new Map((costCodes || []).map(cc => [cc.id, cc]));
+
+                allocationsForStamp = updates.allocations
+                  .filter(a => a.cost_code_id && ccMap.has(a.cost_code_id))
+                  .map(a => ({
+                    amount: a.amount,
+                    cost_code: ccMap.get(a.cost_code_id)
+                  }));
+              }
+            } else {
+              // Use allocations from database
+              allocationsForStamp = fullInvoice.allocations || [];
+            }
+
+            console.log('=== STAMP DEBUG (PATCH) ===');
+            console.log('Allocations for stamp:', JSON.stringify(allocationsForStamp, null, 2));
+            console.log('PO:', JSON.stringify(fullInvoice.po, null, 2));
+            console.log('===========================');
+
+            const stampedBuffer = await stampApproval(pdfBuffer, {
+              status: 'APPROVED',
+              date: new Date().toLocaleDateString(),
+              approvedBy: performedBy,
+              vendorName: fullInvoice.vendor?.name,
+              invoiceNumber: fullInvoice.invoice_number,
+              jobName: fullInvoice.job?.name,
+              costCodes: allocationsForStamp.map(a => ({
+                code: a.cost_code?.code,
+                name: a.cost_code?.name,
+                amount: a.amount
+              })).filter(cc => cc.code), // Only include allocations with cost codes
+              amount: fullInvoice.amount,
+              poNumber: fullInvoice.po?.po_number,
+              poDescription: fullInvoice.po?.description,
+              poTotal: poTotal,
+              poBilledToDate: poBilledToDate
+            });
+
+            const result = await uploadStampedPDF(stampedBuffer, storagePath);
+            updateFields.pdf_stamped_url = result.url;
+          }
+        }
+      } catch (stampErr) {
+        console.error('PDF stamping failed during PATCH:', stampErr.message);
+        // Continue without stamping
+      }
+    }
+
+    // Handle clearing stamps when transitioning back to coded (from any status)
+    if (updates.status === 'coded') {
+      updateFields.pdf_stamped_url = null;
+      updateFields.approved_at = null;
+      updateFields.approved_by = null;
+    }
+
+    // Handle re-stamping when going from in_draw back to approved (remove IN DRAW stamp)
+    if (updates.status === 'approved' && existing.status === 'in_draw') {
+      try {
+        // Re-fetch invoice with full data for re-stamping
+        const { data: fullInvoice } = await supabase
+          .from('v2_invoices')
+          .select(`
+            *,
+            vendor:v2_vendors(id, name),
+            job:v2_jobs(id, name),
+            po:v2_purchase_orders(id, po_number, description, total_amount),
+            allocations:v2_invoice_allocations(
+              amount,
+              cost_code_id,
+              cost_code:v2_cost_codes(code, name)
+            )
+          `)
+          .eq('id', invoiceId)
+          .single();
+
+        if (fullInvoice?.pdf_url) {
+          const urlParts = fullInvoice.pdf_url.split('/storage/v1/object/public/invoices/');
+          if (urlParts[1]) {
+            const storagePath = decodeURIComponent(urlParts[1].split('?')[0]);
+            // Download ORIGINAL PDF (not stamped) to re-stamp fresh
+            const pdfBuffer = await downloadPDF(storagePath);
+
+            // Get PO billing info
+            let poTotal = null;
+            let poBilledToDate = 0;
+            if (fullInvoice.po?.id) {
+              poTotal = fullInvoice.po.total_amount;
+              const { data: priorInvoices } = await supabase
+                .from('v2_invoices')
+                .select('amount')
+                .eq('po_id', fullInvoice.po.id)
+                .neq('id', invoiceId)
+                .in('status', ['approved', 'in_draw', 'paid']);
+              if (priorInvoices) {
+                poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+              }
+            }
+
+            const stampedBuffer = await stampApproval(pdfBuffer, {
+              status: 'APPROVED',
+              date: new Date().toLocaleDateString(),
+              approvedBy: fullInvoice.approved_by || performedBy,
+              vendorName: fullInvoice.vendor?.name,
+              invoiceNumber: fullInvoice.invoice_number,
+              jobName: fullInvoice.job?.name,
+              costCodes: (fullInvoice.allocations || []).map(a => ({
+                code: a.cost_code?.code,
+                name: a.cost_code?.name,
+                amount: a.amount
+              })).filter(cc => cc.code),
+              amount: fullInvoice.amount,
+              poNumber: fullInvoice.po?.po_number,
+              poDescription: fullInvoice.po?.description,
+              poTotal: poTotal,
+              poBilledToDate: poBilledToDate
+            });
+
+            const result = await uploadStampedPDF(stampedBuffer, storagePath);
+            updateFields.pdf_stamped_url = result.url;
+          }
+        }
+      } catch (stampErr) {
+        console.error('Re-stamping failed when removing from draw:', stampErr.message);
       }
     }
   }

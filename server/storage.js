@@ -53,6 +53,8 @@ async function uploadStampedPDF(fileBuffer, originalPath) {
   // Add _stamped suffix before extension
   const stampedPath = originalPath.replace('.pdf', '_stamped.pdf');
 
+  console.log('Uploading stamped PDF to:', stampedPath);
+
   const { data, error } = await supabase.storage
     .from(BUCKET)
     .upload(stampedPath, fileBuffer, {
@@ -61,15 +63,22 @@ async function uploadStampedPDF(fileBuffer, originalPath) {
     });
 
   if (error) {
+    console.error('Upload error:', error);
     throw new Error(`Failed to upload stamped PDF: ${error.message}`);
   }
+
+  console.log('Upload successful:', data);
 
   const { data: urlData } = supabase.storage
     .from(BUCKET)
     .getPublicUrl(stampedPath);
 
+  // Add cache-busting timestamp to URL
+  const urlWithCacheBust = `${urlData.publicUrl}?t=${Date.now()}`;
+  console.log('Stamped PDF URL:', urlWithCacheBust);
+
   return {
-    url: urlData.publicUrl,
+    url: urlWithCacheBust,
     path: stampedPath
   };
 }

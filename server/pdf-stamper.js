@@ -12,6 +12,10 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
  * @returns {Promise<Buffer>} - Stamped PDF as buffer
  */
 async function stampApproval(pdfBuffer, stampData) {
+  console.log('=== PDF STAMPER DEBUG ===');
+  console.log('Received stampData:', JSON.stringify(stampData, null, 2));
+  console.log('=========================');
+
   const {
     status = 'APPROVED',
     date,
@@ -73,12 +77,14 @@ async function stampApproval(pdfBuffer, stampData) {
   if (detailLines.length > 0) sections.push({ lines: detailLines });
 
   // Cost codes section
+  console.log('Cost codes received:', costCodes.length, costCodes);
   if (costCodes.length > 0) {
     const ccLines = [
       { text: 'COST CODE ALLOCATIONS', bold: true, size: 8, color: rgb(0.3, 0.3, 0.3) }
     ];
     costCodes.forEach(cc => {
-      const truncName = cc.name.length > 25 ? cc.name.substring(0, 22) + '...' : cc.name;
+      console.log('Processing cost code:', cc);
+      const truncName = cc.name && cc.name.length > 25 ? cc.name.substring(0, 22) + '...' : (cc.name || 'Unknown');
       ccLines.push({
         text: `${cc.code}  ${truncName}`,
         size: 9
@@ -90,6 +96,9 @@ async function stampApproval(pdfBuffer, stampData) {
       });
     });
     sections.push({ lines: ccLines });
+    console.log('Added cost code section with', ccLines.length, 'lines');
+  } else {
+    console.log('No cost codes to add');
   }
 
   // PO section
