@@ -25,23 +25,23 @@
     <main class="main">
       <!-- Filters -->
       <div class="table-toolbar">
-        <div class="filter-group">
-          <button class="filter-btn active" data-status="all">All</button>
-          <button class="filter-btn" data-status="pending">Pending</button>
-          <button class="filter-btn" data-status="approved">Approved</button>
-          <button class="filter-btn" data-status="active">Active</button>
-          <button class="filter-btn" data-status="closed">Closed</button>
-        </div>
-        <div class="filter-selects">
-          <select id="jobFilter" class="job-filter">
+        <div class="filter-controls">
+          <select id="statusFilter" class="form-control filter-select">
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="active">Active</option>
+            <option value="closed">Closed</option>
+          </select>
+          <select id="jobFilter" class="form-control filter-select">
             <option value="">All Jobs</option>
           </select>
-          <select id="vendorFilter" class="vendor-filter">
+          <select id="vendorFilter" class="form-control filter-select">
             <option value="">All Vendors</option>
           </select>
         </div>
         <div class="search-box">
-          <input type="text" id="searchInput" placeholder="Search PO#, vendor, description..." class="search-input">
+          <input type="text" id="searchInput" placeholder="Search..." class="form-control search-input">
         </div>
       </div>
 

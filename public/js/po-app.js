@@ -319,15 +319,13 @@ function getStatusClass(status, approvalStatus) {
 // ============================================================
 
 function setupFilterButtons() {
-  const buttons = document.querySelectorAll('.filter-btn');
-  buttons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      buttons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.currentStatusFilter = btn.dataset.status;
+  const statusFilter = document.getElementById('statusFilter');
+  if (statusFilter) {
+    statusFilter.addEventListener('change', (e) => {
+      state.currentStatusFilter = e.target.value || 'all';
       renderPOList();
     });
-  });
+  }
 }
 
 function setupSearchInput() {

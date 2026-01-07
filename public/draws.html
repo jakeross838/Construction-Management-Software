@@ -25,15 +25,17 @@
     <main class="main">
       <!-- Filters -->
       <div class="table-toolbar">
-        <div class="filter-group">
-          <button class="filter-btn active" data-status="all">All</button>
-          <button class="filter-btn" data-status="draft">Draft</button>
-          <button class="filter-btn" data-status="submitted">Submitted</button>
-          <button class="filter-btn" data-status="funded">Funded</button>
+        <div class="filter-controls">
+          <select id="statusFilter" class="form-control filter-select">
+            <option value="">All Status</option>
+            <option value="draft">Draft</option>
+            <option value="submitted">Submitted</option>
+            <option value="funded">Funded</option>
+          </select>
+          <select id="jobFilter" class="form-control filter-select">
+            <option value="">All Jobs</option>
+          </select>
         </div>
-        <select id="jobFilter" class="job-filter">
-          <option value="">All Jobs</option>
-        </select>
       </div>
 
       <!-- Draw List -->
@@ -131,15 +133,13 @@
     }
 
     function setupFilters() {
-      const buttons = document.querySelectorAll('.filter-btn');
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          buttons.forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          state.currentFilter = btn.dataset.status;
+      const statusFilter = document.getElementById('statusFilter');
+      if (statusFilter) {
+        statusFilter.addEventListener('change', (e) => {
+          state.currentFilter = e.target.value || 'all';
           renderDrawList();
         });
-      });
+      }
     }
 
     function renderDrawList() {
