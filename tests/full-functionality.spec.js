@@ -14,10 +14,15 @@ test.describe('Full Functionality Tests', () => {
     errors = [];
     apiCalls = [];
 
-    // Monitor console errors
+    // Monitor console errors (ignore non-critical 404s)
     page.on('console', msg => {
-      if (msg.type() === 'error' && !msg.text().includes('Realtime')) {
-        errors.push(msg.text());
+      if (msg.type() === 'error') {
+        const text = msg.text();
+        // Ignore Realtime errors and static resource 404s (favicon, etc.)
+        if (text.includes('Realtime')) return;
+        if (text.includes('404') && !text.includes('/api/')) return;
+        if (text.includes('favicon')) return;
+        errors.push(text);
       }
     });
 
