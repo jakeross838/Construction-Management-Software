@@ -288,9 +288,10 @@ function renderInvoiceModal(invoice, activity) {
   const infoPanel = document.getElementById('invoiceInfoPanel');
   const footer = document.getElementById('invoiceModalFooter');
 
-  // PDF Viewer
+  // PDF Viewer - show original for coded/received, stamped for approved+
   if (invoice.pdf_url || invoice.pdf_stamped_url) {
-    const pdfUrl = invoice.pdf_stamped_url || invoice.pdf_url;
+    const showOriginal = ['coded', 'received'].includes(invoice.status);
+    const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
     pdfContainer.innerHTML = `<iframe src="${pdfUrl}"></iframe>`;
   } else {
     pdfContainer.innerHTML = `

@@ -106,7 +106,9 @@ const Modals = {
     const statusInfo = window.Validation?.getStatusInfo(invoice.status) || {};
     const isArchived = invoice.status === 'paid';
     const canEdit = !isArchived && ['received', 'coded'].includes(invoice.status);
-    const pdfUrl = invoice.pdf_stamped_url || invoice.pdf_url;
+    // Show original PDF for coded/received, stamped for approved+
+    const showOriginal = ['coded', 'received'].includes(invoice.status);
+    const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
 
     return `
       <div class="modal-backdrop">
