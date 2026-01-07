@@ -106,9 +106,14 @@ const Modals = {
     // Must be AI processed
     if (!invoice.ai_processed) return false;
 
-    // Check if field was overridden
+    // Check if field was overridden in this session
+    if (this.overriddenFields?.has(fieldName)) {
+      return false;
+    }
+
+    // Check if field was overridden in database
     if (invoice.ai_overrides && invoice.ai_overrides[fieldName]) {
-      return false; // Field was manually overridden
+      return false;
     }
 
     // Check if we have AI-extracted data for this field
@@ -121,24 +126,65 @@ const Modals = {
       'amount': aiData.parsed_amount,
       'invoice_date': aiData.parsed_date,
       'job_id': aiData.parsed_address || invoice.job_id,
-      'vendor_id': aiData.parsed_vendor_name || invoice.vendor_id
+      'vendor_id': aiData.parsed_vendor_name || invoice.vendor_id,
+      'po_id': invoice.po_id // PO is matched if we have one
     };
 
     return fieldMap[fieldName] !== undefined;
   },
 
   /**
-   * Build AI indicator HTML for a field
+   * Get confidence score for a field
    */
-  buildAiIndicator(invoice, fieldName, showConfidence = false) {
+  getFieldConfidence(invoice, fieldName) {
+    if (!invoice.ai_confidence) return null;
+
+    // Try multiple possible key formats (camelCase and snake_case)
+    const fieldMappings = {
+      'invoice_number': ['invoiceNumber', 'invoice_number'],
+      'invoice_date': ['date', 'invoice_date'],
+      'amount': ['amount'],
+      'job_id': ['job', 'job_id'],
+      'vendor_id': ['vendor', 'vendor_id'],
+      'po_id': ['po', 'po_id']
+    };
+
+    const keys = fieldMappings[fieldName] || [fieldName];
+    for (const key of keys) {
+      if (invoice.ai_confidence[key] !== undefined) {
+        return invoice.ai_confidence[key];
+      }
+    }
+    return null;
+  },
+
+  /**
+   * Build AI indicator HTML for a field - nice badge with confidence
+   */
+  buildAiIndicator(invoice, fieldName) {
     if (!this.isAiGenerated(invoice, fieldName)) return '';
 
-    const confidence = invoice.ai_confidence?.[fieldName === 'invoice_number' ? 'invoiceNumber' :
-                                               fieldName === 'invoice_date' ? 'date' : fieldName];
-    const confidenceText = confidence ? ` (${Math.round(confidence * 100)}%)` : '';
-    const title = `AI-extracted${confidenceText} - Click to override`;
+    const confidence = this.getFieldConfidence(invoice, fieldName);
+    const confidencePct = confidence ? Math.round(confidence * 100) : null;
+    const confidenceClass = this.getConfidenceClass(confidence || 0);
 
-    return `<span class="ai-indicator" title="${title}">✨</span>`;
+    // Determine icon based on confidence
+    let icon = '✨';
+    if (confidencePct >= 90) icon = '✓';
+    else if (confidencePct >= 70) icon = '◐';
+    else if (confidencePct) icon = '?';
+
+    const title = confidence
+      ? `AI-extracted with ${confidencePct}% confidence. Edit to override.`
+      : 'AI-extracted. Edit to override.';
+
+    return `
+      <span class="ai-badge ${confidenceClass}" title="${title}" data-field="${fieldName}">
+        <span class="ai-badge-icon">${icon}</span>
+        ${confidencePct ? `<span class="ai-badge-score">${confidencePct}%</span>` : ''}
+        <span class="ai-badge-label">AI</span>
+      </span>
+    `;
   },
 
   /**
@@ -237,10 +283,6 @@ const Modals = {
                       <label for="edit-job">Job ${this.buildAiIndicator(invoice, 'job_id')}</label>
                       <div id="job-picker-container" class="search-picker-container"></div>
                       <input type="hidden" id="edit-job" name="job_id">
-                      ${invoice.ai_confidence?.job && this.isAiGenerated(invoice, 'job_id') ?
-                        `<div class="ai-confidence ${this.getConfidenceClass(invoice.ai_confidence.job)}">
-                          AI Confidence: ${Math.round(invoice.ai_confidence.job * 100)}%
-                        </div>` : ''}
                       <div class="field-error" id="error-job_id"></div>
                     </div>
 
@@ -248,15 +290,11 @@ const Modals = {
                       <label for="edit-vendor">Vendor ${this.buildAiIndicator(invoice, 'vendor_id')}</label>
                       <div id="vendor-picker-container" class="search-picker-container"></div>
                       <input type="hidden" id="edit-vendor" name="vendor_id">
-                      ${invoice.ai_confidence?.vendor && this.isAiGenerated(invoice, 'vendor_id') ?
-                        `<div class="ai-confidence ${this.getConfidenceClass(invoice.ai_confidence.vendor)}">
-                          AI Confidence: ${Math.round(invoice.ai_confidence.vendor * 100)}%
-                        </div>` : ''}
                       <div class="field-error" id="error-vendor_id"></div>
                     </div>
 
                     <div class="form-group">
-                      <label for="edit-po">Purchase Order</label>
+                      <label for="edit-po">Purchase Order ${this.buildAiIndicator(invoice, 'po_id')}</label>
                       <div id="po-picker-container" class="search-picker-container"></div>
                       <input type="hidden" id="edit-po" name="po_id">
                       <div class="field-error" id="error-po_id"></div>
@@ -375,14 +413,22 @@ const Modals = {
    * Build allocations HTML - Adaptive.build inspired clean line items
    */
   buildAllocationsHtml(allocations, invoiceAmount, isArchived = false) {
+    // Get cost code confidence from AI data if available
+    const costCodeConfidence = this.currentInvoice?.ai_confidence?.costCode || 0;
+
     const buildLineItem = (alloc, index) => {
-      const notes = alloc.notes || '';
+      // Check if this specific allocation is AI-suggested
+      const allocIsAi = alloc.notes?.includes('Auto-suggested') || alloc.notes?.includes('trade type');
+      const confidencePct = Math.round(costCodeConfidence * 100);
+      const confidenceClass = this.getConfidenceClass(costCodeConfidence);
+      const icon = confidencePct >= 90 ? '✓' : confidencePct >= 70 ? '◐' : '?';
+      const aiBadge = allocIsAi && confidencePct > 0 ? `<span class="ai-badge ${confidenceClass}" title="AI-suggested based on vendor trade type (${confidencePct}% confidence)"><span class="ai-badge-icon">${icon}</span><span class="ai-badge-score">${confidencePct}%</span><span class="ai-badge-label">AI</span></span>` : '';
 
       return `
         <div class="line-item" data-index="${index}">
           <div class="line-item-header">
             <div class="line-item-field flex-2">
-              <label class="field-label">Cost code / Account <span class="required">*</span></label>
+              <label class="field-label">Cost code / Account <span class="required">*</span> ${aiBadge}</label>
               <div class="cc-picker-container" data-index="${index}"></div>
             </div>
             <div class="line-item-field">
@@ -402,12 +448,6 @@ const Modals = {
                 </svg>
               </button>
             ` : ''}
-          </div>
-          <div class="line-item-details">
-            <input type="text" class="field-input" placeholder="e.g. Deliver and Install"
-              value="${this.escapeHtml(notes)}"
-              onchange="Modals.updateAllocation(${index}, 'notes', this.value)"
-              ${isArchived ? 'readonly' : ''}>
           </div>
         </div>
       `;
@@ -919,16 +959,45 @@ const Modals = {
     // Initialize each picker
     document.querySelectorAll('.cc-picker-container').forEach(container => {
       const index = parseInt(container.dataset.index);
-      const currentValue = this.currentAllocations[index]?.cost_code_id || null;
+      const allocation = this.currentAllocations[index];
+      const currentValue = allocation?.cost_code_id || null;
+      const originalValue = currentValue; // Store original to detect changes
 
       window.CostCodePicker.init(container, {
         value: currentValue,
         disabled: isArchived,
         onChange: (codeId) => {
           this.updateAllocation(index, 'cost_code_id', codeId);
+          // Mark cost code AI badge as overridden when changed
+          this.handleCostCodeChange(container, codeId, originalValue, allocation);
         }
       });
     });
+  },
+
+  /**
+   * Handle cost code change - update AI badge state
+   */
+  handleCostCodeChange(container, newValue, originalValue, allocation) {
+    const lineItem = container.closest('.line-item');
+    if (!lineItem) return;
+
+    const aiBadge = lineItem.querySelector('.ai-badge');
+    if (!aiBadge) return;
+
+    // Check if this was an AI-suggested allocation
+    const wasAiSuggested = allocation?.notes?.includes('Auto-suggested') || allocation?.notes?.includes('trade type');
+    if (!wasAiSuggested) return;
+
+    if (newValue !== originalValue) {
+      // Changed from original - mark as overridden
+      aiBadge.classList.add('overridden');
+      aiBadge.title = 'AI suggestion overridden by user';
+    } else {
+      // Changed back to original - restore badge
+      aiBadge.classList.remove('overridden');
+      aiBadge.title = 'AI-suggested based on vendor trade type';
+    }
   },
 
   /**
@@ -1767,36 +1836,141 @@ const Modals = {
   },
 
   /**
-   * Mark a field as manually overridden (removes AI indicator)
+   * Get the original AI value for a field
+   */
+  getOriginalAiValue(fieldName) {
+    const aiData = this.currentInvoice?.ai_extracted_data || {};
+    const invoice = this.currentInvoice || {};
+
+    switch (fieldName) {
+      case 'invoice_number': return aiData.parsed_invoice_number || invoice.invoice_number;
+      case 'amount': return aiData.parsed_amount || invoice.amount;
+      case 'invoice_date': return aiData.parsed_date || invoice.invoice_date;
+      case 'job_id': return invoice.job_id;
+      case 'vendor_id': return invoice.vendor_id;
+      case 'po_id': return invoice.po_id;
+      default: return null;
+    }
+  },
+
+  /**
+   * Mark a field as manually overridden (or restore if matching AI value)
    */
   markFieldOverridden(fieldName) {
     // Track which fields have been overridden in this session
     if (!this.overriddenFields) {
       this.overriddenFields = new Set();
     }
-    this.overriddenFields.add(fieldName);
 
-    // Find and remove the AI indicator from the label
+    // Find and update the AI badge
     const fieldMap = {
       'invoice_number': 'edit-invoice-number',
       'amount': 'edit-amount',
       'invoice_date': 'edit-invoice-date',
       'job_id': 'edit-job',
-      'vendor_id': 'edit-vendor'
+      'vendor_id': 'edit-vendor',
+      'po_id': 'edit-po'
     };
 
     const inputId = fieldMap[fieldName];
-    if (inputId) {
-      const input = document.getElementById(inputId);
-      if (input) {
-        const label = input.closest('.form-group')?.querySelector('label');
-        if (label) {
-          const aiIndicator = label.querySelector('.ai-indicator');
-          if (aiIndicator) {
-            aiIndicator.remove();
+    if (!inputId) return;
+
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    // Get current value and original AI value
+    let currentValue = input.value;
+    let originalAiValue = this.getOriginalAiValue(fieldName);
+
+    // Normalize for comparison
+    if (fieldName === 'amount') {
+      currentValue = window.Validation?.parseCurrency(currentValue) || 0;
+      originalAiValue = parseFloat(originalAiValue) || 0;
+    }
+
+    const matchesAi = String(currentValue) === String(originalAiValue);
+
+    const label = input.closest('.form-group')?.querySelector('label');
+    if (label) {
+      const aiBadge = label.querySelector('.ai-badge');
+      if (aiBadge) {
+        if (matchesAi) {
+          // Restore AI badge - value matches original
+          aiBadge.classList.remove('overridden');
+          aiBadge.title = aiBadge.dataset.originalTitle || 'AI-extracted. Edit to override.';
+          this.overriddenFields.delete(fieldName);
+        } else {
+          // Mark as overridden - value differs from AI
+          if (!aiBadge.dataset.originalTitle) {
+            aiBadge.dataset.originalTitle = aiBadge.title;
+          }
+          aiBadge.classList.add('overridden');
+          aiBadge.title = 'AI suggestion overridden by user';
+
+          // Only send feedback if newly overridden
+          if (!this.overriddenFields.has(fieldName)) {
+            this.overriddenFields.add(fieldName);
+            this.sendAiFeedback(fieldName);
           }
         }
       }
+    }
+  },
+
+  /**
+   * Send AI feedback to server for learning
+   */
+  async sendAiFeedback(fieldName) {
+    if (!this.currentInvoice?.id) return;
+
+    // Get the original AI value and new user value
+    const aiData = this.currentInvoice.ai_extracted_data || {};
+    const fieldMap = {
+      'invoice_number': { aiKey: 'parsed_invoice_number', formId: 'edit-invoice-number' },
+      'amount': { aiKey: 'parsed_amount', formId: 'edit-amount' },
+      'invoice_date': { aiKey: 'parsed_date', formId: 'edit-invoice-date' },
+      'job_id': { aiKey: 'job_id', formId: 'edit-job' },
+      'vendor_id': { aiKey: 'vendor_id', formId: 'edit-vendor' },
+      'po_id': { aiKey: 'po_id', formId: 'edit-po' }
+    };
+
+    const mapping = fieldMap[fieldName];
+    if (!mapping) return;
+
+    const aiValue = fieldName === 'job_id'
+      ? (this.currentInvoice.job_id || aiData.parsed_address)
+      : fieldName === 'vendor_id'
+        ? (this.currentInvoice.vendor_id || aiData.parsed_vendor_name)
+        : fieldName === 'po_id'
+          ? this.currentInvoice.po_id
+          : aiData[mapping.aiKey];
+
+    const userValue = document.getElementById(mapping.formId)?.value;
+
+    // Only send feedback if values are actually different
+    if (aiValue === userValue) return;
+
+    try {
+      await fetch('/api/ai/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoice_id: this.currentInvoice.id,
+          field_name: fieldName,
+          ai_value: aiValue,
+          user_value: userValue,
+          corrected_by: window.currentUser || 'unknown',
+          vendor_name: this.currentInvoice.vendor?.name || aiData.parsed_vendor_name,
+          context: {
+            confidence: this.currentInvoice.ai_confidence?.[fieldName] || null,
+            vendor_trade: aiData.parsed_trade_type
+          }
+        })
+      });
+      console.log(`[AI Feedback] Sent correction for ${fieldName}: "${aiValue}" → "${userValue}"`);
+    } catch (err) {
+      console.warn('[AI Feedback] Failed to send feedback:', err);
+      // Don't show error to user - feedback is non-critical
     }
   },
 

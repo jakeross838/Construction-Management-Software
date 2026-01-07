@@ -127,6 +127,99 @@
     </div>
   </div>
 
+  <!-- AI Processing Overlay -->
+  <div id="aiProcessingOverlay" class="ai-processing-overlay">
+    <div class="ai-processing-card">
+      <div class="ai-processing-header">
+        <div class="ai-brain-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 2a4 4 0 0 1 4 4c0 1.1-.9 2-2 2h-4c-1.1 0-2-.9-2-2a4 4 0 0 1 4-4z"/>
+            <path d="M8 8v2a4 4 0 0 0 8 0V8"/>
+            <path d="M12 14v4"/>
+            <path d="M8 18h8"/>
+            <circle cx="9" cy="6" r="0.5" fill="currentColor"/>
+            <circle cx="15" cy="6" r="0.5" fill="currentColor"/>
+          </svg>
+          <div class="ai-pulse-ring"></div>
+          <div class="ai-pulse-ring delay-1"></div>
+          <div class="ai-pulse-ring delay-2"></div>
+        </div>
+        <h2>AI Processing Invoice</h2>
+        <p class="ai-processing-subtitle">Analyzing document with Claude AI</p>
+      </div>
+
+      <div class="ai-processing-steps">
+        <div class="ai-step" data-step="extract">
+          <div class="ai-step-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14,2 14,8 20,8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">Extracting Text</span>
+            <span class="ai-step-status">Reading PDF content...</span>
+          </div>
+          <div class="ai-step-check">✓</div>
+        </div>
+
+        <div class="ai-step" data-step="analyze">
+          <div class="ai-step-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">AI Analysis</span>
+            <span class="ai-step-status">Claude is reading the invoice...</span>
+          </div>
+          <div class="ai-step-check">✓</div>
+        </div>
+
+        <div class="ai-step" data-step="match">
+          <div class="ai-step-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="8.5" cy="7" r="4"/>
+              <path d="M20 8v6"/>
+              <path d="M23 11h-6"/>
+            </svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">Matching Data</span>
+            <span class="ai-step-status">Finding vendor & job matches...</span>
+          </div>
+          <div class="ai-step-check">✓</div>
+        </div>
+
+        <div class="ai-step" data-step="save">
+          <div class="ai-step-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17,21 17,13 7,13 7,21"/>
+              <polyline points="7,3 7,8 15,8"/>
+            </svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">Saving Invoice</span>
+            <span class="ai-step-status">Creating invoice record...</span>
+          </div>
+          <div class="ai-step-check">✓</div>
+        </div>
+      </div>
+
+      <div class="ai-processing-footer">
+        <div class="ai-progress-bar">
+          <div class="ai-progress-fill"></div>
+        </div>
+        <p class="ai-progress-text">Starting...</p>
+      </div>
+    </div>
+  </div>
+
   <!-- Denial Modal -->
   <div id="denialModal" class="modal">
     <div class="modal-content modal-sm">

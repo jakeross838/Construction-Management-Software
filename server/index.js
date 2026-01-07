@@ -627,7 +627,7 @@ app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
       pdf_url = uploadResult.url;
     }
 
-    // Create invoice record
+    // Create invoice record with AI metadata
     const { data: invoice, error: invError } = await supabase
       .from('v2_invoices')
       .insert({
@@ -640,14 +640,23 @@ app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
         amount: result.extracted.totalAmount || 0,
         pdf_url,
         status: 'received',
-        notes: result.messages.join('\n')
+        notes: result.messages.join('\n'),
+        // AI metadata for confidence badges
+        ai_processed: result.ai_processed || false,
+        ai_confidence: result.ai_confidence || null,
+        ai_extracted_data: result.ai_extracted_data || null,
+        needs_review: result.needs_review || false,
+        review_flags: result.review_flags || null
       })
       .select()
       .single();
 
     if (invError) throw invError;
 
-    // Create allocations from line items
+    // Create allocations from line items OR suggested allocations
+    let allocationsCreated = false;
+
+    // First try to create allocations from line items with explicit cost codes
     if (result.extracted.lineItems?.length > 0) {
       const allocations = [];
       for (const item of result.extracted.lineItems) {
@@ -673,7 +682,21 @@ app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
 
       if (allocations.length > 0) {
         await supabase.from('v2_invoice_allocations').insert(allocations);
+        allocationsCreated = true;
       }
+    }
+
+    // Fallback: If no allocations created, use suggested allocations from trade type
+    if (!allocationsCreated && result.suggested_allocations?.length > 0) {
+      const suggestedAllocs = result.suggested_allocations.map(sa => ({
+        invoice_id: invoice.id,
+        cost_code_id: sa.cost_code_id,
+        amount: sa.amount,
+        notes: `Auto-suggested based on ${result.extracted.vendor?.tradeType || 'detected'} trade type`
+      }));
+
+      await supabase.from('v2_invoice_allocations').insert(suggestedAllocs);
+      allocationsCreated = true;
     }
 
     // Log activity
@@ -2725,6 +2748,54 @@ app.patch('/api/invoices/:id/override', asyncHandler(async (req, res) => {
     override: overrideRecord,
     remainingFlags: review_flags
   });
+}));
+
+// ============================================================
+// AI FEEDBACK ENDPOINT (for learning from corrections)
+// ============================================================
+
+app.post('/api/ai/feedback', asyncHandler(async (req, res) => {
+  const {
+    invoice_id,
+    field_name,
+    ai_value,
+    user_value,
+    corrected_by = 'unknown',
+    vendor_name,
+    context = {}
+  } = req.body;
+
+  // Store the feedback for AI learning
+  const { error: insertError } = await supabase
+    .from('v2_ai_feedback')
+    .insert({
+      invoice_id,
+      field_name,
+      ai_value: typeof ai_value === 'object' ? JSON.stringify(ai_value) : String(ai_value || ''),
+      user_value: typeof user_value === 'object' ? JSON.stringify(user_value) : String(user_value || ''),
+      corrected_by,
+      vendor_name,
+      ai_confidence: context.confidence || null,
+      vendor_trade: context.vendor_trade || null,
+      created_at: new Date().toISOString()
+    });
+
+  // If table doesn't exist, just log the feedback - it's non-critical
+  if (insertError) {
+    console.log('[AI Feedback] Could not store feedback (table may not exist):', insertError.message);
+    console.log('[AI Feedback] Received:', {
+      invoice_id,
+      field_name,
+      ai_value,
+      user_value,
+      corrected_by,
+      vendor_name
+    });
+  } else {
+    console.log(`[AI Feedback] Stored correction: ${field_name} "${ai_value}" → "${user_value}" by ${corrected_by}`);
+  }
+
+  res.json({ success: true });
 }));
 
 // ============================================================

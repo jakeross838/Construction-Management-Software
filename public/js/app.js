@@ -489,6 +489,133 @@ async function approveInvoice(invoiceId) {
 }
 
 // ============================================================
+// AI PROCESSING OVERLAY
+// ============================================================
+
+const AIProcessingUI = {
+  overlay: null,
+  steps: ['extract', 'analyze', 'match', 'save'],
+  currentStep: 0,
+
+  show() {
+    this.overlay = document.getElementById('aiProcessingOverlay');
+    if (!this.overlay) return;
+
+    this.currentStep = 0;
+    this.resetSteps();
+    this.updateProgress(0, 'Starting...');
+    this.overlay.classList.add('show');
+
+    // Auto-advance through initial step
+    setTimeout(() => this.setStep('extract', 'active'), 300);
+  },
+
+  hide() {
+    if (this.overlay) {
+      this.overlay.classList.remove('show');
+    }
+  },
+
+  resetSteps() {
+    this.steps.forEach(step => {
+      const el = this.overlay.querySelector(`[data-step="${step}"]`);
+      if (el) {
+        el.classList.remove('active', 'completed');
+        const status = el.querySelector('.ai-step-status');
+        if (status) status.textContent = this.getDefaultStatus(step);
+      }
+    });
+  },
+
+  getDefaultStatus(step) {
+    const defaults = {
+      extract: 'Reading PDF content...',
+      analyze: 'Claude is reading the invoice...',
+      match: 'Finding vendor & job matches...',
+      save: 'Creating invoice record...'
+    };
+    return defaults[step] || '';
+  },
+
+  setStep(stepName, state, statusText) {
+    const el = this.overlay?.querySelector(`[data-step="${stepName}"]`);
+    if (!el) return;
+
+    if (state === 'active') {
+      el.classList.add('active');
+      el.classList.remove('completed');
+      this.currentStep = this.steps.indexOf(stepName);
+
+      // Update progress based on step
+      const progress = ((this.currentStep + 0.5) / this.steps.length) * 100;
+      this.updateProgress(progress, statusText || this.getDefaultStatus(stepName));
+    } else if (state === 'completed') {
+      el.classList.remove('active');
+      el.classList.add('completed');
+
+      const status = el.querySelector('.ai-step-status');
+      if (status) status.textContent = statusText || 'Complete';
+
+      // Update progress
+      const progress = ((this.currentStep + 1) / this.steps.length) * 100;
+      this.updateProgress(progress);
+    }
+  },
+
+  updateProgress(percent, text) {
+    const fill = this.overlay?.querySelector('.ai-progress-fill');
+    const textEl = this.overlay?.querySelector('.ai-progress-text');
+
+    if (fill) fill.style.width = `${percent}%`;
+    if (textEl && text) textEl.textContent = text;
+  },
+
+  // Simulate the AI processing steps with realistic timing
+  async simulateProcessing() {
+    // Step 1: Extract text
+    this.setStep('extract', 'active', 'Extracting text from PDF...');
+    await this.delay(800);
+    this.setStep('extract', 'completed', 'Text extracted');
+
+    // Step 2: AI Analysis
+    this.setStep('analyze', 'active', 'Claude is analyzing invoice data...');
+    // This step takes longer - AI processing
+    await this.delay(2000);
+    this.setStep('analyze', 'completed', 'Analysis complete');
+
+    // Step 3: Match data
+    this.setStep('match', 'active', 'Matching vendor and job...');
+    await this.delay(1000);
+    this.setStep('match', 'completed', 'Matches found');
+
+    // Step 4: Save
+    this.setStep('save', 'active', 'Saving invoice record...');
+    await this.delay(600);
+    this.setStep('save', 'completed', 'Saved successfully');
+
+    this.updateProgress(100, 'Processing complete!');
+  },
+
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  },
+
+  // Show error state
+  showError(message) {
+    const currentStepEl = this.overlay?.querySelector('.ai-step.active');
+    if (currentStepEl) {
+      currentStepEl.classList.remove('active');
+      currentStepEl.classList.add('error');
+      const status = currentStepEl.querySelector('.ai-step-status');
+      if (status) status.textContent = message || 'Error occurred';
+      const check = currentStepEl.querySelector('.ai-step-check');
+      if (check) check.textContent = '✕';
+    }
+    this.updateProgress(this.currentStep * 25, 'Processing failed');
+  }
+};
+
+// ============================================================
 // UPLOAD
 // ============================================================
 
@@ -571,18 +698,33 @@ async function submitUploadInvoice() {
 
   try {
     if (useAI) {
-      // Use AI processing endpoint
-      const res = await fetch('/api/invoices/process', {
+      // Close upload modal and show AI processing overlay
+      closeModal('uploadInvoiceModal');
+      AIProcessingUI.show();
+
+      // Start the API call and the animation concurrently
+      const apiPromise = fetch('/api/invoices/process', {
         method: 'POST',
         body: formData
       });
 
+      // Run animation while waiting for API
+      const animationPromise = AIProcessingUI.simulateProcessing();
+
+      // Wait for API response
+      const res = await apiPromise;
       const result = await res.json();
+
+      // Wait for animation to complete (if API was faster)
+      await animationPromise;
 
       if (!res.ok) {
         // Handle duplicate invoice error specifically
         if (res.status === 409 && result.duplicate) {
           const dupe = result.duplicate;
+          AIProcessingUI.showError('Duplicate detected');
+          await AIProcessingUI.delay(1500);
+          AIProcessingUI.hide();
           window.toasts?.error('Duplicate Invoice Detected', {
             details: `This appears to be a duplicate of Invoice #${dupe.invoice_number} ($${parseFloat(dupe.amount).toLocaleString()}) - Status: ${dupe.status}`,
             duration: 8000
@@ -591,27 +733,22 @@ async function submitUploadInvoice() {
           uploadBtn.disabled = false;
           return;
         }
+        AIProcessingUI.showError('Processing failed');
+        await AIProcessingUI.delay(1500);
+        AIProcessingUI.hide();
         throw new Error(result.error || 'Processing failed');
       }
 
+      // Show success state briefly
+      await AIProcessingUI.delay(800);
+      AIProcessingUI.hide();
+
       // Show success with AI results
       const processing = result.processing;
-      let message = 'Invoice processed successfully!\n\n';
-
-      if (processing) {
-        message += `Vendor: ${processing.vendor?.name || processing.extracted?.vendor?.companyName || 'Unknown'}\n`;
-        message += `Amount: $${processing.extracted?.totalAmount || 0}\n`;
-        message += `Job: ${processing.matchedJob?.name || 'Not matched'}\n`;
-        message += `PO: ${processing.po?.po_number || 'Not matched'}\n`;
-        message += `\nRenamed to: ${processing.standardizedFilename}\n`;
-
-        if (processing.messages) {
-          message += '\n--- Processing Log ---\n';
-          message += processing.messages.join('\n');
-        }
-      }
-
-      alert(message);
+      window.toasts?.success('Invoice Processed Successfully', {
+        details: processing ? `${processing.vendor?.name || 'Unknown Vendor'} - ${formatMoney(processing.extracted?.totalAmount || 0)}` : null,
+        duration: 5000
+      });
 
     } else {
       // Use basic upload - requires job selection
@@ -641,15 +778,18 @@ async function submitUploadInvoice() {
       });
 
       if (!res.ok) throw new Error('Upload failed');
+
+      closeModal('uploadInvoiceModal');
+      window.toasts?.success('Invoice uploaded');
     }
 
-    closeModal('uploadInvoiceModal');
     loadInvoices();
     loadVendors(); // Reload in case new vendor was created
 
   } catch (err) {
     console.error('Failed to upload:', err);
-    alert(`Failed to process invoice: ${err.message}`);
+    AIProcessingUI.hide(); // Ensure overlay is hidden on error
+    window.toasts?.error('Failed to process invoice', { details: err.message });
   } finally {
     uploadBtn.textContent = originalText;
     uploadBtn.disabled = false;

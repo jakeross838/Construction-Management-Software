@@ -31,6 +31,30 @@ const CONFIDENCE_THRESHOLDS = {
   LOW: 0.60      // Don't auto-assign, show picker
 };
 
+// Trade type to cost code mapping (code prefix -> cost codes)
+const TRADE_COST_CODE_MAP = {
+  electrical: ['13101', '13102'],      // Electrical Labor, Electrical Fixtures
+  plumbing: ['12101', '12102'],        // Plumbing Labor, Plumbing Fixtures
+  hvac: ['14101'],                     // HVAC System and Ducting
+  drywall: ['19101'],                  // Drywall
+  framing: ['10101', '10102'],         // Framing Labor & General Carpentry, Framing Material
+  roofing: ['17101'],                  // Roofing
+  painting: ['27101'],                 // Painting
+  flooring: ['23101', '23102'],        // Flooring Materials, Flooring Labor
+  tile: ['24101', '24102'],            // Tile Labor Floors, Tile Material Floors
+  concrete: ['08101'],                 // Concrete
+  masonry: ['09101'],                  // Masonry
+  landscaping: ['35101'],              // Landscaping and Irrigation
+  pool: ['34101'],                     // Pool and Spa
+  cabinets: ['21101', '21102'],        // Cabinetry, Cabinetry Installation
+  countertops: ['21103'],              // Counter Tops
+  windows_doors: ['11101', '11102'],   // Exterior Windows, Exterior Doors
+  insulation: ['18101'],               // Insulation
+  stucco: ['26112'],                   // Stucco
+  siding: ['26101', '26102'],          // Exterior Siding Labor, Material
+  general: ['03116']                   // General Labor and Job Site Cleaning
+};
+
 // ============================================================
 // EXTRACTION SCHEMA
 // ============================================================
@@ -45,12 +69,13 @@ const INVOICE_SCHEMA = `{
     "email": "string or null"
   },
   "invoiceNumber": "string, vendor's invoice reference number",
-  "invoiceDate": "string, YYYY-MM-DD",
-  "dueDate": "string or null, YYYY-MM-DD",
+  "invoiceDate": "string, YYYY-MM-DD format",
+  "dueDate": "string or null, YYYY-MM-DD format",
   "job": {
-    "address": "string, the job site / project address",
-    "city": "string, default Holmes Beach",
-    "state": "FL"
+    "reference": "string, the job/project reference - could be client name, PO#, project name, or address",
+    "address": "string or null, street address if available",
+    "clientName": "string or null, client/homeowner name if mentioned",
+    "poNumber": "string or null, PO# or job reference number"
   },
   "amounts": {
     "subtotal": "number or null, before tax",
@@ -73,7 +98,7 @@ const INVOICE_SCHEMA = `{
     "amount": "number 0-1, confidence in amount extraction",
     "invoiceNumber": "number 0-1, confidence in invoice number",
     "date": "number 0-1, confidence in date extraction",
-    "job": "number 0-1, confidence in job/address extraction"
+    "job": "number 0-1, confidence in job/project extraction"
   }
 }`;
 
@@ -140,11 +165,32 @@ CRITICAL IDENTIFICATION RULES:
 4. Look for company letterhead, logo, or "From:" - this is typically the VENDOR
 
 EXTRACTION ACCURACY REQUIREMENTS:
-1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown
+1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown including any prefixes like "INV-"
 2. Amounts: Extract the TOTAL AMOUNT DUE, not subtotals. Look for "Total", "Amount Due", "Balance Due", "Grand Total"
-3. Dates: Convert all dates to YYYY-MM-DD format. Look for "Invoice Date", "Date", "Dated"
-4. Job/Project: Look for "Job:", "Project:", "Site:", "Location:", "Re:" or any street address that's NOT the vendor's address
-5. Line items: Extract ALL work items with their individual amounts
+3. Dates: Convert all dates to YYYY-MM-DD format. For dates like "12.19.2025", convert to "2025-12-19". Look for "Invoice Date", "Date", "Dated"
+4. Line items: Extract ALL work items with their individual amounts
+
+JOB/PROJECT IDENTIFICATION - CRITICAL:
+Job references can appear in MANY forms. Check ALL of these locations:
+1. "P.O.#" or "PO#" field - often contains client name or job reference (e.g., "Drummond")
+2. "Subject:" line - may contain job/project name
+3. "Job:", "Project:", "Site:", "Location:", "Re:" fields
+4. Any street address that is NOT the vendor's address
+5. Client/homeowner last name (jobs are often named after clients like "Drummond", "Smith", "Johnson")
+
+For the job.reference field, extract the BEST identifier found - this could be:
+- A client name like "Drummond" or "Smith"
+- A street address like "501 74th St"
+- A project name like "Drummond Change Orders"
+
+TRADE TYPE IDENTIFICATION:
+Determine trade type from line item descriptions:
+- "Electrical", "wiring", "panel", "circuit" = electrical
+- "Plumbing", "pipe", "drain", "fixture" = plumbing
+- "HVAC", "AC", "air conditioning", "ductwork" = hvac
+- "Drywall", "sheetrock", "gypsum" = drywall
+- "Framing", "lumber", "studs" = framing
+etc.
 
 CONFIDENCE SCORING GUIDELINES:
 - 0.95-1.0: Field is clearly visible, unambiguous, professional format
@@ -216,14 +262,14 @@ function normalizeExtractedData(data) {
     normalized.taxAmount = normalized.amounts.taxAmount;
   }
 
-  // Default confidence scores if not provided
+  // Default confidence scores if not provided - calculate based on data quality
   if (!normalized.extractionConfidence) {
     normalized.extractionConfidence = {
-      vendor: 0.5,
-      amount: 0.5,
-      invoiceNumber: 0.5,
-      date: 0.5,
-      job: 0.5
+      vendor: calculateVendorConfidence(normalized.vendor),
+      amount: calculateAmountConfidence(normalized.totalAmount, normalized.amounts),
+      invoiceNumber: calculateInvoiceNumberConfidence(normalized.invoiceNumber),
+      date: calculateDateConfidence(normalized.invoiceDate),
+      job: calculateJobConfidence(normalized.job)
     };
   }
 
@@ -231,16 +277,163 @@ function normalizeExtractedData(data) {
 }
 
 // ============================================================
+// CONFIDENCE CALCULATION HELPERS
+// ============================================================
+
+/**
+ * Calculate vendor confidence based on data quality
+ */
+function calculateVendorConfidence(vendor) {
+  if (!vendor?.companyName) return 0.25;
+
+  let confidence = 0.6; // Base confidence if we have a name
+
+  // Boost for longer, more specific names (less likely to be misread)
+  if (vendor.companyName.length > 10) confidence += 0.08;
+  if (vendor.companyName.length > 20) confidence += 0.05;
+
+  // Boost for having additional contact info (more reliable extraction)
+  if (vendor.phone) confidence += 0.07;
+  if (vendor.email) confidence += 0.08;
+  if (vendor.address) confidence += 0.05;
+
+  // Boost for specific trade type (not 'other')
+  if (vendor.tradeType && vendor.tradeType !== 'other') confidence += 0.06;
+
+  return Math.min(confidence, 0.98);
+}
+
+/**
+ * Calculate amount confidence based on data quality
+ */
+function calculateAmountConfidence(totalAmount, amounts) {
+  if (!totalAmount && totalAmount !== 0) return 0.3;
+
+  let confidence = 0.7; // Base confidence if we have an amount
+
+  // Boost if we have matching subtotal + tax = total (internally consistent)
+  if (amounts?.subtotal && amounts?.taxAmount) {
+    const calculated = (amounts.subtotal || 0) + (amounts.taxAmount || 0);
+    if (Math.abs(calculated - totalAmount) < 0.01) {
+      confidence += 0.15; // High boost for internally consistent amounts
+    }
+  }
+
+  // Boost for reasonable amount ranges
+  if (totalAmount > 100 && totalAmount < 500000) confidence += 0.05;
+
+  // Slight penalty for round numbers (might be estimates)
+  if (totalAmount % 100 === 0 && totalAmount > 1000) confidence -= 0.03;
+
+  return Math.min(Math.max(confidence, 0.4), 0.98);
+}
+
+/**
+ * Calculate invoice number confidence based on format
+ */
+function calculateInvoiceNumberConfidence(invoiceNumber) {
+  if (!invoiceNumber) return 0.2;
+
+  let confidence = 0.65; // Base confidence
+
+  const inv = String(invoiceNumber);
+
+  // Boost for standard invoice number patterns
+  if (/^INV[-_]?\d+$/i.test(inv)) confidence += 0.18;
+  else if (/^\d{4,10}$/.test(inv)) confidence += 0.12; // Pure numeric
+  else if (/^[A-Z]{2,4}[-_]?\d{3,}$/i.test(inv)) confidence += 0.15; // PREFIX-123
+  else if (inv.length >= 4 && inv.length <= 20) confidence += 0.08;
+
+  // Penalty for very short or very long (likely OCR error)
+  if (inv.length < 3) confidence -= 0.15;
+  if (inv.length > 25) confidence -= 0.1;
+
+  // Penalty for suspicious characters
+  if (/[^\w\-_#\/]/.test(inv)) confidence -= 0.08;
+
+  return Math.min(Math.max(confidence, 0.25), 0.97);
+}
+
+/**
+ * Calculate date confidence based on format and validity
+ */
+function calculateDateConfidence(dateStr) {
+  if (!dateStr) return 0.3;
+
+  let confidence = 0.7; // Base confidence
+
+  // Check if it's a valid date
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return 0.25;
+
+  const now = new Date();
+  const diffDays = Math.abs((now - date) / (1000 * 60 * 60 * 24));
+
+  // Boost for dates within reasonable range (last 90 days to 30 days future)
+  if (diffDays <= 90) confidence += 0.12;
+  else if (diffDays <= 180) confidence += 0.05;
+  else if (diffDays > 365) confidence -= 0.15; // Penalty for very old dates
+
+  // Boost for standard format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) confidence += 0.08;
+
+  return Math.min(Math.max(confidence, 0.3), 0.96);
+}
+
+/**
+ * Calculate job reference confidence based on data quality
+ */
+function calculateJobConfidence(job) {
+  if (!job) return 0.2;
+
+  let confidence = 0.5; // Base confidence
+
+  // Boost for different types of references
+  if (job.address) {
+    confidence += 0.15;
+    // Extra boost for street number (more specific)
+    if (/\d+/.test(job.address)) confidence += 0.08;
+  }
+
+  if (job.clientName) {
+    confidence += 0.12;
+    // Extra boost for longer names
+    if (job.clientName.length > 5) confidence += 0.05;
+  }
+
+  if (job.poNumber) confidence += 0.1;
+  if (job.reference) confidence += 0.08;
+
+  // Multiple references increase confidence
+  const refCount = [job.address, job.clientName, job.poNumber, job.reference].filter(Boolean).length;
+  if (refCount >= 2) confidence += 0.1;
+
+  return Math.min(confidence, 0.95);
+}
+
+// ============================================================
 // JOB MATCHING WITH CONFIDENCE
 // ============================================================
 
 /**
- * Find matching job by address with confidence scoring
+ * Find matching job by reference (client name, address, or PO number) with confidence scoring
+ * Uses fuzzy matching with Soundex for misspelling tolerance
+ * @param {Object} jobData - { reference, address, clientName, poNumber }
  * @returns {Object} { job: Object|null, confidence: number, possibleMatches: Array }
  */
-async function findMatchingJob(jobAddress) {
-  if (!jobAddress) {
-    return { job: null, confidence: 0, possibleMatches: [], reason: 'no_address' };
+async function findMatchingJob(jobData) {
+  // Handle both old string format and new object format
+  const searchTerms = typeof jobData === 'string'
+    ? { reference: jobData, address: jobData }
+    : jobData || {};
+
+  const { reference, address, clientName, poNumber } = searchTerms;
+
+  // Build list of search terms to try
+  const searchStrings = [reference, address, clientName, poNumber].filter(Boolean);
+
+  if (searchStrings.length === 0) {
+    return { job: null, confidence: 0, possibleMatches: [], reason: 'no_reference' };
   }
 
   const { data: jobs, error } = await supabase
@@ -251,71 +444,80 @@ async function findMatchingJob(jobAddress) {
     return { job: null, confidence: 0, possibleMatches: [], reason: 'no_jobs_found' };
   }
 
-  const normalizedSearch = normalizeForMatch(jobAddress);
-  const searchWords = jobAddress.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  const searchNum = jobAddress.match(/\d+/)?.[0];
-
   const matches = [];
 
   for (const job of jobs) {
-    const normalizedJobAddress = normalizeForMatch(job.address || '');
-    const normalizedJobName = normalizeForMatch(job.name || '');
-    const jobNum = (job.address || job.name).match(/\d+/)?.[0];
+    // Extract client name from job name (e.g., "Drummond-501 74th St" -> "Drummond")
+    const jobNameParts = (job.name || '').split(/[-–]/);
+    const jobClientFromName = jobNameParts[0]?.trim() || '';
 
-    let confidence = 0;
-    let matchType = '';
+    // Build list of job identifiers to match against
+    const jobIdentifiers = [
+      job.name,
+      job.address,
+      job.client_name,
+      jobClientFromName
+    ].filter(Boolean);
 
-    // Exact match on normalized address
-    if (normalizedJobAddress === normalizedSearch) {
-      confidence = 0.98;
-      matchType = 'exact_address';
-    }
-    // Exact match on job name
-    else if (normalizedJobName === normalizedSearch) {
-      confidence = 0.95;
-      matchType = 'exact_name';
-    }
-    // Contains match
-    else if (normalizedJobAddress.includes(normalizedSearch) || normalizedSearch.includes(normalizedJobAddress)) {
-      confidence = 0.85;
-      matchType = 'contains';
-    }
-    // Street number match
-    else if (searchNum && jobNum && searchNum === jobNum) {
-      // Check if street name also matches
-      const jobWords = (job.address || job.name).toLowerCase().split(/\s+/);
-      const streetMatches = searchWords.filter(w => jobWords.some(jw => jw.includes(w) || w.includes(jw)));
-      if (streetMatches.length > 0) {
-        confidence = 0.75 + (0.15 * streetMatches.length / searchWords.length);
-        matchType = 'street_match';
-      } else {
-        confidence = 0.55;
-        matchType = 'number_only';
+    let bestConfidence = 0;
+    let bestMatchType = '';
+
+    // Try each search term against each job identifier
+    for (const searchTerm of searchStrings) {
+      for (const jobId of jobIdentifiers) {
+        // Use fuzzy matching with phonetic awareness
+        const fuzzyScore = fuzzyMatchScore(searchTerm, jobId);
+
+        // Determine match type based on what matched
+        let matchType = 'fuzzy';
+        if (fuzzyScore >= 0.95) {
+          matchType = jobId === jobClientFromName ? 'client_name_exact' : 'exact_match';
+        } else if (fuzzyScore >= 0.85) {
+          matchType = jobId === jobClientFromName ? 'client_name_fuzzy' : 'high_similarity';
+        } else if (fuzzyScore >= 0.70) {
+          matchType = 'phonetic_match';
+        } else if (fuzzyScore >= 0.50) {
+          matchType = 'partial_match';
+        }
+
+        // Boost score if matching client name specifically (most common case)
+        let adjustedScore = fuzzyScore;
+        if (jobId === jobClientFromName && fuzzyScore > 0.6) {
+          adjustedScore = Math.min(fuzzyScore + 0.1, 0.99);
+          matchType = 'client_name_' + matchType;
+        }
+
+        if (adjustedScore > bestConfidence) {
+          bestConfidence = adjustedScore;
+          bestMatchType = matchType;
+        }
+      }
+
+      // Special case: Check Soundex match on client name for severe misspellings
+      // e.g., "Drumond" vs "Drummond" or "Krews" vs "Crews"
+      const searchSoundex = soundex(searchTerm);
+      const clientSoundex = soundex(jobClientFromName);
+
+      if (searchSoundex && clientSoundex && searchSoundex === clientSoundex) {
+        // Soundex match - check string similarity to determine confidence
+        const simRatio = similarityRatio(searchTerm, jobClientFromName);
+        const soundexConfidence = 0.70 + (simRatio * 0.25); // 70-95% based on similarity
+
+        if (soundexConfidence > bestConfidence) {
+          bestConfidence = soundexConfidence;
+          bestMatchType = 'soundex_match';
+        }
       }
     }
-    // Client name match
-    else if (job.client_name && normalizedSearch.includes(normalizeForMatch(job.client_name))) {
-      confidence = 0.50;
-      matchType = 'client_name';
-    }
-    // Partial word matches
-    else {
-      const jobWords = (job.address || job.name).toLowerCase().split(/\s+/);
-      const wordMatches = searchWords.filter(w => jobWords.some(jw => jw === w));
-      if (wordMatches.length >= 2) {
-        confidence = 0.40 + (0.1 * wordMatches.length);
-        matchType = 'partial_words';
-      }
-    }
 
-    if (confidence > 0.30) {
+    if (bestConfidence > 0.35) {
       matches.push({
         id: job.id,
         name: job.name,
         address: job.address,
         client_name: job.client_name,
-        confidence: Math.min(confidence, 1),
-        matchType
+        confidence: Math.min(bestConfidence, 0.99),
+        matchType: bestMatchType
       });
     }
   }
@@ -349,6 +551,55 @@ function normalizeForMatch(str) {
     .trim();
 }
 
+// ============================================================
+// COST CODE SUGGESTION
+// ============================================================
+
+/**
+ * Suggest cost codes based on trade type
+ * @param {string} tradeType - The vendor's trade type
+ * @param {number} amount - Total invoice amount
+ * @returns {Promise<Array>} Array of suggested cost code allocations
+ */
+async function suggestCostCodes(tradeType, amount) {
+  if (!tradeType || !TRADE_COST_CODE_MAP[tradeType]) {
+    return [];
+  }
+
+  const suggestedCodes = TRADE_COST_CODE_MAP[tradeType];
+
+  // Fetch the actual cost code records
+  const { data: costCodes, error } = await supabase
+    .from('v2_cost_codes')
+    .select('id, code, name, category')
+    .in('code', suggestedCodes);
+
+  if (error || !costCodes || costCodes.length === 0) {
+    return [];
+  }
+
+  // If only one cost code, assign full amount
+  if (costCodes.length === 1) {
+    return [{
+      cost_code_id: costCodes[0].id,
+      code: costCodes[0].code,
+      name: costCodes[0].name,
+      amount: amount,
+      suggested: true
+    }];
+  }
+
+  // For multiple codes (like labor + materials), default to first (usually labor) with full amount
+  // User can adjust the split later
+  return [{
+    cost_code_id: costCodes[0].id,
+    code: costCodes[0].code,
+    name: costCodes[0].name,
+    amount: amount,
+    suggested: true
+  }];
+}
+
 /**
  * Calculate Levenshtein distance for fuzzy matching
  */
@@ -372,42 +623,183 @@ function levenshteinDistance(str1, str2) {
   return dp[m][n];
 }
 
+/**
+ * Calculate similarity ratio (0-1) between two strings
+ * Higher = more similar
+ */
+function similarityRatio(str1, str2) {
+  if (!str1 || !str2) return 0;
+  const s1 = str1.toLowerCase();
+  const s2 = str2.toLowerCase();
+  if (s1 === s2) return 1;
+
+  const distance = levenshteinDistance(s1, s2);
+  const maxLen = Math.max(s1.length, s2.length);
+  return maxLen === 0 ? 1 : 1 - (distance / maxLen);
+}
+
+/**
+ * Generate Soundex code for phonetic matching
+ * Handles common misspellings like "Drumond" vs "Drummond"
+ */
+function soundex(str) {
+  if (!str) return '';
+
+  const s = str.toUpperCase().replace(/[^A-Z]/g, '');
+  if (s.length === 0) return '';
+
+  const codes = {
+    B: 1, F: 1, P: 1, V: 1,
+    C: 2, G: 2, J: 2, K: 2, Q: 2, S: 2, X: 2, Z: 2,
+    D: 3, T: 3,
+    L: 4,
+    M: 5, N: 5,
+    R: 6
+  };
+
+  let result = s[0];
+  let prevCode = codes[s[0]] || 0;
+
+  for (let i = 1; i < s.length && result.length < 4; i++) {
+    const code = codes[s[i]];
+    if (code && code !== prevCode) {
+      result += code;
+      prevCode = code;
+    } else if (!code) {
+      prevCode = 0;
+    }
+  }
+
+  return result.padEnd(4, '0');
+}
+
+/**
+ * Extract key tokens from a string for matching
+ * Handles variations like "501 74th St" vs "501 74th Street"
+ */
+function extractMatchTokens(str) {
+  if (!str) return { numbers: [], words: [], soundexCodes: [] };
+
+  const normalized = str.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  const tokens = normalized.split(/\s+/).filter(t => t.length > 0);
+
+  const numbers = tokens.filter(t => /^\d+$/.test(t));
+  const words = tokens.filter(t => /^[a-z]+$/.test(t) && t.length > 2);
+  const soundexCodes = words.map(w => soundex(w));
+
+  return { numbers, words, soundexCodes };
+}
+
+/**
+ * Smart fuzzy match between two strings with context awareness
+ * Returns confidence score 0-1
+ */
+function fuzzyMatchScore(search, target) {
+  if (!search || !target) return 0;
+
+  const searchNorm = normalizeForMatch(search);
+  const targetNorm = normalizeForMatch(target);
+
+  // Exact match
+  if (searchNorm === targetNorm) return 1.0;
+
+  // One contains the other
+  if (searchNorm.includes(targetNorm) || targetNorm.includes(searchNorm)) {
+    const ratio = Math.min(searchNorm.length, targetNorm.length) / Math.max(searchNorm.length, targetNorm.length);
+    return 0.85 + (ratio * 0.1);
+  }
+
+  // Token-based matching
+  const searchTokens = extractMatchTokens(search);
+  const targetTokens = extractMatchTokens(target);
+
+  let score = 0;
+  let factors = 0;
+
+  // Number matching (addresses) - very important
+  if (searchTokens.numbers.length > 0 && targetTokens.numbers.length > 0) {
+    const numberMatches = searchTokens.numbers.filter(n => targetTokens.numbers.includes(n));
+    if (numberMatches.length > 0) {
+      score += 0.4 * (numberMatches.length / Math.max(searchTokens.numbers.length, targetTokens.numbers.length));
+      factors += 0.4;
+    }
+  }
+
+  // Soundex matching (phonetic - catches misspellings)
+  if (searchTokens.soundexCodes.length > 0 && targetTokens.soundexCodes.length > 0) {
+    const soundexMatches = searchTokens.soundexCodes.filter(s => targetTokens.soundexCodes.includes(s));
+    if (soundexMatches.length > 0) {
+      score += 0.35 * (soundexMatches.length / Math.max(searchTokens.soundexCodes.length, targetTokens.soundexCodes.length));
+      factors += 0.35;
+    }
+  }
+
+  // Direct word matching
+  if (searchTokens.words.length > 0 && targetTokens.words.length > 0) {
+    const wordMatches = searchTokens.words.filter(w =>
+      targetTokens.words.some(tw => similarityRatio(w, tw) > 0.8)
+    );
+    if (wordMatches.length > 0) {
+      score += 0.25 * (wordMatches.length / Math.max(searchTokens.words.length, targetTokens.words.length));
+      factors += 0.25;
+    }
+  }
+
+  // Overall string similarity as fallback
+  const overallSimilarity = similarityRatio(searchNorm, targetNorm);
+  if (overallSimilarity > 0.6) {
+    score += overallSimilarity * 0.3;
+    factors += 0.3;
+  }
+
+  return factors > 0 ? Math.min(score / factors * (factors + 0.2), 0.95) : overallSimilarity * 0.5;
+}
+
 // ============================================================
 // VENDOR MATCHING / CREATION
 // ============================================================
 
 /**
  * Find or create vendor with confidence
+ * Uses fuzzy matching with Soundex for misspelling tolerance
  */
 async function findOrCreateVendor(vendorData) {
   if (!vendorData?.companyName) {
     return { vendor: null, confidence: 0, isNew: false };
   }
 
-  const normalizedName = normalizeForMatch(vendorData.companyName);
-
   // Try to find existing vendor
   const { data: vendors } = await supabase
     .from('v2_vendors')
     .select('id, name, email, phone');
 
-  if (vendors) {
+  if (vendors && vendors.length > 0) {
+    let bestMatch = null;
+    let bestConfidence = 0;
+
     for (const vendor of vendors) {
-      const normalizedVendorName = normalizeForMatch(vendor.name);
+      // Use fuzzy matching
+      const fuzzyScore = fuzzyMatchScore(vendorData.companyName, vendor.name);
 
-      // Exact match
-      if (normalizedVendorName === normalizedName) {
-        return { vendor, confidence: 0.98, isNew: false };
+      // Also check Soundex for phonetic matching
+      const searchSoundex = soundex(vendorData.companyName);
+      const vendorSoundex = soundex(vendor.name);
+      let soundexBonus = 0;
+      if (searchSoundex && vendorSoundex && searchSoundex === vendorSoundex) {
+        soundexBonus = 0.1;
       }
 
-      // Fuzzy match using Levenshtein
-      const distance = levenshteinDistance(normalizedVendorName, normalizedName);
-      const maxLen = Math.max(normalizedVendorName.length, normalizedName.length);
-      const similarity = 1 - (distance / maxLen);
+      const totalScore = Math.min(fuzzyScore + soundexBonus, 0.99);
 
-      if (similarity > 0.85) {
-        return { vendor, confidence: similarity, isNew: false };
+      if (totalScore > bestConfidence) {
+        bestConfidence = totalScore;
+        bestMatch = vendor;
       }
+    }
+
+    // If we found a good match (>75% confidence), use it
+    if (bestMatch && bestConfidence > 0.75) {
+      return { vendor: bestMatch, confidence: bestConfidence, isNew: false };
     }
   }
 
@@ -578,8 +970,10 @@ async function processInvoice(pdfBuffer, originalFilename) {
     suggestions: {
       possible_jobs: [],
       possible_duplicates: [],
-      po_matches: []
+      po_matches: [],
+      cost_codes: []      // Suggested cost code allocations
     },
+    suggested_allocations: [], // Cost code allocations to auto-create
     messages: []
   };
 
@@ -608,14 +1002,16 @@ async function processInvoice(pdfBuffer, originalFilename) {
       line_items: extracted.lineItems
     };
 
-    // 3. Set AI confidence scores
+    // 3. Set AI confidence scores - use actual extracted values
     const aiConf = extracted.extractionConfidence || {};
     results.ai_confidence = {
       vendor: aiConf.vendor || 0.5,
       job: aiConf.job || 0.5,
       amount: aiConf.amount || 0.5,
-      invoice_number: aiConf.invoiceNumber || 0.5,
+      invoiceNumber: aiConf.invoiceNumber || 0.5,
       date: aiConf.date || 0.5,
+      po: 0, // Will be set if PO is matched
+      costCode: 0, // Will be set if cost code is suggested
       overall: 0
     };
 
@@ -625,17 +1021,22 @@ async function processInvoice(pdfBuffer, originalFilename) {
 
     results.messages.push(`Extracted: ${extracted.vendor?.companyName || 'Unknown vendor'}, $${extracted.totalAmount || 0}`);
 
-    // 4. Match job with confidence
-    const jobAddress = extracted.job?.address;
-    if (jobAddress) {
-      const jobMatch = await findMatchingJob(jobAddress);
+    // 4. Match job with confidence - use full job object with reference, address, clientName, poNumber
+    const jobData = extracted.job;
+    const hasJobReference = jobData && (jobData.reference || jobData.address || jobData.clientName || jobData.poNumber);
+
+    if (hasJobReference) {
+      const jobMatch = await findMatchingJob(jobData);
       results.ai_confidence.job = jobMatch.confidence;
       results.suggestions.possible_jobs = jobMatch.possibleMatches;
+
+      const searchDesc = jobData.reference || jobData.clientName || jobData.address || 'unknown';
+      results.messages.push(`Job reference found: "${searchDesc}"`);
 
       if (jobMatch.confidence >= CONFIDENCE_THRESHOLDS.HIGH) {
         // High confidence - auto-assign
         results.matchedJob = jobMatch.job;
-        results.messages.push(`Matched to job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}% confidence)`);
+        results.messages.push(`Matched to job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}% confidence via ${jobMatch.matchType})`);
       } else if (jobMatch.confidence >= CONFIDENCE_THRESHOLDS.MEDIUM) {
         // Medium confidence - auto-assign with review flag
         results.matchedJob = jobMatch.job;
@@ -652,12 +1053,12 @@ async function processInvoice(pdfBuffer, originalFilename) {
         // No match
         results.needs_review = true;
         results.review_flags.push('no_job_match');
-        results.messages.push(`No matching job found for: ${jobAddress}`);
+        results.messages.push(`No matching job found for: ${searchDesc}`);
       }
     } else {
       results.needs_review = true;
       results.review_flags.push('missing_job_reference');
-      results.messages.push('No job address found on invoice');
+      results.messages.push('No job reference found on invoice');
     }
 
     // 5. Check for low confidence fields
@@ -680,6 +1081,28 @@ async function processInvoice(pdfBuffer, originalFilename) {
         results.messages.push(vendorResult.isNew
           ? `Created new vendor: ${vendorResult.vendor.name}`
           : `Matched vendor: ${vendorResult.vendor.name} (${Math.round(vendorResult.confidence * 100)}%)`);
+      }
+    }
+
+    // 6b. Suggest cost codes based on trade type
+    const tradeType = extracted.vendor?.tradeType;
+    const invoiceAmount = extracted.totalAmount || extracted.amounts?.totalAmount || 0;
+    if (tradeType && invoiceAmount > 0) {
+      const suggestedCodes = await suggestCostCodes(tradeType, invoiceAmount);
+      if (suggestedCodes.length > 0) {
+        results.suggested_allocations = suggestedCodes;
+        results.suggestions.cost_codes = suggestedCodes;
+        // Cost code confidence based on trade type specificity and vendor confidence
+        const highSpecificityTrades = ['electrical', 'plumbing', 'hvac'];
+        const mediumSpecificityTrades = ['roofing', 'framing', 'drywall', 'concrete', 'flooring', 'tile'];
+        let ccConf = 0.6; // Base
+        if (highSpecificityTrades.includes(tradeType)) ccConf += 0.25;
+        else if (mediumSpecificityTrades.includes(tradeType)) ccConf += 0.18;
+        else if (tradeType !== 'other' && tradeType !== 'general') ccConf += 0.12;
+        // Boost if vendor confidence is high (more likely correct trade)
+        if (results.ai_confidence.vendor > 0.8) ccConf += 0.07;
+        results.ai_confidence.costCode = Math.min(ccConf, 0.94);
+        results.messages.push(`Suggested cost code: ${suggestedCodes[0].code} ${suggestedCodes[0].name} (based on ${tradeType} trade)`);
       }
     }
 
@@ -709,6 +1132,22 @@ async function processInvoice(pdfBuffer, originalFilename) {
       if (poResult) {
         results.po = poResult.po;
         results.suggestions.po_matches = [poResult.po];
+        // Set PO confidence based on match quality
+        if (poResult.isNew) {
+          // New PO created - confidence based on how much info we have
+          let poConf = 0.65;
+          if (results.matchedJob) poConf += 0.08; // Have job
+          if (results.vendor) poConf += 0.08; // Have vendor
+          if (extracted.totalAmount) poConf += 0.05; // Have amount
+          results.ai_confidence.po = Math.min(poConf, 0.82);
+        } else {
+          // Matched existing PO - high confidence
+          let poConf = 0.85;
+          // Boost if vendor and job both match
+          if (poResult.po.vendor_id === results.vendor?.id) poConf += 0.06;
+          if (poResult.po.job_id === results.matchedJob?.id) poConf += 0.06;
+          results.ai_confidence.po = Math.min(poConf, 0.97);
+        }
         results.messages.push(poResult.isNew
           ? `Created draft PO: ${poResult.poNumber || poResult.po.po_number}`
           : `Matched PO: ${poResult.po.po_number}`);
