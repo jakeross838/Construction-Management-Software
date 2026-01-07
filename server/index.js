@@ -594,6 +594,25 @@ app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
       });
     }
 
+    // Check for duplicates and BLOCK if high-confidence duplicate found
+    const duplicates = result.suggestions?.possible_duplicates || [];
+    const highConfidenceDupe = duplicates.find(d => d.confidence >= 0.95);
+
+    if (highConfidenceDupe) {
+      return res.status(409).json({
+        error: 'Duplicate invoice detected',
+        message: `This appears to be a duplicate of invoice #${highConfidenceDupe.invoice_number} from ${highConfidenceDupe.vendor?.name || 'this vendor'}`,
+        duplicate: {
+          id: highConfidenceDupe.id,
+          invoice_number: highConfidenceDupe.invoice_number,
+          amount: highConfidenceDupe.amount,
+          status: highConfidenceDupe.status,
+          matchReason: highConfidenceDupe.matchReason,
+          confidence: highConfidenceDupe.confidence
+        }
+      });
+    }
+
     // Upload PDF with standardized name
     let pdf_url = null;
     const jobId = result.matchedJob?.id;

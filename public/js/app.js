@@ -580,6 +580,17 @@ async function submitUploadInvoice() {
       const result = await res.json();
 
       if (!res.ok) {
+        // Handle duplicate invoice error specifically
+        if (res.status === 409 && result.duplicate) {
+          const dupe = result.duplicate;
+          window.toasts?.error('Duplicate Invoice Detected', {
+            details: `This appears to be a duplicate of Invoice #${dupe.invoice_number} ($${parseFloat(dupe.amount).toLocaleString()}) - Status: ${dupe.status}`,
+            duration: 8000
+          });
+          uploadBtn.textContent = originalText;
+          uploadBtn.disabled = false;
+          return;
+        }
         throw new Error(result.error || 'Processing failed');
       }
 
