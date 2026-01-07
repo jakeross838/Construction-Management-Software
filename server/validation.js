@@ -206,10 +206,11 @@ async function validatePreTransition(invoice, newStatus, context = {}) {
 
         if (allocations.length === 0) {
           errors.push({ requirement: req, message: 'Invoice must have at least one cost code allocation' });
-        } else if (Math.abs(allocSum - invoiceAmount) > 0.01) {
+        } else if (allocSum > invoiceAmount + 0.01) {
+          // Only block over-allocation; under-allocation is allowed for partial work
           errors.push({
             requirement: req,
-            message: `Allocation total ($${allocSum.toFixed(2)}) must equal invoice amount ($${invoiceAmount.toFixed(2)})`
+            message: `Allocation total ($${allocSum.toFixed(2)}) cannot exceed invoice amount ($${invoiceAmount.toFixed(2)})`
           });
         }
         break;

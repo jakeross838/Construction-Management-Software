@@ -215,8 +215,9 @@ const Validation = {
     if (requirements.custom === 'allocations_balanced') {
       const totalAllocated = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
       const invoiceAmount = parseFloat(invoice.amount || 0);
-      if (Math.abs(totalAllocated - invoiceAmount) > 0.01) {
-        errors.push(`Allocations ($${totalAllocated.toFixed(2)}) must equal invoice amount ($${invoiceAmount.toFixed(2)})`);
+      // Only block over-allocation; under-allocation is allowed for partial work
+      if (totalAllocated > invoiceAmount + 0.01) {
+        errors.push(`Allocations ($${totalAllocated.toFixed(2)}) cannot exceed invoice amount ($${invoiceAmount.toFixed(2)})`);
       }
     }
 
