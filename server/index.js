@@ -7,6 +7,8 @@ const { uploadPDF, uploadStampedPDF, downloadPDF } = require('./storage');
 const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid } = require('./pdf-stamper');
 const { processInvoice } = require('./ai-processor');
 const standards = require('./standards');
+const ExcelJS = require('exceljs');
+const { PDFDocument } = require('pdf-lib');
 
 // New modules for enhanced invoice system
 const {
@@ -1872,6 +1874,213 @@ app.get('/api/jobs/:id/draws', async (req, res) => {
   }
 });
 
+// Get single draw with full data for G702/G703 view
+app.get('/api/draws/:id', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+
+    // Get draw with job info
+    const { data: draw, error: drawError } = await supabase
+      .from('v2_draws')
+      .select(`
+        *,
+        job:v2_jobs(id, name, address, client_name, contract_amount)
+      `)
+      .eq('id', drawId)
+      .single();
+
+    if (drawError) throw drawError;
+    if (!draw) return res.status(404).json({ error: 'Draw not found' });
+
+    // Get invoices in this draw with full details
+    const { data: drawInvoices, error: invError } = await supabase
+      .from('v2_draw_invoices')
+      .select(`
+        invoice:v2_invoices(
+          id, invoice_number, invoice_date, amount, status, pdf_url, pdf_stamped_url,
+          vendor:v2_vendors(id, name),
+          allocations:v2_invoice_allocations(
+            id, amount, notes,
+            cost_code:v2_cost_codes(id, code, name)
+          )
+        )
+      `)
+      .eq('draw_id', drawId);
+
+    if (invError) throw invError;
+
+    // Get budget lines for this job (for G703 scheduled values)
+    const { data: budgetLines, error: budgetError } = await supabase
+      .from('v2_budget_lines')
+      .select(`
+        id, budgeted_amount, committed_amount, billed_amount, paid_amount,
+        cost_code:v2_cost_codes(id, code, name)
+      `)
+      .eq('job_id', draw.job_id);
+
+    if (budgetError) throw budgetError;
+
+    // Get previous draws for this job to calculate previous totals
+    const { data: previousDraws, error: prevError } = await supabase
+      .from('v2_draws')
+      .select('id, draw_number')
+      .eq('job_id', draw.job_id)
+      .lt('draw_number', draw.draw_number)
+      .order('draw_number', { ascending: true });
+
+    if (prevError) throw prevError;
+
+    // Get all previous draw invoices to calculate previous period totals by cost code
+    let previousByCode = {};
+    if (previousDraws && previousDraws.length > 0) {
+      const prevDrawIds = previousDraws.map(d => d.id);
+      const { data: prevInvoices } = await supabase
+        .from('v2_draw_invoices')
+        .select(`
+          invoice:v2_invoices(
+            allocations:v2_invoice_allocations(
+              amount,
+              cost_code_id
+            )
+          )
+        `)
+        .in('draw_id', prevDrawIds);
+
+      if (prevInvoices) {
+        prevInvoices.forEach(di => {
+          if (di.invoice?.allocations) {
+            di.invoice.allocations.forEach(alloc => {
+              if (!previousByCode[alloc.cost_code_id]) {
+                previousByCode[alloc.cost_code_id] = 0;
+              }
+              previousByCode[alloc.cost_code_id] += parseFloat(alloc.amount) || 0;
+            });
+          }
+        });
+      }
+    }
+
+    // Calculate this period totals by cost code
+    let thisPeriodByCode = {};
+    const invoices = drawInvoices?.map(di => di.invoice).filter(Boolean) || [];
+    invoices.forEach(inv => {
+      if (inv.allocations) {
+        inv.allocations.forEach(alloc => {
+          const codeId = alloc.cost_code?.id;
+          if (codeId) {
+            if (!thisPeriodByCode[codeId]) {
+              thisPeriodByCode[codeId] = 0;
+            }
+            thisPeriodByCode[codeId] += parseFloat(alloc.amount) || 0;
+          }
+        });
+      }
+    });
+
+    // Build G703 schedule of values - combine budget lines with activity
+    // First, collect all unique cost codes from budget lines, previous draws, and current draw
+    const allCostCodeIds = new Set();
+    (budgetLines || []).forEach(bl => {
+      if (bl.cost_code?.id) allCostCodeIds.add(bl.cost_code.id);
+    });
+    Object.keys(previousByCode).forEach(id => allCostCodeIds.add(id));
+    Object.keys(thisPeriodByCode).forEach(id => allCostCodeIds.add(id));
+
+    // Build a map of budget lines by cost code id
+    const budgetByCode = {};
+    (budgetLines || []).forEach(bl => {
+      if (bl.cost_code?.id) {
+        budgetByCode[bl.cost_code.id] = bl;
+      }
+    });
+
+    // Get cost code info for any codes not in budget lines
+    const missingCodeIds = [...allCostCodeIds].filter(id => !budgetByCode[id]);
+    let additionalCodes = {};
+    if (missingCodeIds.length > 0) {
+      const { data: codes } = await supabase
+        .from('v2_cost_codes')
+        .select('id, code, name')
+        .in('id', missingCodeIds);
+      (codes || []).forEach(c => {
+        additionalCodes[c.id] = c;
+      });
+    }
+
+    // Build schedule of values
+    let itemNum = 0;
+    const scheduleOfValues = [...allCostCodeIds].map(codeId => {
+      const bl = budgetByCode[codeId];
+      const costCode = bl?.cost_code || additionalCodes[codeId];
+      if (!costCode) return null;
+
+      const budget = parseFloat(bl?.budgeted_amount) || 0;
+      const previous = previousByCode[codeId] || 0;
+      const thisPeriod = thisPeriodByCode[codeId] || 0;
+      const materialsStored = 0;
+      const totalBilled = previous + thisPeriod + materialsStored;
+      const percentComplete = budget > 0 ? (totalBilled / budget) * 100 : (totalBilled > 0 ? 100 : 0);
+      const balance = budget - totalBilled;
+      const retainage = totalBilled * 0.10;
+
+      // Only include if there's budget or any activity
+      if (budget === 0 && previous === 0 && thisPeriod === 0) return null;
+
+      itemNum++;
+      return {
+        item: itemNum,
+        costCodeId: codeId,
+        costCode: costCode.code,
+        description: costCode.name,
+        budget: budget,
+        scheduledValue: budget, // Keep for backwards compatibility
+        previousBilled: previous,
+        previousCompleted: previous, // Keep for backwards compatibility
+        currentBilled: thisPeriod,
+        thisPeriod: thisPeriod, // Keep for backwards compatibility
+        materialsStored: materialsStored,
+        totalBilled: totalBilled,
+        totalCompleted: totalBilled, // Keep for backwards compatibility
+        percentComplete: percentComplete,
+        balance: balance,
+        retainage: retainage
+      };
+    }).filter(Boolean).sort((a, b) => (a.costCode || '').localeCompare(b.costCode || ''));
+
+    // Calculate G702 totals
+    const totalScheduled = scheduleOfValues.reduce((sum, item) => sum + item.scheduledValue, 0);
+    const totalPrevious = scheduleOfValues.reduce((sum, item) => sum + item.previousCompleted, 0);
+    const totalThisPeriod = scheduleOfValues.reduce((sum, item) => sum + item.thisPeriod, 0);
+    const totalMaterials = scheduleOfValues.reduce((sum, item) => sum + item.materialsStored, 0);
+    const grandTotalCompleted = totalPrevious + totalThisPeriod + totalMaterials;
+    const totalRetainage = grandTotalCompleted * 0.10;
+    const currentPaymentDue = totalThisPeriod - (totalThisPeriod * 0.10);
+
+    res.json({
+      ...draw,
+      invoices,
+      invoiceCount: invoices.length,
+      scheduleOfValues,
+      g702: {
+        applicationNumber: draw.draw_number,
+        periodTo: draw.period_end,
+        contractSum: draw.job?.contract_amount || 0,
+        totalCompletedPrevious: totalPrevious,
+        totalCompletedThisPeriod: totalThisPeriod,
+        materialsStored: totalMaterials,
+        grandTotal: grandTotalCompleted,
+        retainage: totalRetainage,
+        totalEarnedLessRetainage: grandTotalCompleted - totalRetainage,
+        lessPreviousCertificates: totalPrevious - (totalPrevious * 0.10),
+        currentPaymentDue: currentPaymentDue
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching draw:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/jobs/:id/draws', async (req, res) => {
   try {
     const jobId = req.params.id;
@@ -2317,6 +2526,324 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
 
     res.json(draw);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// DRAW EXPORT ENDPOINTS
+// ============================================================
+
+// Export Draw as Excel (G702/G703/PCCO)
+app.get('/api/draws/:id/export/excel', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+
+    // Get draw with full data
+    const { data: draw, error: drawError } = await supabase
+      .from('v2_draws')
+      .select(`*, job:v2_jobs(id, name, address, client_name, contract_amount)`)
+      .eq('id', drawId)
+      .single();
+
+    if (drawError) throw drawError;
+    if (!draw) return res.status(404).json({ error: 'Draw not found' });
+
+    // Get invoices in this draw
+    const { data: drawInvoices } = await supabase
+      .from('v2_draw_invoices')
+      .select(`
+        invoice:v2_invoices(
+          id, invoice_number, invoice_date, amount,
+          vendor:v2_vendors(name),
+          allocations:v2_invoice_allocations(amount, cost_code:v2_cost_codes(id, code, name))
+        )
+      `)
+      .eq('draw_id', drawId);
+
+    const invoices = drawInvoices?.map(di => di.invoice).filter(Boolean) || [];
+
+    // Get budget lines for scheduled values
+    const { data: budgetLines } = await supabase
+      .from('v2_budget_lines')
+      .select(`*, cost_code:v2_cost_codes(id, code, name)`)
+      .eq('job_id', draw.job_id);
+
+    // Get previous draws' allocations
+    const { data: previousDraws } = await supabase
+      .from('v2_draws')
+      .select('id')
+      .eq('job_id', draw.job_id)
+      .lt('draw_number', draw.draw_number);
+
+    let previousByCode = {};
+    if (previousDraws && previousDraws.length > 0) {
+      const prevDrawIds = previousDraws.map(d => d.id);
+      const { data: prevInvoices } = await supabase
+        .from('v2_draw_invoices')
+        .select(`invoice:v2_invoices(allocations:v2_invoice_allocations(amount, cost_code_id))`)
+        .in('draw_id', prevDrawIds);
+
+      prevInvoices?.forEach(di => {
+        di.invoice?.allocations?.forEach(alloc => {
+          previousByCode[alloc.cost_code_id] = (previousByCode[alloc.cost_code_id] || 0) + parseFloat(alloc.amount || 0);
+        });
+      });
+    }
+
+    // Calculate this period by cost code
+    let thisPeriodByCode = {};
+    invoices.forEach(inv => {
+      inv.allocations?.forEach(alloc => {
+        const codeId = alloc.cost_code?.id;
+        if (codeId) {
+          thisPeriodByCode[codeId] = (thisPeriodByCode[codeId] || 0) + parseFloat(alloc.amount || 0);
+        }
+      });
+    });
+
+    // Create workbook
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Ross Built CMS';
+    workbook.created = new Date();
+
+    // ========== G702 Sheet ==========
+    const g702 = workbook.addWorksheet('G702');
+    g702.columns = [
+      { width: 5 }, { width: 50 }, { width: 20 }
+    ];
+
+    // Header
+    g702.addRow(['', 'AIA DOCUMENT G702 - APPLICATION AND CERTIFICATE FOR PAYMENT', '']);
+    g702.addRow(['']);
+    g702.addRow(['', `TO OWNER: ${draw.job?.client_name || '-'}`, `APPLICATION NO: ${draw.draw_number}`]);
+    g702.addRow(['', `PROJECT: ${draw.job?.name || '-'}`, `PERIOD TO: ${draw.period_end || '-'}`]);
+    g702.addRow(['', 'FROM CONTRACTOR: Ross Built Custom Homes', '']);
+    g702.addRow(['']);
+
+    const contractSum = parseFloat(draw.job?.contract_amount) || 0;
+    const changeOrders = 0;
+    const contractSumToDate = contractSum + changeOrders;
+
+    // Build G703 data for calculations
+    const g703Data = (budgetLines || []).map((bl, idx) => {
+      const codeId = bl.cost_code?.id;
+      const scheduled = parseFloat(bl.budgeted_amount) || 0;
+      const previous = previousByCode[codeId] || 0;
+      const thisPeriod = thisPeriodByCode[codeId] || 0;
+      const total = previous + thisPeriod;
+      return { scheduled, previous, thisPeriod, total, balance: scheduled - total, retainage: total * 0.10 };
+    });
+
+    const totals = g703Data.reduce((acc, item) => ({
+      scheduled: acc.scheduled + item.scheduled,
+      previous: acc.previous + item.previous,
+      thisPeriod: acc.thisPeriod + item.thisPeriod,
+      total: acc.total + item.total,
+      retainage: acc.retainage + item.retainage
+    }), { scheduled: 0, previous: 0, thisPeriod: 0, total: 0, retainage: 0 });
+
+    const earnedLessRetainage = totals.total - totals.retainage;
+    const previousCertificates = totals.previous - (totals.previous * 0.10);
+    const currentPaymentDue = totals.thisPeriod - (totals.thisPeriod * 0.10);
+
+    g702.addRow(['1.', 'ORIGINAL CONTRACT SUM', formatCurrency(contractSum)]);
+    g702.addRow(['2.', 'Net change by Change Orders', formatCurrency(changeOrders)]);
+    g702.addRow(['3.', 'CONTRACT SUM TO DATE (Line 1 + 2)', formatCurrency(contractSumToDate)]);
+    g702.addRow(['4.', 'TOTAL COMPLETED & STORED TO DATE', formatCurrency(totals.total)]);
+    g702.addRow(['5.', 'RETAINAGE (10%)', formatCurrency(totals.retainage)]);
+    g702.addRow(['6.', 'TOTAL EARNED LESS RETAINAGE', formatCurrency(earnedLessRetainage)]);
+    g702.addRow(['7.', 'LESS PREVIOUS CERTIFICATES FOR PAYMENT', formatCurrency(previousCertificates)]);
+    g702.addRow(['8.', 'CURRENT PAYMENT DUE', formatCurrency(currentPaymentDue)]);
+    g702.addRow(['9.', 'BALANCE TO FINISH, INCLUDING RETAINAGE', formatCurrency(contractSumToDate - earnedLessRetainage)]);
+
+    // Style G702
+    g702.getRow(1).font = { bold: true, size: 14 };
+    g702.getRow(15).font = { bold: true };
+    g702.getColumn(3).numFmt = '$#,##0.00';
+
+    // ========== G703 Sheet ==========
+    const g703 = workbook.addWorksheet('G703');
+    g703.columns = [
+      { header: 'Item', width: 6 },
+      { header: 'Description of Work', width: 35 },
+      { header: 'Scheduled Value', width: 15 },
+      { header: 'Previous', width: 15 },
+      { header: 'This Period', width: 15 },
+      { header: 'Materials', width: 12 },
+      { header: 'Total', width: 15 },
+      { header: '%', width: 8 },
+      { header: 'Balance', width: 15 },
+      { header: 'Retainage', width: 12 }
+    ];
+
+    // Add header row
+    g703.addRow(['A', 'B', 'C', 'D (Previous)', 'D (This Period)', 'E', 'F', 'G', 'H', 'I']);
+    g703.getRow(1).font = { bold: true };
+    g703.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+    // Add data rows
+    (budgetLines || []).forEach((bl, idx) => {
+      const codeId = bl.cost_code?.id;
+      const scheduled = parseFloat(bl.budgeted_amount) || 0;
+      const previous = previousByCode[codeId] || 0;
+      const thisPeriod = thisPeriodByCode[codeId] || 0;
+      const materials = 0;
+      const total = previous + thisPeriod + materials;
+      const percent = scheduled > 0 ? (total / scheduled) : 0;
+      const balance = scheduled - total;
+      const retainage = total * 0.10;
+
+      if (scheduled > 0 || thisPeriod > 0) {
+        g703.addRow([
+          idx + 1,
+          `${bl.cost_code?.code} - ${bl.cost_code?.name}`,
+          scheduled,
+          previous,
+          thisPeriod,
+          materials,
+          total,
+          percent,
+          balance,
+          retainage
+        ]);
+      }
+    });
+
+    // Add totals row
+    const totalsRow = g703.addRow([
+      '', 'GRAND TOTAL',
+      totals.scheduled, totals.previous, totals.thisPeriod, 0, totals.total,
+      totals.scheduled > 0 ? totals.total / totals.scheduled : 0,
+      totals.scheduled - totals.total,
+      totals.retainage
+    ]);
+    totalsRow.font = { bold: true };
+    totalsRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+    // Format currency columns
+    [3, 4, 5, 6, 7, 9, 10].forEach(col => {
+      g703.getColumn(col).numFmt = '$#,##0.00';
+    });
+    g703.getColumn(8).numFmt = '0.0%';
+
+    // ========== PCCO Sheet (Change Orders) ==========
+    const pcco = workbook.addWorksheet('PCCO');
+    pcco.addRow(['POTENTIAL CHANGE ORDER LOG']);
+    pcco.addRow(['']);
+    pcco.addRow(['No change orders at this time.']);
+    pcco.getRow(1).font = { bold: true, size: 14 };
+
+    // Send file
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=Draw_${draw.draw_number}_${draw.job?.name?.replace(/\s+/g, '_') || 'Job'}_G702_G703.xlsx`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Error exporting Excel:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper function for currency formatting
+function formatCurrency(amount) {
+  return parseFloat(amount) || 0;
+}
+
+// Export Draw as PDF (G702/G703 + Invoice PDFs)
+app.get('/api/draws/:id/export/pdf', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+
+    // Get draw info
+    const { data: draw, error: drawError } = await supabase
+      .from('v2_draws')
+      .select(`*, job:v2_jobs(id, name, client_name)`)
+      .eq('id', drawId)
+      .single();
+
+    if (drawError) throw drawError;
+    if (!draw) return res.status(404).json({ error: 'Draw not found' });
+
+    // Get invoices with stamped PDFs
+    const { data: drawInvoices } = await supabase
+      .from('v2_draw_invoices')
+      .select(`invoice:v2_invoices(id, invoice_number, pdf_stamped_url, vendor:v2_vendors(name))`)
+      .eq('draw_id', drawId);
+
+    const invoices = drawInvoices?.map(di => di.invoice).filter(Boolean) || [];
+
+    // Create merged PDF
+    const mergedPdf = await PDFDocument.create();
+
+    // Add a cover page
+    const coverPage = mergedPdf.addPage([612, 792]); // Letter size
+    const { width, height } = coverPage.getSize();
+
+    coverPage.drawText('PAY APPLICATION', {
+      x: 50, y: height - 80, size: 24
+    });
+    coverPage.drawText(`Draw #${draw.draw_number}`, {
+      x: 50, y: height - 120, size: 18
+    });
+    coverPage.drawText(`Job: ${draw.job?.name || '-'}`, {
+      x: 50, y: height - 160, size: 14
+    });
+    coverPage.drawText(`Owner: ${draw.job?.client_name || '-'}`, {
+      x: 50, y: height - 185, size: 14
+    });
+    coverPage.drawText(`Period End: ${draw.period_end || '-'}`, {
+      x: 50, y: height - 210, size: 14
+    });
+    coverPage.drawText(`Total Amount: $${parseFloat(draw.total_amount || 0).toLocaleString()}`, {
+      x: 50, y: height - 235, size: 14
+    });
+
+    coverPage.drawText('ATTACHED INVOICES:', {
+      x: 50, y: height - 290, size: 14
+    });
+
+    let yPos = height - 320;
+    invoices.forEach((inv, idx) => {
+      coverPage.drawText(`${idx + 1}. ${inv.vendor?.name || 'Unknown'} - ${inv.invoice_number || 'N/A'}`, {
+        x: 70, y: yPos, size: 12
+      });
+      yPos -= 20;
+    });
+
+    coverPage.drawText('Generated by Ross Built CMS', {
+      x: 50, y: 50, size: 10
+    });
+    coverPage.drawText(new Date().toLocaleDateString(), {
+      x: 50, y: 35, size: 10
+    });
+
+    // Fetch and append each invoice PDF
+    for (const inv of invoices) {
+      if (inv.pdf_stamped_url) {
+        try {
+          const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
+          if (urlParts[1]) {
+            const storagePath = decodeURIComponent(urlParts[1].split('?')[0]);
+            const pdfBuffer = await downloadPDF(storagePath);
+            const invoicePdf = await PDFDocument.load(pdfBuffer);
+            const pages = await mergedPdf.copyPages(invoicePdf, invoicePdf.getPageIndices());
+            pages.forEach(page => mergedPdf.addPage(page));
+          }
+        } catch (pdfErr) {
+          console.error(`Failed to fetch PDF for invoice ${inv.id}:`, pdfErr.message);
+        }
+      }
+    }
+
+    const pdfBytes = await mergedPdf.save();
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=Draw_${draw.draw_number}_${draw.job?.name?.replace(/\s+/g, '_') || 'Job'}_PayApp.pdf`);
+    res.send(Buffer.from(pdfBytes));
+  } catch (err) {
+    console.error('Error exporting PDF:', err);
     res.status(500).json({ error: err.message });
   }
 });

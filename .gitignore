@@ -21,3 +21,6 @@ Thumbs.db
 *.png
 *.jpg
 test-*.png
+
+# Auto Claude data directory
+.auto-claude/

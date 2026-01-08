@@ -1148,14 +1148,16 @@ const Modals = {
    * Show dialog for partial approval (requires note)
    */
   showPartialApprovalDialog(allocatedAmount, invoiceAmount) {
+    console.log('[PARTIAL] showPartialApprovalDialog called', { allocatedAmount, invoiceAmount });
     const difference = invoiceAmount - allocatedAmount;
     const pct = Math.round((allocatedAmount / invoiceAmount) * 100);
+    console.log('[PARTIAL] difference:', difference, 'pct:', pct);
 
     const modal = `
-      <div class="modal modal-small confirm-modal partial-approval-modal">
+      <div class="confirm-modal partial-approval-modal">
         <div class="modal-header">
           <h2>Partial Approval</h2>
-          <button class="modal-close" onclick="Modals.closeConfirmDialog()">&times;</button>
+          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
         </div>
 
         <div class="modal-body">
@@ -1174,8 +1176,8 @@ const Modals = {
         </div>
 
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="Modals.closeConfirmDialog()">Cancel</button>
-          <button class="btn btn-success" onclick="Modals.submitPartialApproval()">Approve Partial</button>
+          <button class="btn btn-secondary" onclick="window.Modals.closeConfirmDialog()">Cancel</button>
+          <button class="btn btn-success" onclick="window.Modals.submitPartialApproval()">Approve Partial</button>
         </div>
       </div>
     `;
@@ -1185,21 +1187,29 @@ const Modals = {
     overlay.id = 'confirm-overlay';
     overlay.innerHTML = modal;
     document.body.appendChild(overlay);
+    console.log('[PARTIAL] Overlay added to DOM');
+    console.log('[PARTIAL] Overlay element:', document.getElementById('confirm-overlay'));
+    console.log('[PARTIAL] Textarea element:', document.getElementById('partialApprovalNote'));
   },
 
   /**
    * Submit partial approval with note
    */
   async submitPartialApproval() {
+    console.log('[PARTIAL] submitPartialApproval called');
     const noteEl = document.getElementById('partialApprovalNote');
+    console.log('[PARTIAL] noteEl:', noteEl);
     const note = noteEl?.value?.trim();
+    console.log('[PARTIAL] note value:', note);
 
     if (!note) {
+      console.log('[PARTIAL] No note provided, showing error');
       window.toasts?.error('A note is required for partial approvals');
       noteEl?.focus();
       return;
     }
 
+    console.log('[PARTIAL] Note provided, closing dialog and proceeding');
     this.closeConfirmDialog();
 
     // Add partial approval note to the invoice notes
@@ -1235,15 +1245,148 @@ const Modals = {
    * Add invoice to draw
    */
   async addToDraw() {
-    this.showConfirmDialog({
-      title: 'Add to Draw',
-      message: `Add invoice #${this.currentInvoice?.invoice_number || 'N/A'} to the current draw?`,
-      confirmText: 'Add to Draw',
-      type: 'info',
-      onConfirm: async () => {
-        await this.saveWithStatus('in_draw', 'Invoice added to draw');
-      }
+    if (!this.currentInvoice?.job_id) {
+      window.toasts?.error('Invoice must have a job assigned');
+      return;
+    }
+
+    // Fetch available draws for this job
+    try {
+      const res = await fetch(`/api/jobs/${this.currentInvoice.job_id}/draws`);
+      const draws = await res.json();
+      const draftDraws = draws.filter(d => d.status === 'draft');
+
+      this.showDrawPickerModal(draftDraws);
+    } catch (err) {
+      console.error('Error fetching draws:', err);
+      window.toasts?.error('Failed to load draws');
+    }
+  },
+
+  showDrawPickerModal(draftDraws) {
+    const drawOptions = draftDraws.map(d =>
+      `<option value="${d.id}">Draw #${d.draw_number} - ${d.period_end || 'No date'} (${d.invoices?.length || 0} invoices)</option>`
+    ).join('');
+
+    const modal = `
+      <div class="draw-picker-modal" id="draw-picker-overlay" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10001;
+      ">
+        <div style="
+          background: var(--bg-card, #161b22);
+          padding: 1.5rem;
+          border-radius: 8px;
+          min-width: 400px;
+          border: 1px solid var(--border, #30363d);
+        ">
+          <h3 style="margin-bottom: 1rem; color: var(--text-primary, #f0f6fc);">Add to Draw</h3>
+          <p style="color: var(--text-secondary, #8b949e); margin-bottom: 1rem;">
+            Select a draw or create a new one for invoice #${this.currentInvoice?.invoice_number || 'N/A'}
+          </p>
+
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Select Draw</label>
+            <select id="drawPickerSelect" style="
+              width: 100%;
+              padding: 0.75rem;
+              background: var(--bg-card-elevated, #1c2128);
+              border: 1px solid var(--border, #30363d);
+              border-radius: 6px;
+              color: var(--text-primary, #f0f6fc);
+            ">
+              <option value="">-- Select existing draw --</option>
+              ${drawOptions}
+              <option value="new">+ Create New Draw</option>
+            </select>
+          </div>
+
+          <div id="newDrawFields" style="display: none; margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Period End Date</label>
+            <input type="date" id="newDrawPeriodEnd" style="
+              width: 100%;
+              padding: 0.75rem;
+              background: var(--bg-card-elevated, #1c2128);
+              border: 1px solid var(--border, #30363d);
+              border-radius: 6px;
+              color: var(--text-primary, #f0f6fc);
+            " value="${new Date().toISOString().split('T')[0]}">
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+            <button onclick="Modals.closeDrawPicker()" class="btn btn-secondary">Cancel</button>
+            <button onclick="Modals.confirmAddToDraw()" class="btn btn-primary">Add to Draw</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modal);
+
+    // Toggle new draw fields
+    document.getElementById('drawPickerSelect').addEventListener('change', (e) => {
+      document.getElementById('newDrawFields').style.display = e.target.value === 'new' ? 'block' : 'none';
     });
+  },
+
+  closeDrawPicker() {
+    const overlay = document.getElementById('draw-picker-overlay');
+    if (overlay) overlay.remove();
+  },
+
+  async confirmAddToDraw() {
+    const select = document.getElementById('drawPickerSelect');
+    const selectedValue = select?.value;
+
+    if (!selectedValue) {
+      window.toasts?.error('Please select a draw');
+      return;
+    }
+
+    try {
+      let drawId = selectedValue;
+
+      // Create new draw if selected
+      if (selectedValue === 'new') {
+        const periodEnd = document.getElementById('newDrawPeriodEnd')?.value;
+        const res = await fetch(`/api/jobs/${this.currentInvoice.job_id}/draws`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ period_end: periodEnd })
+        });
+        if (!res.ok) throw new Error('Failed to create draw');
+        const newDraw = await res.json();
+        drawId = newDraw.id;
+      }
+
+      // Add invoice to draw
+      const addRes = await fetch(`/api/draws/${drawId}/add-invoices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoice_ids: [this.currentInvoice.id] })
+      });
+
+      if (!addRes.ok) {
+        const err = await addRes.json();
+        throw new Error(err.error || 'Failed to add to draw');
+      }
+
+      this.closeDrawPicker();
+      window.toasts?.success('Invoice added to draw');
+      this.closeActiveModal();
+      if (typeof loadInvoices === 'function') loadInvoices();
+    } catch (err) {
+      console.error('Error adding to draw:', err);
+      window.toasts?.error(err.message);
+    }
   },
 
   /**
@@ -1755,7 +1898,7 @@ const Modals = {
     } = options;
 
     const modal = `
-      <div class="modal modal-small confirm-modal">
+      <div class="confirm-modal">
         <div class="modal-header">
           <h2>${title}</h2>
           <button class="modal-close" onclick="Modals.closeConfirmDialog()">&times;</button>

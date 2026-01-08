@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Purchase Orders</title>
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=20260107e">
 </head>
 <body>
   <div class="app">
@@ -53,21 +54,17 @@
   </div>
 
   <!-- PO Detail/Edit Modal -->
-  <div id="poModal" class="modal">
-    <div class="modal-content modal-xl">
+  <div id="poModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
       <div class="modal-header">
-        <h2 id="poModalTitle">Purchase Order</h2>
+        <div class="modal-title-row">
+          <h2 id="poModalTitle">Purchase Order</h2>
+          <span id="poStatusBadge" class="status-badge"></span>
+        </div>
         <button class="close-btn" onclick="window.poModals.closeModal()">&times;</button>
       </div>
-      <div class="modal-body split-view">
-        <!-- Left Panel: PO Summary -->
-        <div class="po-summary-panel" id="poSummaryPanel">
-          <div class="loading">Loading...</div>
-        </div>
-        <!-- Right Panel: Edit Form -->
-        <div class="po-edit-panel" id="poEditPanel">
-          <div class="loading">Loading...</div>
-        </div>
+      <div class="modal-body po-modal-body" id="poModalBody">
+        <div class="loading">Loading...</div>
       </div>
       <div class="modal-footer" id="poModalFooter">
         <!-- Action buttons -->
@@ -99,9 +96,9 @@
   <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="js/toasts.js"></script>
-  <script src="js/searchable-picker.js"></script>
-  <script src="js/po-modals.js"></script>
-  <script src="js/po-app.js"></script>
+  <script src="js/toasts.js?v=20260107"></script>
+  <script src="js/searchable-picker.js?v=20260107"></script>
+  <script src="js/po-modals.js?v=20260107e"></script>
+  <script src="js/po-app.js?v=20260107"></script>
 </body>
 </html>

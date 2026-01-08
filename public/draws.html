@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Draws</title>
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=20260107f">
 </head>
 <body>
   <div class="app">
@@ -43,6 +44,260 @@
         <div class="loading">Loading draws...</div>
       </div>
     </main>
+  </div>
+
+  <!-- Draw Detail Modal (Fullscreen) -->
+  <div id="drawModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 id="drawModalTitle">Draw #1</h2>
+          <span class="status-badge" id="drawModalStatus">Draft</span>
+        </div>
+        <div class="modal-header-actions">
+          <button class="btn btn-secondary" onclick="exportExcel()" title="Export Excel">
+            <span>Export Excel</span>
+          </button>
+          <button class="btn btn-secondary" onclick="exportPDF()" title="Export PDF">
+            <span>Export PDF</span>
+          </button>
+          <button class="close-btn" onclick="closeDrawModal()">&times;</button>
+        </div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="draw-tabs">
+        <button class="draw-tab active" data-tab="summary" onclick="switchTab('summary')">Summary</button>
+        <button class="draw-tab" data-tab="g702" onclick="switchTab('g702')">G702</button>
+        <button class="draw-tab" data-tab="g703" onclick="switchTab('g703')">G703</button>
+        <button class="draw-tab" data-tab="invoices" onclick="switchTab('invoices')">Invoices</button>
+      </div>
+
+      <div class="modal-body draw-modal-body">
+        <!-- Summary Tab -->
+        <div class="draw-tab-content active" id="tab-summary">
+          <div class="draw-summary-grid">
+            <div class="summary-card">
+              <div class="summary-label">Job</div>
+              <div class="summary-value" id="summaryJob">-</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Application #</div>
+              <div class="summary-value" id="summaryAppNum">-</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Period To</div>
+              <div class="summary-value" id="summaryPeriod">-</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Invoice Count</div>
+              <div class="summary-value" id="summaryInvCount">0</div>
+            </div>
+            <div class="summary-card highlight">
+              <div class="summary-label">This Period</div>
+              <div class="summary-value" id="summaryThisPeriod">$0</div>
+            </div>
+            <div class="summary-card highlight">
+              <div class="summary-label">Current Payment Due</div>
+              <div class="summary-value" id="summaryPaymentDue">$0</div>
+            </div>
+          </div>
+
+          <div class="draw-actions" id="drawActions">
+            <!-- Action buttons populated based on status -->
+          </div>
+        </div>
+
+        <!-- G702 Tab -->
+        <div class="draw-tab-content" id="tab-g702">
+          <div class="g702-container">
+            <div class="g702-header">
+              <h3>AIA Document G702 - Application and Certificate for Payment</h3>
+            </div>
+            <div class="g702-form">
+              <div class="g702-section">
+                <div class="g702-row">
+                  <div class="g702-field">
+                    <label>TO OWNER:</label>
+                    <div class="g702-value" id="g702Owner">-</div>
+                  </div>
+                  <div class="g702-field">
+                    <label>APPLICATION NO:</label>
+                    <div class="g702-value" id="g702AppNo">-</div>
+                  </div>
+                </div>
+                <div class="g702-row">
+                  <div class="g702-field">
+                    <label>PROJECT:</label>
+                    <div class="g702-value" id="g702Project">-</div>
+                  </div>
+                  <div class="g702-field">
+                    <label>PERIOD TO:</label>
+                    <div class="g702-value" id="g702PeriodTo">-</div>
+                  </div>
+                </div>
+                <div class="g702-row">
+                  <div class="g702-field">
+                    <label>FROM CONTRACTOR:</label>
+                    <div class="g702-value">Ross Built Custom Homes</div>
+                  </div>
+                </div>
+              </div>
+
+              <table class="g702-table">
+                <tbody>
+                  <tr>
+                    <td class="g702-line-num">1.</td>
+                    <td>ORIGINAL CONTRACT SUM</td>
+                    <td class="g702-amount" id="g702Line1">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td class="g702-line-num">2.</td>
+                    <td>Net change by Change Orders</td>
+                    <td class="g702-amount" id="g702Line2">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td class="g702-line-num">3.</td>
+                    <td>CONTRACT SUM TO DATE (Line 1 + 2)</td>
+                    <td class="g702-amount" id="g702Line3">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td class="g702-line-num">4.</td>
+                    <td>TOTAL COMPLETED & STORED TO DATE (Column G on G703)</td>
+                    <td class="g702-amount" id="g702Line4">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td class="g702-line-num">5.</td>
+                    <td>RETAINAGE:
+                      <div class="g702-sub">a. 10% of Completed Work</div>
+                      <div class="g702-sub">b. 10% of Stored Material</div>
+                      <div class="g702-sub">Total Retainage</div>
+                    </td>
+                    <td class="g702-amount">
+                      <div id="g702Line5a">$0.00</div>
+                      <div id="g702Line5b">$0.00</div>
+                      <div id="g702Line5c">$0.00</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="g702-line-num">6.</td>
+                    <td>TOTAL EARNED LESS RETAINAGE (Line 4 Less Line 5 Total)</td>
+                    <td class="g702-amount" id="g702Line6">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td class="g702-line-num">7.</td>
+                    <td>LESS PREVIOUS CERTIFICATES FOR PAYMENT</td>
+                    <td class="g702-amount" id="g702Line7">$0.00</td>
+                  </tr>
+                  <tr class="g702-highlight">
+                    <td class="g702-line-num">8.</td>
+                    <td><strong>CURRENT PAYMENT DUE</strong></td>
+                    <td class="g702-amount" id="g702Line8">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td class="g702-line-num">9.</td>
+                    <td>BALANCE TO FINISH, INCLUDING RETAINAGE (Line 3 less Line 6)</td>
+                    <td class="g702-amount" id="g702Line9">$0.00</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- G703 Tab -->
+        <div class="draw-tab-content" id="tab-g703">
+          <div class="g703-container">
+            <div class="g703-header">
+              <h3>Schedule of Values - Cost Code Breakdown</h3>
+              <p>Draw #<span id="g703AppNum">1</span> - Budget vs Billings by Cost Code</p>
+            </div>
+            <div class="g703-table-wrapper">
+              <table class="g703-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Cost Code</th>
+                    <th>Budget</th>
+                    <th>Previous<br>Billings</th>
+                    <th>Current<br>Billings</th>
+                    <th>Total<br>Billed</th>
+                    <th>%<br>Complete</th>
+                    <th>Balance<br>Remaining</th>
+                    <th>Retainage<br>(10%)</th>
+                  </tr>
+                </thead>
+                <tbody id="g703Body">
+                  <tr>
+                    <td colspan="9" class="loading">Loading schedule of values...</td>
+                  </tr>
+                </tbody>
+                <tfoot id="g703Footer">
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Invoices Tab -->
+        <div class="draw-tab-content" id="tab-invoices">
+          <div class="invoices-section">
+            <div class="invoices-header">
+              <h3>Invoices in this Draw</h3>
+              <button class="btn btn-primary btn-sm" id="addInvoiceBtn" onclick="showAddInvoiceModal()">+ Add Invoice</button>
+            </div>
+            <table class="invoices-table">
+              <thead>
+                <tr>
+                  <th>Vendor</th>
+                  <th>Invoice #</th>
+                  <th>Date</th>
+                  <th>Amount</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="invoicesBody">
+                <tr>
+                  <td colspan="5" class="loading">Loading invoices...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" id="drawModalFooter">
+        <button class="btn btn-secondary" onclick="closeDrawModal()">Close</button>
+        <button class="btn btn-warning" id="submitDrawBtn" onclick="submitDraw()">Submit Draw</button>
+        <button class="btn btn-success" id="fundDrawBtn" onclick="fundDraw()" style="display:none;">Mark as Funded</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Draw Modal -->
+  <div id="createDrawModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Create New Draw</h2>
+        <button class="close-btn" onclick="closeModal('createDrawModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Job *</label>
+          <select id="newDrawJob" class="form-control" required>
+            <option value="">Select a job...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Period End Date</label>
+          <input type="date" id="newDrawPeriodEnd" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('createDrawModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="createDraw()">Create Draw</button>
+      </div>
+    </div>
   </div>
 
   <!-- Toast Container -->
@@ -126,10 +381,16 @@
         .filter(d => d.status === 'funded')
         .reduce((sum, d) => sum + parseFloat(d.funded_amount || d.total_amount || 0), 0);
 
-      document.getElementById('statOpenDraws').textContent = openDraws.length;
-      document.getElementById('statPendingAmount').textContent = formatMoney(pendingAmount);
-      document.getElementById('statFundedMonth').textContent = formatMoney(fundedMonth);
-      document.getElementById('statTotalFunded').textContent = formatMoney(totalFunded);
+      // Update stats elements if they exist
+      const statOpenDraws = document.getElementById('statOpenDraws');
+      const statPendingAmount = document.getElementById('statPendingAmount');
+      const statFundedMonth = document.getElementById('statFundedMonth');
+      const statTotalFunded = document.getElementById('statTotalFunded');
+
+      if (statOpenDraws) statOpenDraws.textContent = openDraws.length;
+      if (statPendingAmount) statPendingAmount.textContent = formatMoney(pendingAmount);
+      if (statFundedMonth) statFundedMonth.textContent = formatMoney(fundedMonth);
+      if (statTotalFunded) statTotalFunded.textContent = formatMoney(totalFunded);
     }
 
     function setupFilters() {
@@ -198,14 +459,329 @@
       `;
     }
 
-    function openDraw(drawId, jobId) {
-      // For now, redirect to invoices filtered by in_draw
-      window.location.href = `index.html?draw=${drawId}`;
+    let currentDraw = null;
+    window.currentDraw = null; // Expose for debugging
+
+    async function openDraw(drawId) {
+      console.log('openDraw called with drawId:', drawId);
+      try {
+        const url = `/api/draws/${drawId}`;
+        console.log('Fetching:', url);
+        const res = await fetch(url);
+        console.log('Response status:', res.status);
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('API Error:', errorText);
+          throw new Error(`Failed to fetch draw: ${res.status}`);
+        }
+
+        currentDraw = await res.json();
+        window.currentDraw = currentDraw; // Expose for debugging
+        console.log('Draw loaded:', currentDraw);
+
+        renderDrawModal(currentDraw);
+        document.getElementById('drawModal').style.display = 'flex';
+      } catch (err) {
+        console.error('Error opening draw:', err);
+        showToast('Failed to load draw', 'error');
+      }
+    }
+
+    function closeDrawModal() {
+      document.getElementById('drawModal').style.display = 'none';
+      currentDraw = null;
+    }
+
+    function switchTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.draw-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
+      });
+
+      // Update tab content
+      document.querySelectorAll('.draw-tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === `tab-${tabName}`);
+      });
+    }
+
+    function renderDrawModal(draw) {
+      // Modal header
+      document.getElementById('drawModalTitle').textContent = `Draw #${draw.draw_number} - ${draw.job?.name || 'Unknown Job'}`;
+
+      const statusBadge = document.getElementById('drawModalStatus');
+      const statusClass = { draft: 'pending', submitted: 'pending-approval', funded: 'approved' }[draw.status] || 'pending';
+      const statusLabel = { draft: 'Draft', submitted: 'Submitted', funded: 'Funded' }[draw.status] || draw.status;
+      statusBadge.className = `status-badge status-${statusClass}`;
+      statusBadge.textContent = statusLabel;
+
+      // Summary tab
+      document.getElementById('summaryJob').textContent = draw.job?.name || '-';
+      document.getElementById('summaryAppNum').textContent = draw.draw_number;
+      document.getElementById('summaryPeriod').textContent = draw.period_end ? formatDate(draw.period_end) : '-';
+      document.getElementById('summaryInvCount').textContent = draw.invoiceCount || 0;
+      document.getElementById('summaryThisPeriod').textContent = formatMoney(draw.g702?.totalCompletedThisPeriod || 0);
+      document.getElementById('summaryPaymentDue').textContent = formatMoney(draw.g702?.currentPaymentDue || 0);
+
+      // G702 tab
+      document.getElementById('g702Owner').textContent = draw.job?.client_name || '-';
+      document.getElementById('g702AppNo').textContent = draw.draw_number;
+      document.getElementById('g702Project').textContent = draw.job?.name || '-';
+      document.getElementById('g702PeriodTo').textContent = draw.period_end ? formatDate(draw.period_end) : '-';
+
+      const contractSum = parseFloat(draw.job?.contract_amount) || 0;
+      const changeOrders = 0; // TODO: Calculate from change orders
+      const contractSumToDate = contractSum + changeOrders;
+
+      document.getElementById('g702Line1').textContent = formatMoneyDecimal(contractSum);
+      document.getElementById('g702Line2').textContent = formatMoneyDecimal(changeOrders);
+      document.getElementById('g702Line3').textContent = formatMoneyDecimal(contractSumToDate);
+      document.getElementById('g702Line4').textContent = formatMoneyDecimal(draw.g702?.grandTotal || 0);
+
+      const completedWork = (draw.g702?.totalCompletedPrevious || 0) + (draw.g702?.totalCompletedThisPeriod || 0);
+      const retainageWork = completedWork * 0.10;
+      const retainageMaterials = (draw.g702?.materialsStored || 0) * 0.10;
+      const totalRetainage = retainageWork + retainageMaterials;
+
+      document.getElementById('g702Line5a').textContent = formatMoneyDecimal(retainageWork);
+      document.getElementById('g702Line5b').textContent = formatMoneyDecimal(retainageMaterials);
+      document.getElementById('g702Line5c').textContent = formatMoneyDecimal(totalRetainage);
+      document.getElementById('g702Line6').textContent = formatMoneyDecimal(draw.g702?.totalEarnedLessRetainage || 0);
+      document.getElementById('g702Line7').textContent = formatMoneyDecimal(draw.g702?.lessPreviousCertificates || 0);
+      document.getElementById('g702Line8').textContent = formatMoneyDecimal(draw.g702?.currentPaymentDue || 0);
+      document.getElementById('g702Line9').textContent = formatMoneyDecimal(contractSumToDate - (draw.g702?.totalEarnedLessRetainage || 0));
+
+      // G703 tab
+      document.getElementById('g703AppNum').textContent = draw.draw_number;
+      renderG703Table(draw.scheduleOfValues || []);
+
+      // Invoices tab
+      renderInvoicesTable(draw.invoices || []);
+
+      // Action buttons based on status
+      const submitBtn = document.getElementById('submitDrawBtn');
+      const fundBtn = document.getElementById('fundDrawBtn');
+      const addInvoiceBtn = document.getElementById('addInvoiceBtn');
+
+      if (draw.status === 'draft') {
+        submitBtn.style.display = 'inline-block';
+        fundBtn.style.display = 'none';
+        addInvoiceBtn.style.display = 'inline-block';
+      } else if (draw.status === 'submitted') {
+        submitBtn.style.display = 'none';
+        fundBtn.style.display = 'inline-block';
+        addInvoiceBtn.style.display = 'none';
+      } else {
+        submitBtn.style.display = 'none';
+        fundBtn.style.display = 'none';
+        addInvoiceBtn.style.display = 'none';
+      }
+    }
+
+    function renderG703Table(scheduleOfValues) {
+      const tbody = document.getElementById('g703Body');
+      const tfoot = document.getElementById('g703Footer');
+
+      if (!scheduleOfValues || scheduleOfValues.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No billing data for this draw</td></tr>';
+        tfoot.innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = scheduleOfValues.map(item => {
+        const budget = item.budget || item.scheduledValue || 0;
+        const previous = item.previousBilled || item.previousCompleted || 0;
+        const current = item.currentBilled || item.thisPeriod || 0;
+        const total = item.totalBilled || item.totalCompleted || 0;
+        const balance = item.balance || 0;
+        const balanceClass = balance < 0 ? 'over-budget' : '';
+
+        return `
+          <tr>
+            <td>${item.item}</td>
+            <td>${item.costCode} - ${item.description}</td>
+            <td class="amount">${budget > 0 ? formatMoneyDecimal(budget) : '<span class="no-budget">No Budget</span>'}</td>
+            <td class="amount">${formatMoneyDecimal(previous)}</td>
+            <td class="amount highlight-current">${formatMoneyDecimal(current)}</td>
+            <td class="amount">${formatMoneyDecimal(total)}</td>
+            <td class="percent">${item.percentComplete.toFixed(1)}%</td>
+            <td class="amount ${balanceClass}">${formatMoneyDecimal(balance)}</td>
+            <td class="amount">${formatMoneyDecimal(item.retainage)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Totals row
+      const totals = scheduleOfValues.reduce((acc, item) => ({
+        budget: acc.budget + (item.budget || item.scheduledValue || 0),
+        previous: acc.previous + (item.previousBilled || item.previousCompleted || 0),
+        current: acc.current + (item.currentBilled || item.thisPeriod || 0),
+        total: acc.total + (item.totalBilled || item.totalCompleted || 0),
+        balance: acc.balance + (item.balance || 0),
+        retainage: acc.retainage + (item.retainage || 0)
+      }), { budget: 0, previous: 0, current: 0, total: 0, balance: 0, retainage: 0 });
+
+      const overallPercent = totals.budget > 0 ? (totals.total / totals.budget) * 100 : (totals.total > 0 ? 100 : 0);
+
+      tfoot.innerHTML = `
+        <tr class="totals-row">
+          <td></td>
+          <td><strong>TOTALS</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.budget)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.previous)}</strong></td>
+          <td class="amount highlight-current"><strong>${formatMoneyDecimal(totals.current)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.total)}</strong></td>
+          <td class="percent"><strong>${overallPercent.toFixed(1)}%</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.balance)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.retainage)}</strong></td>
+        </tr>
+      `;
+    }
+
+    function renderInvoicesTable(invoices) {
+      const tbody = document.getElementById('invoicesBody');
+
+      if (!invoices || invoices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No invoices in this draw</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = invoices.map(inv => `
+        <tr>
+          <td>${inv.vendor?.name || 'Unknown'}</td>
+          <td>${inv.invoice_number || '-'}</td>
+          <td>${inv.invoice_date ? formatDate(inv.invoice_date) : '-'}</td>
+          <td class="amount">${formatMoney(inv.amount)}</td>
+          <td>
+            ${currentDraw?.status === 'draft' ? `
+              <button class="btn btn-sm btn-danger" onclick="removeInvoice('${inv.id}')">Remove</button>
+            ` : ''}
+            ${inv.pdf_stamped_url ? `
+              <a href="${inv.pdf_stamped_url}" target="_blank" class="btn btn-sm btn-secondary">View PDF</a>
+            ` : ''}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function submitDraw() {
+      if (!currentDraw) return;
+
+      if (!confirm('Submit this draw? It will be locked from further changes.')) return;
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}/submit`, { method: 'PATCH' });
+        if (!res.ok) throw new Error('Failed to submit draw');
+
+        showToast('Draw submitted successfully', 'success');
+        closeDrawModal();
+        loadDraws();
+      } catch (err) {
+        console.error('Error submitting draw:', err);
+        showToast('Failed to submit draw', 'error');
+      }
+    }
+
+    async function fundDraw() {
+      if (!currentDraw) return;
+
+      if (!confirm('Mark this draw as funded? Invoices will be marked as paid.')) return;
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}/fund`, { method: 'PATCH' });
+        if (!res.ok) throw new Error('Failed to fund draw');
+
+        showToast('Draw marked as funded', 'success');
+        closeDrawModal();
+        loadDraws();
+      } catch (err) {
+        console.error('Error funding draw:', err);
+        showToast('Failed to fund draw', 'error');
+      }
+    }
+
+    async function removeInvoice(invoiceId) {
+      if (!currentDraw) return;
+
+      if (!confirm('Remove this invoice from the draw?')) return;
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}/remove-invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoice_id: invoiceId })
+        });
+        if (!res.ok) throw new Error('Failed to remove invoice');
+
+        showToast('Invoice removed from draw', 'success');
+        openDraw(currentDraw.id); // Refresh
+      } catch (err) {
+        console.error('Error removing invoice:', err);
+        showToast('Failed to remove invoice', 'error');
+      }
+    }
+
+    function showAddInvoiceModal() {
+      // TODO: Show modal to select approved invoices
+      showToast('Add invoice modal - coming soon', 'info');
+    }
+
+    async function exportExcel() {
+      if (!currentDraw) return;
+      window.open(`/api/draws/${currentDraw.id}/export/excel`, '_blank');
+    }
+
+    async function exportPDF() {
+      if (!currentDraw) return;
+      window.open(`/api/draws/${currentDraw.id}/export/pdf`, '_blank');
     }
 
     function showCreateDrawModal() {
-      // TODO: Implement create draw modal
-      alert('Create Draw modal - coming soon');
+      // Populate job dropdown
+      const select = document.getElementById('newDrawJob');
+      select.innerHTML = '<option value="">Select a job...</option>';
+      state.jobs.forEach(job => {
+        select.innerHTML += `<option value="${job.id}">${job.name}</option>`;
+      });
+
+      // Set default date to today
+      document.getElementById('newDrawPeriodEnd').value = new Date().toISOString().split('T')[0];
+
+      document.getElementById('createDrawModal').style.display = 'flex';
+    }
+
+    async function createDraw() {
+      const jobId = document.getElementById('newDrawJob').value;
+      const periodEnd = document.getElementById('newDrawPeriodEnd').value;
+
+      if (!jobId) {
+        showToast('Please select a job', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/draws`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ period_end: periodEnd })
+        });
+        if (!res.ok) throw new Error('Failed to create draw');
+
+        const newDraw = await res.json();
+        showToast('Draw created successfully', 'success');
+        closeModal('createDrawModal');
+        loadDraws();
+
+        // Open the new draw
+        openDraw(newDraw.id);
+      } catch (err) {
+        console.error('Error creating draw:', err);
+        showToast('Failed to create draw', 'error');
+      }
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).style.display = 'none';
     }
 
     function formatMoney(amount) {
@@ -218,10 +794,29 @@
       }).format(num);
     }
 
+    function formatMoneyDecimal(amount) {
+      const num = parseFloat(amount) || 0;
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(num);
+    }
+
     function formatDate(dateStr) {
       if (!dateStr) return '';
       const date = new Date(dateStr);
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // Toast helper
+    function showToast(message, type = 'info') {
+      if (window.Toast) {
+        Toast.show(message, type);
+      } else {
+        console.log(`[${type}] ${message}`);
+      }
     }
   </script>
 </body>

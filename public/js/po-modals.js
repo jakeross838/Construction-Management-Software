@@ -1,5 +1,5 @@
 // ============================================================
-// PO MODALS - Streamlined Single View
+// PO MODALS - Clean Design (Matching Invoice Modal Style)
 // ============================================================
 
 class POModals {
@@ -8,7 +8,6 @@ class POModals {
     this.currentLineItems = [];
     this.attachments = [];
     this.isEditing = false;
-    this.searchFilter = '';
   }
 
   // ============================================================
@@ -25,7 +24,6 @@ class POModals {
     this.currentLineItems = [];
     this.attachments = [];
     this.isEditing = false;
-    this.searchFilter = '';
   }
 
   // ============================================================
@@ -34,8 +32,7 @@ class POModals {
 
   async openPO(poId) {
     try {
-      document.getElementById('poSummaryPanel').innerHTML = '<div class="loading">Loading...</div>';
-      document.getElementById('poEditPanel').innerHTML = '';
+      document.getElementById('poModalBody').innerHTML = '<div class="loading">Loading...</div>';
       this.openModal();
 
       // Load PO data
@@ -93,78 +90,115 @@ class POModals {
   }
 
   // ============================================================
-  // RENDER MODAL - SINGLE STREAMLINED VIEW
+  // RENDER MODAL - SINGLE PANEL DESIGN
   // ============================================================
 
   renderPOModal() {
     const po = this.currentPO;
     const isNew = !po.id;
 
+    // Update title
     document.getElementById('poModalTitle').textContent = isNew ? 'New Purchase Order' : (po.po_number || 'Purchase Order');
 
-    const leftPanel = document.getElementById('poSummaryPanel');
-    const rightPanel = document.getElementById('poEditPanel');
+    // Update status badge
+    const statusBadge = document.getElementById('poStatusBadge');
+    if (statusBadge) {
+      if (isNew) {
+        statusBadge.style.display = 'none';
+      } else {
+        statusBadge.style.display = '';
+        statusBadge.className = `status-badge status-${this.getStatusClass(po.status_detail, po.approval_status)}`;
+        statusBadge.textContent = this.getStatusLabel(po.status_detail, po.approval_status);
+      }
+    }
 
-    // Main content - scrollable single view
-    leftPanel.innerHTML = this.renderMainContent();
-
-    // Right panel - summary card (always visible)
-    rightPanel.innerHTML = this.renderSummaryCard();
+    // Render single body panel
+    const body = document.getElementById('poModalBody');
+    body.innerHTML = this.renderModalContent();
 
     this.renderFooterActions();
 
     // Initialize pickers if editing
-    if (this.isEditing) {
+    if (this.isEditing || isNew) {
       setTimeout(() => this.initializePickers(), 50);
     }
   }
 
-  renderMainContent() {
+  // ============================================================
+  // MODAL CONTENT - UNIFIED LAYOUT
+  // ============================================================
+
+  renderModalContent() {
     const po = this.currentPO;
     const isNew = !po.id;
     const canEdit = isNew || ['pending'].includes(po.status_detail) || po.approval_status === 'rejected';
 
     return `
-      <div class="po-main-content">
-        ${this.renderBasicInfo(canEdit)}
-        ${this.renderLineItems(canEdit)}
-        ${!isNew ? this.renderLinkedBills() : ''}
-        ${!isNew ? this.renderFiles() : ''}
-        ${this.renderNotes(canEdit)}
+      ${!isNew ? this.renderSummaryCard() : ''}
+      ${this.renderDetailsSection(canEdit)}
+      ${this.renderLineItemsSection(canEdit)}
+      ${!isNew ? this.renderInvoicesSection() : ''}
+      ${this.renderNotesSection(canEdit)}
+      ${!isNew ? this.renderAttachmentsSection() : ''}
+    `;
+  }
+
+  renderSummaryCard() {
+    const po = this.currentPO;
+    const totalAmount = parseFloat(po.total_amount || 0);
+    const billedAmount = (po.invoices || [])
+      .filter(inv => ['approved', 'in_draw', 'paid'].includes(inv.status))
+      .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+    const remainingAmount = totalAmount - billedAmount;
+    const billedPercent = totalAmount > 0 ? Math.round((billedAmount / totalAmount) * 100) : 0;
+
+    return `
+      <div class="po-summary-card">
+        <div class="summary-stats">
+          <div class="stat-item">
+            <span class="stat-label">PO Total</span>
+            <span class="stat-value">${this.formatMoney(totalAmount)}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Billed</span>
+            <span class="stat-value">${this.formatMoney(billedAmount)}</span>
+          </div>
+          <div class="stat-item ${remainingAmount < 0 ? 'negative' : ''}">
+            <span class="stat-label">Remaining</span>
+            <span class="stat-value">${this.formatMoney(remainingAmount)}</span>
+          </div>
+        </div>
+        <div class="summary-progress">
+          <div class="progress-bar">
+            <div class="progress-fill ${billedPercent > 100 ? 'over' : ''}" style="width: ${Math.min(billedPercent, 100)}%"></div>
+          </div>
+          <span class="progress-label">${billedPercent}% billed</span>
+        </div>
       </div>
     `;
   }
 
-  // ============================================================
-  // BASIC INFO SECTION
-  // ============================================================
-
-  renderBasicInfo(canEdit) {
+  renderDetailsSection(canEdit) {
     const po = this.currentPO;
-    const isNew = !po.id;
     const vendor = po.vendor || window.poState?.vendors?.find(v => v.id === po.vendor_id);
     const job = po.job || window.poState?.jobs?.find(j => j.id === po.job_id);
 
     if (canEdit || this.isEditing) {
       return `
-        <section class="po-section">
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label>PO Number</label>
-              <input type="text" id="poNumber" value="${po.po_number || ''}" placeholder="Auto-generated" class="form-control">
-            </div>
-            <div class="form-group flex-1">
-              <label>Status</label>
-              <span class="status-badge status-${this.getStatusClass(po.status_detail, po.approval_status)}">${this.getStatusLabel(po.status_detail, po.approval_status)}</span>
-            </div>
+        <div class="form-section">
+          <h3>PO Details</h3>
+
+          <div class="form-group">
+            <label>PO Number</label>
+            <input type="text" id="poNumber" value="${po.po_number || ''}" placeholder="Auto-generated" class="form-control">
           </div>
 
           <div class="form-row">
-            <div class="form-group flex-1">
+            <div class="form-group">
               <label>Job *</label>
               <div id="po-job-picker-container"></div>
             </div>
-            <div class="form-group flex-1">
+            <div class="form-group">
               <label>Vendor *</label>
               <div id="po-vendor-picker-container"></div>
             </div>
@@ -176,145 +210,119 @@ class POModals {
           </div>
 
           <div class="form-row">
-            <div class="form-group flex-1">
+            <div class="form-group">
               <label>Assigned To</label>
               <input type="text" id="poAssignedTo" value="${this.escapeHtml(po.assigned_to || '')}" class="form-control" placeholder="PM, Super, etc.">
             </div>
-            <div class="form-group flex-1">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
               <label>Start Date</label>
               <input type="date" id="poStartDate" value="${po.schedule_start_date || ''}" class="form-control">
             </div>
-            <div class="form-group flex-1">
+            <div class="form-group">
               <label>End Date</label>
               <input type="date" id="poEndDate" value="${po.schedule_end_date || ''}" class="form-control">
             </div>
           </div>
-        </section>
+        </div>
       `;
     }
 
     // Read-only view
     return `
-      <section class="po-section po-info-grid">
-        <div class="info-item">
-          <span class="info-label">Job</span>
-          <span class="info-value">${job?.name || 'Not assigned'}</span>
+      <div class="form-section">
+        <h3>PO Details</h3>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">Job</span>
+            <span class="info-value">${job?.name || 'Not assigned'}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Vendor</span>
+            <span class="info-value">${vendor?.name || 'Not assigned'}</span>
+          </div>
+          ${po.description ? `
+          <div class="info-item full-width">
+            <span class="info-label">Description</span>
+            <span class="info-value">${this.escapeHtml(po.description)}</span>
+          </div>` : ''}
+          ${po.assigned_to ? `
+          <div class="info-item">
+            <span class="info-label">Assigned To</span>
+            <span class="info-value">${this.escapeHtml(po.assigned_to)}</span>
+          </div>` : ''}
+          ${po.schedule_start_date || po.schedule_end_date ? `
+          <div class="info-item">
+            <span class="info-label">Schedule</span>
+            <span class="info-value">${po.schedule_start_date ? this.formatDate(po.schedule_start_date) : ''} ${po.schedule_start_date && po.schedule_end_date ? ' → ' : ''} ${po.schedule_end_date ? this.formatDate(po.schedule_end_date) : ''}</span>
+          </div>` : ''}
         </div>
-        <div class="info-item">
-          <span class="info-label">Vendor</span>
-          <span class="info-value">${vendor?.name || 'Not assigned'}</span>
-        </div>
-        ${po.description ? `
-        <div class="info-item full-width">
-          <span class="info-label">Description</span>
-          <span class="info-value">${this.escapeHtml(po.description)}</span>
-        </div>` : ''}
-        ${po.assigned_to ? `
-        <div class="info-item">
-          <span class="info-label">Assigned To</span>
-          <span class="info-value">${this.escapeHtml(po.assigned_to)}</span>
-        </div>` : ''}
-        ${po.schedule_start_date || po.schedule_end_date ? `
-        <div class="info-item">
-          <span class="info-label">Schedule</span>
-          <span class="info-value">${po.schedule_start_date ? this.formatDate(po.schedule_start_date) : ''} ${po.schedule_start_date && po.schedule_end_date ? '→' : ''} ${po.schedule_end_date ? this.formatDate(po.schedule_end_date) : ''}</span>
-        </div>` : ''}
-      </section>
+      </div>
     `;
   }
 
-  // ============================================================
-  // LINE ITEMS SECTION
-  // ============================================================
-
-  renderLineItems(canEdit) {
+  renderLineItemsSection(canEdit) {
     const costCodes = window.poState?.costCodes || [];
     const total = this.currentLineItems.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
-    const hasMany = this.currentLineItems.length > 5;
-
-    // Filter line items if searching
-    let filteredItems = this.currentLineItems;
-    if (this.searchFilter) {
-      const query = this.searchFilter.toLowerCase();
-      filteredItems = this.currentLineItems.filter(item => {
-        const cc = item.cost_code || costCodes.find(c => c.id === item.cost_code_id);
-        return (cc?.code?.toLowerCase().includes(query) ||
-                cc?.name?.toLowerCase().includes(query) ||
-                item.description?.toLowerCase().includes(query));
-      });
-    }
 
     if (canEdit || this.isEditing) {
       return `
-        <section class="po-section">
+        <div class="form-section">
           <div class="section-header">
-            <h4>Line Items</h4>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="window.poModals.addLineItem()">+ Add</button>
+            <h3>Line Items</h3>
+            <button type="button" class="btn-add-line" onclick="window.poModals.addLineItem()">+ Add line</button>
           </div>
 
-          ${hasMany ? `
-          <div class="filter-bar">
-            <input type="text" class="form-control filter-input" placeholder="Filter line items..."
-              value="${this.escapeHtml(this.searchFilter)}"
-              oninput="window.poModals.filterLineItems(this.value)">
-          </div>` : ''}
-
-          <div class="line-items-list" id="lineItemsContainer">
-            ${filteredItems.length === 0 ?
-              `<div class="empty-state">${this.searchFilter ? 'No matching items' : 'No line items yet'}</div>` :
-              filteredItems.map((item, index) => {
-                const actualIndex = this.currentLineItems.indexOf(item);
-                return `
-                  <div class="line-item-row editable">
-                    <select class="li-cost-code" onchange="window.poModals.updateLineItem(${actualIndex}, 'cost_code_id', this.value)">
-                      <option value="">Cost Code</option>
+          <div class="line-items-container" id="lineItemsContainer">
+            ${this.currentLineItems.length === 0 ?
+              `<div class="empty-state small">No line items yet. Click "+ Add line" to add one.</div>` :
+              this.currentLineItems.map((item, index) => `
+                <div class="line-item" data-index="${index}">
+                  <div class="line-item-fields">
+                    <select onchange="window.poModals.updateLineItem(${index}, 'cost_code_id', this.value)">
+                      <option value="">Select cost code</option>
                       ${costCodes.map(cc => `
                         <option value="${cc.id}" ${item.cost_code_id === cc.id ? 'selected' : ''}>${cc.code} - ${cc.name}</option>
                       `).join('')}
                     </select>
-                    <input type="text" class="li-desc" placeholder="Description" value="${this.escapeHtml(item.description || '')}"
-                      onchange="window.poModals.updateLineItem(${actualIndex}, 'description', this.value)">
-                    <input type="number" class="li-amount" placeholder="0.00" value="${item.amount || ''}"
-                      onchange="window.poModals.updateLineItem(${actualIndex}, 'amount', this.value)">
-                    <button type="button" class="btn-icon btn-delete" onclick="window.poModals.removeLineItem(${actualIndex})">×</button>
+                    <input type="text" placeholder="Description" value="${this.escapeHtml(item.description || '')}"
+                      onchange="window.poModals.updateLineItem(${index}, 'description', this.value)">
+                    <input type="number" placeholder="0.00" value="${item.amount || ''}" step="0.01"
+                      onchange="window.poModals.updateLineItem(${index}, 'amount', this.value)">
+                    <button type="button" class="btn-delete-row" onclick="window.poModals.removeLineItem(${index})">×</button>
                   </div>
-                `;
-              }).join('')
+                </div>
+              `).join('')
             }
           </div>
 
-          <div class="line-items-footer">
-            <span class="total-label">Total:</span>
-            <span class="total-value" id="lineItemsTotal">${this.formatMoney(total)}</span>
+          <div class="line-items-total">
+            <span>Total:</span>
+            <span id="lineItemsTotal">${this.formatMoney(total)}</span>
           </div>
-        </section>
+        </div>
       `;
     }
 
-    // Read-only line items
+    // Read-only
     return `
-      <section class="po-section">
+      <div class="form-section">
         <div class="section-header">
-          <h4>Line Items</h4>
-          <span class="badge">${this.currentLineItems.length}</span>
+          <h3>Line Items</h3>
+          <span class="count-badge">${this.currentLineItems.length}</span>
         </div>
 
-        ${hasMany ? `
-        <div class="filter-bar">
-          <input type="text" class="form-control filter-input" placeholder="Filter..."
-            value="${this.escapeHtml(this.searchFilter)}"
-            oninput="window.poModals.filterLineItems(this.value)">
-        </div>` : ''}
-
-        <div class="line-items-list readonly">
-          ${filteredItems.length === 0 ?
-            `<div class="empty-state">${this.searchFilter ? 'No matching items' : 'No line items'}</div>` :
-            filteredItems.map(item => {
+        <div class="line-items-readonly">
+          ${this.currentLineItems.length === 0 ?
+            `<div class="empty-state small">No line items</div>` :
+            this.currentLineItems.map(item => {
               const cc = item.cost_code || costCodes.find(c => c.id === item.cost_code_id);
               return `
                 <div class="line-item-row">
                   <span class="li-code">${cc?.code || ''}</span>
-                  <span class="li-name">${cc?.name || item.description || 'Unknown'}</span>
+                  <span class="li-name">${cc?.name || item.description || ''}</span>
                   <span class="li-amount">${this.formatMoney(item.amount)}</span>
                 </div>
               `;
@@ -322,209 +330,138 @@ class POModals {
           }
         </div>
 
-        <div class="line-items-footer">
-          <span class="total-label">Total:</span>
-          <span class="total-value">${this.formatMoney(total)}</span>
+        <div class="line-items-total">
+          <span>Total:</span>
+          <span>${this.formatMoney(total)}</span>
         </div>
-      </section>
+      </div>
     `;
   }
 
-  filterLineItems(query) {
-    this.searchFilter = query;
-    const container = document.getElementById('lineItemsContainer');
-    if (container) {
-      // Re-render just the line items section
-      const section = container.closest('.po-section');
-      const canEdit = !this.currentPO.id || ['pending'].includes(this.currentPO.status_detail) || this.currentPO.approval_status === 'rejected';
-      section.outerHTML = this.renderLineItems(canEdit || this.isEditing);
-    }
-  }
-
-  // ============================================================
-  // LINKED BILLS SECTION
-  // ============================================================
-
-  renderLinkedBills() {
+  renderInvoicesSection() {
     const invoices = this.currentPO.invoices || [];
-    if (invoices.length === 0) return '';
+
+    if (invoices.length === 0) {
+      return `
+        <div class="form-section">
+          <div class="section-header">
+            <h3>Linked Invoices</h3>
+          </div>
+          <div class="empty-state small">No invoices linked to this PO</div>
+        </div>
+      `;
+    }
 
     const totalBilled = invoices
       .filter(inv => ['approved', 'in_draw', 'paid'].includes(inv.status))
       .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
 
+    const getStatusLabel = (status) => {
+      const labels = {
+        'received': 'Received',
+        'needs_approval': 'Needs Approval',
+        'approved': 'Approved',
+        'in_draw': 'In Draw',
+        'paid': 'Paid'
+      };
+      return labels[status] || status;
+    };
+
     return `
-      <section class="po-section">
+      <div class="form-section">
         <div class="section-header">
-          <h4>Linked Bills</h4>
-          <span class="badge">${invoices.length}</span>
+          <h3>Linked Invoices</h3>
+          <span class="count-badge">${invoices.length}</span>
         </div>
 
-        <div class="bills-list">
+        <div class="linked-invoices-table">
+          <div class="invoices-header">
+            <span>Invoice #</span>
+            <span>Date</span>
+            <span>Status</span>
+            <span>Amount</span>
+          </div>
           ${invoices.map(inv => `
-            <div class="bill-row">
-              <span class="bill-number">${inv.invoice_number || 'No #'}</span>
-              <span class="bill-date">${this.formatDate(inv.invoice_date)}</span>
-              <span class="status-badge status-${inv.status}">${inv.status}</span>
-              <span class="bill-amount">${this.formatMoney(inv.amount)}</span>
+            <div class="invoice-row" onclick="window.location.href='index.html?invoice=${inv.id}'">
+              <span class="inv-number">${inv.invoice_number || '—'}</span>
+              <span class="inv-date">${this.formatDate(inv.invoice_date)}</span>
+              <span><span class="status-pill status-${inv.status}">${getStatusLabel(inv.status)}</span></span>
+              <span class="inv-amount">${this.formatMoney(inv.amount)}</span>
             </div>
           `).join('')}
         </div>
 
-        <div class="bills-summary">
-          <span>Total Billed: <strong>${this.formatMoney(totalBilled)}</strong></span>
+        <div class="invoices-total">
+          <span>Total Billed:</span>
+          <span class="total-amount">${this.formatMoney(totalBilled)}</span>
         </div>
-      </section>
+      </div>
     `;
   }
 
-  // ============================================================
-  // FILES SECTION
-  // ============================================================
-
-  renderFiles() {
-    return `
-      <section class="po-section">
-        <div class="section-header">
-          <h4>Files</h4>
-          <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('poFileInput').click()">+ Upload</button>
-          <input type="file" id="poFileInput" style="display: none" onchange="window.poModals.uploadFile(this.files[0])">
-        </div>
-
-        ${this.attachments.length === 0 ?
-          '<div class="empty-state small">No files attached</div>' :
-          `<div class="files-list">
-            ${this.attachments.map(att => `
-              <div class="file-row">
-                <span class="file-icon">${this.getFileIcon(att.file_type)}</span>
-                <span class="file-name">${this.escapeHtml(att.file_name)}</span>
-                <span class="file-size">${this.formatFileSize(att.file_size)}</span>
-                <button class="btn-icon" onclick="window.poModals.downloadAttachment('${att.id}')" title="Download">↓</button>
-                <button class="btn-icon btn-delete" onclick="window.poModals.deleteAttachment('${att.id}')" title="Delete">×</button>
-              </div>
-            `).join('')}
-          </div>`
-        }
-      </section>
-    `;
-  }
-
-  // ============================================================
-  // NOTES SECTION
-  // ============================================================
-
-  renderNotes(canEdit) {
+  renderNotesSection(canEdit) {
     const po = this.currentPO;
 
     if (canEdit || this.isEditing) {
       return `
-        <section class="po-section">
-          <div class="section-header">
-            <h4>Notes & Scope</h4>
-          </div>
+        <div class="form-section">
+          <h3>Scope & Notes</h3>
           <div class="form-group">
             <label>Scope of Work</label>
-            <textarea id="poScopeOfWork" rows="4" class="form-control" placeholder="Describe the work to be performed...">${this.escapeHtml(po.scope_of_work || '')}</textarea>
+            <textarea id="poScopeOfWork" rows="3" class="form-control" placeholder="Describe the work...">${this.escapeHtml(po.scope_of_work || '')}</textarea>
           </div>
           <div class="form-group">
-            <label>Internal Notes</label>
+            <label>Notes</label>
             <textarea id="poNotes" rows="2" class="form-control" placeholder="Internal notes...">${this.escapeHtml(po.notes || '')}</textarea>
           </div>
-        </section>
+        </div>
       `;
     }
 
     if (!po.scope_of_work && !po.notes) return '';
 
     return `
-      <section class="po-section">
+      <div class="form-section">
+        <h3>Scope & Notes</h3>
         ${po.scope_of_work ? `
-          <div class="notes-block">
-            <h5>Scope of Work</h5>
+          <div class="notes-content">
+            <strong>Scope of Work:</strong>
             <p>${this.escapeHtml(po.scope_of_work).replace(/\n/g, '<br>')}</p>
           </div>
         ` : ''}
         ${po.notes ? `
-          <div class="notes-block">
-            <h5>Notes</h5>
+          <div class="notes-content">
+            <strong>Notes:</strong>
             <p>${this.escapeHtml(po.notes)}</p>
           </div>
         ` : ''}
-      </section>
+      </div>
     `;
   }
 
-  // ============================================================
-  // SUMMARY CARD (Right Panel)
-  // ============================================================
-
-  renderSummaryCard() {
-    const po = this.currentPO;
-    const isNew = !po.id;
-
-    if (isNew) {
-      return `
-        <div class="po-summary-card">
-          <h4>New Purchase Order</h4>
-          <p class="help-text">Fill out the details to create a new PO.</p>
-        </div>
-      `;
-    }
-
-    const totalAmount = parseFloat(po.total_amount || 0);
-    const billedAmount = (po.invoices || [])
-      .filter(inv => ['approved', 'in_draw', 'paid'].includes(inv.status))
-      .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
-    const remainingAmount = totalAmount - billedAmount;
-    const billedPercent = totalAmount > 0 ? Math.round((billedAmount / totalAmount) * 100) : 0;
-
+  renderAttachmentsSection() {
     return `
-      <div class="po-summary-card">
-        <div class="summary-header">
-          <span class="status-badge status-${this.getStatusClass(po.status_detail, po.approval_status)}">${this.getStatusLabel(po.status_detail, po.approval_status)}</span>
+      <div class="form-section">
+        <div class="section-header">
+          <h3>Attachments</h3>
+          <button type="button" class="btn-add-line" onclick="document.getElementById('poFileInput').click()">+ Upload</button>
+          <input type="file" id="poFileInput" style="display: none" onchange="window.poModals.uploadFile(this.files[0])">
         </div>
 
-        <div class="summary-amounts">
-          <div class="amount-row main">
-            <span class="label">PO Total</span>
-            <span class="value">${this.formatMoney(totalAmount)}</span>
-          </div>
-          <div class="amount-row">
-            <span class="label">Billed</span>
-            <span class="value">${this.formatMoney(billedAmount)}</span>
-          </div>
-          <div class="amount-row ${remainingAmount < 0 ? 'negative' : ''}">
-            <span class="label">Remaining</span>
-            <span class="value">${this.formatMoney(remainingAmount)}</span>
-          </div>
-        </div>
-
-        <div class="summary-progress">
-          <div class="progress-bar">
-            <div class="progress-fill ${billedPercent > 100 ? 'over' : ''}" style="width: ${Math.min(billedPercent, 100)}%"></div>
-          </div>
-          <span class="progress-label">${billedPercent}% billed</span>
-        </div>
-
-        <div class="summary-stats">
-          <div class="stat">
-            <span class="stat-value">${this.currentLineItems.length}</span>
-            <span class="stat-label">Line Items</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">${(po.invoices || []).length}</span>
-            <span class="stat-label">Invoices</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">${this.attachments.length}</span>
-            <span class="stat-label">Files</span>
-          </div>
-        </div>
-
-        ${po.created_at ? `
-        <div class="summary-meta">
-          <span>Created ${this.formatDate(po.created_at)}</span>
-        </div>` : ''}
+        ${this.attachments.length === 0 ?
+          '<div class="empty-state small">No attachments</div>' :
+          `<div class="attachments-list">
+            ${this.attachments.map(att => `
+              <div class="attachment-row">
+                <span class="att-icon">${this.getFileIcon(att.file_type)}</span>
+                <span class="att-name">${this.escapeHtml(att.file_name)}</span>
+                <span class="att-size">${this.formatFileSize(att.file_size)}</span>
+                <button class="btn-icon" onclick="window.poModals.downloadAttachment('${att.id}')" title="Download">↓</button>
+                <button class="btn-icon btn-delete" onclick="window.poModals.deleteAttachment('${att.id}')" title="Delete">×</button>
+              </div>
+            `).join('')}
+          </div>`
+        }
       </div>
     `;
   }
@@ -554,34 +491,30 @@ class POModals {
       const status = po.status_detail || 'pending';
       const approval = po.approval_status || 'pending';
 
+      // Close button always
+      actions += `<button class="btn btn-secondary" onclick="window.poModals.closeModal()">Close</button>`;
+
       // Edit button for pending POs
       if (['pending'].includes(status) || approval === 'rejected') {
         actions += `<button class="btn btn-secondary" onclick="window.poModals.startEdit()">Edit</button>`;
       }
 
+      // Delete for pending
+      if (status === 'pending') {
+        actions += `<button class="btn btn-danger-outline" onclick="window.poModals.deletePO()">Delete</button>`;
+      }
+
       // Status-specific actions
       if (status === 'pending' && approval === 'pending') {
-        actions += `
-          <button class="btn btn-primary" onclick="window.poModals.submitForApproval()">Submit for Approval</button>
-        `;
+        actions += `<button class="btn btn-primary" onclick="window.poModals.submitForApproval()">Submit for Approval</button>`;
       } else if (approval === 'pending' && status !== 'pending') {
-        actions += `
-          <button class="btn btn-danger" onclick="window.poModals.rejectPO()">Reject</button>
-          <button class="btn btn-success" onclick="window.poModals.approvePO()">Approve</button>
-        `;
+        actions += `<button class="btn btn-danger-outline" onclick="window.poModals.rejectPO()">Reject</button>`;
+        actions += `<button class="btn btn-success" onclick="window.poModals.approvePO()">Approve</button>`;
       } else if (['approved', 'active'].includes(status)) {
         actions += `<button class="btn btn-secondary" onclick="window.poModals.closePO()">Close PO</button>`;
       } else if (status === 'closed') {
         actions += `<button class="btn btn-secondary" onclick="window.poModals.reopenPO()">Reopen</button>`;
       }
-
-      // Delete for pending
-      if (status === 'pending') {
-        actions += `<button class="btn btn-danger" onclick="window.poModals.deletePO()">Delete</button>`;
-      }
-
-      // Close modal button
-      actions = `<button class="btn btn-secondary" onclick="window.poModals.closeModal()">Close</button>` + actions;
     }
 
     footer.innerHTML = actions;
@@ -611,7 +544,7 @@ class POModals {
       description: '',
       amount: 0
     });
-    this.renderLineItemsSection();
+    this.refreshLineItems();
   }
 
   updateLineItem(index, field, value) {
@@ -625,14 +558,14 @@ class POModals {
 
   removeLineItem(index) {
     this.currentLineItems.splice(index, 1);
-    this.renderLineItemsSection();
+    this.refreshLineItems();
   }
 
-  renderLineItemsSection() {
+  refreshLineItems() {
     const canEdit = !this.currentPO.id || ['pending'].includes(this.currentPO.status_detail) || this.currentPO.approval_status === 'rejected';
-    const container = document.querySelector('.po-section:has(#lineItemsContainer)');
-    if (container) {
-      container.outerHTML = this.renderLineItems(canEdit || this.isEditing);
+    const section = document.querySelector('.form-section:has(#lineItemsContainer)');
+    if (section) {
+      section.outerHTML = this.renderLineItemsSection(canEdit || this.isEditing);
     }
   }
 
@@ -662,13 +595,7 @@ class POModals {
 
       const attachment = await res.json();
       this.attachments.push(attachment);
-
-      // Re-render files section
-      const filesSection = document.querySelector('.po-section:has(.files-list), .po-section:has(#poFileInput)');
-      if (filesSection) {
-        filesSection.outerHTML = this.renderFiles();
-      }
-
+      this.renderPOModal();
       window.showToast?.('File uploaded', 'success');
     } catch (err) {
       console.error('Upload failed:', err);
@@ -700,12 +627,7 @@ class POModals {
       if (!res.ok) throw new Error('Delete failed');
 
       this.attachments = this.attachments.filter(a => a.id !== attachmentId);
-
-      const filesSection = document.querySelector('.po-section:has(.files-list), .po-section:has(#poFileInput)');
-      if (filesSection) {
-        filesSection.outerHTML = this.renderFiles();
-      }
-
+      this.renderPOModal();
       window.showToast?.('File deleted', 'success');
     } catch (err) {
       console.error('Delete failed:', err);
@@ -859,8 +781,7 @@ class POModals {
 
     // Job picker
     const jobContainer = document.getElementById('po-job-picker-container');
-    if (jobContainer && typeof SearchablePicker !== 'undefined') {
-      const currentJob = jobs.find(j => j.id === this.currentPO.job_id);
+    if (jobContainer) {
       jobContainer.innerHTML = `
         <select id="poJobSelect" class="form-control" onchange="window.poModals.currentPO.job_id = this.value">
           <option value="">Select Job</option>
@@ -871,7 +792,7 @@ class POModals {
 
     // Vendor picker
     const vendorContainer = document.getElementById('po-vendor-picker-container');
-    if (vendorContainer && typeof SearchablePicker !== 'undefined') {
+    if (vendorContainer) {
       vendorContainer.innerHTML = `
         <select id="poVendorSelect" class="form-control" onchange="window.poModals.currentPO.vendor_id = this.value">
           <option value="">Select Vendor</option>
