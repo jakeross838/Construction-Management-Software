@@ -5,6 +5,14 @@
 
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 
+// Helper function to format currency
+function formatCurrency(amount) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(amount || 0);
+}
+
 /**
  * Add an approval stamp to a PDF
  * @param {Buffer} pdfBuffer - Original PDF as buffer
@@ -28,7 +36,11 @@ async function stampApproval(pdfBuffer, stampData) {
     poNumber,
     poDescription,
     poTotal,
-    poBilledToDate
+    poBilledToDate,
+    // Partial billing info
+    isPartial: isPartialFromServer = false,
+    previouslyBilled = 0,
+    remainingAfterThis = 0
   } = stampData;
 
   // Load the PDF
@@ -43,15 +55,19 @@ async function stampApproval(pdfBuffer, stampData) {
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Check if this is a partial approval (allocated < invoice amount)
+  // Check if this is a partial approval (allocated < invoice amount OR previously billed)
   const invoiceAmount = parseFloat(amount || 0);
   const allocatedAmount = costCodes.reduce((sum, cc) => sum + parseFloat(cc.amount || 0), 0);
-  const isPartial = allocatedAmount > 0 && allocatedAmount < invoiceAmount - 0.01;
-  const remainingAmount = invoiceAmount - allocatedAmount;
-  const allocPct = invoiceAmount > 0 ? Math.round((allocatedAmount / invoiceAmount) * 100) : 0;
+  const prevBilled = parseFloat(previouslyBilled || 0);
+  const hasPartialHistory = prevBilled > 0;
+  const isPartialAllocation = allocatedAmount > 0 && allocatedAmount < (invoiceAmount - prevBilled) - 0.01;
+  const isPartial = isPartialFromServer || isPartialAllocation || hasPartialHistory;
+  const remainingAmount = invoiceAmount - prevBilled - allocatedAmount;
+  const totalBilledNow = prevBilled + allocatedAmount;
+  const allocPct = invoiceAmount > 0 ? Math.round((totalBilledNow / invoiceAmount) * 100) : 0;
 
   // Determine display status and color
-  const displayStatus = isPartial ? 'PARTIAL APPROVAL' : status;
+  const displayStatus = isPartial ? 'APPROVED (PARTIAL)' : status;
   const statusColor = isPartial ? rgb(0.9, 0.5, 0.1) : rgb(0.1, 0.5, 0.1); // Orange for partial, green for full
 
   // Stamp configuration
@@ -72,6 +88,18 @@ async function stampApproval(pdfBuffer, stampData) {
 
   // Add partial info right after status
   if (isPartial) {
+    if (hasPartialHistory) {
+      headerLines.push({
+        text: `Previously Billed: ${formatMoney(prevBilled)}`,
+        size: 9,
+        color: rgb(0.7, 0.4, 0.1)
+      });
+      headerLines.push({
+        text: `This Approval: ${formatMoney(allocatedAmount)}`,
+        size: 9,
+        color: rgb(0.7, 0.4, 0.1)
+      });
+    }
     headerLines.push({
       text: `${allocPct}% of invoice (${formatMoney(remainingAmount)} remaining)`,
       size: 9,
@@ -442,9 +470,140 @@ function formatMoney(amount) {
   }).format(amount);
 }
 
+/**
+ * Add "PARTIAL BILLED" stamp to a PDF (when draw is submitted with partial)
+ * @param {Buffer} pdfBuffer - PDF as buffer
+ * @param {Object} billingData - Billing information
+ * @returns {Promise<Buffer>}
+ */
+async function stampPartiallyBilled(pdfBuffer, billingData) {
+  const {
+    drawNumber,
+    amountBilledThisDraw,
+    cumulativeBilled,
+    invoiceTotal,
+    remaining,
+    costCodes = []
+  } = billingData;
+
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const pages = pdfDoc.getPages();
+  const firstPage = pages[0];
+
+  const { width, height } = firstPage.getSize();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // Add partial billing info box at bottom left
+  const boxWidth = 220;
+  const boxHeight = 95 + (costCodes.length * 12);
+  const boxX = 15;
+  const boxY = 15;
+
+  // Draw background
+  firstPage.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: boxWidth,
+    height: boxHeight,
+    color: rgb(0.95, 0.95, 1),
+    borderColor: rgb(0.3, 0.5, 0.9),
+    borderWidth: 2
+  });
+
+  // Draw header bar
+  firstPage.drawRectangle({
+    x: boxX,
+    y: boxY + boxHeight - 22,
+    width: boxWidth,
+    height: 22,
+    color: rgb(0.8, 0.85, 1)
+  });
+
+  let textY = boxY + boxHeight - 16;
+  const textX = boxX + 10;
+
+  // Header
+  firstPage.drawText(`BILLED - DRAW #${drawNumber}`, {
+    x: textX,
+    y: textY,
+    size: 11,
+    font: boldFont,
+    color: rgb(0.2, 0.3, 0.7)
+  });
+  textY -= 16;
+
+  // This draw amount
+  firstPage.drawText(`This Draw: ${formatCurrency(amountBilledThisDraw)}`, {
+    x: textX,
+    y: textY,
+    size: 9,
+    font: font,
+    color: rgb(0.2, 0.2, 0.2)
+  });
+  textY -= 12;
+
+  // Cumulative billed
+  firstPage.drawText(`Total Billed: ${formatCurrency(cumulativeBilled)}`, {
+    x: textX,
+    y: textY,
+    size: 9,
+    font: font,
+    color: rgb(0.2, 0.2, 0.2)
+  });
+  textY -= 12;
+
+  // Invoice total
+  firstPage.drawText(`Invoice Total: ${formatCurrency(invoiceTotal)}`, {
+    x: textX,
+    y: textY,
+    size: 9,
+    font: font,
+    color: rgb(0.2, 0.2, 0.2)
+  });
+  textY -= 12;
+
+  // Remaining
+  firstPage.drawText(`Remaining: ${formatCurrency(remaining)}`, {
+    x: textX,
+    y: textY,
+    size: 9,
+    font: boldFont,
+    color: rgb(0.8, 0.4, 0)
+  });
+  textY -= 14;
+
+  // Cost codes
+  if (costCodes.length > 0) {
+    firstPage.drawText('Cost Codes:', {
+      x: textX,
+      y: textY,
+      size: 8,
+      font: boldFont,
+      color: rgb(0.3, 0.3, 0.3)
+    });
+    textY -= 10;
+
+    for (const cc of costCodes) {
+      firstPage.drawText(`${cc.code}: ${formatCurrency(cc.amount)}`, {
+        x: textX + 5,
+        y: textY,
+        size: 7,
+        font: font,
+        color: rgb(0.4, 0.4, 0.4)
+      });
+      textY -= 10;
+    }
+  }
+
+  const stampedPdfBytes = await pdfDoc.save();
+  return Buffer.from(stampedPdfBytes);
+}
+
 module.exports = {
   stampApproval,
   stampInDraw,
   stampPaid,
-  stampPartiallyPaid
+  stampPartiallyPaid,
+  stampPartiallyBilled
 };

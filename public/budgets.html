@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Budgets</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260107h">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <h1>Budgets</h1>
+        <nav class="header-nav">
+          <a href="index.html" class="nav-link">Invoices</a>
+          <a href="pos.html" class="nav-link">Purchase Orders</a>
+          <a href="draws.html" class="nav-link">Draws</a>
+          <a href="budgets.html" class="nav-link active">Budgets</a>
+        </nav>
+      </div>
+      <button class="btn btn-primary" onclick="showImportModal()">Import Budget</button>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Job Selector -->
+      <div class="table-toolbar">
+        <div class="filter-controls">
+          <select id="jobFilter" class="form-control filter-select" style="min-width: 300px;">
+            <option value="">Select a Job...</option>
+          </select>
+        </div>
+        <div class="budget-stats" id="budgetStats">
+          <!-- Stats populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Budget Content -->
+      <div id="budgetContent">
+        <div class="empty-state">Select a job to view budget</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Budget Detail Modal -->
+  <div id="budgetModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 id="budgetModalTitle">Budget</h2>
+        </div>
+        <div class="modal-header-actions">
+          <button class="btn btn-secondary" onclick="exportBudgetExcel()">Export Excel</button>
+          <button class="btn btn-secondary" onclick="window.print()">Print</button>
+          <button class="close-btn" onclick="closeBudgetModal()">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body draw-modal-body draw-single-page">
+        <!-- Summary Section -->
+        <section class="draw-section draw-summary-section">
+          <div class="draw-summary-grid">
+            <div class="summary-card">
+              <div class="summary-label">Original Budget</div>
+              <div class="summary-value" id="summaryBudget">$0</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Change Orders</div>
+              <div class="summary-value" id="summaryChangeOrders">$0</div>
+            </div>
+            <div class="summary-card highlight">
+              <div class="summary-label">Total Contract</div>
+              <div class="summary-value" id="summaryTotalContract">$0</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Billed to Date</div>
+              <div class="summary-value" id="summaryBilled">$0</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Paid to Date</div>
+              <div class="summary-value" id="summaryPaid">$0</div>
+            </div>
+            <div class="summary-card" id="varianceCard">
+              <div class="summary-label">Remaining</div>
+              <div class="summary-value" id="summaryRemaining">$0</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Budget Lines Section -->
+        <section class="draw-section">
+          <div class="section-header">
+            <h3>Budget by Cost Code</h3>
+            <span class="section-subtitle">Live view - updates when invoices are approved</span>
+          </div>
+          <div class="g703-container">
+            <div class="g703-table-wrapper">
+              <table class="g703-table budget-table">
+                <thead>
+                  <tr>
+                    <th>Cost Code</th>
+                    <th>Description</th>
+                    <th>Budget</th>
+                    <th>Committed</th>
+                    <th>Billed</th>
+                    <th>Paid</th>
+                    <th>%</th>
+                    <th>Remaining</th>
+                    <th>Variance</th>
+                  </tr>
+                </thead>
+                <tbody id="budgetBody">
+                  <tr>
+                    <td colspan="9" class="loading">Loading budget...</td>
+                  </tr>
+                </tbody>
+                <tfoot id="budgetFooter">
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Change Orders Section -->
+        <section class="draw-section">
+          <div class="section-header">
+            <h3>Change Orders</h3>
+            <span class="section-badge" id="changeOrderCount">0 change orders</span>
+          </div>
+          <div class="invoices-container">
+            <table class="invoices-table">
+              <thead>
+                <tr>
+                  <th>CO #</th>
+                  <th>PO</th>
+                  <th>Description</th>
+                  <th>Reason</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="changeOrdersBody">
+                <tr>
+                  <td colspan="6" class="empty-state">No change orders</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeBudgetModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Budget Modal -->
+  <div id="importModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Import Budget from Excel</h2>
+        <button class="close-btn" onclick="closeModal('importModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Job *</label>
+          <select id="importJob" class="form-control" required>
+            <option value="">Select a job...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Excel File (.xlsx, .xls)</label>
+          <input type="file" id="importFile" class="form-control" accept=".xlsx,.xls">
+          <small class="form-hint">Upload a G703 format budget spreadsheet</small>
+        </div>
+        <div id="importPreview" class="import-preview" style="display: none;">
+          <h4>Preview</h4>
+          <div id="previewContent"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('importModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="importBudget()" id="importBtn" disabled>Import Budget</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <script src="js/toasts.js"></script>
+  <script>
+    // ============================================================
+    // BUDGETS PAGE - Live Budget View
+    // ============================================================
+
+    let state = {
+      jobs: [],
+      currentJob: null,
+      budgetData: null
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadJobs();
+      setupEventListeners();
+    });
+
+    async function loadJobs() {
+      try {
+        const res = await fetch('/api/jobs');
+        state.jobs = await res.json();
+
+        const select = document.getElementById('jobFilter');
+        const importSelect = document.getElementById('importJob');
+
+        select.innerHTML = '<option value="">Select a Job...</option>';
+        importSelect.innerHTML = '<option value="">Select a job...</option>';
+
+        state.jobs.forEach(job => {
+          select.innerHTML += `<option value="${job.id}">${job.name}</option>`;
+          importSelect.innerHTML += `<option value="${job.id}">${job.name}</option>`;
+        });
+      } catch (err) {
+        console.error('Failed to load jobs:', err);
+      }
+    }
+
+    function setupEventListeners() {
+      document.getElementById('jobFilter').addEventListener('change', (e) => {
+        if (e.target.value) {
+          loadBudget(e.target.value);
+        } else {
+          document.getElementById('budgetContent').innerHTML = '<div class="empty-state">Select a job to view budget</div>';
+        }
+      });
+
+      document.getElementById('importFile').addEventListener('change', handleFileSelect);
+    }
+
+    async function loadBudget(jobId) {
+      try {
+        const job = state.jobs.find(j => j.id === jobId);
+        state.currentJob = job;
+
+        // Show loading in content area
+        document.getElementById('budgetContent').innerHTML = '<div class="loading">Loading budget...</div>';
+
+        // Fetch budget data
+        const res = await fetch(`/api/jobs/${jobId}/budget-summary`);
+        if (!res.ok) throw new Error('Failed to fetch budget');
+
+        state.budgetData = await res.json();
+
+        // Show the modal with budget data
+        renderBudgetModal();
+        document.getElementById('budgetModal').style.display = 'flex';
+
+        // Update content area with summary
+        renderBudgetSummaryCard();
+      } catch (err) {
+        console.error('Error loading budget:', err);
+        showToast('Failed to load budget', 'error');
+      }
+    }
+
+    function renderBudgetSummaryCard() {
+      const data = state.budgetData;
+      const job = state.currentJob;
+      const totalContract = data.totals.adjustedContract || data.totals.budgeted;
+      const remaining = totalContract - data.totals.billed;
+      const percentComplete = totalContract > 0 ? (data.totals.billed / totalContract) * 100 : 0;
+
+      document.getElementById('budgetContent').innerHTML = `
+        <div class="budget-summary-card" onclick="document.getElementById('budgetModal').style.display='flex'">
+          <div class="budget-card-header">
+            <h3>${job.name}</h3>
+            <span class="btn btn-sm btn-primary">View Details</span>
+          </div>
+          <div class="budget-card-stats">
+            <div class="stat">
+              <span class="stat-label">Total Contract</span>
+              <span class="stat-value">${formatMoney(totalContract)}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Billed</span>
+              <span class="stat-value">${formatMoney(data.totals.billed)}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Remaining</span>
+              <span class="stat-value">${formatMoney(remaining)}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">% Complete</span>
+              <span class="stat-value">${percentComplete.toFixed(1)}%</span>
+            </div>
+          </div>
+          <div class="budget-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${Math.min(percentComplete, 100)}%"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderBudgetModal() {
+      const data = state.budgetData;
+      const job = state.currentJob;
+
+      // Header
+      document.getElementById('budgetModalTitle').textContent = `Budget - ${job.name}`;
+
+      // Summary cards
+      document.getElementById('summaryBudget').textContent = formatMoney(data.totals.budgeted);
+      document.getElementById('summaryChangeOrders').textContent = formatMoney(data.totals.changeOrderTotal || 0);
+      document.getElementById('summaryTotalContract').textContent = formatMoney(data.totals.adjustedContract || data.totals.budgeted);
+      document.getElementById('summaryBilled').textContent = formatMoney(data.totals.billed);
+      document.getElementById('summaryPaid').textContent = formatMoney(data.totals.paid);
+
+      const remaining = (data.totals.adjustedContract || data.totals.budgeted) - data.totals.billed;
+      document.getElementById('summaryRemaining').textContent = formatMoney(remaining);
+      document.getElementById('varianceCard').className = `summary-card ${remaining < 0 ? 'over-budget' : ''}`;
+
+      // Budget lines table
+      renderBudgetTable(data.lines);
+
+      // Change orders
+      renderChangeOrders(data.changeOrders || []);
+    }
+
+    function renderBudgetTable(lines) {
+      const tbody = document.getElementById('budgetBody');
+      const tfoot = document.getElementById('budgetFooter');
+
+      if (!lines || lines.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No budget lines found. Import a budget to get started.</td></tr>';
+        tfoot.innerHTML = '';
+        return;
+      }
+
+      // Filter out lines with no cost code (orphan allocations)
+      const validLines = lines.filter(line => line.costCode && line.costCode.trim() !== '');
+
+      // Sort by cost code
+      validLines.sort((a, b) => (a.costCode || '').localeCompare(b.costCode || ''));
+
+      tbody.innerHTML = validLines.map(line => {
+        const budgeted = line.budgeted || 0;
+        const committed = line.committed || 0;
+        const billed = line.billed || 0;
+        const paid = line.paid || 0;
+        const remaining = budgeted - billed;
+        const variance = budgeted - billed;
+        const percentComplete = budgeted > 0 ? (billed / budgeted) * 100 : (billed > 0 ? 100 : 0);
+
+        const varianceClass = variance < 0 ? 'over-budget' : '';
+        const rowClass = billed > budgeted && budgeted > 0 ? 'row-over-budget' : '';
+
+        return `
+          <tr class="${rowClass}">
+            <td class="cost-code">${line.costCode}</td>
+            <td>${line.description || '-'}</td>
+            <td class="amount">${formatMoneyDecimal(budgeted)}</td>
+            <td class="amount">${formatMoneyDecimal(committed)}</td>
+            <td class="amount highlight-current">${formatMoneyDecimal(billed)}</td>
+            <td class="amount">${formatMoneyDecimal(paid)}</td>
+            <td class="percent">${percentComplete.toFixed(1)}%</td>
+            <td class="amount">${formatMoneyDecimal(remaining)}</td>
+            <td class="amount ${varianceClass}">${formatMoneyDecimal(variance)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Totals row
+      const totals = lines.reduce((acc, line) => ({
+        budgeted: acc.budgeted + (line.budgeted || 0),
+        committed: acc.committed + (line.committed || 0),
+        billed: acc.billed + (line.billed || 0),
+        paid: acc.paid + (line.paid || 0)
+      }), { budgeted: 0, committed: 0, billed: 0, paid: 0 });
+
+      const totalRemaining = totals.budgeted - totals.billed;
+      const totalVariance = totals.budgeted - totals.billed;
+      const overallPercent = totals.budgeted > 0 ? (totals.billed / totals.budgeted) * 100 : 0;
+
+      tfoot.innerHTML = `
+        <tr class="totals-row">
+          <td colspan="2"><strong>TOTAL</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.budgeted)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.committed)}</strong></td>
+          <td class="amount highlight-current"><strong>${formatMoneyDecimal(totals.billed)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.paid)}</strong></td>
+          <td class="percent"><strong>${overallPercent.toFixed(1)}%</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totalRemaining)}</strong></td>
+          <td class="amount ${totalVariance < 0 ? 'over-budget' : ''}"><strong>${formatMoneyDecimal(totalVariance)}</strong></td>
+        </tr>
+      `;
+    }
+
+    function renderChangeOrders(changeOrders) {
+      const tbody = document.getElementById('changeOrdersBody');
+      const countBadge = document.getElementById('changeOrderCount');
+
+      countBadge.textContent = `${changeOrders.length} change order${changeOrders.length !== 1 ? 's' : ''}`;
+
+      if (!changeOrders || changeOrders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No change orders</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = changeOrders.map(co => {
+        const statusClass = {
+          pending: 'pending',
+          approved: 'approved',
+          rejected: 'denied'
+        }[co.status] || 'pending';
+
+        const reasonLabel = {
+          scope_change: 'Scope Change',
+          price_adjustment: 'Price Adjustment',
+          additional_work: 'Additional Work',
+          error_correction: 'Error Correction'
+        }[co.reason] || co.reason || '-';
+
+        const amountClass = co.amount_change >= 0 ? 'positive' : 'negative';
+
+        return `
+          <tr>
+            <td>CO-${co.change_order_number}</td>
+            <td>${co.po?.po_number || '-'}</td>
+            <td>${co.description || '-'}</td>
+            <td>${reasonLabel}</td>
+            <td class="amount ${amountClass}">${co.amount_change >= 0 ? '+' : ''}${formatMoney(co.amount_change)}</td>
+            <td><span class="status-badge status-${statusClass}">${co.status}</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function closeBudgetModal() {
+      document.getElementById('budgetModal').style.display = 'none';
+    }
+
+    // Import functionality
+    function showImportModal() {
+      document.getElementById('importFile').value = '';
+      document.getElementById('importPreview').style.display = 'none';
+      document.getElementById('importBtn').disabled = true;
+      document.getElementById('importModal').style.display = 'flex';
+    }
+
+    let parsedBudgetData = null;
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+
+          // Try to find G703 sheet
+          let sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('g703') || n.toLowerCase().includes('line item'));
+          if (!sheetName) sheetName = workbook.SheetNames[0];
+
+          const sheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+          // Parse budget lines
+          parsedBudgetData = parseBudgetFromExcel(jsonData);
+
+          if (parsedBudgetData.length > 0) {
+            showPreview(parsedBudgetData);
+            document.getElementById('importBtn').disabled = false;
+          } else {
+            showToast('No budget lines found in file', 'error');
+          }
+        } catch (err) {
+          console.error('Error parsing file:', err);
+          showToast('Failed to parse Excel file', 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function parseBudgetFromExcel(data) {
+      const lines = [];
+
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[0]) continue;
+
+        // Look for cost code pattern (digits with possible dots/dashes)
+        const firstCell = String(row[0]).trim();
+        if (/^\d{2,5}$/.test(firstCell) || /^\d{2}\d{3}$/.test(firstCell)) {
+          const costCode = firstCell;
+          const description = row[1] || '';
+          const budget = parseFloat(row[2]) || 0;
+
+          if (description && !description.toLowerCase().includes('total')) {
+            lines.push({
+              costCode,
+              description: String(description).trim(),
+              budgeted: budget
+            });
+          }
+        }
+      }
+
+      return lines;
+    }
+
+    function showPreview(lines) {
+      const preview = document.getElementById('importPreview');
+      const content = document.getElementById('previewContent');
+
+      content.innerHTML = `
+        <p><strong>${lines.length}</strong> cost codes found</p>
+        <table class="preview-table">
+          <thead>
+            <tr><th>Code</th><th>Description</th><th>Budget</th></tr>
+          </thead>
+          <tbody>
+            ${lines.slice(0, 10).map(l => `
+              <tr>
+                <td>${l.costCode}</td>
+                <td>${l.description}</td>
+                <td>${formatMoney(l.budgeted)}</td>
+              </tr>
+            `).join('')}
+            ${lines.length > 10 ? `<tr><td colspan="3">... and ${lines.length - 10} more</td></tr>` : ''}
+          </tbody>
+        </table>
+      `;
+
+      preview.style.display = 'block';
+    }
+
+    async function importBudget() {
+      const jobId = document.getElementById('importJob').value;
+      if (!jobId) {
+        showToast('Please select a job', 'error');
+        return;
+      }
+
+      if (!parsedBudgetData || parsedBudgetData.length === 0) {
+        showToast('No budget data to import', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/budget/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lines: parsedBudgetData })
+        });
+
+        if (!res.ok) throw new Error('Failed to import budget');
+
+        const result = await res.json();
+        showToast(`Imported ${result.imported} budget lines`, 'success');
+        closeModal('importModal');
+
+        // Refresh if viewing this job
+        if (state.currentJob?.id === jobId) {
+          loadBudget(jobId);
+        }
+      } catch (err) {
+        console.error('Error importing budget:', err);
+        showToast('Failed to import budget', 'error');
+      }
+    }
+
+    function exportBudgetExcel() {
+      if (!state.currentJob) return;
+      window.open(`/api/jobs/${state.currentJob.id}/budget/export`, '_blank');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).style.display = 'none';
+    }
+
+    function formatMoney(amount) {
+      const num = parseFloat(amount) || 0;
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(num);
+    }
+
+    function formatMoneyDecimal(amount) {
+      const num = parseFloat(amount) || 0;
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(num);
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function showToast(message, type = 'info') {
+      if (window.Toast) {
+        Toast.show(message, type);
+      } else {
+        console.log(`[${type}] ${message}`);
+      }
+    }
+  </script>
+</body>
+</html>

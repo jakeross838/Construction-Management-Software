@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Draws</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260107f">
+  <link rel="stylesheet" href="css/styles.css?v=20260107g">
 </head>
 <body>
   <div class="app">
@@ -16,7 +16,8 @@
         <nav class="header-nav">
           <a href="index.html" class="nav-link">Invoices</a>
           <a href="pos.html" class="nav-link">Purchase Orders</a>
-          <a href="draws.html" class="nav-link active">Draws</a>
+          <a href="draws.html" class="nav-link">Draws</a>
+          <a href="budgets.html" class="nav-link">Budgets</a>
         </nav>
       </div>
       <button class="btn btn-primary" onclick="showCreateDrawModal()">+ New Draw</button>
@@ -46,7 +47,7 @@
     </main>
   </div>
 
-  <!-- Draw Detail Modal (Fullscreen) -->
+  <!-- Draw Detail Modal (Fullscreen - Single Page Layout) -->
   <div id="drawModal" class="modal modal-fullscreen-dark">
     <div class="modal-content">
       <div class="modal-header">
@@ -56,26 +57,21 @@
         </div>
         <div class="modal-header-actions">
           <button class="btn btn-secondary" onclick="exportExcel()" title="Export Excel">
-            <span>Export Excel</span>
+            Export Excel
           </button>
           <button class="btn btn-secondary" onclick="exportPDF()" title="Export PDF">
-            <span>Export PDF</span>
+            Export PDF
+          </button>
+          <button class="btn btn-secondary" onclick="window.print()" title="Print">
+            Print
           </button>
           <button class="close-btn" onclick="closeDrawModal()">&times;</button>
         </div>
       </div>
 
-      <!-- Tab Navigation -->
-      <div class="draw-tabs">
-        <button class="draw-tab active" data-tab="summary" onclick="switchTab('summary')">Summary</button>
-        <button class="draw-tab" data-tab="g702" onclick="switchTab('g702')">G702</button>
-        <button class="draw-tab" data-tab="g703" onclick="switchTab('g703')">G703</button>
-        <button class="draw-tab" data-tab="invoices" onclick="switchTab('invoices')">Invoices</button>
-      </div>
-
-      <div class="modal-body draw-modal-body">
-        <!-- Summary Tab -->
-        <div class="draw-tab-content active" id="tab-summary">
+      <div class="modal-body draw-modal-body draw-single-page">
+        <!-- Summary Header -->
+        <section class="draw-section draw-summary-section">
           <div class="draw-summary-grid">
             <div class="summary-card">
               <div class="summary-label">Job</div>
@@ -102,18 +98,14 @@
               <div class="summary-value" id="summaryPaymentDue">$0</div>
             </div>
           </div>
+        </section>
 
-          <div class="draw-actions" id="drawActions">
-            <!-- Action buttons populated based on status -->
+        <!-- G702 Section -->
+        <section class="draw-section">
+          <div class="section-header">
+            <h3>G702 - Application and Certificate for Payment</h3>
           </div>
-        </div>
-
-        <!-- G702 Tab -->
-        <div class="draw-tab-content" id="tab-g702">
           <div class="g702-container">
-            <div class="g702-header">
-              <h3>AIA Document G702 - Application and Certificate for Payment</h3>
-            </div>
             <div class="g702-form">
               <div class="g702-section">
                 <div class="g702-row">
@@ -163,73 +155,83 @@
                   </tr>
                   <tr>
                     <td class="g702-line-num">4.</td>
-                    <td>TOTAL COMPLETED & STORED TO DATE (Column G on G703)</td>
+                    <td>TOTAL COMPLETED & STORED TO DATE</td>
                     <td class="g702-amount" id="g702Line4">$0.00</td>
                   </tr>
                   <tr>
                     <td class="g702-line-num">5.</td>
-                    <td>RETAINAGE:
-                      <div class="g702-sub">a. 10% of Completed Work</div>
-                      <div class="g702-sub">b. 10% of Stored Material</div>
-                      <div class="g702-sub">Total Retainage</div>
-                    </td>
-                    <td class="g702-amount">
-                      <div id="g702Line5a">$0.00</div>
-                      <div id="g702Line5b">$0.00</div>
-                      <div id="g702Line5c">$0.00</div>
-                    </td>
+                    <td>LESS PREVIOUS CERTIFICATES FOR PAYMENT</td>
+                    <td class="g702-amount" id="g702Line5">$0.00</td>
                   </tr>
-                  <tr>
+                  <tr class="g702-highlight">
                     <td class="g702-line-num">6.</td>
-                    <td>TOTAL EARNED LESS RETAINAGE (Line 4 Less Line 5 Total)</td>
+                    <td><strong>CURRENT PAYMENT DUE</strong> (Line 4 less Line 5)</td>
                     <td class="g702-amount" id="g702Line6">$0.00</td>
                   </tr>
                   <tr>
                     <td class="g702-line-num">7.</td>
-                    <td>LESS PREVIOUS CERTIFICATES FOR PAYMENT</td>
+                    <td>BALANCE TO FINISH (Line 3 less Line 4)</td>
                     <td class="g702-amount" id="g702Line7">$0.00</td>
-                  </tr>
-                  <tr class="g702-highlight">
-                    <td class="g702-line-num">8.</td>
-                    <td><strong>CURRENT PAYMENT DUE</strong></td>
-                    <td class="g702-amount" id="g702Line8">$0.00</td>
-                  </tr>
-                  <tr>
-                    <td class="g702-line-num">9.</td>
-                    <td>BALANCE TO FINISH, INCLUDING RETAINAGE (Line 3 less Line 6)</td>
-                    <td class="g702-amount" id="g702Line9">$0.00</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
-        </div>
+        </section>
 
-        <!-- G703 Tab -->
-        <div class="draw-tab-content" id="tab-g703">
+        <!-- PCCO (Potential Change Orders) Section -->
+        <section class="draw-section">
+          <div class="section-header">
+            <h3>PCCO - Change Orders</h3>
+            <span class="section-badge" id="pccoCount">0 Change Orders</span>
+          </div>
+          <div class="pcco-container">
+            <table class="pcco-table">
+              <thead>
+                <tr>
+                  <th>CO #</th>
+                  <th>Description</th>
+                  <th>Reason</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody id="pccoBody">
+                <tr>
+                  <td colspan="6" class="empty-state">No change orders for this project</td>
+                </tr>
+              </tbody>
+              <tfoot id="pccoFooter">
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
+        <!-- G703 Section -->
+        <section class="draw-section">
+          <div class="section-header">
+            <h3>G703 - Schedule of Values</h3>
+            <span class="section-subtitle">Budget vs Billings by Cost Code</span>
+          </div>
           <div class="g703-container">
-            <div class="g703-header">
-              <h3>Schedule of Values - Cost Code Breakdown</h3>
-              <p>Draw #<span id="g703AppNum">1</span> - Budget vs Billings by Cost Code</p>
-            </div>
             <div class="g703-table-wrapper">
               <table class="g703-table">
                 <thead>
                   <tr>
                     <th>#</th>
                     <th>Cost Code</th>
-                    <th>Budget</th>
-                    <th>Previous<br>Billings</th>
-                    <th>Current<br>Billings</th>
-                    <th>Total<br>Billed</th>
-                    <th>%<br>Complete</th>
-                    <th>Balance<br>Remaining</th>
-                    <th>Retainage<br>(10%)</th>
+                    <th>Scheduled Value</th>
+                    <th>Previous<br>Applications</th>
+                    <th>This<br>Application</th>
+                    <th>Total<br>Completed</th>
+                    <th>%</th>
+                    <th>Balance<br>to Finish</th>
                   </tr>
                 </thead>
                 <tbody id="g703Body">
                   <tr>
-                    <td colspan="9" class="loading">Loading schedule of values...</td>
+                    <td colspan="8" class="loading">Loading schedule of values...</td>
                   </tr>
                 </tbody>
                 <tfoot id="g703Footer">
@@ -237,33 +239,36 @@
               </table>
             </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Invoices Tab -->
-        <div class="draw-tab-content" id="tab-invoices">
-          <div class="invoices-section">
-            <div class="invoices-header">
-              <h3>Invoices in this Draw</h3>
-              <button class="btn btn-primary btn-sm" id="addInvoiceBtn" onclick="showAddInvoiceModal()">+ Add Invoice</button>
-            </div>
+        <!-- Invoices Section -->
+        <section class="draw-section">
+          <div class="section-header">
+            <h3>Invoices in this Draw</h3>
+            <button class="btn btn-primary btn-sm" id="addInvoiceBtn" onclick="showAddInvoiceModal()">+ Add Invoice</button>
+          </div>
+          <div class="invoices-container">
             <table class="invoices-table">
               <thead>
                 <tr>
                   <th>Vendor</th>
                   <th>Invoice #</th>
                   <th>Date</th>
+                  <th>Cost Codes</th>
                   <th>Amount</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="invoicesBody">
                 <tr>
-                  <td colspan="5" class="loading">Loading invoices...</td>
+                  <td colspan="6" class="loading">Loading invoices...</td>
                 </tr>
               </tbody>
+              <tfoot id="invoicesFooter">
+              </tfoot>
             </table>
           </div>
-        </div>
+        </section>
       </div>
 
       <div class="modal-footer" id="drawModalFooter">
@@ -306,7 +311,7 @@
   <script src="js/toasts.js"></script>
   <script>
     // ============================================================
-    // DRAWS PAGE
+    // DRAWS PAGE - Single Page Layout
     // ============================================================
 
     let state = {
@@ -344,7 +349,6 @@
 
     async function loadDraws() {
       try {
-        // Get all draws from all jobs
         const jobsRes = await fetch('/api/jobs');
         const jobs = await jobsRes.json();
 
@@ -358,39 +362,10 @@
 
         state.draws = allDraws.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         renderDrawList();
-        updateStats();
       } catch (err) {
         console.error('Failed to load draws:', err);
         document.getElementById('drawList').innerHTML = '<div class="empty-state">Failed to load draws</div>';
       }
-    }
-
-    function updateStats() {
-      const openDraws = state.draws.filter(d => d.status === 'draft' || d.status === 'submitted');
-      const pendingAmount = openDraws.reduce((sum, d) => sum + parseFloat(d.total_amount || 0), 0);
-
-      const now = new Date();
-      const thisMonth = state.draws.filter(d => {
-        if (d.status !== 'funded' || !d.funded_at) return false;
-        const funded = new Date(d.funded_at);
-        return funded.getMonth() === now.getMonth() && funded.getFullYear() === now.getFullYear();
-      });
-      const fundedMonth = thisMonth.reduce((sum, d) => sum + parseFloat(d.funded_amount || d.total_amount || 0), 0);
-
-      const totalFunded = state.draws
-        .filter(d => d.status === 'funded')
-        .reduce((sum, d) => sum + parseFloat(d.funded_amount || d.total_amount || 0), 0);
-
-      // Update stats elements if they exist
-      const statOpenDraws = document.getElementById('statOpenDraws');
-      const statPendingAmount = document.getElementById('statPendingAmount');
-      const statFundedMonth = document.getElementById('statFundedMonth');
-      const statTotalFunded = document.getElementById('statTotalFunded');
-
-      if (statOpenDraws) statOpenDraws.textContent = openDraws.length;
-      if (statPendingAmount) statPendingAmount.textContent = formatMoney(pendingAmount);
-      if (statFundedMonth) statFundedMonth.textContent = formatMoney(fundedMonth);
-      if (statTotalFunded) statTotalFunded.textContent = formatMoney(totalFunded);
     }
 
     function setupFilters() {
@@ -447,6 +422,9 @@
         funded: 'Funded'
       }[draw.status] || draw.status;
 
+      // Count invoices from the nested data
+      const invoiceCount = draw.invoices?.length || draw.invoice_count || 0;
+
       return `
         <div class="draw-row" onclick="openDraw('${draw.id}', '${draw.job_id}')">
           <div class="draw-number">Draw #${draw.draw_number}</div>
@@ -454,21 +432,19 @@
           <div class="draw-date">${draw.period_end ? formatDate(draw.period_end) : '-'}</div>
           <div><span class="status-badge status-${statusClass}">${statusLabel}</span></div>
           <div class="draw-amount">${formatMoney(draw.total_amount)}</div>
-          <div class="draw-invoices">${draw.invoice_count || 0}</div>
+          <div class="draw-invoices">${invoiceCount}</div>
         </div>
       `;
     }
 
     let currentDraw = null;
-    window.currentDraw = null; // Expose for debugging
+    window.currentDraw = null;
 
     async function openDraw(drawId) {
       console.log('openDraw called with drawId:', drawId);
       try {
         const url = `/api/draws/${drawId}`;
-        console.log('Fetching:', url);
         const res = await fetch(url);
-        console.log('Response status:', res.status);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -477,8 +453,7 @@
         }
 
         currentDraw = await res.json();
-        window.currentDraw = currentDraw; // Expose for debugging
-        console.log('Draw loaded:', currentDraw);
+        window.currentDraw = currentDraw;
 
         renderDrawModal(currentDraw);
         document.getElementById('drawModal').style.display = 'flex';
@@ -493,18 +468,6 @@
       currentDraw = null;
     }
 
-    function switchTab(tabName) {
-      // Update tab buttons
-      document.querySelectorAll('.draw-tab').forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.tab === tabName);
-      });
-
-      // Update tab content
-      document.querySelectorAll('.draw-tab-content').forEach(content => {
-        content.classList.toggle('active', content.id === `tab-${tabName}`);
-      });
-    }
-
     function renderDrawModal(draw) {
       // Modal header
       document.getElementById('drawModalTitle').textContent = `Draw #${draw.draw_number} - ${draw.job?.name || 'Unknown Job'}`;
@@ -515,7 +478,7 @@
       statusBadge.className = `status-badge status-${statusClass}`;
       statusBadge.textContent = statusLabel;
 
-      // Summary tab
+      // Summary section
       document.getElementById('summaryJob').textContent = draw.job?.name || '-';
       document.getElementById('summaryAppNum').textContent = draw.draw_number;
       document.getElementById('summaryPeriod').textContent = draw.period_end ? formatDate(draw.period_end) : '-';
@@ -523,39 +486,35 @@
       document.getElementById('summaryThisPeriod').textContent = formatMoney(draw.g702?.totalCompletedThisPeriod || 0);
       document.getElementById('summaryPaymentDue').textContent = formatMoney(draw.g702?.currentPaymentDue || 0);
 
-      // G702 tab
+      // G702 section
       document.getElementById('g702Owner').textContent = draw.job?.client_name || '-';
       document.getElementById('g702AppNo').textContent = draw.draw_number;
       document.getElementById('g702Project').textContent = draw.job?.name || '-';
       document.getElementById('g702PeriodTo').textContent = draw.period_end ? formatDate(draw.period_end) : '-';
 
       const contractSum = parseFloat(draw.job?.contract_amount) || 0;
-      const changeOrders = 0; // TODO: Calculate from change orders
+      const changeOrders = draw.changeOrderTotal || 0;
       const contractSumToDate = contractSum + changeOrders;
+      const totalCompleted = draw.g702?.grandTotal || 0;
+      const previousCertificates = draw.g702?.lessPreviousCertificates || 0;
+      const currentPaymentDue = draw.g702?.currentPaymentDue || 0;
+      const balanceToFinish = contractSumToDate - totalCompleted;
 
       document.getElementById('g702Line1').textContent = formatMoneyDecimal(contractSum);
       document.getElementById('g702Line2').textContent = formatMoneyDecimal(changeOrders);
       document.getElementById('g702Line3').textContent = formatMoneyDecimal(contractSumToDate);
-      document.getElementById('g702Line4').textContent = formatMoneyDecimal(draw.g702?.grandTotal || 0);
+      document.getElementById('g702Line4').textContent = formatMoneyDecimal(totalCompleted);
+      document.getElementById('g702Line5').textContent = formatMoneyDecimal(previousCertificates);
+      document.getElementById('g702Line6').textContent = formatMoneyDecimal(currentPaymentDue);
+      document.getElementById('g702Line7').textContent = formatMoneyDecimal(balanceToFinish);
 
-      const completedWork = (draw.g702?.totalCompletedPrevious || 0) + (draw.g702?.totalCompletedThisPeriod || 0);
-      const retainageWork = completedWork * 0.10;
-      const retainageMaterials = (draw.g702?.materialsStored || 0) * 0.10;
-      const totalRetainage = retainageWork + retainageMaterials;
+      // PCCO section
+      renderPCCOTable(draw.changeOrders || []);
 
-      document.getElementById('g702Line5a').textContent = formatMoneyDecimal(retainageWork);
-      document.getElementById('g702Line5b').textContent = formatMoneyDecimal(retainageMaterials);
-      document.getElementById('g702Line5c').textContent = formatMoneyDecimal(totalRetainage);
-      document.getElementById('g702Line6').textContent = formatMoneyDecimal(draw.g702?.totalEarnedLessRetainage || 0);
-      document.getElementById('g702Line7').textContent = formatMoneyDecimal(draw.g702?.lessPreviousCertificates || 0);
-      document.getElementById('g702Line8').textContent = formatMoneyDecimal(draw.g702?.currentPaymentDue || 0);
-      document.getElementById('g702Line9').textContent = formatMoneyDecimal(contractSumToDate - (draw.g702?.totalEarnedLessRetainage || 0));
-
-      // G703 tab
-      document.getElementById('g703AppNum').textContent = draw.draw_number;
+      // G703 section
       renderG703Table(draw.scheduleOfValues || []);
 
-      // Invoices tab
+      // Invoices section
       renderInvoicesTable(draw.invoices || []);
 
       // Action buttons based on status
@@ -578,12 +537,64 @@
       }
     }
 
+    function renderPCCOTable(changeOrders) {
+      const tbody = document.getElementById('pccoBody');
+      const tfoot = document.getElementById('pccoFooter');
+      const countBadge = document.getElementById('pccoCount');
+
+      countBadge.textContent = `${changeOrders.length} Change Order${changeOrders.length !== 1 ? 's' : ''}`;
+
+      if (!changeOrders || changeOrders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No change orders for this project</td></tr>';
+        tfoot.innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = changeOrders.map(co => {
+        const statusClass = {
+          pending: 'pending',
+          approved: 'approved',
+          rejected: 'denied'
+        }[co.status] || 'pending';
+
+        const reasonLabel = {
+          scope_change: 'Scope Change',
+          price_adjustment: 'Price Adjustment',
+          additional_work: 'Additional Work',
+          error_correction: 'Error Correction'
+        }[co.reason] || co.reason || '-';
+
+        return `
+          <tr>
+            <td>CO-${co.change_order_number}</td>
+            <td>${co.description || '-'}</td>
+            <td>${reasonLabel}</td>
+            <td class="amount ${co.amount_change < 0 ? 'negative' : ''}">${formatMoneyDecimal(co.amount_change)}</td>
+            <td><span class="status-badge status-${statusClass}">${co.status}</span></td>
+            <td>${co.created_at ? formatDate(co.created_at) : '-'}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const totalChange = changeOrders
+        .filter(co => co.status === 'approved')
+        .reduce((sum, co) => sum + parseFloat(co.amount_change || 0), 0);
+
+      tfoot.innerHTML = `
+        <tr class="totals-row">
+          <td colspan="3"><strong>Total Approved Change Orders</strong></td>
+          <td class="amount ${totalChange < 0 ? 'negative' : ''}"><strong>${formatMoneyDecimal(totalChange)}</strong></td>
+          <td colspan="2"></td>
+        </tr>
+      `;
+    }
+
     function renderG703Table(scheduleOfValues) {
       const tbody = document.getElementById('g703Body');
       const tfoot = document.getElementById('g703Footer');
 
       if (!scheduleOfValues || scheduleOfValues.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No billing data for this draw</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No billing data for this draw</td></tr>';
         tfoot.innerHTML = '';
         return;
       }
@@ -606,7 +617,6 @@
             <td class="amount">${formatMoneyDecimal(total)}</td>
             <td class="percent">${item.percentComplete.toFixed(1)}%</td>
             <td class="amount ${balanceClass}">${formatMoneyDecimal(balance)}</td>
-            <td class="amount">${formatMoneyDecimal(item.retainage)}</td>
           </tr>
         `;
       }).join('');
@@ -617,51 +627,78 @@
         previous: acc.previous + (item.previousBilled || item.previousCompleted || 0),
         current: acc.current + (item.currentBilled || item.thisPeriod || 0),
         total: acc.total + (item.totalBilled || item.totalCompleted || 0),
-        balance: acc.balance + (item.balance || 0),
-        retainage: acc.retainage + (item.retainage || 0)
-      }), { budget: 0, previous: 0, current: 0, total: 0, balance: 0, retainage: 0 });
+        balance: acc.balance + (item.balance || 0)
+      }), { budget: 0, previous: 0, current: 0, total: 0, balance: 0 });
 
       const overallPercent = totals.budget > 0 ? (totals.total / totals.budget) * 100 : (totals.total > 0 ? 100 : 0);
 
       tfoot.innerHTML = `
         <tr class="totals-row">
           <td></td>
-          <td><strong>TOTALS</strong></td>
+          <td><strong>GRAND TOTAL</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.budget)}</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.previous)}</strong></td>
           <td class="amount highlight-current"><strong>${formatMoneyDecimal(totals.current)}</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.total)}</strong></td>
           <td class="percent"><strong>${overallPercent.toFixed(1)}%</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.balance)}</strong></td>
-          <td class="amount"><strong>${formatMoneyDecimal(totals.retainage)}</strong></td>
         </tr>
       `;
     }
 
     function renderInvoicesTable(invoices) {
       const tbody = document.getElementById('invoicesBody');
+      const tfoot = document.getElementById('invoicesFooter');
 
       if (!invoices || invoices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No invoices in this draw</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No invoices in this draw</td></tr>';
+        tfoot.innerHTML = '';
         return;
       }
 
-      tbody.innerHTML = invoices.map(inv => `
-        <tr>
-          <td>${inv.vendor?.name || 'Unknown'}</td>
-          <td>${inv.invoice_number || '-'}</td>
-          <td>${inv.invoice_date ? formatDate(inv.invoice_date) : '-'}</td>
-          <td class="amount">${formatMoney(inv.amount)}</td>
-          <td>
-            ${currentDraw?.status === 'draft' ? `
-              <button class="btn btn-sm btn-danger" onclick="removeInvoice('${inv.id}')">Remove</button>
-            ` : ''}
-            ${inv.pdf_stamped_url ? `
-              <a href="${inv.pdf_stamped_url}" target="_blank" class="btn btn-sm btn-secondary">View PDF</a>
-            ` : ''}
-          </td>
+      // Helper to get billable amount (allocation sum or invoice amount)
+      function getBillableAmount(inv) {
+        const allocationSum = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+        return allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0);
+      }
+
+      tbody.innerHTML = invoices.map(inv => {
+        // Get cost codes from allocations
+        const costCodes = inv.allocations?.map(a => a.cost_code?.code).filter(Boolean).join(', ') || '-';
+        const billableAmount = getBillableAmount(inv);
+        const isPartial = billableAmount < parseFloat(inv.amount || 0);
+
+        return `
+          <tr>
+            <td>${inv.vendor?.name || 'Unknown'}</td>
+            <td>${inv.invoice_number || '-'}${isPartial ? ' <span class="partial-badge">Partial</span>' : ''}</td>
+            <td>${inv.invoice_date ? formatDate(inv.invoice_date) : '-'}</td>
+            <td class="cost-codes">${costCodes}</td>
+            <td class="amount">${formatMoney(billableAmount)}${isPartial ? `<br><small class="text-muted">of ${formatMoney(inv.amount)}</small>` : ''}</td>
+            <td>
+              ${currentDraw?.status === 'draft' ? `
+                <button class="btn btn-sm btn-danger" onclick="removeInvoice('${inv.id}')">Remove</button>
+              ` : ''}
+              ${inv.pdf_stamped_url ? `
+                <a href="${inv.pdf_stamped_url}" target="_blank" class="btn btn-sm btn-secondary">PDF</a>
+              ` : ''}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Total row - use billable amounts (allocation sums)
+      const totalAmount = invoices.reduce((sum, inv) => {
+        const allocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+        return sum + (allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0));
+      }, 0);
+      tfoot.innerHTML = `
+        <tr class="totals-row">
+          <td colspan="4"><strong>Total (${invoices.length} invoice${invoices.length !== 1 ? 's' : ''})</strong></td>
+          <td class="amount"><strong>${formatMoney(totalAmount)}</strong></td>
+          <td></td>
         </tr>
-      `).join('');
+      `;
     }
 
     async function submitDraw() {
@@ -714,7 +751,8 @@
         if (!res.ok) throw new Error('Failed to remove invoice');
 
         showToast('Invoice removed from draw', 'success');
-        openDraw(currentDraw.id); // Refresh
+        openDraw(currentDraw.id); // Refresh modal
+        loadDraws(); // Refresh draw list to update amounts
       } catch (err) {
         console.error('Error removing invoice:', err);
         showToast('Failed to remove invoice', 'error');
@@ -722,7 +760,6 @@
     }
 
     function showAddInvoiceModal() {
-      // TODO: Show modal to select approved invoices
       showToast('Add invoice modal - coming soon', 'info');
     }
 
@@ -737,16 +774,13 @@
     }
 
     function showCreateDrawModal() {
-      // Populate job dropdown
       const select = document.getElementById('newDrawJob');
       select.innerHTML = '<option value="">Select a job...</option>';
       state.jobs.forEach(job => {
         select.innerHTML += `<option value="${job.id}">${job.name}</option>`;
       });
 
-      // Set default date to today
       document.getElementById('newDrawPeriodEnd').value = new Date().toISOString().split('T')[0];
-
       document.getElementById('createDrawModal').style.display = 'flex';
     }
 
@@ -771,8 +805,6 @@
         showToast('Draw created successfully', 'success');
         closeModal('createDrawModal');
         loadDraws();
-
-        // Open the new draw
         openDraw(newDraw.id);
       } catch (err) {
         console.error('Error creating draw:', err);
@@ -810,7 +842,6 @@
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
-    // Toast helper
     function showToast(message, type = 'info') {
       if (window.Toast) {
         Toast.show(message, type);

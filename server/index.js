@@ -4,7 +4,7 @@ const path = require('path');
 const multer = require('multer');
 const { supabase, port } = require('../config');
 const { uploadPDF, uploadStampedPDF, downloadPDF } = require('./storage');
-const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid } = require('./pdf-stamper');
+const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid, stampPartiallyBilled } = require('./pdf-stamper');
 const { processInvoice } = require('./ai-processor');
 const standards = require('./standards');
 const ExcelJS = require('exceljs');
@@ -1495,8 +1495,16 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
           })));
           console.log('==================');
 
+          // Calculate partial billing info
+          const invoiceTotal = parseFloat(invoice.amount || 0);
+          const alreadyBilled = Math.max(
+            parseFloat(invoice.billed_amount || 0),
+            parseFloat(invoice.paid_amount || 0)
+          );
+          const isPartialInvoice = alreadyBilled > 0;
+
           const stampedBuffer = await stampApproval(pdfBuffer, {
-            status: 'APPROVED',
+            status: isPartialInvoice ? 'APPROVED (PARTIAL)' : 'APPROVED',
             date: new Date().toLocaleDateString(),
             approvedBy: approved_by,
             vendorName: invoice.vendor?.name,
@@ -1511,7 +1519,11 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
             poNumber: invoice.po?.po_number,
             poDescription: invoice.po?.description,
             poTotal: poTotal,
-            poBilledToDate: poBilledToDate
+            poBilledToDate: poBilledToDate,
+            // Partial billing info
+            isPartial: isPartialInvoice,
+            previouslyBilled: alreadyBilled,
+            remainingAfterThis: invoiceTotal - alreadyBilled - (invoice.allocations?.reduce((s, a) => s + parseFloat(a.amount || 0), 0) || 0)
           });
 
           const result = await uploadStampedPDF(stampedBuffer, storagePath);
@@ -1769,6 +1781,32 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
     const invoiceId = req.params.id;
     const { allocations } = req.body;
 
+    // Get invoice to check remaining amount
+    const { data: invoice } = await supabase
+      .from('v2_invoices')
+      .select('amount, billed_amount, paid_amount')
+      .eq('id', invoiceId)
+      .single();
+
+    if (invoice) {
+      const invoiceAmount = parseFloat(invoice.amount || 0);
+      const alreadyBilled = Math.max(
+        parseFloat(invoice.billed_amount || 0),
+        parseFloat(invoice.paid_amount || 0)
+      );
+      const remainingAmount = invoiceAmount - alreadyBilled;
+
+      // Calculate new allocation total
+      const allocationTotal = (allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+      // Validate: allocation cannot exceed remaining amount
+      if (allocationTotal > remainingAmount + 0.01) {
+        return res.status(400).json({
+          error: `Allocation total ($${allocationTotal.toFixed(2)}) exceeds remaining amount ($${remainingAmount.toFixed(2)}). This invoice has already been billed $${alreadyBilled.toFixed(2)}.`
+        });
+      }
+    }
+
     await supabase
       .from('v2_invoice_allocations')
       .delete()
@@ -1846,6 +1884,346 @@ app.get('/api/jobs/:id/budget', async (req, res) => {
 
     res.json(result);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get full budget summary for a job (for Budget page)
+app.get('/api/jobs/:id/budget-summary', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+
+    // Get job info
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .single();
+
+    // Get budget lines with cost code info
+    const { data: budgetLines, error: budgetError } = await supabase
+      .from('v2_budget_lines')
+      .select(`
+        *,
+        cost_code:v2_cost_codes(id, code, name, category)
+      `)
+      .eq('job_id', jobId);
+
+    if (budgetError) throw budgetError;
+
+    // Get all cost codes (for lines without budget)
+    const { data: allCostCodes } = await supabase
+      .from('v2_cost_codes')
+      .select('id, code, name, category')
+      .order('code');
+
+    // Get allocations from all invoices for this job (include po_id to check if linked to PO)
+    const { data: allocations } = await supabase
+      .from('v2_invoice_allocations')
+      .select(`
+        amount,
+        cost_code_id,
+        cost_code:v2_cost_codes(id, code, name),
+        invoice:v2_invoices!inner(id, job_id, status, po_id)
+      `)
+      .eq('invoice.job_id', jobId);
+
+    // Get committed amounts from POs
+    const { data: poLines } = await supabase
+      .from('v2_po_line_items')
+      .select(`
+        amount,
+        cost_code_id,
+        po:v2_purchase_orders!inner(job_id, status)
+      `)
+      .eq('po.job_id', jobId)
+      .neq('po.status', 'cancelled');
+
+    // Build actuals and committed by cost code
+    const actualsByCostCode = {};
+    const committedByCostCode = {};
+
+    // First, add PO line items to committed
+    if (poLines) {
+      poLines.forEach(pl => {
+        const ccId = pl.cost_code_id;
+        if (!committedByCostCode[ccId]) committedByCostCode[ccId] = 0;
+        committedByCostCode[ccId] += parseFloat(pl.amount) || 0;
+      });
+    }
+
+    // Process invoice allocations
+    if (allocations) {
+      allocations.forEach(a => {
+        const ccId = a.cost_code_id;
+        if (!actualsByCostCode[ccId]) {
+          actualsByCostCode[ccId] = { billed: 0, paid: 0, costCode: a.cost_code };
+        }
+
+        // Only count approved, in_draw, or paid invoices as billed
+        if (['approved', 'in_draw', 'paid'].includes(a.invoice.status)) {
+          actualsByCostCode[ccId].billed += parseFloat(a.amount) || 0;
+
+          // Add to committed if invoice is NOT linked to a PO (to avoid double counting)
+          if (!a.invoice.po_id) {
+            if (!committedByCostCode[ccId]) committedByCostCode[ccId] = 0;
+            committedByCostCode[ccId] += parseFloat(a.amount) || 0;
+          }
+        }
+        if (a.invoice.status === 'paid') {
+          actualsByCostCode[ccId].paid += parseFloat(a.amount) || 0;
+        }
+      });
+    }
+
+    // Build budget map
+    const budgetMap = {};
+    (budgetLines || []).forEach(bl => {
+      budgetMap[bl.cost_code_id] = {
+        budgeted: parseFloat(bl.budgeted_amount) || 0,
+        costCode: bl.cost_code?.code || '',
+        description: bl.cost_code?.name || ''
+      };
+    });
+
+    // Combine all cost codes that have any activity
+    const allCostCodeIds = new Set();
+    Object.keys(budgetMap).forEach(id => allCostCodeIds.add(id));
+    Object.keys(actualsByCostCode).forEach(id => allCostCodeIds.add(id));
+    Object.keys(committedByCostCode).forEach(id => allCostCodeIds.add(id));
+
+    // Build result lines
+    const lines = [];
+    allCostCodeIds.forEach(ccId => {
+      const budget = budgetMap[ccId] || {};
+      const actuals = actualsByCostCode[ccId] || { billed: 0, paid: 0 };
+      const costCode = budget.costCode || actuals.costCode?.code || '';
+      const description = budget.description || actuals.costCode?.name || '';
+
+      lines.push({
+        costCodeId: ccId,
+        costCode,
+        description,
+        budgeted: budget.budgeted || 0,
+        committed: committedByCostCode[ccId] || 0,
+        billed: actuals.billed,
+        paid: actuals.paid
+      });
+    });
+
+    // Sort by cost code
+    lines.sort((a, b) => (a.costCode || '').localeCompare(b.costCode || ''));
+
+    // Calculate totals
+    const totals = lines.reduce((acc, line) => ({
+      budgeted: acc.budgeted + line.budgeted,
+      committed: acc.committed + line.committed,
+      billed: acc.billed + line.billed,
+      paid: acc.paid + line.paid
+    }), { budgeted: 0, committed: 0, billed: 0, paid: 0 });
+
+    totals.remaining = totals.budgeted - totals.billed;
+    totals.percentComplete = totals.budgeted > 0 ? (totals.billed / totals.budgeted) * 100 : 0;
+
+    // Get change orders for this job (via POs)
+    const { data: changeOrders } = await supabase
+      .from('v2_change_orders')
+      .select(`
+        id, change_order_number, description, reason, amount_change, status, approved_at, created_at,
+        po:v2_purchase_orders!inner(id, po_number, job_id, vendor:v2_vendors(id, name))
+      `)
+      .eq('po.job_id', jobId)
+      .order('created_at', { ascending: false });
+
+    // Calculate change order totals (only approved ones affect contract)
+    const approvedCOs = (changeOrders || []).filter(co => co.status === 'approved');
+    const changeOrderTotal = approvedCOs.reduce((sum, co) => sum + (parseFloat(co.amount_change) || 0), 0);
+
+    // Adjusted contract = original budget + approved change orders
+    totals.changeOrderTotal = changeOrderTotal;
+    totals.adjustedContract = totals.budgeted + changeOrderTotal;
+
+    res.json({
+      job,
+      lines,
+      totals,
+      changeOrders: changeOrders || []
+    });
+  } catch (err) {
+    console.error('Budget summary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Import budget from Excel
+app.post('/api/jobs/:id/budget/import', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+    const { lines } = req.body;
+
+    if (!lines || !Array.isArray(lines)) {
+      return res.status(400).json({ error: 'Invalid budget data' });
+    }
+
+    // Get all cost codes
+    const { data: costCodes } = await supabase
+      .from('v2_cost_codes')
+      .select('id, code, name');
+
+    const costCodeMap = {};
+    costCodes.forEach(cc => {
+      costCodeMap[cc.code] = cc;
+    });
+
+    let imported = 0;
+    let created = 0;
+
+    for (const line of lines) {
+      let costCode = costCodeMap[line.costCode];
+
+      // Create cost code if it doesn't exist
+      if (!costCode && line.costCode) {
+        const { data: newCostCode, error: ccError } = await supabase
+          .from('v2_cost_codes')
+          .insert({
+            code: line.costCode,
+            name: line.description || line.costCode,
+            category: 'Imported'
+          })
+          .select()
+          .single();
+
+        if (!ccError && newCostCode) {
+          costCode = newCostCode;
+          costCodeMap[line.costCode] = costCode;
+          created++;
+        }
+      }
+
+      if (costCode) {
+        // Check if budget line exists
+        const { data: existing } = await supabase
+          .from('v2_budget_lines')
+          .select('id')
+          .eq('job_id', jobId)
+          .eq('cost_code_id', costCode.id)
+          .single();
+
+        if (existing) {
+          // Update existing
+          await supabase
+            .from('v2_budget_lines')
+            .update({ budgeted_amount: line.budgeted || 0 })
+            .eq('id', existing.id);
+        } else {
+          // Insert new
+          await supabase
+            .from('v2_budget_lines')
+            .insert({
+              job_id: jobId,
+              cost_code_id: costCode.id,
+              budgeted_amount: line.budgeted || 0,
+              committed_amount: 0,
+              billed_amount: 0,
+              paid_amount: 0
+            });
+        }
+        imported++;
+      }
+    }
+
+    res.json({ success: true, imported, costCodesCreated: created });
+  } catch (err) {
+    console.error('Budget import error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Export budget to Excel
+app.get('/api/jobs/:id/budget/export', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+
+    // Get job
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .single();
+
+    // Get budget summary
+    const budgetRes = await fetch(`http://localhost:${PORT}/api/jobs/${jobId}/budget-summary`);
+    const budgetData = await budgetRes.json();
+
+    // Create workbook
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Budget');
+
+    // Header
+    sheet.mergeCells('A1:I1');
+    sheet.getCell('A1').value = `Budget - ${job.name}`;
+    sheet.getCell('A1').font = { bold: true, size: 16 };
+
+    // Column headers
+    sheet.addRow([]);
+    sheet.addRow(['Cost Code', 'Description', 'Budget', 'Committed', 'Billed', 'Paid', '%', 'Remaining', 'Variance']);
+    const headerRow = sheet.getRow(3);
+    headerRow.font = { bold: true };
+    headerRow.eachCell(cell => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    });
+
+    // Data rows
+    budgetData.lines.forEach(line => {
+      const remaining = line.budgeted - line.billed;
+      const variance = line.budgeted - line.billed;
+      const pct = line.budgeted > 0 ? (line.billed / line.budgeted) * 100 : 0;
+
+      sheet.addRow([
+        line.costCode,
+        line.description,
+        line.budgeted,
+        line.committed,
+        line.billed,
+        line.paid,
+        pct / 100,
+        remaining,
+        variance
+      ]);
+    });
+
+    // Totals row
+    const totalsRow = sheet.addRow([
+      'TOTAL',
+      '',
+      budgetData.totals.budgeted,
+      budgetData.totals.committed,
+      budgetData.totals.billed,
+      budgetData.totals.paid,
+      budgetData.totals.percentComplete / 100,
+      budgetData.totals.remaining,
+      budgetData.totals.budgeted - budgetData.totals.billed
+    ]);
+    totalsRow.font = { bold: true };
+
+    // Format currency columns
+    ['C', 'D', 'E', 'F', 'H', 'I'].forEach(col => {
+      sheet.getColumn(col).numFmt = '"$"#,##0.00';
+      sheet.getColumn(col).width = 15;
+    });
+    sheet.getColumn('G').numFmt = '0.0%';
+    sheet.getColumn('A').width = 12;
+    sheet.getColumn('B').width = 30;
+
+    // Send file
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Budget-${job.name.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Budget export error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2021,10 +2399,9 @@ app.get('/api/draws/:id', async (req, res) => {
       const totalBilled = previous + thisPeriod + materialsStored;
       const percentComplete = budget > 0 ? (totalBilled / budget) * 100 : (totalBilled > 0 ? 100 : 0);
       const balance = budget - totalBilled;
-      const retainage = totalBilled * 0.10;
 
-      // Only include if there's budget or any activity
-      if (budget === 0 && previous === 0 && thisPeriod === 0) return null;
+      // Only include cost codes with billing activity in THIS draw period
+      if (thisPeriod === 0) return null;
 
       itemNum++;
       return {
@@ -2042,8 +2419,7 @@ app.get('/api/draws/:id', async (req, res) => {
         totalBilled: totalBilled,
         totalCompleted: totalBilled, // Keep for backwards compatibility
         percentComplete: percentComplete,
-        balance: balance,
-        retainage: retainage
+        balance: balance
       };
     }).filter(Boolean).sort((a, b) => (a.costCode || '').localeCompare(b.costCode || ''));
 
@@ -2053,8 +2429,7 @@ app.get('/api/draws/:id', async (req, res) => {
     const totalThisPeriod = scheduleOfValues.reduce((sum, item) => sum + item.thisPeriod, 0);
     const totalMaterials = scheduleOfValues.reduce((sum, item) => sum + item.materialsStored, 0);
     const grandTotalCompleted = totalPrevious + totalThisPeriod + totalMaterials;
-    const totalRetainage = grandTotalCompleted * 0.10;
-    const currentPaymentDue = totalThisPeriod - (totalThisPeriod * 0.10);
+    const currentPaymentDue = totalThisPeriod;
 
     res.json({
       ...draw,
@@ -2069,9 +2444,7 @@ app.get('/api/draws/:id', async (req, res) => {
         totalCompletedThisPeriod: totalThisPeriod,
         materialsStored: totalMaterials,
         grandTotal: grandTotalCompleted,
-        retainage: totalRetainage,
-        totalEarnedLessRetainage: grandTotalCompleted - totalRetainage,
-        lessPreviousCertificates: totalPrevious - (totalPrevious * 0.10),
+        lessPreviousCertificates: totalPrevious,
         currentPaymentDue: currentPaymentDue
       }
     });
@@ -2130,10 +2503,13 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
 
     if (linkError) throw linkError;
 
-    // Get invoices with their stamped PDFs
+    // Get invoices with their stamped PDFs and allocations
     const { data: invoices } = await supabase
       .from('v2_invoices')
-      .select('id, amount, pdf_stamped_url')
+      .select(`
+        id, amount, pdf_stamped_url,
+        allocations:v2_invoice_allocations(amount)
+      `)
       .in('id', invoice_ids);
 
     // Stamp each invoice with "IN DRAW"
@@ -2161,7 +2537,12 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
 
     if (updateError) throw updateError;
 
-    const total = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+    // Calculate total using allocation sums (for partial approvals) or invoice amount as fallback
+    const total = invoices.reduce((sum, inv) => {
+      const allocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      // Use allocation sum if available, otherwise fall back to invoice amount
+      return sum + (allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0));
+    }, 0);
 
     await supabase
       .from('v2_draws')
@@ -2293,13 +2674,24 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
       draw_number: draw.draw_number
     });
 
-    // Recalculate draw total
+    // Recalculate draw total using allocation sums (for partial approvals)
     const { data: remainingInvoices } = await supabase
       .from('v2_draw_invoices')
-      .select('invoice:v2_invoices(amount)')
+      .select(`
+        invoice:v2_invoices(
+          amount,
+          allocations:v2_invoice_allocations(amount)
+        )
+      `)
       .eq('draw_id', drawId);
 
-    const newTotal = remainingInvoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
+    const newTotal = remainingInvoices?.reduce((sum, di) => {
+      const inv = di.invoice;
+      if (!inv) return sum;
+      const allocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      // Use allocation sum if available, otherwise fall back to invoice amount
+      return sum + (allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0));
+    }, 0) || 0;
 
     await supabase
       .from('v2_draws')
@@ -2313,43 +2705,68 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
   }
 });
 
+// Recalculate draw total (fixes data from before partial approval fix)
+app.post('/api/draws/:id/recalculate', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+
+    // Get all invoices in this draw with allocations
+    const { data: drawInvoices } = await supabase
+      .from('v2_draw_invoices')
+      .select(`
+        invoice:v2_invoices(
+          amount,
+          allocations:v2_invoice_allocations(amount)
+        )
+      `)
+      .eq('draw_id', drawId);
+
+    // Calculate correct total using allocation sums
+    const newTotal = drawInvoices?.reduce((sum, di) => {
+      const inv = di.invoice;
+      if (!inv) return sum;
+      const allocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      return sum + (allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0));
+    }, 0) || 0;
+
+    // Update the draw
+    await supabase
+      .from('v2_draws')
+      .update({ total_amount: newTotal })
+      .eq('id', drawId);
+
+    res.json({ success: true, new_total: newTotal });
+  } catch (err) {
+    console.error('Error recalculating draw:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.patch('/api/draws/:id/submit', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const drawId = req.params.id;
+
+    // Get draw info
+    const { data: drawInfo } = await supabase
+      .from('v2_draws')
+      .select('draw_number')
+      .eq('id', drawId)
+      .single();
+
+    // Update draw status
+    const { data: draw, error } = await supabase
       .from('v2_draws')
       .update({
         status: 'submitted',
         submitted_at: new Date().toISOString()
       })
-      .eq('id', req.params.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.patch('/api/draws/:id/fund', async (req, res) => {
-  try {
-    const drawId = req.params.id;
-    const { funded_amount } = req.body;
-
-    const { data: draw, error: drawError } = await supabase
-      .from('v2_draws')
-      .update({
-        status: 'funded',
-        funded_at: new Date().toISOString(),
-        funded_amount
-      })
       .eq('id', drawId)
       .select()
       .single();
 
-    if (drawError) throw drawError;
+    if (error) throw error;
 
+    // Get invoices in this draw with their allocations and payment history
     const { data: drawInvoices } = await supabase
       .from('v2_draw_invoices')
       .select('invoice_id')
@@ -2358,85 +2775,188 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
     if (drawInvoices && drawInvoices.length > 0) {
       const invoiceIds = drawInvoices.map(di => di.invoice_id);
 
-      // Get invoices with their amounts, allocations, paid_amount, and stamped PDFs
-      const { data: invoicesForStamp } = await supabase
+      const { data: invoices } = await supabase
         .from('v2_invoices')
         .select(`
-          id, amount, paid_amount, pdf_stamped_url, vendor_id,
+          id, amount, billed_amount, paid_amount, pdf_stamped_url,
           allocations:v2_invoice_allocations(amount, cost_code_id, cost_code:v2_cost_codes(code, name))
         `)
         .in('id', invoiceIds);
 
-      // Separate fully paid vs partially paid invoices based on cumulative paid_amount
-      const fullyPaidInvoices = [];
-      const partiallyPaidInvoices = [];
-      const paidDate = new Date().toLocaleDateString();
-
-      for (const inv of invoicesForStamp || []) {
-        const totalAllocated = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+      // Process each invoice - check for partials
+      for (const inv of invoices || []) {
         const invoiceAmount = parseFloat(inv.amount || 0);
-        const previouslyPaid = parseFloat(inv.paid_amount || 0);
-        const cumulativePaid = previouslyPaid + totalAllocated;
-        const remaining = invoiceAmount - cumulativePaid;
+        const previouslyBilled = parseFloat(inv.billed_amount || 0);
+        const thisDrawBilled = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+        const cumulativeBilled = previouslyBilled + thisDrawBilled;
+        const remaining = invoiceAmount - cumulativeBilled;
 
-        if (remaining <= 0.01) {
-          // Fully paid after this draw
-          fullyPaidInvoices.push({
-            ...inv,
-            totalAllocated,
-            cumulativePaid,
-            remaining: 0
+        console.log(`Submit - Invoice ${inv.id}: amount=${invoiceAmount}, prevBilled=${previouslyBilled}, thisDraw=${thisDrawBilled}, remaining=${remaining}`);
+
+        // If there's remaining balance, kick back to needs_approval
+        if (remaining > 0.01) {
+          // Stamp the PDF with "IN DRAW #X - PARTIAL BILLED"
+          if (inv.pdf_stamped_url) {
+            try {
+              const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
+              if (urlParts[1]) {
+                const storagePath = decodeURIComponent(urlParts[1]).replace('_stamped.pdf', '.pdf');
+                const pdfBuffer = await downloadPDF(storagePath.replace('.pdf', '_stamped.pdf'));
+                const stampedBuffer = await stampPartiallyBilled(pdfBuffer, {
+                  drawNumber: drawInfo?.draw_number || draw.draw_number,
+                  amountBilledThisDraw: thisDrawBilled,
+                  cumulativeBilled: cumulativeBilled,
+                  invoiceTotal: invoiceAmount,
+                  remaining: remaining,
+                  costCodes: (inv.allocations || []).map(a => ({
+                    code: a.cost_code?.code || 'Unknown',
+                    name: a.cost_code?.name || '',
+                    amount: parseFloat(a.amount || 0)
+                  }))
+                });
+                await uploadStampedPDF(stampedBuffer, storagePath);
+              }
+            } catch (stampErr) {
+              console.error('PARTIAL BILLED stamp failed for invoice:', inv.id, stampErr.message);
+            }
+          }
+
+          // Move back to needs_approval with updated billed_amount and note
+          const remainingNote = `[PARTIAL BILLED - Draw #${drawInfo?.draw_number || draw.draw_number}] Billed: $${thisDrawBilled.toFixed(2)}, Remaining: $${remaining.toFixed(2)} needs approval`;
+          await supabase
+            .from('v2_invoices')
+            .update({
+              status: 'needs_approval',
+              billed_amount: cumulativeBilled, // Track cumulative billing (separate from paid_amount)
+              notes: remainingNote
+            })
+            .eq('id', inv.id);
+
+          // Clear allocations - they've been billed, need fresh ones for remainder
+          await supabase
+            .from('v2_invoice_allocations')
+            .delete()
+            .eq('invoice_id', inv.id);
+
+          await logActivity(inv.id, 'partial_billed', 'System', {
+            draw_id: drawId,
+            draw_number: drawInfo?.draw_number,
+            amount_billed_this_draw: thisDrawBilled,
+            cumulative_billed: cumulativeBilled,
+            remaining: remaining
           });
         } else {
-          // Still has remaining balance
-          partiallyPaidInvoices.push({
-            ...inv,
-            totalAllocated,
-            previouslyPaid,
-            cumulativePaid,
-            remaining
-          });
+          // Fully billed invoice - update billed_amount and keep in_draw until funded
+          await supabase
+            .from('v2_invoices')
+            .update({ billed_amount: cumulativeBilled })
+            .eq('id', inv.id);
         }
       }
+    }
 
-      // ==========================================
-      // LIVE BUDGET UPDATES - Must happen BEFORE deleting allocations
-      // ==========================================
+    res.json(draw);
+  } catch (err) {
+    console.error('Error submitting draw:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-      // Get job_id for each invoice to update budget
-      const allInvoices = [...fullyPaidInvoices, ...partiallyPaidInvoices];
-      for (const inv of allInvoices) {
-        // Get job_id for this invoice
-        const { data: invData } = await supabase
-          .from('v2_invoices')
-          .select('job_id')
-          .eq('id', inv.id)
-          .single();
+app.patch('/api/draws/:id/fund', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+    const { funded_amount, partial_funding_note } = req.body;
 
-        if (invData?.job_id && inv.allocations) {
+    // Get draw info first
+    const { data: drawBefore } = await supabase
+      .from('v2_draws')
+      .select('draw_number, total_amount, job_id')
+      .eq('id', drawId)
+      .single();
+
+    const billedAmount = parseFloat(drawBefore?.total_amount || 0);
+    const actualFunded = parseFloat(funded_amount || billedAmount);
+    const fundingDifference = actualFunded - billedAmount;
+
+    // Determine status based on funding
+    let status = 'funded';
+    if (fundingDifference < -0.01) {
+      status = 'partially_funded'; // Client paid less than billed
+    } else if (fundingDifference > 0.01) {
+      status = 'overfunded'; // Client paid more (credit situation)
+    }
+
+    const { data: draw, error: drawError } = await supabase
+      .from('v2_draws')
+      .update({
+        status: status,
+        funded_at: new Date().toISOString(),
+        funded_amount: actualFunded,
+        funding_difference: fundingDifference,
+        partial_funding_note: partial_funding_note || null
+      })
+      .eq('id', drawId)
+      .select()
+      .single();
+
+    if (drawError) throw drawError;
+
+    // Log funding difference if applicable
+    if (Math.abs(fundingDifference) > 0.01) {
+      console.log(`Draw ${draw.draw_number} funding: billed=${billedAmount}, funded=${actualFunded}, diff=${fundingDifference} (${status})`);
+    }
+
+    // Get invoices still in_draw (fully billed invoices - partials already kicked back on submit)
+    const { data: drawInvoices } = await supabase
+      .from('v2_draw_invoices')
+      .select('invoice_id')
+      .eq('draw_id', drawId);
+
+    if (drawInvoices && drawInvoices.length > 0) {
+      const invoiceIds = drawInvoices.map(di => di.invoice_id);
+
+      // Get invoices that are still in_draw
+      const { data: invoices } = await supabase
+        .from('v2_invoices')
+        .select(`
+          id, amount, billed_amount, paid_amount, pdf_stamped_url, job_id, status,
+          allocations:v2_invoice_allocations(amount, cost_code_id, cost_code:v2_cost_codes(code, name))
+        `)
+        .in('id', invoiceIds)
+        .eq('status', 'in_draw'); // Only process invoices still in_draw
+
+      const paidDate = new Date().toLocaleDateString();
+
+      for (const inv of invoices || []) {
+        const invoiceAmount = parseFloat(inv.amount || 0);
+        const billedThisDraw = parseFloat(inv.billed_amount || 0) ||
+          (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+        const previouslyPaid = parseFloat(inv.paid_amount || 0);
+        const newPaidAmount = previouslyPaid + billedThisDraw;
+
+        // Update budget paid amounts
+        if (inv.job_id && inv.allocations) {
           for (const alloc of inv.allocations) {
             if (!alloc.cost_code_id) continue;
 
             const { data: budgetLine } = await supabase
               .from('v2_budget_lines')
               .select('id, paid_amount')
-              .eq('job_id', invData.job_id)
+              .eq('job_id', inv.job_id)
               .eq('cost_code_id', alloc.cost_code_id)
               .single();
 
             if (budgetLine) {
-              const newPaid = (parseFloat(budgetLine.paid_amount) || 0) + parseFloat(alloc.amount || 0);
+              const newBudgetPaid = (parseFloat(budgetLine.paid_amount) || 0) + parseFloat(alloc.amount || 0);
               await supabase
                 .from('v2_budget_lines')
-                .update({ paid_amount: newPaid })
+                .update({ paid_amount: newBudgetPaid })
                 .eq('id', budgetLine.id);
             }
           }
         }
-      }
 
-      // Process FULLY PAID invoices - Add PAID stamp
-      for (const inv of fullyPaidInvoices) {
+        // Stamp and update invoice as PAID
         if (inv.pdf_stamped_url) {
           try {
             const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
@@ -2451,81 +2971,27 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
           }
         }
 
-        // Update invoice: mark as paid and set paid_amount to full amount
+        // Mark invoice as paid
         await supabase
           .from('v2_invoices')
           .update({
             status: 'paid',
-            paid_amount: parseFloat(inv.amount || 0)
+            paid_amount: newPaidAmount
           })
           .eq('id', inv.id);
 
         await logActivity(inv.id, 'paid', 'System', {
           draw_id: drawId,
           draw_number: draw.draw_number,
-          amount_paid_this_draw: inv.totalAllocated,
-          cumulative_paid: inv.cumulativePaid
-        });
-      }
-
-      // Process PARTIALLY PAID invoices - Add PARTIALLY PAID stamp
-      for (const inv of partiallyPaidInvoices) {
-        // Build cost codes info for the stamp
-        const costCodesForStamp = (inv.allocations || []).map(a => ({
-          code: a.cost_code?.code || 'Unknown',
-          name: a.cost_code?.name || '',
-          amount: parseFloat(a.amount || 0)
-        }));
-
-        if (inv.pdf_stamped_url) {
-          try {
-            const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
-            if (urlParts[1]) {
-              const storagePath = decodeURIComponent(urlParts[1]).replace('_stamped.pdf', '.pdf');
-              const pdfBuffer = await downloadPDF(storagePath.replace('.pdf', '_stamped.pdf'));
-              const stampedBuffer = await stampPartiallyPaid(pdfBuffer, {
-                paidDate,
-                drawNumber: draw.draw_number,
-                amountPaidThisDraw: inv.totalAllocated,
-                cumulativePaid: inv.cumulativePaid,
-                invoiceTotal: parseFloat(inv.amount || 0),
-                remaining: inv.remaining,
-                costCodes: costCodesForStamp
-              });
-              await uploadStampedPDF(stampedBuffer, storagePath);
-            }
-          } catch (stampErr) {
-            console.error('PARTIALLY PAID stamp failed for invoice:', inv.id, stampErr.message);
-          }
-        }
-
-        // Update invoice: return to needs_approval status and update paid_amount
-        await supabase
-          .from('v2_invoices')
-          .update({
-            status: 'needs_approval',
-            paid_amount: inv.cumulativePaid
-          })
-          .eq('id', inv.id);
-
-        // Clear allocations since they've been paid - invoice needs fresh allocation for remaining
-        await supabase
-          .from('v2_invoice_allocations')
-          .delete()
-          .eq('invoice_id', inv.id);
-
-        await logActivity(inv.id, 'partial_payment', 'System', {
-          draw_id: drawId,
-          draw_number: draw.draw_number,
-          amount_paid_this_draw: inv.totalAllocated,
-          cumulative_paid: inv.cumulativePaid,
-          remaining: inv.remaining
+          amount_paid_this_draw: billedThisDraw,
+          cumulative_paid: newPaidAmount
         });
       }
     }
 
     res.json(draw);
   } catch (err) {
+    console.error('Error funding draw:', err);
     res.status(500).json({ error: err.message });
   }
 });

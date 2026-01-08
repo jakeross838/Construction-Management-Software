@@ -198,11 +198,13 @@ const Modals = {
     const showOriginal = ['needs_approval', 'received'].includes(invoice.status);
     const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
 
-    // Payment tracking info
+    // Payment tracking info - use max of billed_amount and paid_amount
     const invoiceAmount = parseFloat(invoice.amount || 0);
+    const billedAmount = parseFloat(invoice.billed_amount || 0);
     const paidAmount = parseFloat(invoice.paid_amount || 0);
-    const remainingAmount = invoiceAmount - paidAmount;
-    const hasPartialPayment = paidAmount > 0 && remainingAmount > 0.01;
+    const alreadyProcessed = Math.max(billedAmount, paidAmount);
+    const remainingAmount = invoiceAmount - alreadyProcessed;
+    const hasPartialPayment = alreadyProcessed > 0 && remainingAmount > 0.01;
     const isClosedOut = !!invoice.closed_out_at;
 
     return `
@@ -218,6 +220,16 @@ const Modals = {
           </div>
 
           <div class="modal-body modal-split-view">
+            ${hasPartialPayment && invoice.status === 'needs_approval' ? `
+            <div class="partial-billing-banner">
+              <div class="banner-icon">⚠️</div>
+              <div class="banner-content">
+                <strong>Partial Invoice - Remaining Balance</strong>
+                <p>This invoice has already been billed <strong>${window.Validation?.formatCurrency(alreadyProcessed)}</strong>.
+                   Only <strong>${window.Validation?.formatCurrency(remainingAmount)}</strong> remains to be allocated and approved.</p>
+              </div>
+            </div>
+            ` : ''}
             <!-- PDF Viewer (Left) -->
             <div class="pdf-panel">
               ${pdfUrl ? `
@@ -326,6 +338,12 @@ const Modals = {
                         <span class="payment-label">Invoice Total:</span>
                         <span class="payment-value">${window.Validation?.formatCurrency(invoiceAmount)}</span>
                       </div>
+                      ${billedAmount > 0 ? `
+                      <div class="payment-info-row">
+                        <span class="payment-label">Amount Billed:</span>
+                        <span class="payment-value billed">${window.Validation?.formatCurrency(billedAmount)}</span>
+                      </div>
+                      ` : ''}
                       <div class="payment-info-row">
                         <span class="payment-label">Amount Paid:</span>
                         <span class="payment-value paid">${window.Validation?.formatCurrency(paidAmount)}</span>
@@ -872,14 +890,21 @@ const Modals = {
 
     const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
 
+    // Account for already billed/paid amounts (for partial invoices)
+    const alreadyBilled = Math.max(
+      parseFloat(this.currentInvoice?.billed_amount || 0),
+      parseFloat(this.currentInvoice?.paid_amount || 0)
+    );
+    const maxAllocatable = invoiceAmount - alreadyBilled;
+
     // Calculate total allocated by OTHER allocations (not this one)
     const otherAllocated = this.currentAllocations.reduce((sum, a, i) => {
       if (i === index) return sum;
       return sum + parseFloat(a.amount || 0);
     }, 0);
 
-    // Remaining = invoice total - other allocations
-    const remaining = Math.max(0, invoiceAmount - otherAllocated);
+    // Remaining = max allocatable - other allocations
+    const remaining = Math.max(0, maxAllocatable - otherAllocated);
 
     // Update this allocation's amount
     this.currentAllocations[index].amount = remaining;

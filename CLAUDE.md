@@ -22,11 +22,39 @@ Simplified invoice approval and AR pipeline system for Ross Built Custom Homes. 
 # Start server
 npm start
 
+# Start with migrations (recommended)
+npm run db:start
+
 # Development
 npm run dev
 
 # Server runs on http://localhost:3001
 ```
+
+---
+
+## Database Migrations
+
+Automated migration system using Supabase Management API.
+
+```bash
+# Check migration status
+npm run migrate:status
+
+# Run pending migrations
+npm run migrate
+
+# Force re-run all migrations
+npm run migrate:force
+
+# Start server with migrations
+npm run db:start
+```
+
+Migration files are in `database/migration-*.sql`. The system tracks applied migrations in the `schema_migrations` table.
+
+**Environment Required:**
+- `SUPABASE_ACCESS_TOKEN` - Get from https://supabase.com/dashboard/account/tokens
 
 ---
 
@@ -46,7 +74,8 @@ Construction-Management-Software/
 │   ├── errors.js             # AppError class, error codes
 │   ├── locking.js            # Entity locking system (5-min locks)
 │   ├── undo.js               # Undo system (30-sec window)
-│   └── realtime.js           # SSE handler, Supabase realtime
+│   ├── realtime.js           # SSE handler, Supabase realtime
+│   └── migrate.js            # Database migration runner
 ├── public/
 │   ├── index.html            # Invoice approval dashboard (main page)
 │   ├── draws.html            # Draws management (G702/G703 Pay Applications)
