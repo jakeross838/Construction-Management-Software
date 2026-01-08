@@ -12,45 +12,363 @@ Simplified invoice approval and AR pipeline system for Ross Built Custom Homes. 
 - **Frontend**: Vanilla JS (no framework)
 - **AI Processing**: Claude Sonnet (Anthropic API)
 - **PDF Stamping**: pdf-lib
+- **Excel Export**: ExcelJS
 
 ---
 
-## Features
+## Quick Start
 
-### 1. AI Invoice Processing
-When an invoice PDF is uploaded:
-- Extracts text from PDF using `pdf-parse`
-- Claude AI extracts structured data:
-  - Vendor name, trade type, contact info
-  - Invoice number, date, amounts
-  - Job address for matching
-  - Line items with quantities/amounts
-- Auto-matches to existing job by address
-- Auto-matches or creates new vendor
-- Auto-matches or creates draft PO
-- Renames file with standardized convention
-- Uploads to Supabase storage in job folder
+```bash
+# Start server
+npm start
 
-### 2. Invoice Approval Workflow
+# Development
+npm run dev
+
+# Server runs on http://localhost:3001
+```
+
+---
+
+## File Structure
+
+```
+Construction-Management-Software/
+├── config/
+│   └── index.js              # Supabase client, port config
+├── server/
+│   ├── index.js              # Express server, all API endpoints (~145KB, ~3000 lines)
+│   ├── ai-processor.js       # AI invoice extraction & matching
+│   ├── standards.js          # Naming conventions, normalization
+│   ├── storage.js            # Supabase storage helpers
+│   ├── pdf-stamper.js        # PDF approval stamping
+│   ├── validation.js         # Invoice/PO validation rules
+│   ├── errors.js             # AppError class, error codes
+│   ├── locking.js            # Entity locking system (5-min locks)
+│   ├── undo.js               # Undo system (30-sec window)
+│   └── realtime.js           # SSE handler, Supabase realtime
+├── public/
+│   ├── index.html            # Invoice approval dashboard (main page)
+│   ├── draws.html            # Draws management (G702/G703 Pay Applications)
+│   ├── pos.html              # Purchase Orders management
+│   ├── css/
+│   │   └── styles.css        # Dark theme styling (~7200 lines)
+│   └── js/
+│       ├── modals.js         # Invoice edit modal, job selection, add to draw
+│       ├── po-modals.js      # PO detail modal, create/edit PO
+│       ├── toasts.js         # Toast notification system
+│       └── realtime.js       # SSE client, offline queue
+├── database/
+│   ├── schema.sql            # Base schema (v2_ tables)
+│   ├── migration-001-*.sql   # PO and enhanced invoices
+│   ├── migration-002-*.sql   # Invoice system enhancements
+│   ├── migration-003-*.sql   # Allocation job_id
+│   ├── migration-004-*.sql   # Payment tracking
+│   └── migration-005-*.sql   # PO enhancements (change orders, attachments)
+├── tests/
+│   └── *.spec.js             # Playwright E2E tests
+├── package.json
+├── .env                      # Environment variables
+└── CLAUDE.md                 # This file
+```
+
+---
+
+## Pages & Features
+
+### 1. Invoice Dashboard (`index.html`)
+Main invoice management page with:
+- **Filter dropdowns**: Status (All Active, Needs Approval, Approved, In Draw, New, Archive), Job filter
+- **Invoice list**: Shows vendor, invoice #, date, amount, status badge
+- **Invoice modal**: Full details, allocations, approval actions
+- **AI Processing**: Upload PDF → AI extracts data → auto-matches job/vendor/PO
+- **Bulk actions**: Approve multiple, add to draw, deny
+
+### 2. Draws Page (`draws.html`)
+AIA G702/G703 Pay Application management:
+- **Draw list**: Shows all draws with job, status, amount
+- **Draw modal** (fullscreen with tabs):
+  - **Summary tab**: Job, Application #, Period, Invoice count, This Period, Payment Due
+  - **G702 tab**: AIA Document G702 - Application and Certificate for Payment
+  - **G703 tab**: Schedule of Values - Budget vs Billings per cost code
+    - Columns: #, Cost Code, Budget, Previous Billings, Current Billings, Total Billed, % Complete, Balance Remaining, Retainage
+  - **Invoices tab**: List of invoices in draw with Add/Remove
+- **Export**: Excel and PDF export buttons
+- **Create Draw**: Modal to create new draw for a job
+
+### 3. Purchase Orders Page (`pos.html`)
+PO management with:
+- **Filter dropdowns**: Status, Job filter
+- **PO list**: Shows PO#, job, vendor, amount, status
+- **PO modal** (fullscreen):
+  - Header with PO#, job, vendor, status badges
+  - **Overview tab**: Totals, dates, progress bar
+  - **Line Items tab**: Cost code breakdown
+  - **Invoices tab**: Linked invoices
+  - **Activity tab**: PO history/audit log
+  - **Change Orders tab**: Track CO's
+- **Create PO**: Modal with line items
+
+---
+
+## Database Schema (v2_ prefix)
+
+### Core Tables
+
+#### v2_jobs
+```sql
+id UUID PRIMARY KEY
+name TEXT                    -- "Drummond-501 74th St"
+address TEXT
+client_name TEXT
+contract_amount DECIMAL(12,2)
+status TEXT                  -- active, completed, on_hold
+created_at TIMESTAMPTZ
+```
+
+#### v2_vendors
+```sql
+id UUID PRIMARY KEY
+name TEXT
+email TEXT
+phone TEXT
+created_at TIMESTAMPTZ
+```
+
+#### v2_cost_codes
+```sql
+id UUID PRIMARY KEY
+code TEXT                    -- "06100"
+name TEXT                    -- "Rough Carpentry"
+category TEXT
+```
+
+#### v2_invoices
+```sql
+id UUID PRIMARY KEY
+job_id UUID REFERENCES v2_jobs
+vendor_id UUID REFERENCES v2_vendors
+po_id UUID REFERENCES v2_purchase_orders
+invoice_number TEXT
+invoice_date DATE
+due_date DATE
+amount DECIMAL(12,2)
+status TEXT                  -- received, needs_approval, approved, in_draw, paid
+pdf_url TEXT
+pdf_stamped_url TEXT
+ai_processed BOOLEAN
+ai_confidence JSONB
+ai_extracted_data JSONB
+needs_review BOOLEAN
+review_flags TEXT[]
+version INTEGER
+deleted_at TIMESTAMPTZ
+approved_at TIMESTAMPTZ
+approved_by TEXT
+notes TEXT
+created_at TIMESTAMPTZ
+```
+
+#### v2_invoice_allocations
+```sql
+id UUID PRIMARY KEY
+invoice_id UUID REFERENCES v2_invoices
+job_id UUID REFERENCES v2_jobs
+cost_code_id UUID REFERENCES v2_cost_codes
+amount DECIMAL(12,2)
+notes TEXT
+```
+
+#### v2_purchase_orders
+```sql
+id UUID PRIMARY KEY
+job_id UUID REFERENCES v2_jobs
+vendor_id UUID REFERENCES v2_vendors
+po_number TEXT               -- "PO-Drummond501-0001"
+description TEXT
+total_amount DECIMAL(12,2)
+status TEXT                  -- open, closed, cancelled
+status_detail TEXT           -- pending, approved, active, closed, cancelled
+approval_status TEXT         -- pending, approved, rejected
+approved_at TIMESTAMPTZ
+approved_by TEXT
+original_amount DECIMAL(12,2)
+change_order_total DECIMAL(12,2)
+scope_of_work TEXT
+notes TEXT
+version INTEGER
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
+deleted_at TIMESTAMPTZ
+```
+
+#### v2_po_line_items
+```sql
+id UUID PRIMARY KEY
+po_id UUID REFERENCES v2_purchase_orders
+cost_code_id UUID REFERENCES v2_cost_codes
+description TEXT
+amount DECIMAL(12,2)
+invoiced_amount DECIMAL(12,2)  -- Tracks billing against line
+```
+
+#### v2_draws
+```sql
+id UUID PRIMARY KEY
+job_id UUID REFERENCES v2_jobs
+draw_number INTEGER
+period_end DATE
+total_amount DECIMAL(12,2)
+status TEXT                  -- draft, submitted, funded
+submitted_at TIMESTAMPTZ
+funded_at TIMESTAMPTZ
+funded_amount DECIMAL(12,2)
+created_at TIMESTAMPTZ
+UNIQUE(job_id, draw_number)
+```
+
+#### v2_draw_invoices
+```sql
+id UUID PRIMARY KEY
+draw_id UUID REFERENCES v2_draws
+invoice_id UUID REFERENCES v2_invoices
+UNIQUE(draw_id, invoice_id)
+```
+
+#### v2_budget_lines
+```sql
+id UUID PRIMARY KEY
+job_id UUID REFERENCES v2_jobs
+cost_code_id UUID REFERENCES v2_cost_codes
+budgeted_amount DECIMAL(12,2)
+committed_amount DECIMAL(12,2)
+billed_amount DECIMAL(12,2)
+paid_amount DECIMAL(12,2)
+UNIQUE(job_id, cost_code_id)
+```
+
+### Supporting Tables
+
+- **v2_change_orders**: PO change orders with line items
+- **v2_po_attachments**: Files attached to POs
+- **v2_po_activity**: PO audit log
+- **v2_invoice_activity**: Invoice audit log
+- **v2_entity_locks**: Edit locking (5-min)
+- **v2_undo_queue**: Undo snapshots (30-sec)
+- **v2_invoice_hashes**: Duplicate detection
+- **v2_approval_thresholds**: Auto-approval rules
+
+---
+
+## Key API Endpoints
+
+### Invoices
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/invoices` | List with filters |
+| GET | `/api/invoices/:id` | Get with details |
+| POST | `/api/invoices/process` | AI processing |
+| PATCH | `/api/invoices/:id/approve` | Approve + stamp PDF |
+| POST | `/api/invoices/:id/allocate` | Set allocations |
+| POST | `/api/invoices/:id/transition` | Status change |
+
+### Purchase Orders
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/purchase-orders` | List with filters |
+| GET | `/api/purchase-orders/:id` | Get with line items |
+| POST | `/api/purchase-orders` | Create PO |
+| PATCH | `/api/purchase-orders/:id` | Update PO |
+| POST | `/api/purchase-orders/:id/approve` | Approve PO |
+| GET | `/api/pos/stats` | PO statistics |
+
+### Draws
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/draws` | List all draws |
+| GET | `/api/draws/:id` | Get with G702/G703 data |
+| POST | `/api/jobs/:id/draws` | Create draw |
+| POST | `/api/draws/:id/add-invoices` | Add invoices |
+| POST | `/api/draws/:id/remove-invoice` | Remove invoice |
+| PATCH | `/api/draws/:id/submit` | Submit draw |
+| PATCH | `/api/draws/:id/fund` | Mark funded |
+| GET | `/api/draws/:id/export/excel` | Excel export |
+| GET | `/api/draws/:id/export/pdf` | PDF export |
+
+### Budget & Jobs
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/jobs` | List jobs |
+| GET | `/api/jobs/:id/budget` | Budget with actuals |
+| GET | `/api/dashboard/stats` | Dashboard metrics |
+
+---
+
+## Invoice Status Flow
+
 ```
 Upload PDF → AI Processing → [received]
                                 ↓
-                           Reviewed → [needs_approval]
+                        Review → [needs_approval]
                                 ↓
-                        PM Approves → [approved] → PDF Stamped
+                     PM Approves → [approved] → PDF Stamped
                                 ↓
-                      Add to Draw → [in_draw]
+                    Add to Draw → [in_draw]
                                 ↓
-                      Client Pays → [paid] → Archived
+                   Client Pays → [paid] → Archived
 ```
 
-### 3. PDF Stamping
-When invoice is approved, stamp is added to the top-right corner of the first page:
+**Valid Transitions**:
+- received → needs_approval, denied
+- needs_approval → approved, denied, received
+- approved → in_draw, needs_approval
+- in_draw → paid, approved
+- paid → (terminal)
+
+---
+
+## G702/G703 Calculations
+
+### G702 (Application and Certificate for Payment)
+```javascript
+{
+  originalContractSum: job.contract_amount,
+  netChangeOrders: 0,
+  contractSumToDate: originalContractSum + netChangeOrders,
+  totalCompletedToDate: sum(all invoice amounts in previous + current draws),
+  totalCompletedThisPeriod: sum(current draw invoice amounts),
+  retainagePercent: 10,
+  retainageAmount: totalCompletedToDate * 0.10,
+  lessPreviousCertificates: sum(previous draws),
+  currentPaymentDue: totalCompletedThisPeriod - (retainageThisPeriod)
+}
+```
+
+### G703 (Schedule of Values)
+Per cost code:
+```javascript
+{
+  costCode: "06100 - Rough Carpentry",
+  scheduledValue: budgeted_amount,
+  previousBillings: sum(allocations from previous draws),
+  currentBillings: sum(allocations from this draw),
+  totalBilled: previous + current,
+  percentComplete: (totalBilled / scheduledValue) * 100,
+  balanceRemaining: scheduledValue - totalBilled,
+  retainage: totalBilled * 0.10
+}
+```
+
+---
+
+## PDF Stamp Format
+
+When invoice is approved, stamp added to top-right corner:
 
 ```
 ┌──────────────────────────────────┐
 │ APPROVED                         │
-│ Date: 1/6/2026                   │
+│ Date: 1/7/2026                   │
 │ By: Jake Ross                    │
 │ Job: Drummond-501 74th St        │
 │ Amount: $17,760.00               │
@@ -62,345 +380,6 @@ When invoice is approved, stamp is added to the top-right corner of the first pa
 │ Billed: $17,760.00 (71%)         │
 │ Remaining: $7,240.00             │
 └──────────────────────────────────┘
-```
-
-Includes:
-- APPROVED status (green header)
-- Approval date and approver name
-- Job name
-- Invoice amount
-- Cost codes with individual amounts
-- PO details (if linked):
-  - PO number
-  - PO total amount
-  - Amount billed to date (including this invoice)
-  - Percentage of PO billed
-  - Remaining PO balance
-
-### 4. Filter System
-- **All Active**: Everything except paid
-- **Needs Approval**: Status = needs_approval
-- **Approved**: Ready for draw
-- **In Draw**: Waiting on client funding
-- **New**: Just received
-- **Archive**: Paid/completed
-
----
-
-## File Structure
-
-```
-P:\Ross Built Construction Management Software\
-├── config/
-│   └── index.js              # Supabase client, port config
-├── server/
-│   ├── index.js              # Express server, all API endpoints
-│   ├── ai-processor.js       # AI invoice extraction & matching (w/ confidence scoring)
-│   ├── standards.js          # Naming conventions, normalization
-│   ├── storage.js            # Supabase storage helpers
-│   ├── pdf-stamper.js        # PDF approval stamping
-│   ├── validation.js         # Invoice validation rules, status transitions
-│   ├── errors.js             # AppError class, error codes with retry info
-│   ├── locking.js            # Entity locking system (5-min locks)
-│   ├── undo.js               # Undo system (30-sec window)
-│   └── realtime.js           # SSE handler, Supabase realtime subscriptions
-├── public/
-│   ├── index.html            # Invoice approval dashboard
-│   ├── css/
-│   │   └── styles.css        # Dark theme styling (incl. toasts, modals)
-│   └── js/
-│       ├── app.js            # Frontend logic
-│       ├── toasts.js         # Toast notification system (with undo support)
-│       ├── realtime.js       # SSE client, offline queue management
-│       ├── validation.js     # Frontend validation (mirrors server rules)
-│       └── modals.js         # Edit modal, job selection modal
-├── database/
-│   └── migration-002-invoice-system-enhancements.sql  # Soft delete, undo, locks, AI metadata
-├── package.json
-├── .env                      # Environment variables
-└── CLAUDE.md                 # This file
-```
-
----
-
-## API Endpoints
-
-### Dashboard
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/dashboard/stats` | Owner dashboard statistics |
-
-### Jobs
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/jobs` | List all jobs |
-| GET | `/api/jobs/:id` | Get single job |
-
-### Vendors
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/vendors` | List all vendors |
-| POST | `/api/vendors` | Create new vendor |
-
-### Cost Codes
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/cost-codes` | List all cost codes |
-
-### Invoices
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/invoices` | List invoices (with filters) |
-| GET | `/api/invoices/:id` | Get invoice with details |
-| GET | `/api/invoices/:id/activity` | Get invoice activity log |
-| GET | `/api/invoices/:id/allocations` | Get invoice allocations |
-| GET | `/api/invoices/:id/version` | Get version for conflict detection |
-| GET | `/api/invoices/needs-review` | Get invoices flagged for review |
-| GET | `/api/invoices/low-confidence` | Get low AI confidence invoices |
-| GET | `/api/invoices/no-job` | Get invoices without job assignment |
-| POST | `/api/invoices/upload` | Basic upload (manual entry) |
-| POST | `/api/invoices/process` | **AI-powered processing** |
-| PATCH | `/api/invoices/:id` | Partial update (with lock check) |
-| PUT | `/api/invoices/:id/full` | Full update (with lock check) |
-| POST | `/api/invoices/:id/transition` | Status transition (with validation) |
-| PATCH | `/api/invoices/:id/code` | Code invoice (legacy) |
-| PATCH | `/api/invoices/:id/approve` | Approve + stamp PDF |
-| PATCH | `/api/invoices/:id/deny` | Deny with reason |
-| PATCH | `/api/invoices/:id/override` | Override AI-extracted field |
-| POST | `/api/invoices/:id/allocate` | Allocate to cost codes |
-| POST | `/api/invoices/:id/undo` | Undo last action |
-| DELETE | `/api/invoices/:id` | Soft delete invoice |
-
-### Bulk Operations
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/invoices/bulk/approve` | Approve multiple invoices |
-| POST | `/api/invoices/bulk/add-to-draw` | Add multiple to draw |
-| POST | `/api/invoices/bulk/deny` | Deny multiple invoices |
-
-### Locking
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/locks/acquire` | Acquire entity lock |
-| DELETE | `/api/locks/:lockId` | Release lock |
-| GET | `/api/locks/check/:entityType/:entityId` | Check lock status |
-
-### Undo
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/undo/available/:entityType/:entityId` | Check for available undo |
-| POST | `/api/invoices/:id/undo` | Execute undo operation |
-
-### Realtime
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/realtime/events` | SSE connection for live updates |
-| GET | `/api/realtime/stats` | Get connection stats |
-
-### Purchase Orders
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/purchase-orders` | List POs (with filters) |
-| GET | `/api/purchase-orders/:id` | Get PO with line items |
-| POST | `/api/purchase-orders` | Create PO |
-
-### Draws
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/jobs/:id/draws` | List draws for job |
-| POST | `/api/jobs/:id/draws` | Create new draw |
-| POST | `/api/draws/:id/add-invoices` | Add invoices to draw |
-| POST | `/api/draws/:id/remove-invoice` | Remove invoice from draw |
-| PATCH | `/api/draws/:id/submit` | Submit draw |
-| PATCH | `/api/draws/:id/fund` | Mark draw as funded |
-
-### Budget
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/jobs/:id/budget` | Get budget lines with actuals |
-| GET | `/api/jobs/:id/stats` | Get job-specific invoice/draw stats |
-
----
-
-## Database Schema (v2_ prefix)
-
-### v2_jobs
-```sql
-id UUID PRIMARY KEY
-name TEXT                    -- "Drummond-501 74th St"
-address TEXT
-client_name TEXT
-contract_amount DECIMAL
-status TEXT                  -- active, completed, on_hold
-created_at TIMESTAMPTZ
-```
-
-### v2_vendors
-```sql
-id UUID PRIMARY KEY
-name TEXT
-email TEXT
-phone TEXT
-created_at TIMESTAMPTZ
-```
-
-### v2_cost_codes
-```sql
-id UUID PRIMARY KEY
-code TEXT                    -- "06100"
-name TEXT                    -- "Rough Carpentry"
-category TEXT
-```
-
-### v2_invoices
-```sql
-id UUID PRIMARY KEY
-job_id UUID REFERENCES v2_jobs
-vendor_id UUID REFERENCES v2_vendors
-po_id UUID REFERENCES v2_purchase_orders
-invoice_number TEXT
-invoice_date DATE
-due_date DATE
-amount DECIMAL
-status TEXT                  -- received, needs_approval, approved, in_draw, paid
-pdf_url TEXT                 -- Original PDF
-pdf_stamped_url TEXT         -- Stamped PDF
-
--- AI Processing Metadata
-ai_processed BOOLEAN         -- Has been AI-processed
-ai_confidence JSONB          -- Per-field confidence scores
-ai_extracted_data JSONB      -- Original AI extraction
-ai_overrides JSONB           -- Manual field overrides
-needs_review BOOLEAN         -- Flagged for human review
-review_flags TEXT[]          -- Reasons for review
-
--- Versioning
-version INTEGER              -- For conflict detection
-deleted_at TIMESTAMPTZ       -- Soft delete timestamp
-
--- Audit Trail
-coded_at TIMESTAMPTZ
-coded_by TEXT
-approved_at TIMESTAMPTZ
-approved_by TEXT
-denied_at TIMESTAMPTZ
-denied_by TEXT
-denial_reason TEXT
-notes TEXT
-created_at TIMESTAMPTZ
-```
-
-### v2_undo_queue
-```sql
-id UUID PRIMARY KEY
-entity_type TEXT             -- 'invoice', 'allocation'
-entity_id UUID
-action TEXT                  -- 'approved', 'edited', 'deleted'
-previous_state JSONB         -- State before change
-performed_by TEXT
-expires_at TIMESTAMPTZ       -- 30-second window
-undone BOOLEAN               -- Whether undo was executed
-created_at TIMESTAMPTZ
-```
-
-### v2_entity_locks
-```sql
-id UUID PRIMARY KEY
-entity_type TEXT             -- 'invoice', 'draw'
-entity_id UUID
-locked_by TEXT
-locked_at TIMESTAMPTZ
-expires_at TIMESTAMPTZ       -- 5-minute lock duration
-UNIQUE(entity_type, entity_id)
-```
-
-### v2_invoice_hashes
-```sql
-id UUID PRIMARY KEY
-file_hash TEXT UNIQUE        -- SHA-256 of PDF content
-invoice_id UUID REFERENCES v2_invoices
-created_at TIMESTAMPTZ
-```
-
-### v2_file_references
-```sql
-id UUID PRIMARY KEY
-invoice_id UUID REFERENCES v2_invoices
-file_type TEXT               -- 'original', 'stamped'
-storage_path TEXT
-file_size BIGINT
-created_at TIMESTAMPTZ
-```
-
-### v2_invoice_allocations
-```sql
-id UUID PRIMARY KEY
-invoice_id UUID REFERENCES v2_invoices
-cost_code_id UUID REFERENCES v2_cost_codes
-amount DECIMAL
-notes TEXT
-```
-
-### v2_invoice_activity
-```sql
-id UUID PRIMARY KEY
-invoice_id UUID REFERENCES v2_invoices
-action TEXT                  -- uploaded, needs_approval, approved, denied, added_to_draw, paid
-performed_by TEXT
-details JSONB
-created_at TIMESTAMPTZ
-```
-
-### v2_purchase_orders
-```sql
-id UUID PRIMARY KEY
-job_id UUID REFERENCES v2_jobs
-vendor_id UUID REFERENCES v2_vendors
-po_number TEXT               -- "PO-Drummond501-0001"
-description TEXT
-total_amount DECIMAL
-status TEXT                  -- open, closed, cancelled
-created_at TIMESTAMPTZ
-created_by TEXT
-```
-
-### v2_po_line_items
-```sql
-id UUID PRIMARY KEY
-po_id UUID REFERENCES v2_purchase_orders
-cost_code_id UUID REFERENCES v2_cost_codes
-description TEXT
-amount DECIMAL
-invoiced_amount DECIMAL      -- Tracks how much billed against this line
-```
-
-### v2_budget_lines
-```sql
-id UUID PRIMARY KEY
-job_id UUID REFERENCES v2_jobs
-cost_code_id UUID REFERENCES v2_cost_codes
-budgeted_amount DECIMAL
-committed_amount DECIMAL
-```
-
-### v2_draws
-```sql
-id UUID PRIMARY KEY
-job_id UUID REFERENCES v2_jobs
-draw_number INTEGER
-period_end DATE
-total_amount DECIMAL
-status TEXT                  -- draft, submitted, funded
-submitted_at TIMESTAMPTZ
-funded_at TIMESTAMPTZ
-funded_amount DECIMAL
-```
-
-### v2_draw_invoices
-```sql
-id UUID PRIMARY KEY
-draw_id UUID REFERENCES v2_draws
-invoice_id UUID REFERENCES v2_invoices
 ```
 
 ---
@@ -425,288 +404,129 @@ Derived from job name: Client + Street Number
 ## Environment Variables
 
 ```env
-# Supabase
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...
-
-# Server
-PORT=3001
-
-# AI
 ANTHROPIC_API_KEY=sk-ant-api03-...
+PORT=3001
 ```
 
 ---
 
-## Commands
+## CSS Theming
 
+Dark theme with CSS variables:
+```css
+:root {
+  --bg-primary: #0d1117;
+  --bg-card: #161b22;
+  --bg-card-elevated: #1c2128;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --border: #30363d;
+}
+```
+
+Status badge colors:
+- Draft/Pending: `--accent-orange`
+- Approved/Active: `--accent-green`
+- Submitted/In Progress: `--accent-blue`
+- Denied/Cancelled: `--accent-red`
+
+---
+
+## Recent Changes (Jan 2026)
+
+### Draw Modal with G702/G703 (Jan 7)
+- Added fullscreen draw modal with 4 tabs
+- G702: AIA payment application format
+- G703: Schedule of Values with budget vs billings
+- Excel/PDF export functionality
+- Add to Draw flow from approved invoices
+- Fixed modal CSS opacity issues
+
+### PO Management System (Jan 7)
+- Fullscreen PO detail modal
+- Line items with cost code allocation
+- Change order tracking
+- PO approval workflow
+- Activity/audit log
+- Filter dropdowns (status, job)
+
+### Invoice Enhancements (Jan 6)
+- AI confidence scoring
+- Entity locking (5-min)
+- Undo system (30-sec)
+- Realtime sync via SSE
+- PDF stamping with PO info
+- Bulk operations
+
+---
+
+## Known Patterns
+
+### Modal Pattern
+Fullscreen modals use class `modal-fullscreen-dark`:
+```html
+<div id="myModal" class="modal modal-fullscreen-dark">
+  <div class="modal-content">
+    <div class="modal-header">...</div>
+    <div class="modal-body">...</div>
+    <div class="modal-footer">...</div>
+  </div>
+</div>
+```
+
+Open via JS:
+```javascript
+document.getElementById('myModal').style.display = 'flex';
+```
+
+### Tab Pattern
+```html
+<div class="tabs">
+  <button class="tab active" data-tab="summary">Summary</button>
+  <button class="tab" data-tab="details">Details</button>
+</div>
+<div id="tab-summary" class="tab-content active">...</div>
+<div id="tab-details" class="tab-content">...</div>
+```
+
+### Toast Pattern
+```javascript
+showToast('Invoice approved', 'success');
+showToast('Error occurred', 'error');
+```
+
+### Filter Dropdown Pattern
+```html
+<select id="statusFilter" onchange="applyFilters()">
+  <option value="all">All Active</option>
+  <option value="approved">Approved</option>
+</select>
+```
+
+---
+
+## Troubleshooting
+
+### Modal not visible
+Check CSS: `#modalId .modal-content` needs `opacity: 1` and `transform: scale(1)`
+
+### API 404
+Check route order in server/index.js - specific routes before parameterized routes
+
+### Budget not updating
+Check allocations have `job_id` set (migration-003)
+
+### Server restart
 ```bash
-# Start server
+# Kill existing node processes (Windows)
+Stop-Process -Name node -Force
+
+# Start fresh
 npm start
-
-# Development
-npm run dev
-
-# Install dependencies
-npm install
 ```
-
----
-
-## Pending Features
-
-- [x] Wire up live budget updates (update budget when invoice approved) - DONE
-- [x] AI confidence scoring system - DONE
-- [x] Edit locking and undo system - DONE
-- [x] Realtime sync via SSE - DONE
-- [x] Status transition validation - DONE
-- [ ] Email intake (Power Automate integration)
-- [ ] QuickBooks sync
-- [ ] Lien waiver tracking
-- [ ] Multi-job invoice splitting
-
----
-
-## AI Confidence Scoring
-
-When AI processes an invoice, it returns confidence scores for each extracted field:
-
-### Confidence Thresholds
-| Level | Score | Behavior |
-|-------|-------|----------|
-| HIGH | ≥ 90% | Auto-assign, no review needed |
-| MEDIUM | 60-90% | Auto-assign but flag for review |
-| LOW | < 60% | Don't auto-assign, show picker |
-
-### Confidence Fields
-```javascript
-{
-  job: 0.95,           // Job match confidence
-  vendor: 0.85,        // Vendor match confidence
-  amount: 0.98,        // Amount extraction confidence
-  invoice_number: 0.92 // Invoice number confidence
-}
-```
-
-### Review Flags
-Invoices are flagged for review when:
-- Any field has LOW confidence
-- No job match found
-- Potential duplicate detected
-- Amount seems unusually high/low
-
----
-
-## Status Transitions
-
-### Valid Transitions
-```
-received → needs_approval, denied, deleted
-needs_approval → approved, denied, received (recall)
-approved → in_draw, needs_approval (recall)
-in_draw → paid, approved (recall)
-denied → received
-paid → (terminal state)
-```
-
-### Pre-Transition Requirements
-| Target Status | Requirements |
-|---------------|--------------|
-| needs_approval | job_id, vendor_id assigned |
-| approved | job_id, vendor_id, balanced allocations |
-| in_draw | Must select draw to add to |
-| paid | Draw must be funded |
-
----
-
-## Entity Locking
-
-Prevents concurrent edits on invoices:
-
-- **Lock Duration**: 5 minutes
-- **Auto-refresh**: Locks can be renewed by the same user
-- **Force Release**: Admins can force-release stale locks
-- **Cleanup**: Expired locks are automatically cleaned up
-
-### Lock API
-```javascript
-// Acquire lock
-POST /api/locks/acquire
-{ entity_type: 'invoice', entity_id: 'uuid', locked_by: 'user' }
-
-// Release lock
-DELETE /api/locks/:lockId
-
-// Check lock
-GET /api/locks/check/invoice/:invoiceId
-```
-
----
-
-## Undo System
-
-Provides timed undo capability for invoice operations:
-
-- **Undo Window**: 30 seconds after action
-- **Supported Actions**: approve, edit, delete, allocate
-- **Side Effect Reversal**: Automatically reverses budget updates, PO updates
-
-### Undo Flow
-1. Action creates undo snapshot with previous state
-2. User sees toast with Undo button
-3. If clicked within 30s, previous state is restored
-4. Budget/PO changes are automatically reversed
-
----
-
-## Realtime Sync (SSE)
-
-Frontend maintains persistent SSE connection for live updates:
-
-### Events
-| Event | Description |
-|-------|-------------|
-| `connected` | Initial connection established |
-| `ping` | Heartbeat (every 30s) |
-| `invoice_change` | Invoice created/updated/deleted |
-| `invoice_update` | Invoice action performed |
-| `activity_log` | New activity logged |
-| `draw_change` | Draw modified |
-| `lock_change` | Lock acquired/released |
-| `notification` | Toast notification from server |
-
-### Frontend Usage
-```javascript
-// Listen for invoice updates
-window.realtimeSync.on('invoice_update', (data) => {
-  refreshInvoiceList();
-});
-
-// Check connection state
-window.realtimeSync.getState();
-// { connectionState: 'connected', clientId: '...', isOnline: true }
-```
-
----
-
-## Error Handling
-
-Structured errors with retry information:
-
-### Error Response Format
-```javascript
-{
-  success: false,
-  error: {
-    code: 'ENTITY_LOCKED',
-    message: 'Invoice is being edited by another user',
-    status: 409,
-    retry: true,
-    retryAfter: 5000,
-    details: { lockedBy: 'Jake Ross', expiresAt: '...' }
-  }
-}
-```
-
-### Error Codes
-| Code | Status | Retry | Description |
-|------|--------|-------|-------------|
-| VALIDATION_FAILED | 400 | No | Invalid field values |
-| TRANSITION_NOT_ALLOWED | 400 | No | Invalid status change |
-| PRE_TRANSITION_FAILED | 400 | No | Requirements not met |
-| DUPLICATE_DETECTED | 409 | No | Similar invoice exists |
-| ENTITY_LOCKED | 409 | Yes | Being edited by another |
-| VERSION_CONFLICT | 409 | No | Data changed since load |
-| UNDO_EXPIRED | 410 | No | Undo window passed |
-| AI_EXTRACTION_FAILED | 500 | Yes | AI processing error |
-| DATABASE_ERROR | 500 | Yes | Database issue |
-
----
-
-## Live Budget Updates
-
-When invoices move through the approval/payment workflow, budget data updates automatically:
-
-### On Invoice Approval
-- Updates `v2_budget_lines.billed_amount` for each cost code allocation
-- Updates `v2_po_line_items.invoiced_amount` if invoice is linked to a PO
-- Creates budget line if one doesn't exist for that job/cost code
-
-### On Draw Funding (Invoices Paid)
-- Updates `v2_budget_lines.paid_amount` for each cost code allocation
-
-### Budget Calculations
-| Field | Meaning |
-|-------|---------|
-| `budgeted_amount` | Original budget for this cost code |
-| `committed_amount` | PO commitments (sum of PO line items) |
-| `billed_amount` | Amount billed via approved invoices |
-| `paid_amount` | Amount actually paid (after draw funding) |
-| Variance | `budgeted_amount - billed_amount` |
-
----
-
-## Changelog
-
-### 2026-01-06 (Evening)
-- **AI Confidence Scoring System**:
-  - Added confidence thresholds (HIGH/MEDIUM/LOW)
-  - Per-field confidence scores (job, vendor, amount)
-  - Review flags for low-confidence invoices
-  - Job matching with fuzzy matching (Levenshtein distance)
-- **Validation System**:
-  - Created server/validation.js with field rules
-  - Status transition validation with pre-requirements
-  - Duplicate detection via file hash
-  - Allocation balance validation
-- **Error Handling**:
-  - Created server/errors.js with AppError class
-  - Structured error codes with retry information
-  - Express error middleware
-- **Entity Locking**:
-  - Created server/locking.js with 5-minute locks
-  - Lock acquisition/release/check APIs
-  - Automatic cleanup of expired locks
-- **Undo System**:
-  - Created server/undo.js with 30-second window
-  - Automatic reversal of budget/PO updates
-  - Undo snapshots for all state changes
-- **Realtime Sync**:
-  - Created server/realtime.js with SSE handler
-  - Supabase Realtime subscriptions
-  - Broadcast for invoice/draw/lock changes
-- **Frontend Components**:
-  - public/js/toasts.js - Toast notifications with undo
-  - public/js/realtime.js - SSE client with offline queue
-  - public/js/validation.js - Client-side validation
-  - public/js/modals.js - Edit modal, job selection modal
-- **New API Endpoints**:
-  - PATCH /api/invoices/:id - Partial update with locking
-  - POST /api/invoices/:id/transition - Status transitions
-  - POST /api/locks/acquire - Entity locking
-  - POST /api/invoices/:id/undo - Undo operations
-  - POST /api/invoices/bulk/* - Bulk operations
-  - GET /api/realtime/events - SSE connection
-- **Database Migration**:
-  - Added soft delete (deleted_at)
-  - Added AI metadata columns
-  - Added version tracking
-  - Created v2_undo_queue, v2_entity_locks, v2_invoice_hashes tables
-
-### 2026-01-06 (Morning)
-- Initial setup with invoice approval workflow
-- Added AI invoice processing with Claude
-- Implemented PDF stamping on approval
-- Created standardized file naming
-- Added job/vendor/PO auto-matching
-- Built filter system (Active, Needs Approval, Archive, etc.)
-- Created this documentation file
-- Enhanced PDF stamp to include:
-  - Cost codes with individual amounts
-  - PO number, total, billed amount, and remaining balance
-  - Percentage of PO billed
-- Fixed vendor auto-creation (removed trade_type column)
-- Implemented live budget updates:
-  - Auto-update `billed_amount` when invoice approved
-  - Auto-update `paid_amount` when draw funded
-  - Auto-update `invoiced_amount` on PO line items
