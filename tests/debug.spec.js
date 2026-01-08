@@ -1,16 +1,17 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Debug Approve Flow', () => {
-  test('Debug: Approve invoice and capture all errors', async ({ page }) => {
+test.describe('Debug Invoice Modal - Budget Impact', () => {
+  test('Debug: Check if Budget Impact section shows in invoice modal', async ({ page }) => {
     // Collect errors
     const errors = [];
     const logs = [];
+    const networkRequests = [];
 
     page.on('console', msg => {
       const text = msg.text();
       logs.push({ type: msg.type(), text });
       if (msg.type() === 'error') {
-        errors.push(text);
+        errors.push('CONSOLE ERROR: ' + text);
       }
     });
 
@@ -18,107 +19,124 @@ test.describe('Debug Approve Flow', () => {
       errors.push('PAGE ERROR: ' + err.message);
     });
 
-    page.on('response', response => {
-      if (response.status() >= 400) {
-        errors.push(`HTTP ${response.status()}: ${response.url()}`);
+    page.on('response', async response => {
+      const url = response.url();
+      if (url.includes('/api/')) {
+        networkRequests.push({
+          url: url,
+          status: response.status(),
+          ok: response.ok()
+        });
+        if (!response.ok()) {
+          errors.push(`HTTP ${response.status()}: ${url}`);
+        }
       }
     });
 
     // Go to page with cache bust
+    console.log('\n=== NAVIGATING TO PAGE ===');
     await page.goto('http://localhost:3001?cachebust=' + Date.now());
     await page.waitForLoadState('domcontentloaded');
-
-    // Wait for invoices to render
     await page.waitForTimeout(3000);
 
-    console.log('\n=== PAGE LOADED ===');
+    console.log('Page loaded');
     console.log('Errors so far:', errors);
-
-    // Take initial screenshot
-    await page.screenshot({ path: 'tests/screenshots/01-initial.png', fullPage: true });
 
     // Check if we have invoice cards
     const invoiceCards = await page.locator('.invoice-card').count();
     console.log('Invoice cards found:', invoiceCards);
 
     if (invoiceCards === 0) {
-      console.log('No invoice cards found!');
+      console.log('ERROR: No invoice cards found!');
+      console.log('Network requests:', networkRequests);
       return;
     }
 
-    // Find a coded invoice (can be approved)
-    const needsApprovalInvoice = page.locator('.invoice-card.status-needs_approval').first();
-    const needsApprovalCount = await page.locator('.invoice-card.status-needs_approval').count();
-    console.log('Needs approval invoices found:', needsApprovalCount);
+    // Click the first invoice
+    console.log('\n=== CLICKING FIRST INVOICE ===');
+    await page.locator('.invoice-card').first().click();
+    await page.waitForTimeout(3000);
 
-    if (needsApprovalCount > 0) {
-      // Click the invoice card
-      console.log('\n=== CLICKING INVOICE ===');
-      await needsApprovalInvoice.click();
+    // Check what API calls were made
+    console.log('\n=== NETWORK REQUESTS ===');
+    networkRequests.forEach(req => {
+      console.log(`  ${req.ok ? '✓' : '✗'} ${req.status} ${req.url}`);
+    });
 
-      // Wait for modal
-      await page.waitForTimeout(3000);
-
-      console.log('Errors after click:', errors);
-      await page.screenshot({ path: 'tests/screenshots/02-after-click.png', fullPage: true });
-
-      // Check modal state
-      const modalContainer = page.locator('#modal-container');
-      const isActive = await modalContainer.evaluate(el => el.classList.contains('active'));
-      console.log('Modal container active:', isActive);
-
-      if (isActive) {
-        // Look for Approve button INSIDE the modal-footer-right (not the filter button)
-        const approveBtn = page.locator('.modal-footer-right button.btn-success:has-text("Approve")');
-        const approveBtnCount = await approveBtn.count();
-        console.log('Approve buttons in modal footer:', approveBtnCount);
-
-        // Debug: Print all buttons in modal
-        const allModalBtns = await page.locator('.modal-footer-right button').all();
-        console.log('All buttons in modal footer:');
-        for (const btn of allModalBtns) {
-          const text = await btn.textContent();
-          const classes = await btn.getAttribute('class');
-          console.log(`  - "${text.trim()}" (${classes})`);
-        }
-
-        if (approveBtnCount > 0) {
-          console.log('\n=== CLICKING APPROVE ===');
-
-          // Handle confirm dialog
-          page.on('dialog', async dialog => {
-            console.log('Dialog:', dialog.message());
-            await dialog.accept();
-          });
-
-          // Force click to bypass any overlay issues
-          await approveBtn.first().click({ force: true });
-
-          // Wait for response
-          await page.waitForTimeout(5000);
-
-          console.log('\n=== AFTER APPROVE ===');
-          console.log('All errors:', errors);
-
-          await page.screenshot({ path: 'tests/screenshots/03-after-approve.png', fullPage: true });
-        } else {
-          console.log('No Approve button found in modal footer!');
-
-          // Check if we're looking at the right status
-          const statusBadge = await page.locator('.modal-header .status-badge').textContent();
-          console.log('Invoice status:', statusBadge);
-        }
-      } else {
-        console.log('Modal did not open!');
-      }
+    // Check if approval-context endpoint was called
+    const approvalContextCall = networkRequests.find(r => r.url.includes('approval-context'));
+    if (approvalContextCall) {
+      console.log('\n✓ approval-context API was called');
     } else {
-      console.log('No coded invoices found to test approval');
+      console.log('\n✗ approval-context API was NOT called!');
     }
 
-    // Final summary
-    console.log('\n========== FINAL SUMMARY ==========');
-    console.log('Total errors:', errors.length);
-    errors.forEach((e, i) => console.log(`  ${i + 1}. ${e}`));
-    console.log('===================================\n');
+    // Take screenshot
+    await page.screenshot({ path: 'tests/screenshots/budget-impact-test.png', fullPage: true });
+
+    // Check if edit modal is open (modal container with active class or visible modal)
+    const modalContainer = page.locator('#modal-container');
+    const isActive = await modalContainer.evaluate(el => el.classList.contains('active'));
+    console.log('\n=== MODAL STATE ===');
+    console.log('Modal container active:', isActive);
+
+    if (!isActive) {
+      console.log('ERROR: Modal did not open!');
+      console.log('All errors:', errors);
+      return;
+    }
+
+    // Check for Budget Standing section (in edit modal form)
+    console.log('\n=== CHECKING FOR BUDGET STANDING SECTION ===');
+
+    const budgetStanding = page.locator('.budget-standing-section');
+    const budgetStandingCount = await budgetStanding.count();
+    console.log('Budget Standing sections found:', budgetStandingCount);
+
+    if (budgetStandingCount > 0) {
+      console.log('✓ Budget Standing section IS showing!');
+      const budgetHtml = await budgetStanding.first().innerHTML();
+      console.log('Budget Standing HTML preview:', budgetHtml.substring(0, 800));
+    } else {
+      console.log('✗ Budget Impact section NOT found!');
+
+      // Debug: Check form panel content
+      const formPanel = page.locator('.form-panel');
+      const formPanelCount = await formPanel.count();
+      console.log('\nForm panel found:', formPanelCount);
+
+      if (formPanelCount > 0) {
+        const formHtml = await formPanel.first().innerHTML();
+        console.log('Form panel HTML preview:', formHtml.substring(0, 2000));
+      }
+
+      // Check if there's any approval-context class
+      const anyContext = await page.locator('[class*="impact"], [class*="budget"], [class*="context"]').count();
+      console.log('\nElements with impact/budget/context class:', anyContext);
+    }
+
+    // Check for JS errors
+    console.log('\n=== ERRORS SUMMARY ===');
+    if (errors.length === 0) {
+      console.log('✓ No errors detected');
+    } else {
+      console.log('✗ Errors found:');
+      errors.forEach((e, i) => console.log(`  ${i + 1}. ${e}`));
+    }
+
+    // Fetch approval context directly to see what it returns
+    console.log('\n=== TESTING API DIRECTLY ===');
+    const invoiceId = await page.evaluate(() => {
+      return window.state?.currentInvoiceId;
+    });
+    console.log('Current invoice ID from state:', invoiceId);
+
+    if (invoiceId) {
+      const response = await page.evaluate(async (id) => {
+        const res = await fetch(`/api/invoices/${id}/approval-context`);
+        return { status: res.status, data: await res.json() };
+      }, invoiceId);
+      console.log('Direct API response:', JSON.stringify(response, null, 2));
+    }
   });
 });

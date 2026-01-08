@@ -5,6 +5,8 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
+    "stop": "node server/stop.js",
+    "restart": "node server/stop.js && node server/index.js",
     "dev": "node server/index.js",
     "migrate": "node server/migrate.js",
     "migrate:status": "node server/migrate.js --status",

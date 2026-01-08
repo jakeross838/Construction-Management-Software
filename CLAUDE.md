@@ -553,9 +553,13 @@ Check allocations have `job_id` set (migration-003)
 
 ### Server restart
 ```bash
-# Kill existing node processes (Windows)
-Stop-Process -Name node -Force
+# SAFE restart (uses PID file - won't kill other node processes like Claude)
+npm run restart
 
-# Start fresh
-npm start
+# Or manually:
+npm run stop    # Stops only the server
+npm start       # Start fresh
+
+# The server writes its PID to server.pid on startup
+# npm run stop reads this file and kills only that process
 ```

@@ -1,0 +1,33 @@
+
+        <!-- Change Order Billing Section -->
+        <section class="draw-section" id="coBillingSection">
+          <div class="section-header">
+            <h3>Change Order Billings</h3>
+            <button class="btn btn-primary btn-sm" id="addCOBillingBtn" onclick="showAddCOBillingModal()">+ Add CO Billing</button>
+          </div>
+          <div class="co-billing-container">
+            <table class="g703-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Change Order</th>
+                  <th>CO Amount</th>
+                  <th>Previous<br>Billings</th>
+                  <th>This<br>Application</th>
+                  <th>Total<br>Billed</th>
+                  <th>%</th>
+                  <th>Balance</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="coBillingBody">
+                <tr>
+                  <td colspan="9" class="empty-state">No change order billings in this draw</td>
+                </tr>
+              </tbody>
+              <tfoot id="coBillingFooter">
+              </tfoot>
+            </table>
+          </div>
+        </section>
+

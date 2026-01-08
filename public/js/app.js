@@ -158,7 +158,7 @@ function renderInvoiceList() {
     }
 
     if (groups.received.length > 0) {
-      html += '<div class="invoice-group-header">New / Processing</div>';
+      html += '<div class="invoice-group-header">Needs Processing</div>';
       html += groups.received.map(inv => renderInvoiceCard(inv)).join('');
     }
 
@@ -175,12 +175,12 @@ function renderInvoiceList() {
 }
 
 function renderInvoiceCard(inv) {
-    // Build PO info if linked
+    // Build PO info - show linked PO or "No PO" warning
     let poInfo = '';
     if (inv.po) {
-      const poRemaining = inv.po.remaining ?? inv.po.total_amount;
-      const poClass = poRemaining < inv.amount ? 'po-low' : '';
-      poInfo = `<span class="po-badge ${poClass}" title="PO #${inv.po.po_number} - Remaining: ${formatMoney(poRemaining)}">PO: ${formatMoney(poRemaining)} left</span>`;
+      poInfo = `<span class="po-badge" title="PO #${inv.po.po_number}">${inv.po.po_number}</span>`;
+    } else {
+      poInfo = `<span class="po-badge no-po" title="No Purchase Order linked">No PO</span>`;
     }
 
     // Calculate allocation info
@@ -264,22 +264,24 @@ async function showInvoiceDetail(invoiceId) {
   state.currentInvoiceId = invoiceId;
 
   try {
-    const [invoiceRes, activityRes] = await Promise.all([
+    const [invoiceRes, activityRes, contextRes] = await Promise.all([
       fetch(`/api/invoices/${invoiceId}`),
-      fetch(`/api/invoices/${invoiceId}/activity`)
+      fetch(`/api/invoices/${invoiceId}/activity`),
+      fetch(`/api/invoices/${invoiceId}/approval-context`)
     ]);
 
     const invoice = await invoiceRes.json();
     const activity = await activityRes.json();
+    const approvalContext = await contextRes.json();
 
-    renderInvoiceModal(invoice, activity);
+    renderInvoiceModal(invoice, activity, approvalContext);
     showModal('invoiceModal');
   } catch (err) {
     console.error('Failed to load invoice:', err);
   }
 }
 
-function renderInvoiceModal(invoice, activity) {
+function renderInvoiceModal(invoice, activity, approvalContext = {}) {
   const pdfContainer = document.getElementById('pdfViewerContainer');
   const infoPanel = document.getElementById('invoiceInfoPanel');
   const footer = document.getElementById('invoiceModalFooter');
@@ -295,6 +297,90 @@ function renderInvoiceModal(invoice, activity) {
         <div class="pdf-icon">PDF</div>
         <p>No PDF attached</p>
       </div>
+    `;
+  }
+
+  // Build Budget Impact section - Before/After approval view
+  let budgetSection = '';
+  if (approvalContext.budget?.length > 0) {
+    const hasOverBudget = approvalContext.budget.some(b => b.over_budget);
+    budgetSection = `
+    <div class="detail-section approval-impact-section">
+      <h4>Budget Impact ${hasOverBudget ? '<span class="warning-badge">OVER BUDGET</span>' : ''}</h4>
+      ${approvalContext.budget.map(b => {
+        const beforePercent = b.budgeted > 0 ? Math.round((b.previously_billed / b.budgeted) * 100) : 0;
+        const afterPercent = b.budgeted > 0 ? Math.round((b.after_approval / b.budgeted) * 100) : 0;
+        return `
+        <div class="impact-card ${b.over_budget ? 'over-budget' : ''}">
+          <div class="impact-header">
+            <span class="impact-code">${b.cost_code?.code || ''}</span>
+            <span class="impact-name">${b.cost_code?.name || 'Unknown'}</span>
+          </div>
+          <div class="impact-comparison">
+            <div class="impact-before">
+              <div class="impact-label">Before Approval</div>
+              <div class="impact-amount">${formatMoney(b.previously_billed)}</div>
+              <div class="impact-bar">
+                <div class="impact-bar-fill" style="width: ${Math.min(beforePercent, 100)}%"></div>
+              </div>
+              <div class="impact-percent">${beforePercent}% of ${b.budgeted > 0 ? formatMoney(b.budgeted) : 'no budget'}</div>
+            </div>
+            <div class="impact-arrow">
+              <span class="arrow-add">+${formatMoney(b.this_invoice)}</span>
+              →
+            </div>
+            <div class="impact-after ${b.over_budget ? 'warning' : ''}">
+              <div class="impact-label">After Approval</div>
+              <div class="impact-amount">${formatMoney(b.after_approval)}</div>
+              <div class="impact-bar">
+                <div class="impact-bar-fill ${afterPercent > 100 ? 'over' : ''}" style="width: ${Math.min(afterPercent, 100)}%"></div>
+              </div>
+              <div class="impact-percent ${b.over_budget ? 'warning-text' : ''}">${afterPercent}% ${b.remaining >= 0 ? `(${formatMoney(b.remaining)} left)` : `(${formatMoney(Math.abs(b.remaining))} over!)`}</div>
+            </div>
+          </div>
+        </div>
+      `}).join('')}
+    </div>
+    `;
+  }
+
+  // Build PO Impact section - Before/After approval view
+  let poSection = '';
+  if (approvalContext.po) {
+    const po = approvalContext.po;
+    const beforePercent = po.total_amount > 0 ? Math.round((po.previously_billed / po.total_amount) * 100) : 0;
+    poSection = `
+    <div class="detail-section approval-impact-section">
+      <h4>PO Impact ${po.over_po ? '<span class="warning-badge">OVER PO</span>' : ''}</h4>
+      <div class="impact-card ${po.over_po ? 'over-budget' : ''}">
+        <div class="impact-header">
+          <span class="impact-code">${po.po_number}</span>
+          <span class="impact-status">${po.po_status}</span>
+        </div>
+        <div class="impact-comparison">
+          <div class="impact-before">
+            <div class="impact-label">Before Approval</div>
+            <div class="impact-amount">${formatMoney(po.previously_billed)}</div>
+            <div class="impact-bar">
+              <div class="impact-bar-fill" style="width: ${Math.min(beforePercent, 100)}%"></div>
+            </div>
+            <div class="impact-percent">${beforePercent}% of ${formatMoney(po.total_amount)}</div>
+          </div>
+          <div class="impact-arrow">
+            <span class="arrow-add">+${formatMoney(po.this_invoice)}</span>
+            →
+          </div>
+          <div class="impact-after ${po.over_po ? 'warning' : ''}">
+            <div class="impact-label">After Approval</div>
+            <div class="impact-amount">${formatMoney(po.after_approval)}</div>
+            <div class="impact-bar">
+              <div class="impact-bar-fill ${po.percent_used > 100 ? 'over' : ''}" style="width: ${Math.min(po.percent_used, 100)}%"></div>
+            </div>
+            <div class="impact-percent ${po.over_po ? 'warning-text' : ''}">${po.percent_used}% ${po.remaining >= 0 ? `(${formatMoney(po.remaining)} left)` : `(${formatMoney(Math.abs(po.remaining))} over!)`}</div>
+          </div>
+        </div>
+      </div>
+    </div>
     `;
   }
 
@@ -329,7 +415,11 @@ function renderInvoiceModal(invoice, activity) {
       </div>
     </div>
 
-    ${invoice.allocations?.length > 0 ? `
+    ${budgetSection}
+
+    ${poSection}
+
+    ${invoice.allocations?.length > 0 && !approvalContext.budget?.length ? `
     <div class="detail-section">
       <h4>Cost Codes</h4>
       ${invoice.allocations.map(a => `
@@ -781,7 +871,7 @@ function formatDateTime(dateStr) {
 
 function formatStatus(status) {
   const labels = {
-    received: 'New',
+    received: 'Needs Processing',
     needs_approval: 'Needs Approval',
     approved: 'Approved',
     in_draw: 'In Draw',

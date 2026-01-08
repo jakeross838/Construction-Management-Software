@@ -1,7 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
+
+// PID file for safe server restarts (won't kill other node processes)
+const PID_FILE = path.join(__dirname, '..', 'server.pid');
 const { supabase, port } = require('../config');
 const { uploadPDF, uploadStampedPDF, downloadPDF } = require('./storage');
 const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid, stampPartiallyBilled } = require('./pdf-stamper');
@@ -123,9 +127,11 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
     if (draws) {
       draws.forEach(d => {
-        if (drawStats[d.status]) {
-          drawStats[d.status].count++;
-          drawStats[d.status].amount += parseFloat(d.total_amount) || 0;
+        // Group partially_funded and overfunded with funded for stats
+        const statCategory = ['partially_funded', 'overfunded'].includes(d.status) ? 'funded' : d.status;
+        if (drawStats[statCategory]) {
+          drawStats[statCategory].count++;
+          drawStats[statCategory].amount += parseFloat(d.total_amount) || 0;
         }
       });
     }
@@ -1023,7 +1029,7 @@ app.get('/api/invoices', async (req, res) => {
         *,
         vendor:v2_vendors(id, name),
         job:v2_jobs(id, name),
-        po:v2_purchase_orders(id, po_number),
+        po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
           id, amount, notes, job_id,
           cost_code:v2_cost_codes(id, code, name)
@@ -1146,6 +1152,120 @@ app.get('/api/invoices/:id/activity', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get invoice approval context (budget + PO status for decision-making)
+app.get('/api/invoices/:id/approval-context', async (req, res) => {
+  try {
+    // Get the invoice with allocations, job, and PO
+    const { data: invoice, error: invoiceError } = await supabase
+      .from('v2_invoices')
+      .select(`
+        id, job_id, po_id, amount, status,
+        allocations:v2_invoice_allocations(
+          id, amount, cost_code_id,
+          cost_code:v2_cost_codes(id, code, name)
+        ),
+        po:v2_purchase_orders(
+          id, po_number, total_amount, status,
+          line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount)
+        )
+      `)
+      .eq('id', req.params.id)
+      .single();
+
+    if (invoiceError) throw invoiceError;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+    const result = {
+      budget: [],
+      po: null
+    };
+
+    // Get budget context for each cost code in allocations
+    if (invoice.allocations?.length > 0 && invoice.job_id) {
+      const costCodeIds = invoice.allocations.map(a => a.cost_code_id).filter(Boolean);
+
+      // Get budget lines for these cost codes
+      const { data: budgetLines } = await supabase
+        .from('v2_budget_lines')
+        .select('cost_code_id, budgeted_amount')
+        .eq('job_id', invoice.job_id)
+        .in('cost_code_id', costCodeIds);
+
+      // Get all approved/in_draw/paid invoice allocations for these cost codes (excluding current invoice)
+      const { data: existingAllocations } = await supabase
+        .from('v2_invoice_allocations')
+        .select(`
+          amount, cost_code_id,
+          invoice:v2_invoices!inner(id, job_id, status)
+        `)
+        .eq('invoice.job_id', invoice.job_id)
+        .in('invoice.status', ['approved', 'in_draw', 'paid'])
+        .neq('invoice.id', invoice.id)
+        .in('cost_code_id', costCodeIds);
+
+      // Calculate billed amounts per cost code
+      const billedByCostCode = {};
+      existingAllocations?.forEach(a => {
+        if (!billedByCostCode[a.cost_code_id]) billedByCostCode[a.cost_code_id] = 0;
+        billedByCostCode[a.cost_code_id] += parseFloat(a.amount) || 0;
+      });
+
+      // Build budget context for each allocation
+      result.budget = invoice.allocations.map(alloc => {
+        const budgetLine = budgetLines?.find(bl => bl.cost_code_id === alloc.cost_code_id);
+        const budgeted = parseFloat(budgetLine?.budgeted_amount) || 0;
+        const previouslyBilled = billedByCostCode[alloc.cost_code_id] || 0;
+        const thisInvoice = parseFloat(alloc.amount) || 0;
+        const afterApproval = previouslyBilled + thisInvoice;
+
+        return {
+          cost_code: alloc.cost_code,
+          this_invoice: thisInvoice,
+          budgeted: budgeted,
+          previously_billed: previouslyBilled,
+          after_approval: afterApproval,
+          remaining: budgeted - afterApproval,
+          over_budget: afterApproval > budgeted && budgeted > 0
+        };
+      });
+    }
+
+    // Get PO context if invoice is linked to a PO
+    if (invoice.po) {
+      const poTotal = parseFloat(invoice.po.total_amount) || 0;
+
+      // Get all invoices already billed against this PO (excluding current invoice)
+      const { data: poInvoices } = await supabase
+        .from('v2_invoices')
+        .select('id, amount, status')
+        .eq('po_id', invoice.po_id)
+        .neq('id', invoice.id)
+        .in('status', ['approved', 'in_draw', 'paid']);
+
+      const previouslyBilled = poInvoices?.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0) || 0;
+      const thisInvoice = parseFloat(invoice.amount) || 0;
+      const afterApproval = previouslyBilled + thisInvoice;
+
+      result.po = {
+        po_number: invoice.po.po_number,
+        po_status: invoice.po.status,
+        total_amount: poTotal,
+        previously_billed: previouslyBilled,
+        this_invoice: thisInvoice,
+        after_approval: afterApproval,
+        remaining: poTotal - afterApproval,
+        percent_used: poTotal > 0 ? Math.round((afterApproval / poTotal) * 100) : 0,
+        over_po: afterApproval > poTotal
+      };
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('Error getting approval context:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1453,6 +1573,22 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
 
     if (getError) throw getError;
 
+    // ==========================================
+    // GET/CREATE DRAFT DRAW FIRST (before stamping)
+    // ==========================================
+
+    let draftDraw = null;
+    let addedToDraw = false;
+
+    if (invoice.job?.id && invoice.allocations && invoice.allocations.length > 0) {
+      try {
+        draftDraw = await getOrCreateDraftDraw(invoice.job.id, approved_by);
+      } catch (drawErr) {
+        console.error('Error getting/creating draft draw:', drawErr);
+        // Continue without draw assignment
+      }
+    }
+
     let pdf_stamped_url = null;
 
     // Stamp PDF if exists
@@ -1484,17 +1620,6 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
             }
           }
 
-          // Debug: Log data being passed to stamp
-          console.log('=== STAMP DEBUG ===');
-          console.log('Invoice allocations:', JSON.stringify(invoice.allocations, null, 2));
-          console.log('Invoice PO:', JSON.stringify(invoice.po, null, 2));
-          console.log('Cost codes for stamp:', invoice.allocations?.map(a => ({
-            code: a.cost_code?.code,
-            name: a.cost_code?.name,
-            amount: a.amount
-          })));
-          console.log('==================');
-
           // Calculate partial billing info
           const invoiceTotal = parseFloat(invoice.amount || 0);
           const alreadyBilled = Math.max(
@@ -1503,8 +1628,14 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
           );
           const isPartialInvoice = alreadyBilled > 0;
 
+          // Build status text with draw number if available
+          let stampStatus = isPartialInvoice ? 'APPROVED (PARTIAL)' : 'APPROVED';
+          if (draftDraw) {
+            stampStatus += ` - Draw #${draftDraw.draw_number}`;
+          }
+
           const stampedBuffer = await stampApproval(pdfBuffer, {
-            status: isPartialInvoice ? 'APPROVED (PARTIAL)' : 'APPROVED',
+            status: stampStatus,
             date: new Date().toLocaleDateString(),
             approvedBy: approved_by,
             vendorName: invoice.vendor?.name,
@@ -1523,7 +1654,9 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
             // Partial billing info
             isPartial: isPartialInvoice,
             previouslyBilled: alreadyBilled,
-            remainingAfterThis: invoiceTotal - alreadyBilled - (invoice.allocations?.reduce((s, a) => s + parseFloat(a.amount || 0), 0) || 0)
+            remainingAfterThis: invoiceTotal - alreadyBilled - (invoice.allocations?.reduce((s, a) => s + parseFloat(a.amount || 0), 0) || 0),
+            // Draw info
+            drawNumber: draftDraw?.draw_number
           });
 
           const result = await uploadStampedPDF(stampedBuffer, storagePath);
@@ -1535,14 +1668,34 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
       }
     }
 
-    // Update invoice
+    // ==========================================
+    // ADD INVOICE TO DRAFT DRAW
+    // ==========================================
+
+    if (draftDraw) {
+      try {
+        // Add invoice to draw (creates draw_allocations)
+        await addInvoiceToDraw(invoiceId, draftDraw.id, approved_by);
+        addedToDraw = true;
+
+        console.log(`[APPROVAL] Invoice ${invoiceId} auto-added to Draw #${draftDraw.draw_number}`);
+      } catch (drawErr) {
+        console.error('Error adding invoice to draw:', drawErr);
+        // Continue with approval even if draw add fails
+      }
+    }
+
+    // Update invoice - status is now 'in_draw' if added to draw, otherwise 'approved'
+    const newStatus = addedToDraw ? 'in_draw' : 'approved';
+
     const { data: updated, error: updateError } = await supabase
       .from('v2_invoices')
       .update({
-        status: 'approved',
+        status: newStatus,
         approved_at: new Date().toISOString(),
         approved_by,
-        pdf_stamped_url
+        pdf_stamped_url,
+        first_draw_id: addedToDraw ? draftDraw.id : null
       })
       .eq('id', invoiceId)
       .select()
@@ -1552,7 +1705,10 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
 
     // Log activity
     await logActivity(invoiceId, 'approved', approved_by, {
-      stamped: !!pdf_stamped_url
+      stamped: !!pdf_stamped_url,
+      added_to_draw: addedToDraw,
+      draw_id: draftDraw?.id,
+      draw_number: draftDraw?.draw_number
     });
 
     // ==========================================
@@ -2423,28 +2579,105 @@ app.get('/api/draws/:id', async (req, res) => {
       };
     }).filter(Boolean).sort((a, b) => (a.costCode || '').localeCompare(b.costCode || ''));
 
-    // Calculate G702 totals
+    // Calculate G702 totals (invoice portion)
     const totalScheduled = scheduleOfValues.reduce((sum, item) => sum + item.scheduledValue, 0);
     const totalPrevious = scheduleOfValues.reduce((sum, item) => sum + item.previousCompleted, 0);
     const totalThisPeriod = scheduleOfValues.reduce((sum, item) => sum + item.thisPeriod, 0);
     const totalMaterials = scheduleOfValues.reduce((sum, item) => sum + item.materialsStored, 0);
-    const grandTotalCompleted = totalPrevious + totalThisPeriod + totalMaterials;
-    const currentPaymentDue = totalThisPeriod;
+
+    // ========== CHANGE ORDER DATA ==========
+    const { data: jobChangeOrders } = await supabase
+      .from('v2_job_change_orders')
+      .select('*')
+      .eq('job_id', draw.job_id)
+      .eq('status', 'approved')
+      .order('change_order_number', { ascending: true });
+
+    const changeOrderTotal = (jobChangeOrders || []).reduce((sum, co) => sum + parseFloat(co.amount || 0), 0);
+
+    const { data: thisDrawCOBillings } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('*, change_order:v2_job_change_orders(id, change_order_number, title, amount)')
+      .eq('draw_id', drawId);
+
+    let previousCOBillings = [];
+    if (previousDraws && previousDraws.length > 0) {
+      const prevDrawIds = previousDraws.map(d => d.id);
+      const { data: prevCO } = await supabase
+        .from('v2_job_co_draw_billings')
+        .select('amount, draw_id, change_order_id')
+        .in('draw_id', prevDrawIds);
+      previousCOBillings = prevCO || [];
+    }
+
+    const coBilledThisPeriod = (thisDrawCOBillings || []).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+    const coBilledPreviously = previousCOBillings.reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+
+    const coScheduleOfValues = (jobChangeOrders || []).map((co, idx) => {
+      const prevBillings = previousCOBillings.filter(b => b.change_order_id === co.id).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+      const thisPeriodBilling = (thisDrawCOBillings || []).filter(b => b.change_order_id === co.id).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+      const totalBilled = prevBillings + thisPeriodBilling;
+      const coAmount = parseFloat(co.amount || 0);
+      return {
+        itemNumber: idx + 1,
+        changeOrderNumber: co.change_order_number,
+        title: co.title,
+        scheduledValue: coAmount,
+        previousBillings: prevBillings,
+        thisPeriodBilling: thisPeriodBilling,
+        totalBilled: totalBilled,
+        percentComplete: coAmount > 0 ? Math.min((totalBilled / coAmount) * 100, 100) : 0,
+        balance: coAmount - totalBilled,
+        clientApproved: !!co.client_approved_at || co.client_approval_bypassed
+      };
+    });
+
+    const grandTotalCompleted = totalPrevious + totalThisPeriod + totalMaterials + coBilledPreviously + coBilledThisPeriod;
+    const currentPaymentDue = totalThisPeriod + coBilledThisPeriod;
+    const contractSum = parseFloat(draw.job?.contract_amount || 0);
+    const contractSumToDate = contractSum + changeOrderTotal;
+
+    // ========== ATTACHMENTS ==========
+    const { data: attachments } = await supabase
+      .from('v2_draw_attachments')
+      .select(`
+        *,
+        vendor:v2_vendors(id, name)
+      `)
+      .eq('draw_id', drawId)
+      .order('uploaded_at', { ascending: false });
+
+    // ========== ACTIVITY LOG ==========
+    const { data: activity } = await supabase
+      .from('v2_draw_activity')
+      .select('*')
+      .eq('draw_id', drawId)
+      .order('created_at', { ascending: false });
 
     res.json({
       ...draw,
       invoices,
       invoiceCount: invoices.length,
       scheduleOfValues,
+      changeOrders: jobChangeOrders || [],
+      changeOrderTotal,
+      coScheduleOfValues,
+      coBillings: thisDrawCOBillings || [],
+      coBilledThisPeriod,
+      coBilledPreviously,
+      attachments: attachments || [],
+      activity: activity || [],
       g702: {
         applicationNumber: draw.draw_number,
         periodTo: draw.period_end,
-        contractSum: draw.job?.contract_amount || 0,
-        totalCompletedPrevious: totalPrevious,
-        totalCompletedThisPeriod: totalThisPeriod,
+        contractSum: contractSum,
+        netChangeOrders: changeOrderTotal,
+        contractSumToDate: contractSumToDate,
+        totalCompletedPrevious: totalPrevious + coBilledPreviously,
+        totalCompletedThisPeriod: totalThisPeriod + coBilledThisPeriod,
         materialsStored: totalMaterials,
         grandTotal: grandTotalCompleted,
-        lessPreviousCertificates: totalPrevious,
+        lessPreviousCertificates: totalPrevious + coBilledPreviously,
         currentPaymentDue: currentPaymentDue
       }
     });
@@ -2576,9 +2809,21 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
       return res.status(404).json({ error: 'Draw not found' });
     }
 
-    if (draw.status === 'funded') {
-      return res.status(400).json({ error: 'Cannot remove invoices from a funded draw' });
+    // Only allow removal from draft draws (submitted/funded are locked)
+    if (draw.status !== 'draft') {
+      return res.status(400).json({
+        error: draw.status === 'submitted'
+          ? 'Cannot remove invoices from a submitted draw. Unsubmit the draw first.'
+          : 'Cannot remove invoices from a funded draw'
+      });
     }
+
+    // Remove from draw_allocations (new table)
+    await supabase
+      .from('v2_draw_allocations')
+      .delete()
+      .eq('draw_id', drawId)
+      .eq('invoice_id', invoice_id);
 
     // Remove from draw_invoices
     const { error: deleteError } = await supabase
@@ -2669,28 +2914,26 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // Log activity
+    // Log invoice activity
     await logActivity(invoice_id, 'removed_from_draw', performed_by, {
       draw_number: draw.draw_number
     });
 
-    // Recalculate draw total using allocation sums (for partial approvals)
-    const { data: remainingInvoices } = await supabase
-      .from('v2_draw_invoices')
-      .select(`
-        invoice:v2_invoices(
-          amount,
-          allocations:v2_invoice_allocations(amount)
-        )
-      `)
+    // Log draw activity
+    await logDrawActivity(drawId, 'invoice_removed', performed_by, {
+      invoice_id,
+      invoice_number: invoice?.invoice_number,
+      vendor_name: invoice?.vendor?.name
+    });
+
+    // Recalculate draw total using v2_draw_allocations
+    const { data: remainingAllocations } = await supabase
+      .from('v2_draw_allocations')
+      .select('amount')
       .eq('draw_id', drawId);
 
-    const newTotal = remainingInvoices?.reduce((sum, di) => {
-      const inv = di.invoice;
-      if (!inv) return sum;
-      const allocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
-      // Use allocation sum if available, otherwise fall back to invoice amount
-      return sum + (allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0));
+    const newTotal = remainingAllocations?.reduce((sum, alloc) => {
+      return sum + parseFloat(alloc.amount || 0);
     }, 0) || 0;
 
     await supabase
@@ -2698,7 +2941,7 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
       .update({ total_amount: newTotal })
       .eq('id', drawId);
 
-    res.json({ success: true, new_total: newTotal });
+    res.json({ success: true, new_total: newTotal, draw_number: draw.draw_number });
   } catch (err) {
     console.error('Error removing invoice from draw:', err);
     res.status(500).json({ error: err.message });
@@ -2745,20 +2988,34 @@ app.post('/api/draws/:id/recalculate', async (req, res) => {
 app.patch('/api/draws/:id/submit', async (req, res) => {
   try {
     const drawId = req.params.id;
+    const { submitted_by = 'System' } = req.body;
 
     // Get draw info
     const { data: drawInfo } = await supabase
       .from('v2_draws')
-      .select('draw_number')
+      .select('draw_number, status')
       .eq('id', drawId)
       .single();
 
-    // Update draw status
+    if (!drawInfo) {
+      return res.status(404).json({ error: 'Draw not found' });
+    }
+
+    if (drawInfo.status !== 'draft') {
+      return res.status(400).json({
+        error: `Cannot submit a draw that is already ${drawInfo.status}`
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    // Update draw status - set submitted_at and locked_at
     const { data: draw, error } = await supabase
       .from('v2_draws')
       .update({
         status: 'submitted',
-        submitted_at: new Date().toISOString()
+        submitted_at: now,
+        locked_at: now
       })
       .eq('id', drawId)
       .select()
@@ -2766,95 +3023,63 @@ app.patch('/api/draws/:id/submit', async (req, res) => {
 
     if (error) throw error;
 
-    // Get invoices in this draw with their allocations and payment history
-    const { data: drawInvoices } = await supabase
-      .from('v2_draw_invoices')
-      .select('invoice_id')
+    // Log draw activity
+    await logDrawActivity(drawId, 'submitted', submitted_by, {
+      draw_number: draw.draw_number,
+      total_amount: draw.total_amount
+    });
+
+    // Get invoices in this draw and update their billed_amount tracking
+    const { data: drawAllocations } = await supabase
+      .from('v2_draw_allocations')
+      .select('invoice_id, amount')
       .eq('draw_id', drawId);
 
-    if (drawInvoices && drawInvoices.length > 0) {
-      const invoiceIds = drawInvoices.map(di => di.invoice_id);
+    if (drawAllocations && drawAllocations.length > 0) {
+      // Group allocations by invoice
+      const invoiceAmounts = {};
+      for (const alloc of drawAllocations) {
+        if (!invoiceAmounts[alloc.invoice_id]) {
+          invoiceAmounts[alloc.invoice_id] = 0;
+        }
+        invoiceAmounts[alloc.invoice_id] += parseFloat(alloc.amount || 0);
+      }
 
-      const { data: invoices } = await supabase
-        .from('v2_invoices')
-        .select(`
-          id, amount, billed_amount, paid_amount, pdf_stamped_url,
-          allocations:v2_invoice_allocations(amount, cost_code_id, cost_code:v2_cost_codes(code, name))
-        `)
-        .in('id', invoiceIds);
+      // Update each invoice's billed_amount
+      for (const [invoiceId, thisDrawAmount] of Object.entries(invoiceAmounts)) {
+        const { data: invoice } = await supabase
+          .from('v2_invoices')
+          .select('billed_amount, amount')
+          .eq('id', invoiceId)
+          .single();
 
-      // Process each invoice - check for partials
-      for (const inv of invoices || []) {
-        const invoiceAmount = parseFloat(inv.amount || 0);
-        const previouslyBilled = parseFloat(inv.billed_amount || 0);
-        const thisDrawBilled = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
-        const cumulativeBilled = previouslyBilled + thisDrawBilled;
-        const remaining = invoiceAmount - cumulativeBilled;
+        if (invoice) {
+          const previouslyBilled = parseFloat(invoice.billed_amount || 0);
+          const cumulativeBilled = previouslyBilled + thisDrawAmount;
+          const invoiceTotal = parseFloat(invoice.amount || 0);
 
-        console.log(`Submit - Invoice ${inv.id}: amount=${invoiceAmount}, prevBilled=${previouslyBilled}, thisDraw=${thisDrawBilled}, remaining=${remaining}`);
-
-        // If there's remaining balance, kick back to needs_approval
-        if (remaining > 0.01) {
-          // Stamp the PDF with "IN DRAW #X - PARTIAL BILLED"
-          if (inv.pdf_stamped_url) {
-            try {
-              const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
-              if (urlParts[1]) {
-                const storagePath = decodeURIComponent(urlParts[1]).replace('_stamped.pdf', '.pdf');
-                const pdfBuffer = await downloadPDF(storagePath.replace('.pdf', '_stamped.pdf'));
-                const stampedBuffer = await stampPartiallyBilled(pdfBuffer, {
-                  drawNumber: drawInfo?.draw_number || draw.draw_number,
-                  amountBilledThisDraw: thisDrawBilled,
-                  cumulativeBilled: cumulativeBilled,
-                  invoiceTotal: invoiceAmount,
-                  remaining: remaining,
-                  costCodes: (inv.allocations || []).map(a => ({
-                    code: a.cost_code?.code || 'Unknown',
-                    name: a.cost_code?.name || '',
-                    amount: parseFloat(a.amount || 0)
-                  }))
-                });
-                await uploadStampedPDF(stampedBuffer, storagePath);
-              }
-            } catch (stampErr) {
-              console.error('PARTIAL BILLED stamp failed for invoice:', inv.id, stampErr.message);
-            }
-          }
-
-          // Move back to needs_approval with updated billed_amount and note
-          const remainingNote = `[PARTIAL BILLED - Draw #${drawInfo?.draw_number || draw.draw_number}] Billed: $${thisDrawBilled.toFixed(2)}, Remaining: $${remaining.toFixed(2)} needs approval`;
-          await supabase
-            .from('v2_invoices')
-            .update({
-              status: 'needs_approval',
-              billed_amount: cumulativeBilled, // Track cumulative billing (separate from paid_amount)
-              notes: remainingNote
-            })
-            .eq('id', inv.id);
-
-          // Clear allocations - they've been billed, need fresh ones for remainder
-          await supabase
-            .from('v2_invoice_allocations')
-            .delete()
-            .eq('invoice_id', inv.id);
-
-          await logActivity(inv.id, 'partial_billed', 'System', {
-            draw_id: drawId,
-            draw_number: drawInfo?.draw_number,
-            amount_billed_this_draw: thisDrawBilled,
-            cumulative_billed: cumulativeBilled,
-            remaining: remaining
-          });
-        } else {
-          // Fully billed invoice - update billed_amount and keep in_draw until funded
+          // Track partial billing but don't kick back - invoices stay in_draw
+          // They can be billed again in the next draw for the remaining amount
           await supabase
             .from('v2_invoices')
             .update({ billed_amount: cumulativeBilled })
-            .eq('id', inv.id);
+            .eq('id', invoiceId);
+
+          // Log if partial
+          if (cumulativeBilled < invoiceTotal - 0.01) {
+            await logActivity(invoiceId, 'partial_billed', 'System', {
+              draw_id: drawId,
+              draw_number: draw.draw_number,
+              amount_billed_this_draw: thisDrawAmount,
+              cumulative_billed: cumulativeBilled,
+              remaining: invoiceTotal - cumulativeBilled
+            });
+          }
         }
       }
     }
 
+    console.log(`[DRAW] Draw #${draw.draw_number} submitted and locked`);
     res.json(draw);
   } catch (err) {
     console.error('Error submitting draw:', err);
@@ -2862,38 +3087,110 @@ app.patch('/api/draws/:id/submit', async (req, res) => {
   }
 });
 
+// Unsubmit draw - revert from submitted back to draft
+app.post('/api/draws/:id/unsubmit', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+    const { reason, performed_by = 'System' } = req.body;
+
+    // Get draw info
+    const { data: drawInfo } = await supabase
+      .from('v2_draws')
+      .select('draw_number, status')
+      .eq('id', drawId)
+      .single();
+
+    if (!drawInfo) {
+      return res.status(404).json({ error: 'Draw not found' });
+    }
+
+    if (drawInfo.status !== 'submitted') {
+      return res.status(400).json({
+        error: drawInfo.status === 'draft'
+          ? 'Draw is already in draft status'
+          : 'Cannot unsubmit a funded draw'
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    // Update draw status back to draft
+    const { data: draw, error } = await supabase
+      .from('v2_draws')
+      .update({
+        status: 'draft',
+        locked_at: null,
+        unsubmitted_at: now,
+        unsubmit_reason: reason || null
+      })
+      .eq('id', drawId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Log draw activity
+    await logDrawActivity(drawId, 'unsubmitted', performed_by, {
+      draw_number: draw.draw_number,
+      reason: reason || 'No reason provided'
+    });
+
+    // Note: We don't need to revert billed_amount on invoices because
+    // the billing tracking is cumulative and useful for partial billing
+
+    console.log(`[DRAW] Draw #${draw.draw_number} unsubmitted - returned to draft`);
+    res.json(draw);
+  } catch (err) {
+    console.error('Error unsubmitting draw:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.patch('/api/draws/:id/fund', async (req, res) => {
   try {
     const drawId = req.params.id;
-    const { funded_amount, partial_funding_note } = req.body;
+    const { funded_amount, partial_funding_note, funded_by = 'System' } = req.body;
 
     // Get draw info first
     const { data: drawBefore } = await supabase
       .from('v2_draws')
-      .select('draw_number, total_amount, job_id')
+      .select('draw_number, total_amount, job_id, status, locked_at')
       .eq('id', drawId)
       .single();
+
+    if (!drawBefore) {
+      return res.status(404).json({ error: 'Draw not found' });
+    }
+
+    // Validate draw is submitted (can't fund a draft)
+    if (drawBefore.status === 'draft') {
+      return res.status(400).json({ error: 'Cannot fund a draft draw. Submit the draw first.' });
+    }
+
+    // Prevent re-funding an already funded draw
+    if (drawBefore.status === 'funded') {
+      return res.status(400).json({ error: 'Draw has already been funded' });
+    }
 
     const billedAmount = parseFloat(drawBefore?.total_amount || 0);
     const actualFunded = parseFloat(funded_amount || billedAmount);
     const fundingDifference = actualFunded - billedAmount;
 
-    // Determine status based on funding
-    let status = 'funded';
-    if (fundingDifference < -0.01) {
-      status = 'partially_funded'; // Client paid less than billed
-    } else if (fundingDifference > 0.01) {
-      status = 'overfunded'; // Client paid more (credit situation)
-    }
+    // Status is always 'funded' - funding variance tracked in funding_difference field
+    const status = 'funded';
+    // Note: funding_difference < 0 means partial payment, > 0 means overpayment
+
+    const now = new Date().toISOString();
 
     const { data: draw, error: drawError } = await supabase
       .from('v2_draws')
       .update({
         status: status,
-        funded_at: new Date().toISOString(),
+        funded_at: now,
         funded_amount: actualFunded,
         funding_difference: fundingDifference,
-        partial_funding_note: partial_funding_note || null
+        partial_funding_note: partial_funding_note || null,
+        locked_at: drawBefore.locked_at || now // Ensure locked_at is set
       })
       .eq('id', drawId)
       .select()
@@ -2901,42 +3198,59 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
 
     if (drawError) throw drawError;
 
+    // Log draw activity
+    await logDrawActivity(drawId, 'funded', funded_by, {
+      draw_number: draw.draw_number,
+      billed_amount: billedAmount,
+      funded_amount: actualFunded,
+      funding_difference: fundingDifference,
+      status: status
+    });
+
     // Log funding difference if applicable
     if (Math.abs(fundingDifference) > 0.01) {
       console.log(`Draw ${draw.draw_number} funding: billed=${billedAmount}, funded=${actualFunded}, diff=${fundingDifference} (${status})`);
     }
 
-    // Get invoices still in_draw (fully billed invoices - partials already kicked back on submit)
-    const { data: drawInvoices } = await supabase
-      .from('v2_draw_invoices')
-      .select('invoice_id')
+    // Get draw allocations for this draw (using new v2_draw_allocations table)
+    const { data: drawAllocations } = await supabase
+      .from('v2_draw_allocations')
+      .select('invoice_id, cost_code_id, amount')
       .eq('draw_id', drawId);
 
-    if (drawInvoices && drawInvoices.length > 0) {
-      const invoiceIds = drawInvoices.map(di => di.invoice_id);
+    // Group allocations by invoice
+    const invoiceAllocations = {};
+    for (const alloc of drawAllocations || []) {
+      if (!invoiceAllocations[alloc.invoice_id]) {
+        invoiceAllocations[alloc.invoice_id] = [];
+      }
+      invoiceAllocations[alloc.invoice_id].push(alloc);
+    }
 
+    const invoiceIds = Object.keys(invoiceAllocations);
+    if (invoiceIds.length > 0) {
       // Get invoices that are still in_draw
       const { data: invoices } = await supabase
         .from('v2_invoices')
-        .select(`
-          id, amount, billed_amount, paid_amount, pdf_stamped_url, job_id, status,
-          allocations:v2_invoice_allocations(amount, cost_code_id, cost_code:v2_cost_codes(code, name))
-        `)
+        .select('id, amount, billed_amount, paid_amount, pdf_stamped_url, job_id, status')
         .in('id', invoiceIds)
-        .eq('status', 'in_draw'); // Only process invoices still in_draw
+        .eq('status', 'in_draw');
 
       const paidDate = new Date().toLocaleDateString();
 
       for (const inv of invoices || []) {
         const invoiceAmount = parseFloat(inv.amount || 0);
-        const billedThisDraw = parseFloat(inv.billed_amount || 0) ||
-          (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+        const allocsForInvoice = invoiceAllocations[inv.id] || [];
+        const billedThisDraw = allocsForInvoice.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
         const previouslyPaid = parseFloat(inv.paid_amount || 0);
         const newPaidAmount = previouslyPaid + billedThisDraw;
 
+        // Check if invoice is fully billed
+        const isFullyBilled = newPaidAmount >= invoiceAmount - 0.01;
+
         // Update budget paid amounts
-        if (inv.job_id && inv.allocations) {
-          for (const alloc of inv.allocations) {
+        if (inv.job_id) {
+          for (const alloc of allocsForInvoice) {
             if (!alloc.cost_code_id) continue;
 
             const { data: budgetLine } = await supabase
@@ -2971,24 +3285,31 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
           }
         }
 
-        // Mark invoice as paid
+        // Mark invoice as paid and set fully_billed_at if applicable
+        const invoiceUpdate = {
+          status: 'paid',
+          paid_amount: newPaidAmount
+        };
+        if (isFullyBilled) {
+          invoiceUpdate.fully_billed_at = now;
+        }
+
         await supabase
           .from('v2_invoices')
-          .update({
-            status: 'paid',
-            paid_amount: newPaidAmount
-          })
+          .update(invoiceUpdate)
           .eq('id', inv.id);
 
         await logActivity(inv.id, 'paid', 'System', {
           draw_id: drawId,
           draw_number: draw.draw_number,
           amount_paid_this_draw: billedThisDraw,
-          cumulative_paid: newPaidAmount
+          cumulative_paid: newPaidAmount,
+          fully_billed: isFullyBilled
         });
       }
     }
 
+    console.log(`[DRAW] Draw #${draw.draw_number} funded - status: ${status}, amount: $${actualFunded}`);
     res.json(draw);
   } catch (err) {
     console.error('Error funding draw:', err);
@@ -2996,8 +3317,866 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
   }
 });
 
+// Fix legacy draw statuses (one-time migration helper)
+app.post('/api/draws/fix-legacy-status', async (req, res) => {
+  try {
+    // Update partially_funded and overfunded to just 'funded'
+    const { data, error } = await supabase
+      .from('v2_draws')
+      .update({ status: 'funded' })
+      .in('status', ['partially_funded', 'overfunded'])
+      .select('id, draw_number, status');
+
+    if (error) throw error;
+    res.json({ message: 'Legacy statuses fixed', updated: data?.length || 0, draws: data });
+  } catch (err) {
+    console.error('Error fixing legacy statuses:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================
 // DRAW EXPORT ENDPOINTS
+// ============================================================
+// JOB CHANGE ORDER ENDPOINTS
+// Client-side change orders for billing (separate from PO COs)
+// ============================================================
+
+// Helper: Log CO activity
+async function logCOActivity(changeOrderId, action, performedBy, details = {}) {
+  try {
+    await supabase
+      .from('v2_job_co_activity')
+      .insert({
+        change_order_id: changeOrderId,
+        action,
+        performed_by: performedBy,
+        details
+      });
+  } catch (err) {
+    console.error('Failed to log CO activity:', err);
+  }
+}
+
+// List change orders for a job
+app.get('/api/jobs/:jobId/change-orders', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { status } = req.query;
+
+    let query = supabase
+      .from('v2_job_change_orders')
+      .select('*')
+      .eq('job_id', jobId)
+      .order('change_order_number', { ascending: true });
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    res.json(data || []);
+  } catch (err) {
+    console.error('Error fetching job change orders:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get single change order with billing history
+app.get('/api/change-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: co, error } = await supabase
+      .from('v2_job_change_orders')
+      .select(`
+        *,
+        job:v2_jobs(id, name, client_name),
+        billings:v2_job_co_draw_billings(
+          id, amount, created_at,
+          draw:v2_draws(id, draw_number, period_end, status)
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    if (!co) return res.status(404).json({ error: 'Change order not found' });
+
+    const { data: activity } = await supabase
+      .from('v2_job_co_activity')
+      .select('*')
+      .eq('change_order_id', id)
+      .order('created_at', { ascending: false });
+
+    res.json({ ...co, activity: activity || [] });
+  } catch (err) {
+    console.error('Error fetching change order:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create new change order
+app.post('/api/jobs/:jobId/change-orders', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { title, description, reason, amount, created_by } = req.body;
+
+    if (!title || amount === undefined) {
+      return res.status(400).json({ error: 'Title and amount are required' });
+    }
+
+    const { data: nextNum } = await supabase.rpc('get_next_co_number', { p_job_id: jobId });
+    const coNumber = nextNum || 1;
+
+    const { data: co, error } = await supabase
+      .from('v2_job_change_orders')
+      .insert({
+        job_id: jobId,
+        change_order_number: coNumber,
+        title,
+        description,
+        reason: reason || 'scope_change',
+        amount: parseFloat(amount),
+        status: 'draft',
+        created_by
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    await logCOActivity(co.id, 'created', created_by, { amount: parseFloat(amount) });
+
+    res.status(201).json(co);
+  } catch (err) {
+    console.error('Error creating change order:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update change order (draft only)
+app.patch('/api/change-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, reason, amount, updated_by } = req.body;
+
+    const { data: existing } = await supabase
+      .from('v2_job_change_orders')
+      .select('status')
+      .eq('id', id)
+      .single();
+
+    if (!existing) return res.status(404).json({ error: 'Change order not found' });
+    if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only edit draft change orders' });
+
+    const updates = { updated_at: new Date().toISOString() };
+    if (title !== undefined) updates.title = title;
+    if (description !== undefined) updates.description = description;
+    if (reason !== undefined) updates.reason = reason;
+    if (amount !== undefined) updates.amount = parseFloat(amount);
+
+    const { data: co, error } = await supabase
+      .from('v2_job_change_orders')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    await logCOActivity(id, 'updated', updated_by, updates);
+    res.json(co);
+  } catch (err) {
+    console.error('Error updating change order:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete change order (draft only)
+app.delete('/api/change-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: existing } = await supabase
+      .from('v2_job_change_orders')
+      .select('status')
+      .eq('id', id)
+      .single();
+
+    if (!existing) return res.status(404).json({ error: 'Change order not found' });
+    if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only delete draft change orders' });
+
+    const { error } = await supabase.from('v2_job_change_orders').delete().eq('id', id);
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting change order:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Submit change order for approval
+app.post('/api/change-orders/:id/submit', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { submitted_by } = req.body;
+
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    if (!existing) return res.status(404).json({ error: 'Change order not found' });
+    if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only submit draft change orders' });
+
+    const { data: co, error } = await supabase
+      .from('v2_job_change_orders')
+      .update({ status: 'pending_approval', updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    await logCOActivity(id, 'submitted', submitted_by);
+    res.json(co);
+  } catch (err) {
+    console.error('Error submitting change order:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Internal approve change order
+app.post('/api/change-orders/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approved_by } = req.body;
+
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    if (!existing) return res.status(404).json({ error: 'Change order not found' });
+    if (existing.status !== 'pending_approval') return res.status(400).json({ error: 'Can only approve pending change orders' });
+
+    const { data: co, error } = await supabase
+      .from('v2_job_change_orders')
+      .update({ status: 'approved', internal_approved_at: new Date().toISOString(), internal_approved_by: approved_by, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    await logCOActivity(id, 'approved', approved_by);
+    res.json(co);
+  } catch (err) {
+    console.error('Error approving change order:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Client approve change order
+app.post('/api/change-orders/:id/client-approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { client_approved_by, recorded_by } = req.body;
+
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    if (!existing) return res.status(404).json({ error: 'Change order not found' });
+    if (existing.status !== 'approved') return res.status(400).json({ error: 'Must be internally approved first' });
+
+    const { data: co, error } = await supabase
+      .from('v2_job_change_orders')
+      .update({ client_approved_at: new Date().toISOString(), client_approved_by: client_approved_by || 'Client', updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    await logCOActivity(id, 'client_approved', recorded_by || 'System', { client_approved_by });
+    res.json(co);
+  } catch (err) {
+    console.error('Error recording client approval:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bypass client approval
+app.post('/api/change-orders/:id/bypass-client', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { bypass_reason, bypassed_by } = req.body;
+
+    if (!bypass_reason) return res.status(400).json({ error: 'Bypass reason is required' });
+
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    if (!existing) return res.status(404).json({ error: 'Change order not found' });
+    if (existing.status !== 'approved') return res.status(400).json({ error: 'Must be internally approved first' });
+
+    const { data: co, error } = await supabase
+      .from('v2_job_change_orders')
+      .update({ client_approval_bypassed: true, bypass_reason, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    await logCOActivity(id, 'client_bypassed', bypassed_by, { bypass_reason });
+    res.json(co);
+  } catch (err) {
+    console.error('Error bypassing client approval:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reject change order
+app.post('/api/change-orders/:id/reject', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejection_reason, rejected_by } = req.body;
+
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    if (!existing) return res.status(404).json({ error: 'Change order not found' });
+    if (!['pending_approval', 'approved'].includes(existing.status)) return res.status(400).json({ error: 'Invalid status for rejection' });
+
+    const { data: co, error } = await supabase
+      .from('v2_job_change_orders')
+      .update({ status: 'rejected', rejection_reason, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    await logCOActivity(id, 'rejected', rejected_by, { rejection_reason });
+    res.json(co);
+  } catch (err) {
+    console.error('Error rejecting change order:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// CHANGE ORDER BILLING ON DRAWS
+// ============================================================
+
+// Get COs available to bill on a draw
+app.get('/api/draws/:id/available-cos', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+    const { data: draw } = await supabase.from('v2_draws').select('job_id').eq('id', drawId).single();
+    if (!draw) return res.status(404).json({ error: 'Draw not found' });
+
+    const { data: cos, error } = await supabase
+      .from('v2_job_change_orders')
+      .select('*')
+      .eq('job_id', draw.job_id)
+      .eq('status', 'approved')
+      .or('client_approved_at.not.is.null,client_approval_bypassed.eq.true');
+
+    if (error) throw error;
+
+    const available = (cos || []).filter(co => {
+      const remaining = parseFloat(co.amount) - parseFloat(co.billed_amount || 0);
+      return remaining > 0.01;
+    }).map(co => ({ ...co, remaining_to_bill: parseFloat(co.amount) - parseFloat(co.billed_amount || 0) }));
+
+    res.json(available);
+  } catch (err) {
+    console.error('Error fetching available COs:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get CO billings for a specific draw
+app.get('/api/draws/:id/co-billings', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+    const { data: billings, error } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('*, change_order:v2_job_change_orders(id, change_order_number, title, amount, billed_amount)')
+      .eq('draw_id', drawId);
+
+    if (error) throw error;
+    res.json(billings || []);
+  } catch (err) {
+    console.error('Error fetching CO billings:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add CO billing to draw
+app.post('/api/draws/:id/add-co-billing', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+    const { change_order_id, amount, added_by } = req.body;
+
+    if (!change_order_id || amount === undefined) return res.status(400).json({ error: 'change_order_id and amount are required' });
+
+    const billingAmount = parseFloat(amount);
+    if (billingAmount <= 0) return res.status(400).json({ error: 'Amount must be positive' });
+
+    const { data: draw } = await supabase.from('v2_draws').select('status').eq('id', drawId).single();
+    if (!draw) return res.status(404).json({ error: 'Draw not found' });
+    if (draw.status !== 'draft') return res.status(400).json({ error: 'Can only add CO billings to draft draws' });
+
+    const { data: co } = await supabase
+      .from('v2_job_change_orders')
+      .select('amount, billed_amount, status, client_approved_at, client_approval_bypassed')
+      .eq('id', change_order_id)
+      .single();
+
+    if (!co) return res.status(404).json({ error: 'Change order not found' });
+    if (co.status !== 'approved') return res.status(400).json({ error: 'Change order must be approved' });
+    if (!co.client_approved_at && !co.client_approval_bypassed) return res.status(400).json({ error: 'Change order requires client approval or bypass' });
+
+    const remaining = parseFloat(co.amount) - parseFloat(co.billed_amount || 0);
+    if (billingAmount > remaining + 0.01) return res.status(400).json({ error: `Amount exceeds remaining ($${remaining.toFixed(2)})` });
+
+    const { data: existing } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('id, amount')
+      .eq('draw_id', drawId)
+      .eq('change_order_id', change_order_id)
+      .single();
+
+    if (existing) {
+      const newAmount = parseFloat(existing.amount) + billingAmount;
+      const { data: billing, error } = await supabase.from('v2_job_co_draw_billings').update({ amount: newAmount }).eq('id', existing.id).select().single();
+      if (error) throw error;
+      await logCOActivity(change_order_id, 'billed', added_by, { draw_id: drawId, amount: billingAmount });
+      await updateDrawTotal(drawId);
+      return res.json(billing);
+    }
+
+    const { data: billing, error } = await supabase
+      .from('v2_job_co_draw_billings')
+      .insert({ change_order_id, draw_id: drawId, amount: billingAmount })
+      .select()
+      .single();
+
+    if (error) throw error;
+    await logCOActivity(change_order_id, 'billed', added_by, { draw_id: drawId, amount: billingAmount });
+    await updateDrawTotal(drawId);
+    res.status(201).json(billing);
+  } catch (err) {
+    console.error('Error adding CO billing:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove CO billing from draw
+app.delete('/api/draws/:id/remove-co-billing/:coId', async (req, res) => {
+  try {
+    const { id: drawId, coId: changeOrderId } = req.params;
+
+    const { data: draw } = await supabase.from('v2_draws').select('status').eq('id', drawId).single();
+    if (!draw) return res.status(404).json({ error: 'Draw not found' });
+    if (draw.status !== 'draft') return res.status(400).json({ error: 'Can only remove CO billings from draft draws' });
+
+    const { data: billing } = await supabase.from('v2_job_co_draw_billings').select('amount').eq('draw_id', drawId).eq('change_order_id', changeOrderId).single();
+    if (!billing) return res.status(404).json({ error: 'CO billing not found on this draw' });
+
+    const { error } = await supabase.from('v2_job_co_draw_billings').delete().eq('draw_id', drawId).eq('change_order_id', changeOrderId);
+    if (error) throw error;
+
+    await logCOActivity(changeOrderId, 'billing_removed', req.body?.removed_by, { draw_id: drawId, amount: billing.amount });
+    await updateDrawTotal(drawId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error removing CO billing:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// DRAW ATTACHMENTS ENDPOINTS
+// ============================================================
+
+// List attachments for a draw
+app.get('/api/draws/:id/attachments', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+
+    const { data: attachments, error } = await supabase
+      .from('v2_draw_attachments')
+      .select(`
+        *,
+        vendor:v2_vendors(id, name)
+      `)
+      .eq('draw_id', drawId)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(attachments || []);
+  } catch (err) {
+    console.error('Error fetching draw attachments:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upload attachment to draw
+app.post('/api/draws/:id/attachments', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+    const { file_name, file_url, file_size, attachment_type, vendor_id, notes, uploaded_by } = req.body;
+
+    if (!file_name || !file_url) {
+      return res.status(400).json({ error: 'file_name and file_url are required' });
+    }
+
+    // Get draw info
+    const { data: draw } = await supabase
+      .from('v2_draws')
+      .select('draw_number, status')
+      .eq('id', drawId)
+      .single();
+
+    if (!draw) {
+      return res.status(404).json({ error: 'Draw not found' });
+    }
+
+    // Only allow attachments on draft or submitted draws (not funded)
+    if (['funded', 'partially_funded', 'overfunded'].includes(draw.status)) {
+      return res.status(400).json({ error: 'Cannot add attachments to a funded draw' });
+    }
+
+    const { data: attachment, error } = await supabase
+      .from('v2_draw_attachments')
+      .insert({
+        draw_id: drawId,
+        file_name,
+        file_url,
+        file_size: file_size || null,
+        attachment_type: attachment_type || 'other',
+        vendor_id: vendor_id || null,
+        notes: notes || null,
+        uploaded_by: uploaded_by || 'System'
+      })
+      .select(`
+        *,
+        vendor:v2_vendors(id, name)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    // Log draw activity
+    await logDrawActivity(drawId, 'attachment_added', uploaded_by || 'System', {
+      attachment_id: attachment.id,
+      file_name,
+      attachment_type: attachment_type || 'other'
+    });
+
+    res.json(attachment);
+  } catch (err) {
+    console.error('Error adding draw attachment:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete attachment from draw
+app.delete('/api/draws/:id/attachments/:attachmentId', async (req, res) => {
+  try {
+    const { id: drawId, attachmentId } = req.params;
+    const { deleted_by } = req.body || {};
+
+    // Get draw info
+    const { data: draw } = await supabase
+      .from('v2_draws')
+      .select('draw_number, status')
+      .eq('id', drawId)
+      .single();
+
+    if (!draw) {
+      return res.status(404).json({ error: 'Draw not found' });
+    }
+
+    // Only allow deletion on draft or submitted draws (not funded)
+    if (['funded', 'partially_funded', 'overfunded'].includes(draw.status)) {
+      return res.status(400).json({ error: 'Cannot remove attachments from a funded draw' });
+    }
+
+    // Get attachment info for logging
+    const { data: attachment } = await supabase
+      .from('v2_draw_attachments')
+      .select('file_name, attachment_type')
+      .eq('id', attachmentId)
+      .eq('draw_id', drawId)
+      .single();
+
+    if (!attachment) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+
+    const { error } = await supabase
+      .from('v2_draw_attachments')
+      .delete()
+      .eq('id', attachmentId)
+      .eq('draw_id', drawId);
+
+    if (error) throw error;
+
+    // Log draw activity
+    await logDrawActivity(drawId, 'attachment_removed', deleted_by || 'System', {
+      attachment_id: attachmentId,
+      file_name: attachment.file_name,
+      attachment_type: attachment.attachment_type
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting draw attachment:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// DRAW ACTIVITY LOG ENDPOINT
+// ============================================================
+
+// Get activity log for a draw
+app.get('/api/draws/:id/activity', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+
+    const { data: activities, error } = await supabase
+      .from('v2_draw_activity')
+      .select('*')
+      .eq('draw_id', drawId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(activities || []);
+  } catch (err) {
+    console.error('Error fetching draw activity:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get current draft draw for a job (or create one)
+app.get('/api/jobs/:jobId/current-draw', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { create } = req.query;
+
+    // Check if job exists
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('id, name')
+      .eq('id', jobId)
+      .single();
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (create === 'true') {
+      // Get or create draft draw
+      const draw = await getOrCreateDraftDraw(jobId, 'API');
+      return res.json(draw);
+    }
+
+    // Just look for existing draft
+    const { data: draftDraw } = await supabase
+      .from('v2_draws')
+      .select('*')
+      .eq('job_id', jobId)
+      .eq('status', 'draft')
+      .single();
+
+    res.json(draftDraw || null);
+  } catch (err) {
+    console.error('Error getting current draw:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper: Update draw total amount (invoices + CO billings)
+// Now uses v2_draw_allocations for invoice amounts
+async function updateDrawTotal(drawId) {
+  try {
+    // Get allocations from the new draw_allocations table
+    const { data: drawAllocations } = await supabase
+      .from('v2_draw_allocations')
+      .select('amount')
+      .eq('draw_id', drawId);
+
+    const invoiceTotal = (drawAllocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+    // Get CO billings
+    const { data: coBillings } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('amount')
+      .eq('draw_id', drawId);
+
+    const coTotal = (coBillings || []).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+
+    await supabase.from('v2_draws').update({ total_amount: invoiceTotal + coTotal }).eq('id', drawId);
+  } catch (err) {
+    console.error('Error updating draw total:', err);
+  }
+}
+
+// Helper: Get or create draft draw for a job
+// Returns the draft draw, creating one if it doesn't exist
+async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
+  try {
+    // Try to find existing draft draw for this job
+    const { data: existingDraft } = await supabase
+      .from('v2_draws')
+      .select('*')
+      .eq('job_id', jobId)
+      .eq('status', 'draft')
+      .single();
+
+    if (existingDraft) {
+      return existingDraft;
+    }
+
+    // No draft exists, create a new one
+    // Get next draw number for this job
+    const { data: draws } = await supabase
+      .from('v2_draws')
+      .select('draw_number')
+      .eq('job_id', jobId)
+      .order('draw_number', { ascending: false })
+      .limit(1);
+
+    const nextNumber = (draws?.[0]?.draw_number || 0) + 1;
+
+    // Create new draft draw
+    const { data: newDraw, error } = await supabase
+      .from('v2_draws')
+      .insert({
+        job_id: jobId,
+        draw_number: nextNumber,
+        status: 'draft',
+        total_amount: 0
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Log activity
+    await logDrawActivity(newDraw.id, 'created', createdBy, { auto_created: true });
+
+    console.log(`[DRAW] Auto-created Draw #${nextNumber} for job ${jobId}`);
+    return newDraw;
+  } catch (err) {
+    console.error('Error getting/creating draft draw:', err);
+    throw err;
+  }
+}
+
+// Helper: Log draw activity
+async function logDrawActivity(drawId, action, performedBy, details = {}) {
+  try {
+    await supabase.from('v2_draw_activity').insert({
+      draw_id: drawId,
+      action,
+      performed_by: performedBy,
+      details
+    });
+  } catch (err) {
+    console.error('Error logging draw activity:', err);
+  }
+}
+
+// Helper: Add invoice to draw (creates draw_allocations from invoice_allocations)
+async function addInvoiceToDraw(invoiceId, drawId, performedBy = 'System') {
+  try {
+    // Get invoice allocations
+    const { data: allocations } = await supabase
+      .from('v2_invoice_allocations')
+      .select('cost_code_id, amount, notes')
+      .eq('invoice_id', invoiceId);
+
+    if (!allocations || allocations.length === 0) {
+      throw new Error('Invoice has no allocations');
+    }
+
+    // Link invoice to draw
+    const { error: linkError } = await supabase
+      .from('v2_draw_invoices')
+      .insert({ draw_id: drawId, invoice_id: invoiceId });
+
+    if (linkError && !linkError.message?.includes('duplicate')) {
+      throw linkError;
+    }
+
+    // Create draw_allocations (copy from invoice_allocations)
+    for (const alloc of allocations) {
+      const { error: allocError } = await supabase
+        .from('v2_draw_allocations')
+        .upsert({
+          draw_id: drawId,
+          invoice_id: invoiceId,
+          cost_code_id: alloc.cost_code_id,
+          amount: alloc.amount,
+          notes: alloc.notes,
+          created_by: performedBy
+        }, { onConflict: 'draw_id,invoice_id,cost_code_id' });
+
+      if (allocError) {
+        console.error('Error creating draw allocation:', allocError);
+      }
+    }
+
+    // Update draw total
+    await updateDrawTotal(drawId);
+
+    // Log activity
+    const totalAmount = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    await logDrawActivity(drawId, 'invoice_added', performedBy, {
+      invoice_id: invoiceId,
+      amount: totalAmount
+    });
+
+    return true;
+  } catch (err) {
+    console.error('Error adding invoice to draw:', err);
+    throw err;
+  }
+}
+
+// Helper: Remove invoice from draw
+async function removeInvoiceFromDraw(invoiceId, drawId, performedBy = 'System') {
+  try {
+    // Get the amount being removed for logging
+    const { data: allocations } = await supabase
+      .from('v2_draw_allocations')
+      .select('amount')
+      .eq('draw_id', drawId)
+      .eq('invoice_id', invoiceId);
+
+    const totalAmount = (allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+    // Remove draw_allocations
+    await supabase
+      .from('v2_draw_allocations')
+      .delete()
+      .eq('draw_id', drawId)
+      .eq('invoice_id', invoiceId);
+
+    // Remove from draw_invoices
+    await supabase
+      .from('v2_draw_invoices')
+      .delete()
+      .eq('draw_id', drawId)
+      .eq('invoice_id', invoiceId);
+
+    // Update draw total
+    await updateDrawTotal(drawId);
+
+    // Log activity
+    await logDrawActivity(drawId, 'invoice_removed', performedBy, {
+      invoice_id: invoiceId,
+      amount: totalAmount
+    });
+
+    return true;
+  } catch (err) {
+    console.error('Error removing invoice from draw:', err);
+    throw err;
+  }
+}
+
 // ============================================================
 
 // Export Draw as Excel (G702/G703/PCCO)
@@ -3068,6 +4247,39 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
       });
     });
 
+    // Get job change orders (approved ones billable to client)
+    const { data: jobChangeOrders } = await supabase
+      .from('v2_job_change_orders')
+      .select('*')
+      .eq('job_id', draw.job_id)
+      .in('status', ['approved'])
+      .order('change_order_number');
+
+    // Get CO billings for this draw
+    const { data: coBillingsThisDraw } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('*, change_order:v2_job_change_orders(id, change_order_number, title, amount)')
+      .eq('draw_id', drawId);
+
+    // Get previous draws' CO billings
+    let previousCOBillings = {};
+    if (previousDraws && previousDraws.length > 0) {
+      const prevDrawIds = previousDraws.map(d => d.id);
+      const { data: prevCOBillings } = await supabase
+        .from('v2_job_co_draw_billings')
+        .select('change_order_id, amount')
+        .in('draw_id', prevDrawIds);
+
+      prevCOBillings?.forEach(b => {
+        previousCOBillings[b.change_order_id] = (previousCOBillings[b.change_order_id] || 0) + parseFloat(b.amount || 0);
+      });
+    }
+
+    // Calculate CO totals
+    const approvedCOTotal = (jobChangeOrders || [])
+      .filter(co => co.client_approved_at || co.client_approval_bypassed)
+      .reduce((sum, co) => sum + parseFloat(co.amount || 0), 0);
+
     // Create workbook
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Ross Built CMS';
@@ -3088,7 +4300,7 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
     g702.addRow(['']);
 
     const contractSum = parseFloat(draw.job?.contract_amount) || 0;
-    const changeOrders = 0;
+    const changeOrders = approvedCOTotal;
     const contractSumToDate = contractSum + changeOrders;
 
     // Build G703 data for calculations
@@ -3195,10 +4407,89 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
 
     // ========== PCCO Sheet (Change Orders) ==========
     const pcco = workbook.addWorksheet('PCCO');
-    pcco.addRow(['POTENTIAL CHANGE ORDER LOG']);
-    pcco.addRow(['']);
-    pcco.addRow(['No change orders at this time.']);
+    pcco.columns = [
+      { header: 'CO #', width: 8 },
+      { header: 'Title', width: 30 },
+      { header: 'Description', width: 40 },
+      { header: 'Reason', width: 15 },
+      { header: 'Amount', width: 15 },
+      { header: 'Status', width: 15 },
+      { header: 'Previous Billed', width: 15 },
+      { header: 'This Period', width: 15 },
+      { header: 'Total Billed', width: 15 },
+      { header: 'Balance', width: 15 }
+    ];
+
+    pcco.addRow(['CHANGE ORDER LOG']);
+    pcco.mergeCells('A1:J1');
     pcco.getRow(1).font = { bold: true, size: 14 };
+    pcco.addRow(['']);
+
+    // Header row
+    const headerRow = pcco.addRow(['CO #', 'Title', 'Description', 'Reason', 'Amount', 'Status', 'Previous Billed', 'This Period', 'Total Billed', 'Balance']);
+    headerRow.font = { bold: true };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+    // Build CO billing map for this draw
+    const thisDrawCOBillings = {};
+    (coBillingsThisDraw || []).forEach(b => {
+      thisDrawCOBillings[b.change_order_id] = parseFloat(b.amount || 0);
+    });
+
+    if (!jobChangeOrders || jobChangeOrders.length === 0) {
+      pcco.addRow(['', 'No change orders for this job.', '', '', '', '', '', '', '', '']);
+    } else {
+      (jobChangeOrders || []).forEach(co => {
+        const coAmount = parseFloat(co.amount) || 0;
+        const previousBilled = previousCOBillings[co.id] || 0;
+        const thisPeriod = thisDrawCOBillings[co.id] || 0;
+        const totalBilled = previousBilled + thisPeriod;
+        const balance = coAmount - totalBilled;
+
+        let status = co.status;
+        if (co.client_approved_at) status = 'Client Approved';
+        else if (co.client_approval_bypassed) status = 'Bypassed';
+
+        pcco.addRow([
+          `CO-${String(co.change_order_number).padStart(3, '0')}`,
+          co.title || '',
+          co.description || '',
+          co.reason || '',
+          coAmount,
+          status,
+          previousBilled,
+          thisPeriod,
+          totalBilled,
+          balance
+        ]);
+      });
+
+      // Totals row
+      const coTotals = (jobChangeOrders || []).reduce((acc, co) => {
+        const coAmount = parseFloat(co.amount) || 0;
+        const previousBilled = previousCOBillings[co.id] || 0;
+        const thisPeriod = thisDrawCOBillings[co.id] || 0;
+        return {
+          amount: acc.amount + coAmount,
+          previous: acc.previous + previousBilled,
+          thisPeriod: acc.thisPeriod + thisPeriod,
+          total: acc.total + previousBilled + thisPeriod
+        };
+      }, { amount: 0, previous: 0, thisPeriod: 0, total: 0 });
+
+      const coTotalsRow = pcco.addRow([
+        '', 'TOTALS', '', '', coTotals.amount, '',
+        coTotals.previous, coTotals.thisPeriod, coTotals.total,
+        coTotals.amount - coTotals.total
+      ]);
+      coTotalsRow.font = { bold: true };
+      coTotalsRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    }
+
+    // Format currency columns
+    [5, 7, 8, 9, 10].forEach(col => {
+      pcco.getColumn(col).numFmt = '$#,##0.00';
+    });
 
     // Send file
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -3354,9 +4645,11 @@ app.get('/api/jobs/:id/stats', async (req, res) => {
 
     if (draws) {
       draws.forEach(d => {
-        if (drawStats[d.status]) {
-          drawStats[d.status].count++;
-          drawStats[d.status].amount += parseFloat(d.total_amount) || 0;
+        // Group partially_funded and overfunded with funded for stats
+        const statCategory = ['partially_funded', 'overfunded'].includes(d.status) ? 'funded' : d.status;
+        if (drawStats[statCategory]) {
+          drawStats[statCategory].count++;
+          drawStats[statCategory].amount += parseFloat(d.total_amount) || 0;
         }
       });
     }
@@ -4641,7 +5934,7 @@ app.post('/api/invoices/bulk/add-to-draw', asyncHandler(async (req, res) => {
     throw notFoundError('draw', draw_id);
   }
 
-  if (draw.status === 'funded') {
+  if (['funded', 'partially_funded', 'overfunded'].includes(draw.status)) {
     throw new AppError('DRAW_FUNDED', 'Cannot add invoices to a funded draw');
   }
 
@@ -4811,7 +6104,7 @@ app.delete('/api/invoices/:id', asyncHandler(async (req, res) => {
       .eq('invoice_id', invoiceId)
       .single();
 
-    if (drawInvoice?.draw?.status === 'funded') {
+    if (['funded', 'partially_funded', 'overfunded'].includes(drawInvoice?.draw?.status)) {
       throw new AppError('VALIDATION_FAILED', 'Cannot delete invoice in funded draw');
     }
   }
@@ -4859,12 +6152,29 @@ app.use(errorMiddleware);
 // START SERVER
 // ============================================================
 
+// Write PID file for safe restarts
+fs.writeFileSync(PID_FILE, process.pid.toString());
+console.log(`PID ${process.pid} written to ${PID_FILE}`);
+
+// Clean up PID file on exit
+const cleanupPID = () => {
+  try {
+    if (fs.existsSync(PID_FILE)) {
+      fs.unlinkSync(PID_FILE);
+    }
+  } catch (e) {}
+};
+process.on('exit', cleanupPID);
+process.on('SIGINT', () => { cleanupPID(); process.exit(0); });
+process.on('SIGTERM', () => { cleanupPID(); process.exit(0); });
+
 app.listen(port, () => {
   console.log('');
   console.log('='.repeat(50));
   console.log('ROSS BUILT CONSTRUCTION MANAGEMENT');
   console.log('='.repeat(50));
   console.log(`Server running at http://localhost:${port}`);
+  console.log(`PID: ${process.pid} (use 'npm run stop' to safely stop)`);
   console.log('');
   console.log('API Endpoints:');
   console.log('  GET  /api/dashboard/stats       - Owner dashboard');

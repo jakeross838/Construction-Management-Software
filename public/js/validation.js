@@ -318,7 +318,7 @@ const Validation = {
    */
   getStatusInfo(status) {
     const statusMap = {
-      received: { label: 'Received', color: 'gray', icon: '📥' },
+      received: { label: 'Needs Processing', color: 'orange', icon: '📥' },
       needs_approval: { label: 'Needs Approval', color: 'blue', icon: '📋' },
       approved: { label: 'Approved', color: 'green', icon: '✅' },
       denied: { label: 'Denied', color: 'red', icon: '❌' },

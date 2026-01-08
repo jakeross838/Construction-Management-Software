@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Draws</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260107g">
+  <link rel="stylesheet" href="css/styles.css?v=20260108d">
 </head>
 <body>
   <div class="app">
@@ -54,6 +54,7 @@
         <div class="modal-title-group">
           <h2 id="drawModalTitle">Draw #1</h2>
           <span class="status-badge" id="drawModalStatus">Draft</span>
+          <span class="lock-indicator" id="lockIndicator" style="display: none;" title="This draw is locked">🔒</span>
         </div>
         <div class="modal-header-actions">
           <button class="btn btn-secondary" onclick="exportExcel()" title="Export Excel">
@@ -96,6 +97,11 @@
             <div class="summary-card highlight">
               <div class="summary-label">Current Payment Due</div>
               <div class="summary-value" id="summaryPaymentDue">$0</div>
+            </div>
+            <div class="summary-card funding-info" id="fundingInfoCard" style="display: none;">
+              <div class="summary-label">Funded Amount</div>
+              <div class="summary-value" id="summaryFundedAmount">$0</div>
+              <div class="funding-note" id="summaryFundingNote"></div>
             </div>
           </div>
         </section>
@@ -241,11 +247,43 @@
           </div>
         </section>
 
+        <!-- Change Order Billing Section -->
+        <section class="draw-section" id="coBillingSection">
+          <div class="section-header">
+            <h3>Change Order Billings</h3>
+            <button class="btn btn-primary btn-sm" id="addCOBillingBtn" onclick="showAddCOBillingModal()">+ Add CO Billing</button>
+          </div>
+          <div class="co-billing-container">
+            <table class="g703-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Change Order</th>
+                  <th>CO Amount</th>
+                  <th>Previous<br>Billings</th>
+                  <th>This<br>Application</th>
+                  <th>Total<br>Billed</th>
+                  <th>%</th>
+                  <th>Balance</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="coBillingBody">
+                <tr>
+                  <td colspan="9" class="empty-state">No change order billings in this draw</td>
+                </tr>
+              </tbody>
+              <tfoot id="coBillingFooter">
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
         <!-- Invoices Section -->
         <section class="draw-section">
           <div class="section-header">
             <h3>Invoices in this Draw</h3>
-            <button class="btn btn-primary btn-sm" id="addInvoiceBtn" onclick="showAddInvoiceModal()">+ Add Invoice</button>
+            <span class="section-hint" id="invoicesSectionHint">Invoices are automatically added when approved</span>
           </div>
           <div class="invoices-container">
             <table class="invoices-table">
@@ -269,10 +307,47 @@
             </table>
           </div>
         </section>
+
+        <!-- Attachments Section -->
+        <section class="draw-section">
+          <div class="section-header">
+            <h3>Attachments</h3>
+            <button class="btn btn-primary btn-sm" id="addAttachmentBtn" onclick="showAddAttachmentModal()">+ Add Attachment</button>
+          </div>
+          <div class="attachments-container">
+            <table class="attachments-table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Vendor</th>
+                  <th>File</th>
+                  <th>Uploaded</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="attachmentsBody">
+                <tr>
+                  <td colspan="5" class="empty-state">No attachments yet</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Activity Log Section -->
+        <section class="draw-section">
+          <div class="section-header">
+            <h3>Activity Log</h3>
+          </div>
+          <div class="activity-container" id="activityContainer">
+            <div class="empty-state">No activity recorded</div>
+          </div>
+        </section>
       </div>
 
       <div class="modal-footer" id="drawModalFooter">
         <button class="btn btn-secondary" onclick="closeDrawModal()">Close</button>
+        <button class="btn btn-outline-warning" id="unsubmitDrawBtn" onclick="unsubmitDraw()" style="display:none;">Unsubmit</button>
         <button class="btn btn-warning" id="submitDrawBtn" onclick="submitDraw()">Submit Draw</button>
         <button class="btn btn-success" id="fundDrawBtn" onclick="fundDraw()" style="display:none;">Mark as Funded</button>
       </div>
@@ -301,6 +376,126 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('createDrawModal')">Cancel</button>
         <button class="btn btn-primary" onclick="createDraw()">Create Draw</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add CO Billing Modal -->
+  <div id="addCOBillingModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Add Change Order Billings</h2>
+        <button class="close-btn" onclick="closeModal('addCOBillingModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">Select change orders to bill on this draw. Enter the amount to bill for each.</p>
+        <div id="availableCOsList" class="co-billing-list">
+          <!-- Dynamic content populated by showAddCOBillingModal -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('addCOBillingModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveCOBillings()">Add to Draw</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fund Draw Modal -->
+  <div id="fundDrawModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Mark Draw as Funded</h2>
+        <button class="close-btn" onclick="closeModal('fundDrawModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="funding-summary" id="fundingSummary">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div class="form-group">
+          <label>Amount Funded *</label>
+          <div class="input-with-prefix">
+            <span class="input-prefix">$</span>
+            <input type="text" id="fundedAmount" class="form-control" placeholder="0.00"
+              oninput="updateFundingDifference()">
+          </div>
+          <div class="field-hint" id="fundingDifferenceHint"></div>
+        </div>
+
+        <div class="form-group" id="partialNoteGroup" style="display: none;">
+          <label>Note (required for partial funding)</label>
+          <textarea id="partialFundingNote" class="form-control" rows="2"
+            placeholder="Explain why the funding differs from the billed amount..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('fundDrawModal')">Cancel</button>
+        <button class="btn btn-success" id="confirmFundBtn" onclick="confirmFundDraw()">Confirm Funding</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Attachment Modal -->
+  <div id="addAttachmentModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Add Attachment</h2>
+        <button class="close-btn" onclick="closeModal('addAttachmentModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Attachment Type *</label>
+          <select id="attachmentType" class="form-control">
+            <option value="lien_release">Lien Release</option>
+            <option value="affidavit">Affidavit</option>
+            <option value="insurance_cert">Insurance Certificate</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Vendor (optional)</label>
+          <select id="attachmentVendor" class="form-control">
+            <option value="">-- No specific vendor --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>File URL *</label>
+          <input type="text" id="attachmentUrl" class="form-control" placeholder="https://...">
+          <div class="field-hint">Enter the URL of the uploaded file</div>
+        </div>
+        <div class="form-group">
+          <label>File Name *</label>
+          <input type="text" id="attachmentFileName" class="form-control" placeholder="lien_release.pdf">
+        </div>
+        <div class="form-group">
+          <label>Notes (optional)</label>
+          <textarea id="attachmentNotes" class="form-control" rows="2" placeholder="Any notes about this attachment..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('addAttachmentModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveAttachment()">Add Attachment</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unsubmit Reason Modal -->
+  <div id="unsubmitModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Unsubmit Draw</h2>
+        <button class="close-btn" onclick="closeModal('unsubmitModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>This will return the draw to draft status, allowing changes to be made.</p>
+        <div class="form-group">
+          <label>Reason (optional)</label>
+          <textarea id="unsubmitReason" class="form-control" rows="3" placeholder="Why is this draw being unsubmitted?"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('unsubmitModal')">Cancel</button>
+        <button class="btn btn-warning" onclick="confirmUnsubmit()">Unsubmit Draw</button>
       </div>
     </div>
   </div>
@@ -410,6 +605,7 @@
     }
 
     function renderDrawRow(draw) {
+      // Only 3 statuses: draft, submitted, funded
       const statusClass = {
         draft: 'pending',
         submitted: 'pending-approval',
@@ -422,6 +618,17 @@
         funded: 'Funded'
       }[draw.status] || draw.status;
 
+      // Funding variance indicator (shown next to status for funded draws)
+      let fundingVariance = '';
+      if (draw.status === 'funded' && draw.funding_difference) {
+        const diff = parseFloat(draw.funding_difference);
+        if (diff < -0.01) {
+          fundingVariance = `<span class="funding-variance text-warning">-${formatMoney(Math.abs(diff))}</span>`;
+        } else if (diff > 0.01) {
+          fundingVariance = `<span class="funding-variance text-info">+${formatMoney(diff)}</span>`;
+        }
+      }
+
       // Count invoices from the nested data
       const invoiceCount = draw.invoices?.length || draw.invoice_count || 0;
 
@@ -430,7 +637,7 @@
           <div class="draw-number">Draw #${draw.draw_number}</div>
           <div class="draw-job">${draw.job?.name || 'Unknown'}</div>
           <div class="draw-date">${draw.period_end ? formatDate(draw.period_end) : '-'}</div>
-          <div><span class="status-badge status-${statusClass}">${statusLabel}</span></div>
+          <div><span class="status-badge status-${statusClass}">${statusLabel}</span>${fundingVariance}</div>
           <div class="draw-amount">${formatMoney(draw.total_amount)}</div>
           <div class="draw-invoices">${invoiceCount}</div>
         </div>
@@ -472,6 +679,7 @@
       // Modal header
       document.getElementById('drawModalTitle').textContent = `Draw #${draw.draw_number} - ${draw.job?.name || 'Unknown Job'}`;
 
+      // Status badge - only 3 statuses: draft, submitted, funded
       const statusBadge = document.getElementById('drawModalStatus');
       const statusClass = { draft: 'pending', submitted: 'pending-approval', funded: 'approved' }[draw.status] || 'pending';
       const statusLabel = { draft: 'Draft', submitted: 'Submitted', funded: 'Funded' }[draw.status] || draw.status;
@@ -485,6 +693,36 @@
       document.getElementById('summaryInvCount').textContent = draw.invoiceCount || 0;
       document.getElementById('summaryThisPeriod').textContent = formatMoney(draw.g702?.totalCompletedThisPeriod || 0);
       document.getElementById('summaryPaymentDue').textContent = formatMoney(draw.g702?.currentPaymentDue || 0);
+
+      // Funding info (for funded draws)
+      const fundingInfoCard = document.getElementById('fundingInfoCard');
+      if (draw.status === 'funded') {
+        fundingInfoCard.style.display = 'block';
+        const fundedAmount = parseFloat(draw.funded_amount || 0);
+        const billedAmount = parseFloat(draw.total_amount || 0);
+        const diff = parseFloat(draw.funding_difference || 0);
+
+        document.getElementById('summaryFundedAmount').textContent = formatMoney(fundedAmount);
+
+        const noteEl = document.getElementById('summaryFundingNote');
+        if (diff < -0.01) {
+          // Partial payment - client paid less
+          noteEl.innerHTML = `<span class="text-warning">Short ${formatMoney(Math.abs(diff))}</span>`;
+          if (draw.partial_funding_note) {
+            noteEl.innerHTML += `<br><small>${draw.partial_funding_note}</small>`;
+          }
+        } else if (diff > 0.01) {
+          // Overpayment - client paid more (credit)
+          noteEl.innerHTML = `<span class="text-info">Credit ${formatMoney(diff)}</span>`;
+          if (draw.partial_funding_note) {
+            noteEl.innerHTML += `<br><small>${draw.partial_funding_note}</small>`;
+          }
+        } else {
+          noteEl.textContent = 'Paid in full';
+        }
+      } else {
+        fundingInfoCard.style.display = 'none';
+      }
 
       // G702 section
       document.getElementById('g702Owner').textContent = draw.job?.client_name || '-';
@@ -514,26 +752,50 @@
       // G703 section
       renderG703Table(draw.scheduleOfValues || []);
 
+      // CO Billing section
+      renderCOBillingTable(draw.coScheduleOfValues || [], draw.status);
+
       // Invoices section
-      renderInvoicesTable(draw.invoices || []);
+      renderInvoicesTable(draw.invoices || [], draw.status);
+
+      // Attachments section
+      renderAttachmentsTable(draw.attachments || [], draw.status);
+
+      // Activity log section
+      renderActivityLog(draw.activity || []);
+
+      // Lock indicator
+      const lockIndicator = document.getElementById('lockIndicator');
+      const isLocked = draw.status !== 'draft';
+      lockIndicator.style.display = isLocked ? 'inline' : 'none';
 
       // Action buttons based on status
       const submitBtn = document.getElementById('submitDrawBtn');
       const fundBtn = document.getElementById('fundDrawBtn');
-      const addInvoiceBtn = document.getElementById('addInvoiceBtn');
+      const unsubmitBtn = document.getElementById('unsubmitDrawBtn');
+      const addCOBillingBtn = document.getElementById('addCOBillingBtn');
+      const addAttachmentBtn = document.getElementById('addAttachmentBtn');
+      const isFunded = ['funded', 'partially_funded', 'overfunded'].includes(draw.status);
 
       if (draw.status === 'draft') {
         submitBtn.style.display = 'inline-block';
         fundBtn.style.display = 'none';
-        addInvoiceBtn.style.display = 'inline-block';
+        unsubmitBtn.style.display = 'none';
+        addCOBillingBtn.style.display = 'inline-block';
+        addAttachmentBtn.style.display = 'inline-block';
       } else if (draw.status === 'submitted') {
         submitBtn.style.display = 'none';
         fundBtn.style.display = 'inline-block';
-        addInvoiceBtn.style.display = 'none';
+        unsubmitBtn.style.display = 'inline-block';
+        addCOBillingBtn.style.display = 'none';
+        addAttachmentBtn.style.display = 'inline-block'; // Can still add attachments when submitted
       } else {
+        // Funded draws - fully immutable
         submitBtn.style.display = 'none';
         fundBtn.style.display = 'none';
-        addInvoiceBtn.style.display = 'none';
+        unsubmitBtn.style.display = 'none';
+        addCOBillingBtn.style.display = 'none';
+        addAttachmentBtn.style.display = 'none';
       }
     }
 
@@ -552,25 +814,34 @@
 
       tbody.innerHTML = changeOrders.map(co => {
         const statusClass = {
-          pending: 'pending',
+          draft: 'pending',
+          pending_approval: 'pending-approval',
           approved: 'approved',
           rejected: 'denied'
         }[co.status] || 'pending';
 
         const reasonLabel = {
           scope_change: 'Scope Change',
-          price_adjustment: 'Price Adjustment',
-          additional_work: 'Additional Work',
-          error_correction: 'Error Correction'
+          owner_request: 'Owner Request',
+          unforeseen_conditions: 'Unforeseen Conditions',
+          design_change: 'Design Change',
+          other: 'Other'
         }[co.reason] || co.reason || '-';
+
+        const amount = co.amount !== undefined ? co.amount : co.amount_change;
+        const desc = co.title || co.description || '-';
+        const clientApproved = co.client_approved_at || co.client_approval_bypassed;
 
         return `
           <tr>
             <td>CO-${co.change_order_number}</td>
-            <td>${co.description || '-'}</td>
+            <td>${desc}</td>
             <td>${reasonLabel}</td>
-            <td class="amount ${co.amount_change < 0 ? 'negative' : ''}">${formatMoneyDecimal(co.amount_change)}</td>
-            <td><span class="status-badge status-${statusClass}">${co.status}</span></td>
+            <td class="amount ${amount < 0 ? 'negative' : ''}">${formatMoneyDecimal(amount)}</td>
+            <td>
+              <span class="status-badge status-${statusClass}">${co.status}</span>
+              ${co.status === 'approved' && clientApproved ? '<span class="client-approved-badge">Client OK</span>' : ''}
+            </td>
             <td>${co.created_at ? formatDate(co.created_at) : '-'}</td>
           </tr>
         `;
@@ -578,7 +849,7 @@
 
       const totalChange = changeOrders
         .filter(co => co.status === 'approved')
-        .reduce((sum, co) => sum + parseFloat(co.amount_change || 0), 0);
+        .reduce((sum, co) => sum + parseFloat(co.amount || co.amount_change || 0), 0);
 
       tfoot.innerHTML = `
         <tr class="totals-row">
@@ -646,12 +917,84 @@
       `;
     }
 
-    function renderInvoicesTable(invoices) {
+    function renderCOBillingTable(coScheduleOfValues, drawStatus) {
+      const tbody = document.getElementById('coBillingBody');
+      const tfoot = document.getElementById('coBillingFooter');
+      const section = document.getElementById('coBillingSection');
+
+      if (!coScheduleOfValues || coScheduleOfValues.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No change order billings in this draw</td></tr>';
+        tfoot.innerHTML = '';
+        return;
+      }
+
+      const isDraft = drawStatus === 'draft';
+
+      tbody.innerHTML = coScheduleOfValues.map((item, idx) => {
+        const coAmount = parseFloat(item.coAmount) || 0;
+        const previous = parseFloat(item.previousBilled) || 0;
+        const current = parseFloat(item.thisPeriod) || 0;
+        const total = parseFloat(item.totalBilled) || 0;
+        const balance = coAmount - total;
+        const percent = coAmount > 0 ? (total / coAmount) * 100 : 0;
+
+        return `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>
+              <strong>CO-${String(item.changeOrderNumber).padStart(3, '0')}</strong>
+              <br><span class="text-muted">${item.title || ''}</span>
+            </td>
+            <td class="amount">${formatMoneyDecimal(coAmount)}</td>
+            <td class="amount">${formatMoneyDecimal(previous)}</td>
+            <td class="amount highlight-current">${formatMoneyDecimal(current)}</td>
+            <td class="amount">${formatMoneyDecimal(total)}</td>
+            <td class="percent">${percent.toFixed(1)}%</td>
+            <td class="amount">${formatMoneyDecimal(balance)}</td>
+            <td>
+              ${isDraft && current > 0 ? `
+                <button class="btn btn-sm btn-danger" onclick="removeCOBilling('${item.changeOrderId}')" title="Remove from draw">
+                  <i class="fas fa-times"></i>
+                </button>
+              ` : '-'}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Totals row
+      const totals = coScheduleOfValues.reduce((acc, item) => ({
+        coAmount: acc.coAmount + (parseFloat(item.coAmount) || 0),
+        previous: acc.previous + (parseFloat(item.previousBilled) || 0),
+        current: acc.current + (parseFloat(item.thisPeriod) || 0),
+        total: acc.total + (parseFloat(item.totalBilled) || 0)
+      }), { coAmount: 0, previous: 0, current: 0, total: 0 });
+
+      const overallPercent = totals.coAmount > 0 ? (totals.total / totals.coAmount) * 100 : 0;
+      const totalBalance = totals.coAmount - totals.total;
+
+      tfoot.innerHTML = `
+        <tr class="totals-row">
+          <td></td>
+          <td><strong>CO TOTALS</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.coAmount)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.previous)}</strong></td>
+          <td class="amount highlight-current"><strong>${formatMoneyDecimal(totals.current)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.total)}</strong></td>
+          <td class="percent"><strong>${overallPercent.toFixed(1)}%</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totalBalance)}</strong></td>
+          <td></td>
+        </tr>
+      `;
+    }
+
+    function renderInvoicesTable(invoices, drawStatus) {
       const tbody = document.getElementById('invoicesBody');
       const tfoot = document.getElementById('invoicesFooter');
+      const isDraft = drawStatus === 'draft';
 
       if (!invoices || invoices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No invoices in this draw</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No invoices in this draw yet. Approve invoices to add them automatically.</td></tr>';
         tfoot.innerHTML = '';
         return;
       }
@@ -676,7 +1019,7 @@
             <td class="cost-codes">${costCodes}</td>
             <td class="amount">${formatMoney(billableAmount)}${isPartial ? `<br><small class="text-muted">of ${formatMoney(inv.amount)}</small>` : ''}</td>
             <td>
-              ${currentDraw?.status === 'draft' ? `
+              ${isDraft ? `
                 <button class="btn btn-sm btn-danger" onclick="removeInvoice('${inv.id}')">Remove</button>
               ` : ''}
               ${inv.pdf_stamped_url ? `
@@ -701,6 +1044,216 @@
       `;
     }
 
+    function renderAttachmentsTable(attachments, drawStatus) {
+      const tbody = document.getElementById('attachmentsBody');
+      const canModify = drawStatus === 'draft' || drawStatus === 'submitted';
+
+      const typeLabels = {
+        lien_release: 'Lien Release',
+        affidavit: 'Affidavit',
+        insurance_cert: 'Insurance Cert',
+        other: 'Other'
+      };
+
+      if (!attachments || attachments.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No attachments yet</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = attachments.map(att => `
+        <tr>
+          <td><span class="type-badge type-${att.attachment_type}">${typeLabels[att.attachment_type] || att.attachment_type}</span></td>
+          <td>${att.vendor?.name || '-'}</td>
+          <td><a href="${att.file_url}" target="_blank">${att.file_name}</a></td>
+          <td>${att.uploaded_at ? formatDate(att.uploaded_at) : '-'}</td>
+          <td>
+            <a href="${att.file_url}" target="_blank" class="btn btn-sm btn-secondary">View</a>
+            ${canModify ? `<button class="btn btn-sm btn-danger" onclick="deleteAttachment('${att.id}')">Delete</button>` : ''}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderActivityLog(activities) {
+      const container = document.getElementById('activityContainer');
+
+      const actionLabels = {
+        created: 'Draw created',
+        invoice_added: 'Invoice added',
+        invoice_removed: 'Invoice removed',
+        submitted: 'Draw submitted',
+        unsubmitted: 'Draw unsubmitted',
+        funded: 'Draw funded',
+        attachment_added: 'Attachment added',
+        attachment_removed: 'Attachment removed'
+      };
+
+      if (!activities || activities.length === 0) {
+        container.innerHTML = '<div class="empty-state">No activity recorded</div>';
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="activity-list">
+          ${activities.map(act => {
+            const details = act.details || {};
+            let detailText = '';
+            if (act.action === 'invoice_added' || act.action === 'invoice_removed') {
+              detailText = details.invoice_number ? ` - ${details.invoice_number}` : '';
+            } else if (act.action === 'funded') {
+              detailText = details.funded_amount ? ` - ${formatMoney(details.funded_amount)}` : '';
+            } else if (act.action === 'unsubmitted' && details.reason) {
+              detailText = ` - "${details.reason}"`;
+            }
+            return `
+              <div class="activity-item">
+                <span class="activity-time">${formatDateTime(act.created_at)}</span>
+                <span class="activity-action">${actionLabels[act.action] || act.action}${detailText}</span>
+                <span class="activity-user">${act.performed_by || 'System'}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function formatDateTime(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    // ============================================================
+    // UNSUBMIT FUNCTIONALITY
+    // ============================================================
+
+    function unsubmitDraw() {
+      if (!currentDraw || currentDraw.status !== 'submitted') return;
+      document.getElementById('unsubmitReason').value = '';
+      openModal('unsubmitModal');
+    }
+
+    async function confirmUnsubmit() {
+      if (!currentDraw) return;
+
+      const reason = document.getElementById('unsubmitReason').value.trim();
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}/unsubmit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to unsubmit draw');
+        }
+
+        showToast('Draw returned to draft status', 'success');
+        closeModal('unsubmitModal');
+        openDraw(currentDraw.id); // Refresh the draw
+        loadDraws();
+      } catch (err) {
+        console.error('Error unsubmitting draw:', err);
+        showToast(err.message || 'Failed to unsubmit draw', 'error');
+      }
+    }
+
+    // ============================================================
+    // ATTACHMENT FUNCTIONALITY
+    // ============================================================
+
+    async function showAddAttachmentModal() {
+      if (!currentDraw) return;
+
+      // Load vendors for the dropdown
+      const vendorSelect = document.getElementById('attachmentVendor');
+      vendorSelect.innerHTML = '<option value="">-- No specific vendor --</option>';
+
+      try {
+        const res = await fetch('/api/vendors');
+        if (res.ok) {
+          const vendors = await res.json();
+          vendors.forEach(v => {
+            vendorSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
+          });
+        }
+      } catch (err) {
+        console.error('Error loading vendors:', err);
+      }
+
+      // Clear form
+      document.getElementById('attachmentType').value = 'lien_release';
+      document.getElementById('attachmentUrl').value = '';
+      document.getElementById('attachmentFileName').value = '';
+      document.getElementById('attachmentNotes').value = '';
+
+      openModal('addAttachmentModal');
+    }
+
+    async function saveAttachment() {
+      if (!currentDraw) return;
+
+      const fileUrl = document.getElementById('attachmentUrl').value.trim();
+      const fileName = document.getElementById('attachmentFileName').value.trim();
+
+      if (!fileUrl || !fileName) {
+        showToast('File URL and File Name are required', 'error');
+        return;
+      }
+
+      const data = {
+        file_url: fileUrl,
+        file_name: fileName,
+        attachment_type: document.getElementById('attachmentType').value,
+        vendor_id: document.getElementById('attachmentVendor').value || null,
+        notes: document.getElementById('attachmentNotes').value.trim() || null
+      };
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}/attachments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to add attachment');
+        }
+
+        showToast('Attachment added', 'success');
+        closeModal('addAttachmentModal');
+        openDraw(currentDraw.id); // Refresh
+      } catch (err) {
+        console.error('Error adding attachment:', err);
+        showToast(err.message || 'Failed to add attachment', 'error');
+      }
+    }
+
+    async function deleteAttachment(attachmentId) {
+      if (!currentDraw) return;
+      if (!confirm('Delete this attachment?')) return;
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}/attachments/${attachmentId}`, {
+          method: 'DELETE'
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to delete attachment');
+        }
+
+        showToast('Attachment deleted', 'success');
+        openDraw(currentDraw.id); // Refresh
+      } catch (err) {
+        console.error('Error deleting attachment:', err);
+        showToast(err.message || 'Failed to delete attachment', 'error');
+      }
+    }
+
     async function submitDraw() {
       if (!currentDraw) return;
 
@@ -719,16 +1272,95 @@
       }
     }
 
-    async function fundDraw() {
+    function fundDraw() {
       if (!currentDraw) return;
 
-      if (!confirm('Mark this draw as funded? Invoices will be marked as paid.')) return;
+      // Populate the fund draw modal
+      const totalAmount = parseFloat(currentDraw.total_amount || 0);
+      const formattedAmount = totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      document.getElementById('fundingSummary').innerHTML = `
+        <div class="summary-row">
+          <span class="summary-label">Draw Total (Billed):</span>
+          <span class="summary-value">$${formattedAmount}</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Invoices:</span>
+          <span class="summary-value">${currentDraw.invoices?.length || 0}</span>
+        </div>
+      `;
+
+      document.getElementById('fundedAmount').value = formattedAmount;
+      document.getElementById('partialFundingNote').value = '';
+      document.getElementById('partialNoteGroup').style.display = 'none';
+      document.getElementById('fundingDifferenceHint').textContent = '';
+      document.getElementById('fundingDifferenceHint').className = 'field-hint';
+
+      openModal('fundDrawModal');
+    }
+
+    function updateFundingDifference() {
+      if (!currentDraw) return;
+
+      const totalAmount = parseFloat(currentDraw.total_amount || 0);
+      const inputVal = document.getElementById('fundedAmount').value.replace(/[^0-9.-]/g, '');
+      const fundedAmount = parseFloat(inputVal) || 0;
+      const difference = fundedAmount - totalAmount;
+
+      const hintEl = document.getElementById('fundingDifferenceHint');
+      const noteGroup = document.getElementById('partialNoteGroup');
+
+      if (Math.abs(difference) < 0.01) {
+        hintEl.textContent = 'Full funding - matches billed amount';
+        hintEl.className = 'field-hint text-success';
+        noteGroup.style.display = 'none';
+      } else if (difference < 0) {
+        const shortfall = Math.abs(difference).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+        hintEl.textContent = `Partial funding - ${shortfall} less than billed`;
+        hintEl.className = 'field-hint text-warning';
+        noteGroup.style.display = 'block';
+      } else {
+        const overage = difference.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+        hintEl.textContent = `Overfunding - ${overage} more than billed (credit)`;
+        hintEl.className = 'field-hint text-info';
+        noteGroup.style.display = 'block';
+      }
+    }
+
+    async function confirmFundDraw() {
+      if (!currentDraw) return;
+
+      const totalAmount = parseFloat(currentDraw.total_amount || 0);
+      const inputVal = document.getElementById('fundedAmount').value.replace(/[^0-9.-]/g, '');
+      const fundedAmount = parseFloat(inputVal) || 0;
+      const difference = fundedAmount - totalAmount;
+      const note = document.getElementById('partialFundingNote').value.trim();
+
+      // Require note for non-matching amounts
+      if (Math.abs(difference) >= 0.01 && !note) {
+        showToast('Please provide a note explaining the funding difference', 'error');
+        document.getElementById('partialFundingNote').focus();
+        return;
+      }
 
       try {
-        const res = await fetch(`/api/draws/${currentDraw.id}/fund`, { method: 'PATCH' });
+        const res = await fetch(`/api/draws/${currentDraw.id}/fund`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            funded_amount: fundedAmount,
+            partial_funding_note: note || null
+          })
+        });
+
         if (!res.ok) throw new Error('Failed to fund draw');
 
-        showToast('Draw marked as funded', 'success');
+        const result = await res.json();
+        const statusLabel = result.status === 'partially_funded' ? 'partially funded' :
+                           result.status === 'overfunded' ? 'overfunded' : 'funded';
+
+        showToast(`Draw marked as ${statusLabel}`, 'success');
+        closeModal('fundDrawModal');
         closeDrawModal();
         loadDraws();
       } catch (err) {
@@ -761,6 +1393,145 @@
 
     function showAddInvoiceModal() {
       showToast('Add invoice modal - coming soon', 'info');
+    }
+
+    async function showAddCOBillingModal() {
+      if (!currentDraw) return;
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}/available-cos`);
+        if (!res.ok) throw new Error('Failed to load available COs');
+
+        const availableCOs = await res.json();
+
+        if (availableCOs.length === 0) {
+          showToast('No approved change orders available to bill', 'info');
+          return;
+        }
+
+        // Populate the modal with available COs
+        const container = document.getElementById('availableCOsList');
+        container.innerHTML = availableCOs.map(co => {
+          const remaining = parseFloat(co.amount) - parseFloat(co.billed_amount || 0);
+          const percent = co.amount > 0 ? ((co.billed_amount || 0) / co.amount) * 100 : 0;
+
+          return `
+            <div class="co-billing-item" data-co-id="${co.id}">
+              <div class="co-billing-info">
+                <strong>CO-${String(co.change_order_number).padStart(3, '0')}: ${co.title}</strong>
+                <div class="co-billing-details">
+                  <span>Total: ${formatMoneyDecimal(co.amount)}</span>
+                  <span>Billed: ${formatMoneyDecimal(co.billed_amount || 0)} (${percent.toFixed(1)}%)</span>
+                  <span>Remaining: ${formatMoneyDecimal(remaining)}</span>
+                </div>
+              </div>
+              <div class="co-billing-input">
+                <label>Bill this period:</label>
+                <input type="number" class="form-control co-amount-input"
+                       data-co-id="${co.id}"
+                       data-max="${remaining}"
+                       min="0"
+                       max="${remaining}"
+                       step="0.01"
+                       placeholder="0.00"
+                       onchange="validateCOAmount(this)">
+                <button class="btn btn-sm btn-outline" onclick="setCOAmountPercent('${co.id}', 100)">100%</button>
+                <button class="btn btn-sm btn-outline" onclick="setCOAmountPercent('${co.id}', 50)">50%</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        document.getElementById('addCOBillingModal').style.display = 'flex';
+      } catch (err) {
+        console.error('Error loading available COs:', err);
+        showToast('Failed to load change orders', 'error');
+      }
+    }
+
+    function validateCOAmount(input) {
+      const max = parseFloat(input.dataset.max) || 0;
+      const value = parseFloat(input.value) || 0;
+      if (value > max) {
+        input.value = max.toFixed(2);
+        showToast('Amount cannot exceed remaining balance', 'warning');
+      }
+      if (value < 0) {
+        input.value = '0.00';
+      }
+    }
+
+    function setCOAmountPercent(coId, percent) {
+      const input = document.querySelector(`.co-amount-input[data-co-id="${coId}"]`);
+      if (input) {
+        const max = parseFloat(input.dataset.max) || 0;
+        input.value = (max * percent / 100).toFixed(2);
+      }
+    }
+
+    async function saveCOBillings() {
+      if (!currentDraw) return;
+
+      const inputs = document.querySelectorAll('.co-amount-input');
+      const billings = [];
+
+      inputs.forEach(input => {
+        const amount = parseFloat(input.value) || 0;
+        if (amount > 0) {
+          billings.push({
+            changeOrderId: input.dataset.coId,
+            amount: amount
+          });
+        }
+      });
+
+      if (billings.length === 0) {
+        showToast('No amounts entered', 'warning');
+        return;
+      }
+
+      try {
+        for (const billing of billings) {
+          const res = await fetch(`/api/draws/${currentDraw.id}/add-co-billing`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(billing)
+          });
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to add CO billing');
+          }
+        }
+
+        showToast(`Added ${billings.length} CO billing(s) to draw`, 'success');
+        closeModal('addCOBillingModal');
+        openDraw(currentDraw.id); // Refresh draw data
+      } catch (err) {
+        console.error('Error adding CO billings:', err);
+        showToast(err.message || 'Failed to add CO billings', 'error');
+      }
+    }
+
+    async function removeCOBilling(changeOrderId) {
+      if (!currentDraw) return;
+      if (!confirm('Remove this change order billing from the draw?')) return;
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}/remove-co-billing/${changeOrderId}`, {
+          method: 'DELETE'
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to remove CO billing');
+        }
+
+        showToast('CO billing removed from draw', 'success');
+        openDraw(currentDraw.id); // Refresh draw data
+      } catch (err) {
+        console.error('Error removing CO billing:', err);
+        showToast(err.message || 'Failed to remove CO billing', 'error');
+      }
     }
 
     async function exportExcel() {
@@ -810,6 +1581,10 @@
         console.error('Error creating draw:', err);
         showToast('Failed to create draw', 'error');
       }
+    }
+
+    function openModal(modalId) {
+      document.getElementById(modalId).style.display = 'flex';
     }
 
     function closeModal(modalId) {

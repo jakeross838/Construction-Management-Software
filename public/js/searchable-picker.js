@@ -61,7 +61,8 @@ window.SearchablePicker = {
       if (item) {
         const id = item.dataset.id;
         this.selectItem(picker, id);
-        if (onChange) onChange(id);
+        // For "No PO" option, pass null to onChange instead of 'none'
+        if (onChange) onChange(id === 'none' ? null : id);
       }
     });
   },
@@ -204,7 +205,8 @@ window.SearchablePicker = {
         if (picker._selectedIndex >= 0 && items[picker._selectedIndex]) {
           const id = items[picker._selectedIndex].dataset.id;
           this.selectItem(picker, id);
-          if (picker._onChange) picker._onChange(id);
+          // For "No PO" option, pass null to onChange instead of 'none'
+          if (picker._onChange) picker._onChange(id === 'none' ? null : id);
         }
         break;
 
@@ -232,13 +234,22 @@ window.SearchablePicker = {
    */
   async selectItem(picker, id) {
     const type = picker._type;
+    const input = picker.querySelector('.search-picker-input');
+    const hidden = picker.querySelector('.search-picker-value');
+
+    // Handle "No PO" selection
+    if (id === 'none' && type === 'pos') {
+      input.value = 'No PO';
+      hidden.value = '';
+      picker.classList.add('has-value');
+      input.blur();
+      return;
+    }
+
     const data = await this.loadData(type, picker._jobId);
     const item = data.find(d => d.id === id);
 
     if (!item) return;
-
-    const input = picker.querySelector('.search-picker-input');
-    const hidden = picker.querySelector('.search-picker-value');
 
     input.value = this.getDisplayText(type, item);
     hidden.value = item.id;
@@ -274,7 +285,22 @@ window.SearchablePicker = {
 
     // Build HTML
     let html = '';
-    if (filtered.length === 0) {
+
+    // Add "No PO" option at the top for PO pickers
+    if (type === 'pos') {
+      const noPOText = 'No PO';
+      const showNoPO = !q || noPOText.toLowerCase().includes(q);
+      if (showNoPO) {
+        html += `
+          <div class="search-picker-item no-po-option" data-id="none">
+            <span class="no-po-label">No PO</span>
+            <span class="no-po-hint">Invoice not linked to a Purchase Order</span>
+          </div>
+        `;
+      }
+    }
+
+    if (filtered.length === 0 && !html) {
       html = `<div class="search-picker-empty">No results found</div>`;
     } else {
       for (const item of filtered) {

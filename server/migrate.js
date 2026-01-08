@@ -72,7 +72,13 @@ async function runMigration(filename) {
   const statements = sql
     .split(/;(?=(?:[^']*'[^']*')*[^']*$)/)
     .map(s => s.trim())
-    .filter(s => s.length > 0 && !s.startsWith('--'));
+    .filter(s => {
+      // Remove empty statements
+      if (s.length === 0) return false;
+      // Remove statements that are ONLY comments
+      const withoutComments = s.replace(/--.*$/gm, '').trim();
+      return withoutComments.length > 0;
+    });
 
   console.log(`  Running ${statements.length} statements...`);
 

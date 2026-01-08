@@ -12,6 +12,7 @@ const Modals = {
   currentInvoice: null,
   currentAllocations: [],
   isDirty: false,
+  isPartialPaymentMode: false,  // When false, amount is locked to full invoice
 
   /**
    * Initialize modal system
@@ -70,11 +71,13 @@ const Modals = {
         return false;
       }
       this.currentInvoice = invoice;
+      this.isPartialPaymentMode = false;  // Reset to full payment mode for each invoice
 
-      // Fetch allocations and activity
-      const [allocations, activity] = await Promise.all([
+      // Fetch allocations, activity, and approval context
+      const [allocations, activity, approvalContext] = await Promise.all([
         this.fetchAllocations(invoiceId),
-        this.fetchActivity(invoiceId)
+        this.fetchActivity(invoiceId),
+        this.fetchApprovalContext(invoiceId)
       ]);
       // Initialize with one empty allocation if none exist
       // This ensures the UI row has a backing data entry
@@ -82,9 +85,10 @@ const Modals = {
         ? allocations
         : [{ cost_code_id: null, amount: invoice.amount || 0, notes: '' }];
       this.currentActivity = activity;
+      this.currentApprovalContext = approvalContext;
 
       // Build and show modal (use initialized allocations)
-      const modal = this.buildEditModal(invoice, this.currentAllocations, activity);
+      const modal = this.buildEditModal(invoice, this.currentAllocations, activity, approvalContext);
       this.showModal(modal, 'invoice-edit-modal');
 
       // Set up save handler
@@ -190,12 +194,17 @@ const Modals = {
   /**
    * Build the edit modal HTML with PDF split-view
    */
-  buildEditModal(invoice, allocations, activity = []) {
+  buildEditModal(invoice, allocations, activity = [], approvalContext = {}) {
     const statusInfo = window.Validation?.getStatusInfo(invoice.status) || {};
     const isArchived = invoice.status === 'paid';
-    const canEdit = !isArchived && ['received', 'needs_approval', 'approved'].includes(invoice.status);
+    const isReceived = invoice.status === 'received';
+    const isViewOnly = !isReceived; // Only accountant in "received" can edit, PM and beyond is view-only
     // Show original PDF for needs_approval/received, stamped for approved+
     const showOriginal = ['needs_approval', 'received'].includes(invoice.status);
+
+    // Store for use in field locking
+    this.isViewOnly = isViewOnly;
+    this.isReceived = isReceived;
     const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
 
     // Payment tracking info - use max of billed_amount and paid_amount
@@ -249,40 +258,56 @@ const Modals = {
                 <div class="form-section">
                     <h3>Invoice Details</h3>
 
-                    <div class="form-group">
+                    <div class="form-group" data-field="invoice_number">
                       <label for="edit-invoice-number">Invoice Number * ${this.buildAiIndicator(invoice, 'invoice_number')}</label>
-                      <input type="text" id="edit-invoice-number" name="invoice_number"
-                        value="${this.escapeHtml(invoice.invoice_number || '')}"
-                        ${!canEdit ? 'readonly' : ''}
-                        onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_number')">
+                      <div class="field-with-edit">
+                        <input type="text" id="edit-invoice-number" name="invoice_number"
+                          class="${isReceived ? 'field-locked' : ''}"
+                          value="${this.escapeHtml(invoice.invoice_number || '')}"
+                          ${isViewOnly || isReceived ? 'readonly' : ''}
+                          onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_number')">
+                        ${isReceived ? '<button type="button" class="field-edit-btn" onclick="Modals.unlockField(\'invoice_number\')" title="Edit">✎</button>' : ''}
+                      </div>
                       <div class="field-error" id="error-invoice_number"></div>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group" data-field="amount">
                       <label for="edit-amount">Amount * ${this.buildAiIndicator(invoice, 'amount')}</label>
-                      <input type="text" id="edit-amount" name="amount"
-                        value="${window.Validation?.formatCurrency(invoice.amount) || ''}"
-                        ${!canEdit ? 'readonly' : ''}
-                        onchange="Modals.handleAmountChange(this); Modals.markFieldOverridden('amount')">
+                      <div class="field-with-edit">
+                        <input type="text" id="edit-amount" name="amount"
+                          class="${isReceived ? 'field-locked' : ''}"
+                          value="${window.Validation?.formatCurrency(invoice.amount) || ''}"
+                          ${isViewOnly || isReceived ? 'readonly' : ''}
+                          oninput="Modals.handleAmountChange(this); Modals.markFieldOverridden('amount')">
+                        ${isReceived ? '<button type="button" class="field-edit-btn" onclick="Modals.unlockField(\'amount\')" title="Edit">✎</button>' : ''}
+                      </div>
                       <div class="field-error" id="error-amount"></div>
                     </div>
 
                     <div class="form-row">
-                      <div class="form-group">
+                      <div class="form-group" data-field="invoice_date">
                         <label for="edit-invoice-date">Invoice Date * ${this.buildAiIndicator(invoice, 'invoice_date')}</label>
-                        <input type="date" id="edit-invoice-date" name="invoice_date"
-                          value="${invoice.invoice_date || ''}"
-                          ${!canEdit ? 'readonly' : ''}
-                          onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_date')">
+                        <div class="field-with-edit">
+                          <input type="date" id="edit-invoice-date" name="invoice_date"
+                            class="${isReceived ? 'field-locked' : ''}"
+                            value="${invoice.invoice_date || ''}"
+                            ${isViewOnly || isReceived ? 'readonly' : ''}
+                            onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_date')">
+                          ${isReceived ? '<button type="button" class="field-edit-btn" onclick="Modals.unlockField(\'invoice_date\')" title="Edit">✎</button>' : ''}
+                        </div>
                         <div class="field-error" id="error-invoice_date"></div>
                       </div>
 
-                      <div class="form-group">
+                      <div class="form-group" data-field="due_date">
                         <label for="edit-due-date">Due Date</label>
-                        <input type="date" id="edit-due-date" name="due_date"
-                          value="${invoice.due_date || ''}"
-                          ${!canEdit ? 'readonly' : ''}
-                          onchange="Modals.markDirty()">
+                        <div class="field-with-edit">
+                          <input type="date" id="edit-due-date" name="due_date"
+                            class="${isReceived ? 'field-locked' : ''}"
+                            value="${invoice.due_date || ''}"
+                            ${isViewOnly || isReceived ? 'readonly' : ''}
+                            onchange="Modals.markDirty()">
+                          ${isReceived ? '<button type="button" class="field-edit-btn" onclick="Modals.unlockField(\'due_date\')" title="Edit">✎</button>' : ''}
+                        </div>
                         <div class="field-error" id="error-due_date"></div>
                       </div>
                     </div>
@@ -291,23 +316,32 @@ const Modals = {
                   <div class="form-section">
                     <h3>Assignment</h3>
 
-                    <div class="form-group">
+                    <div class="form-group picker-group">
                       <label for="edit-job">Job ${this.buildAiIndicator(invoice, 'job_id')}</label>
-                      <div id="job-picker-container" class="search-picker-container"></div>
+                      <div class="picker-with-edit">
+                        <div id="job-picker-container" class="search-picker-container"></div>
+                        ${isReceived ? '<button type="button" class="picker-edit-btn" onclick="Modals.unlockPicker(\'job-picker-container\')" title="Edit">✎</button>' : ''}
+                      </div>
                       <input type="hidden" id="edit-job" name="job_id">
                       <div class="field-error" id="error-job_id"></div>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group picker-group">
                       <label for="edit-vendor">Vendor ${this.buildAiIndicator(invoice, 'vendor_id')}</label>
-                      <div id="vendor-picker-container" class="search-picker-container"></div>
+                      <div class="picker-with-edit">
+                        <div id="vendor-picker-container" class="search-picker-container"></div>
+                        ${isReceived ? '<button type="button" class="picker-edit-btn" onclick="Modals.unlockPicker(\'vendor-picker-container\')" title="Edit">✎</button>' : ''}
+                      </div>
                       <input type="hidden" id="edit-vendor" name="vendor_id">
                       <div class="field-error" id="error-vendor_id"></div>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group picker-group">
                       <label for="edit-po">Purchase Order ${this.buildAiIndicator(invoice, 'po_id')}</label>
-                      <div id="po-picker-container" class="search-picker-container"></div>
+                      <div class="picker-with-edit">
+                        <div id="po-picker-container" class="search-picker-container"></div>
+                        ${isReceived ? '<button type="button" class="picker-edit-btn" onclick="Modals.unlockPicker(\'po-picker-container\')" title="Edit">✎</button>' : ''}
+                      </div>
                       <input type="hidden" id="edit-po" name="po_id">
                       <div class="field-error" id="error-po_id"></div>
                     </div>
@@ -316,19 +350,23 @@ const Modals = {
                   <div class="form-section">
                     <div class="section-header">
                       <h3>Line Items</h3>
-                      ${!isArchived && invoice.status !== 'in_draw' ? `
-                        <button type="button" class="btn-add-line" onclick="Modals.addAllocation()">
-                          + Add line
-                        </button>
+                      ${isReceived ? `
+                        <div class="section-header-actions" id="line-items-actions">
+                          <button type="button" class="btn-partial-payment" onclick="Modals.enablePartialPayment()">
+                            Partial Payment
+                          </button>
+                        </div>
                       ` : ''}
                     </div>
                     <div id="allocations-container" class="line-items-container">
-                      ${this.buildAllocationsHtml(allocations, invoice.amount, isArchived)}
+                      ${this.buildAllocationsHtml(allocations, hasPartialPayment ? remainingAmount : invoice.amount, isViewOnly)}
                     </div>
                     <div class="allocation-summary" id="allocation-summary">
-                      ${this.buildAllocationSummary(allocations, invoice.amount)}
+                      ${this.buildAllocationSummary(allocations, hasPartialPayment ? remainingAmount : invoice.amount)}
                     </div>
                   </div>
+
+                  ${this.buildApprovalImpactSection(approvalContext, invoice.status)}
 
                   ${hasPartialPayment || isClosedOut ? `
                   <div class="form-section payment-info-section">
@@ -442,24 +480,33 @@ const Modals = {
       const icon = confidencePct >= 90 ? '✓' : confidencePct >= 70 ? '◐' : '?';
       const aiBadge = allocIsAi && confidencePct > 0 ? `<span class="ai-badge ${confidenceClass}" title="AI-suggested based on vendor trade type (${confidencePct}% confidence)"><span class="ai-badge-icon">${icon}</span><span class="ai-badge-score">${confidencePct}%</span><span class="ai-badge-label">AI</span></span>` : '';
 
+      // Amount is readonly unless in partial payment mode (or archived/in_draw)
+      const amountReadonly = isArchived || !this.isPartialPaymentMode;
+      // Cost code is locked in received status (click to edit), view-only in other statuses
+      const costCodeLocked = this.isReceived && !this.isPartialPaymentMode;
+      const costCodeViewOnly = isArchived || this.isViewOnly;
+
       return `
         <div class="line-item" data-index="${index}">
           <div class="line-item-header">
             <div class="line-item-field flex-2">
               <label class="field-label">Cost code / Account <span class="required">*</span> ${aiBadge}</label>
-              <div class="cc-picker-container" data-index="${index}"></div>
+              <div class="cc-picker-with-edit">
+                <div class="cc-picker-container ${costCodeLocked ? 'cc-locked' : ''}" data-index="${index}" data-locked="${costCodeLocked}"></div>
+                ${costCodeLocked ? `<button type="button" class="picker-edit-btn cc-edit-btn" onclick="Modals.unlockCostCode(${index})" title="Edit">✎</button>` : ''}
+              </div>
             </div>
-            <div class="line-item-field">
-              <label class="field-label">Amount <span class="required">*</span></label>
-              <div class="amount-input-group">
+            <div class="line-item-field amount-field">
+              <label class="field-label">Amount ${!amountReadonly ? '<span class="required">*</span>' : '<span class="amount-locked-hint">(Full)</span>'}</label>
+              <div class="amount-input-group ${amountReadonly ? 'locked' : ''}">
                 <span class="amount-prefix">$</span>
                 <input type="text" class="field-input amount-input" placeholder="0.00"
                   value="${this.formatAmountInput(alloc.amount)}"
-                  onchange="Modals.updateAllocation(${index}, 'amount', this.value)"
-                  ${isArchived ? 'readonly' : ''}>
+                  oninput="Modals.updateAllocation(${index}, 'amount', this.value)"
+                  ${amountReadonly ? 'readonly' : ''}>
               </div>
             </div>
-            ${!isArchived ? `
+            ${!isArchived && this.isPartialPaymentMode ? `
               <button type="button" class="btn-delete-row" onclick="Modals.removeAllocation(${index})" title="Delete">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -538,6 +585,183 @@ const Modals = {
         ${isOver ? `<div class="allocation-error">Cannot approve — allocations exceed invoice total</div>` : ''}
       </div>
     `;
+  },
+
+  /**
+   * Build PO Balance section - shows impact on linked Purchase Order
+   */
+  buildPOBalanceSection(approvalContext) {
+    if (!approvalContext?.po) return '';
+
+    const po = approvalContext.po;
+    const isOver = po.over_po;
+
+    return `
+      <div class="form-section po-balance-section">
+        <h3>PO Balance</h3>
+        <table class="budget-table po-table">
+          <thead>
+            <tr>
+              <th>Purchase Order</th>
+              <th class="num">PO Total</th>
+              <th class="num">Billed</th>
+              <th class="num">This Inv</th>
+              <th class="num">Remaining</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="${isOver ? 'over-budget' : ''}" data-po-id="${po.id || ''}">
+              <td>
+                <span class="code">${po.po_number}</span>
+                ${isOver ? '<span class="over-badge-inline">OVER</span>' : ''}
+              </td>
+              <td class="num po-total">${this.formatCurrency(po.total_amount)}</td>
+              <td class="num po-prev-billed">${this.formatCurrency(po.previously_billed)}</td>
+              <td class="num this-inv">${this.formatCurrency(po.this_invoice)}</td>
+              <td class="num po-remaining ${isOver ? 'over' : ''}">${isOver ? '(' + this.formatCurrency(Math.abs(po.remaining)) + ')' : this.formatCurrency(po.remaining)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  },
+
+  /**
+   * Build Budget Standing section - shows impact on cost code budgets
+   */
+  buildBudgetStandingSection(approvalContext) {
+    if (!approvalContext?.budget?.length) return '';
+
+    return `
+      <div class="form-section budget-standing-section">
+        <h3>Budget Standing</h3>
+        <table class="budget-table">
+          <thead>
+            <tr>
+              <th>Cost Code</th>
+              <th class="num">Budget</th>
+              <th class="num">Billed</th>
+              <th class="num">This Inv</th>
+              <th class="num">Remaining</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${approvalContext.budget.map(b => {
+              const isOver = b.over_budget;
+              return `
+              <tr class="${isOver ? 'over-budget' : ''}" data-cost-code-id="${b.cost_code?.id || ''}">
+                <td>
+                  <span class="code">${b.cost_code?.code || ''}</span>
+                  <span class="name">${b.cost_code?.name || ''}</span>
+                </td>
+                <td class="num budget-amt">${this.formatCurrency(b.budgeted)}</td>
+                <td class="num prev-billed">${this.formatCurrency(b.previously_billed)}</td>
+                <td class="num this-inv">${this.formatCurrency(b.this_invoice)}</td>
+                <td class="num remaining ${isOver ? 'over' : ''}">${isOver ? '(' + this.formatCurrency(Math.abs(b.remaining)) + ')' : this.formatCurrency(b.remaining)}</td>
+              </tr>
+            `}).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  },
+
+  /**
+   * Build approval impact sections (PO Balance + Budget Standing)
+   */
+  buildApprovalImpactSection(approvalContext, status) {
+    if (!approvalContext) return '';
+
+    let html = '';
+
+    // PO Balance section (separate from budget)
+    html += this.buildPOBalanceSection(approvalContext);
+
+    // Budget Standing section
+    html += this.buildBudgetStandingSection(approvalContext);
+
+    return html;
+  },
+
+  /**
+   * Format currency helper
+   */
+  formatCurrency(amount) {
+    if (amount === null || amount === undefined) return '$0';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+  },
+
+  /**
+   * Unlock a locked field for editing
+   */
+  unlockField(fieldId) {
+    const wrapper = document.querySelector(`[data-field="${fieldId}"]`);
+    if (!wrapper) return;
+
+    const input = wrapper.querySelector('input, select');
+    const editBtn = wrapper.querySelector('.field-edit-btn');
+
+    if (input) {
+      input.removeAttribute('readonly');
+      input.classList.remove('field-locked');
+      input.focus();
+    }
+    if (editBtn) {
+      editBtn.style.display = 'none';
+    }
+    wrapper.classList.add('field-unlocked');
+    this.markDirty();
+  },
+
+  /**
+   * Unlock a picker field (Job, Vendor, PO)
+   */
+  unlockPicker(pickerId) {
+    const container = document.getElementById(pickerId);
+    if (!container) return;
+
+    const picker = container.querySelector('.search-picker');
+    const editBtn = container.parentElement.querySelector('.picker-edit-btn');
+
+    if (picker) {
+      picker.classList.remove('disabled');
+      const input = picker.querySelector('.search-picker-input');
+      if (input) {
+        input.removeAttribute('readonly');
+        input.focus();
+      }
+    }
+    if (editBtn) {
+      editBtn.style.display = 'none';
+    }
+    this.markDirty();
+  },
+
+  /**
+   * Unlock a cost code picker in line items
+   */
+  unlockCostCode(index) {
+    const container = document.querySelector(`.cc-picker-container[data-index="${index}"]`);
+    if (!container) return;
+
+    container.classList.remove('cc-locked');
+    container.dataset.locked = 'false';
+
+    const picker = container.querySelector('.cc-picker');
+    const editBtn = container.parentElement.querySelector('.cc-edit-btn');
+
+    if (picker) {
+      picker.classList.remove('disabled');
+      const input = picker.querySelector('.cc-picker-input');
+      if (input) {
+        input.removeAttribute('readonly');
+        input.focus();
+      }
+    }
+    if (editBtn) {
+      editBtn.style.display = 'none';
+    }
+    this.markDirty();
   },
 
   /**
@@ -695,18 +919,21 @@ const Modals = {
 
   /**
    * Build status pipeline showing invoice workflow stages
+   * Flow: Received → Needs Approval → Approved → In Draw (final)
+   * Note: "Paid" (to vendor) is separate - can happen anytime after approval
    */
   buildStatusPipeline(currentStatus) {
     const stages = [
       { id: 'received', label: 'Received', icon: '📥' },
-      { id: 'needs_approval', label: 'Needs Approval', icon: '🏷️' },
+      { id: 'needs_approval', label: 'Review', icon: '👁️' },
       { id: 'approved', label: 'Approved', icon: '✓' },
-      { id: 'in_draw', label: 'In Draw', icon: '📋' },
-      { id: 'paid', label: 'Paid', icon: '💰' }
+      { id: 'in_draw', label: 'In Draw', icon: '📋' }
     ];
 
-    const statusOrder = ['received', 'needs_approval', 'approved', 'in_draw', 'paid'];
-    const currentIndex = statusOrder.indexOf(currentStatus);
+    // Map 'paid' status to 'in_draw' for pipeline purposes (paid is archived/complete)
+    const effectiveStatus = currentStatus === 'paid' ? 'in_draw' : currentStatus;
+    const statusOrder = ['received', 'needs_approval', 'approved', 'in_draw'];
+    const currentIndex = statusOrder.indexOf(effectiveStatus);
 
     return stages.map((stage, index) => {
       let stageClass = 'pipeline-stage';
@@ -822,22 +1049,18 @@ const Modals = {
       case 'received':
         // New invoice - needs coding
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
+        buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice(true)">Save</button>`);
         buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveAndSubmit()">Submit</button>`);
         break;
 
       case 'needs_approval':
-        // Needs Approval - ready for approval
-        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
-        // Show Close Out button if there's a remaining balance to write off
-        if (hasRemainingBalance) {
-          buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.showCloseOutDialog()">Close Out</button>`);
-        }
-        buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
+        // PM Review - view only, can only approve or deny (sends back to accountant)
+        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="Modals.denyInvoice()">Deny</button>`);
         buttons.push(`<button type="button" class="btn btn-success" onclick="Modals.approveInvoice()">Approve</button>`);
         break;
 
       case 'approved':
-        // Approved - can be added to draw
+        // Approved - waiting to be added to a draw (legacy, new flow auto-adds on approval)
         buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.unapproveInvoice()">Unapprove</button>`);
         // Show Close Out button if there's a remaining balance to write off
         if (hasRemainingBalance) {
@@ -848,7 +1071,7 @@ const Modals = {
         break;
 
       case 'in_draw':
-        // In draw - limited editing
+        // In draw - can only be removed if draw is in draft status
         buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.removeFromDraw()">Remove from Draw</button>`);
         break;
 
@@ -861,12 +1084,92 @@ const Modals = {
   },
 
   /**
-   * Add a new allocation row
+   * Enable partial payment mode - unlocks amount editing
+   */
+  enablePartialPayment() {
+    this.isPartialPaymentMode = true;
+
+    // Update the action buttons to show Pay in Full + Add line
+    const actionsContainer = document.getElementById('line-items-actions');
+    if (actionsContainer) {
+      actionsContainer.innerHTML = `
+        <button type="button" class="btn-pay-full" onclick="Modals.payInFull()">
+          Pay in Full
+        </button>
+        <button type="button" class="btn-add-line" onclick="Modals.addAllocation()">
+          + Add line
+        </button>
+      `;
+    }
+
+    // Refresh the allocations UI to unlock the amount fields
+    this.refreshAllocationsUI();
+  },
+
+  /**
+   * Pay in Full - set first allocation to full invoice amount and lock
+   */
+  payInFull() {
+    const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
+    const alreadyBilled = Math.max(
+      parseFloat(this.currentInvoice?.billed_amount || 0),
+      parseFloat(this.currentInvoice?.paid_amount || 0)
+    );
+    const maxAllocatable = invoiceAmount - alreadyBilled;
+
+    // If we have allocations, set the first one to full amount and clear others
+    if (this.currentAllocations.length > 0) {
+      // Keep only the first allocation and set it to full amount
+      const firstAlloc = this.currentAllocations[0];
+      this.currentAllocations = [{
+        cost_code_id: firstAlloc.cost_code_id,
+        amount: maxAllocatable,
+        notes: firstAlloc.notes || ''
+      }];
+    } else {
+      // Create a new allocation with full amount
+      this.currentAllocations = [{
+        cost_code_id: null,
+        amount: maxAllocatable,
+        notes: ''
+      }];
+    }
+
+    // Exit partial payment mode (lock the amount)
+    this.isPartialPaymentMode = false;
+
+    // Update the action buttons back to Partial Payment
+    const actionsContainer = document.getElementById('line-items-actions');
+    if (actionsContainer) {
+      actionsContainer.innerHTML = `
+        <button type="button" class="btn-partial-payment" onclick="Modals.enablePartialPayment()">
+          Partial Payment
+        </button>
+      `;
+    }
+
+    this.refreshAllocationsUI();
+    this.markDirty();
+  },
+
+  /**
+   * Add a new allocation row - auto-fills with remaining unallocated amount
    */
   addAllocation() {
+    const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
+    const alreadyBilled = Math.max(
+      parseFloat(this.currentInvoice?.billed_amount || 0),
+      parseFloat(this.currentInvoice?.paid_amount || 0)
+    );
+    const maxAllocatable = invoiceAmount - alreadyBilled;
+
+    // Calculate remaining unallocated
+    const currentAllocated = this.currentAllocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const remaining = Math.max(0, maxAllocatable - currentAllocated);
+
     this.currentAllocations.push({
       cost_code_id: null,
-      amount: 0,
+      amount: remaining,
       notes: ''
     });
     this.refreshAllocationsUI();
@@ -912,6 +1215,35 @@ const Modals = {
     this.markDirty();
   },
 
+  // Alias for fillRemaining
+  fillRemainingAmount(index) {
+    this.fillRemaining(index);
+  },
+
+  /**
+   * Set allocation to a percentage of the invoice total
+   */
+  setAllocationPercent(index, percent) {
+    if (!this.currentAllocations[index]) return;
+
+    const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
+
+    // Account for already billed/paid amounts (for partial invoices)
+    const alreadyBilled = Math.max(
+      parseFloat(this.currentInvoice?.billed_amount || 0),
+      parseFloat(this.currentInvoice?.paid_amount || 0)
+    );
+    const maxAllocatable = invoiceAmount - alreadyBilled;
+
+    // Calculate the percentage amount
+    const amount = (maxAllocatable * percent) / 100;
+
+    // Update this allocation's amount
+    this.currentAllocations[index].amount = Math.round(amount * 100) / 100; // Round to 2 decimals
+    this.refreshAllocationsUI();
+    this.markDirty();
+  },
+
   /**
    * Update an allocation value
    */
@@ -924,16 +1256,125 @@ const Modals = {
 
     this.currentAllocations[index][field] = value;
     this.refreshAllocationSummary();
+    this.refreshBudgetStanding();
     this.markDirty();
   },
 
   /**
-   * Handle invoice amount change
+   * Refresh all balance sections when allocations change
+   * Updates: Invoice Balance, PO Balance, Budget Standing
+   */
+  refreshBudgetStanding() {
+    const totalAllocated = this.currentAllocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+    // 1. Update PO Balance section
+    this.refreshPOBalance(totalAllocated);
+
+    // 2. Update Budget Standing table
+    this.refreshBudgetTable();
+  },
+
+  /**
+   * Refresh PO Balance section with current allocation total
+   */
+  refreshPOBalance(totalAllocated) {
+    const poRow = document.querySelector('.po-balance-section .po-table tbody tr');
+    if (!poRow) return;
+
+    // Get static values from table cells
+    const poTotalEl = poRow.querySelector('.po-total');
+    const prevBilledEl = poRow.querySelector('.po-prev-billed');
+    const thisInvEl = poRow.querySelector('.this-inv');
+    const remainingEl = poRow.querySelector('.po-remaining');
+    const overBadge = poRow.querySelector('.over-badge-inline');
+    const poNumberCell = poRow.querySelector('td:first-child');
+
+    if (!poTotalEl || !prevBilledEl || !thisInvEl || !remainingEl) return;
+
+    const poTotal = window.Validation?.parseCurrency(poTotalEl.textContent) || 0;
+    const prevBilled = window.Validation?.parseCurrency(prevBilledEl.textContent) || 0;
+    const remaining = poTotal - prevBilled - totalAllocated;
+    const isOver = remaining < 0;
+
+    // Update This Invoice
+    thisInvEl.textContent = this.formatCurrency(totalAllocated);
+
+    // Update Remaining
+    remainingEl.textContent = isOver ? '(' + this.formatCurrency(Math.abs(remaining)) + ')' : this.formatCurrency(remaining);
+    remainingEl.classList.toggle('over', isOver);
+
+    // Update row over status
+    poRow.classList.toggle('over-budget', isOver);
+
+    // Toggle over badge inline
+    if (isOver && !overBadge && poNumberCell) {
+      const badge = document.createElement('span');
+      badge.className = 'over-badge-inline';
+      badge.textContent = 'OVER';
+      poNumberCell.appendChild(badge);
+    } else if (!isOver && overBadge) {
+      overBadge.remove();
+    }
+  },
+
+  /**
+   * Refresh Budget Standing table based on current allocations
+   */
+  refreshBudgetTable() {
+    const budgetRows = document.querySelectorAll('.budget-standing-section .budget-table tbody tr');
+    if (!budgetRows.length) return;
+
+    // Build a map of cost_code_id -> allocated amount
+    const allocationByCode = {};
+    this.currentAllocations.forEach(alloc => {
+      if (alloc.cost_code_id) {
+        allocationByCode[alloc.cost_code_id] = (allocationByCode[alloc.cost_code_id] || 0) + parseFloat(alloc.amount || 0);
+      }
+    });
+
+    // Update each budget row
+    budgetRows.forEach(row => {
+      const costCodeId = row.dataset.costCodeId;
+      if (!costCodeId) return;
+
+      const budgetCell = row.querySelector('.budget-amt');
+      const prevBilledCell = row.querySelector('.prev-billed');
+      const thisInvCell = row.querySelector('.this-inv');
+      const remainingCell = row.querySelector('.remaining');
+
+      if (thisInvCell && remainingCell && budgetCell && prevBilledCell) {
+        const budget = window.Validation?.parseCurrency(budgetCell.textContent) || 0;
+        const prevBilled = window.Validation?.parseCurrency(prevBilledCell.textContent) || 0;
+        const thisInv = allocationByCode[costCodeId] || 0;
+        const remaining = budget - prevBilled - thisInv;
+        const isOver = remaining < 0;
+
+        thisInvCell.textContent = this.formatCurrency(thisInv);
+        remainingCell.textContent = isOver ? '(' + this.formatCurrency(Math.abs(remaining)) + ')' : this.formatCurrency(remaining);
+        remainingCell.classList.toggle('over', isOver);
+        row.classList.toggle('over-budget', isOver);
+      }
+    });
+  },
+
+  /**
+   * Find cost code by code string (legacy support)
+   */
+  findCostCodeByCode(codeStr) {
+    if (window.CostCodePicker?.cache) {
+      return window.CostCodePicker.cache.find(cc => cc.code === codeStr);
+    }
+    return null;
+  },
+
+  /**
+   * Handle invoice amount change - updates all balance sections
    */
   handleAmountChange(input) {
     const value = window.Validation?.parseCurrency(input.value) || 0;
-    input.value = window.Validation?.formatCurrency(value);
+    // Update all displays in real-time
     this.refreshAllocationSummary();
+    this.refreshBudgetStanding();
     this.markDirty();
   },
 
@@ -953,15 +1394,32 @@ const Modals = {
   },
 
   /**
+   * Get effective allocation target amount (remaining for partial invoices)
+   */
+  getEffectiveAllocationAmount() {
+    const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
+    const alreadyBilled = Math.max(
+      parseFloat(this.currentInvoice?.billed_amount || 0),
+      parseFloat(this.currentInvoice?.paid_amount || 0)
+    );
+    // If there's already been billing, return remaining amount
+    if (alreadyBilled > 0) {
+      return Math.max(0, invoiceAmount - alreadyBilled);
+    }
+    return invoiceAmount;
+  },
+
+  /**
    * Refresh allocations UI
    */
   refreshAllocationsUI() {
     const container = document.getElementById('allocations-container');
     if (container) {
-      container.innerHTML = this.buildAllocationsHtml(this.currentAllocations, this.getFormValue('amount'));
+      container.innerHTML = this.buildAllocationsHtml(this.currentAllocations, this.getEffectiveAllocationAmount());
       this.initCostCodePickers();
     }
     this.refreshAllocationSummary();
+    this.refreshBudgetStanding();
   },
 
   /**
@@ -970,8 +1428,7 @@ const Modals = {
   refreshAllocationSummary() {
     const summary = document.getElementById('allocation-summary');
     if (summary) {
-      const amount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
-      summary.innerHTML = this.buildAllocationSummary(this.currentAllocations, amount);
+      summary.innerHTML = this.buildAllocationSummary(this.currentAllocations, this.getEffectiveAllocationAmount());
     }
   },
 
@@ -987,10 +1444,12 @@ const Modals = {
       const allocation = this.currentAllocations[index];
       const currentValue = allocation?.cost_code_id || null;
       const originalValue = currentValue; // Store original to detect changes
+      // Check if this picker should be locked (received status with locked attribute)
+      const isLocked = container.dataset.locked === 'true';
 
       window.CostCodePicker.init(container, {
         value: currentValue,
-        disabled: isArchived,
+        disabled: isArchived || this.isViewOnly || isLocked,
         onChange: (codeId) => {
           this.updateAllocation(index, 'cost_code_id', codeId);
           // Mark cost code AI badge as overridden when changed
@@ -1028,7 +1487,7 @@ const Modals = {
   /**
    * Save invoice changes
    */
-  async saveInvoice() {
+  async saveInvoice(skipValidation = false) {
     const form = document.getElementById('invoice-edit-form');
     if (!form) return;
 
@@ -1047,19 +1506,22 @@ const Modals = {
     // Clear previous errors
     this.clearFieldErrors();
 
-    // Validate
-    const validation = window.Validation?.validateInvoice(formData);
-    if (validation && !validation.valid) {
-      this.showFieldErrors(validation.errors);
-      window.toasts?.error('Please fix validation errors');
-      return;
-    }
+    // Only validate if not skipping (for draft saves, skip validation)
+    if (!skipValidation) {
+      // Validate
+      const validation = window.Validation?.validateInvoice(formData);
+      if (validation && !validation.valid) {
+        this.showFieldErrors(validation.errors);
+        window.toasts?.error('Please fix validation errors');
+        return;
+      }
 
-    // Validate allocations
-    const allocValidation = window.Validation?.validateAllocations(this.currentAllocations, formData.amount);
-    if (allocValidation && !allocValidation.valid) {
-      window.toasts?.error('Allocation Error', { details: allocValidation.errors.join(', ') });
-      return;
+      // Validate allocations
+      const allocValidation = window.Validation?.validateAllocations(this.currentAllocations, formData.amount);
+      if (allocValidation && !allocValidation.valid) {
+        window.toasts?.error('Allocation Error', { details: allocValidation.errors.join(', ') });
+        return;
+      }
     }
 
     // Save to server
@@ -1294,59 +1756,26 @@ const Modals = {
     ).join('');
 
     const modal = `
-      <div class="draw-picker-modal" id="draw-picker-overlay" style="
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0,0,0,0.7);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10001;
-      ">
-        <div style="
-          background: var(--bg-card, #161b22);
-          padding: 1.5rem;
-          border-radius: 8px;
-          min-width: 400px;
-          border: 1px solid var(--border, #30363d);
-        ">
-          <h3 style="margin-bottom: 1rem; color: var(--text-primary, #f0f6fc);">Add to Draw</h3>
-          <p style="color: var(--text-secondary, #8b949e); margin-bottom: 1rem;">
-            Select a draw or create a new one for invoice #${this.currentInvoice?.invoice_number || 'N/A'}
-          </p>
+      <div class="draw-picker-overlay" id="draw-picker-overlay">
+        <div class="draw-picker-content">
+          <h3>Add to Draw</h3>
+          <p>Select a draw or create a new one for invoice #${this.currentInvoice?.invoice_number || 'N/A'}</p>
 
-          <div style="margin-bottom: 1rem;">
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Select Draw</label>
-            <select id="drawPickerSelect" style="
-              width: 100%;
-              padding: 0.75rem;
-              background: var(--bg-card-elevated, #1c2128);
-              border: 1px solid var(--border, #30363d);
-              border-radius: 6px;
-              color: var(--text-primary, #f0f6fc);
-            ">
+          <div class="form-group">
+            <label>Select Draw</label>
+            <select id="drawPickerSelect">
               <option value="">-- Select existing draw --</option>
               ${drawOptions}
               <option value="new">+ Create New Draw</option>
             </select>
           </div>
 
-          <div id="newDrawFields" style="display: none; margin-bottom: 1rem;">
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Period End Date</label>
-            <input type="date" id="newDrawPeriodEnd" style="
-              width: 100%;
-              padding: 0.75rem;
-              background: var(--bg-card-elevated, #1c2128);
-              border: 1px solid var(--border, #30363d);
-              border-radius: 6px;
-              color: var(--text-primary, #f0f6fc);
-            " value="${new Date().toISOString().split('T')[0]}">
+          <div id="newDrawFields" class="form-group" style="display: none;">
+            <label>Period End Date</label>
+            <input type="date" id="newDrawPeriodEnd" value="${new Date().toISOString().split('T')[0]}">
           </div>
 
-          <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+          <div class="draw-picker-actions">
             <button onclick="Modals.closeDrawPicker()" class="btn btn-secondary">Cancel</button>
             <button onclick="Modals.confirmAddToDraw()" class="btn btn-primary">Add to Draw</button>
           </div>
@@ -2272,6 +2701,8 @@ const Modals = {
    */
   async populateDropdowns() {
     const isArchived = this.currentInvoice?.status === 'paid';
+    // Pickers start disabled - in "received" can unlock with edit button, otherwise permanently disabled
+    const pickersDisabled = this.isViewOnly || this.isReceived;
 
     try {
       // Initialize Job picker
@@ -2281,7 +2712,7 @@ const Modals = {
           type: 'jobs',
           value: this.currentInvoice?.job_id || null,
           placeholder: 'Search jobs...',
-          disabled: isArchived,
+          disabled: pickersDisabled,
           onChange: (jobId) => {
             document.getElementById('edit-job').value = jobId || '';
             this.handleJobChange(jobId);
@@ -2298,7 +2729,7 @@ const Modals = {
           type: 'vendors',
           value: this.currentInvoice?.vendor_id || null,
           placeholder: 'Search vendors...',
-          disabled: isArchived,
+          disabled: pickersDisabled,
           onChange: (vendorId) => {
             document.getElementById('edit-vendor').value = vendorId || '';
             this.markDirty();
@@ -2315,7 +2746,7 @@ const Modals = {
           type: 'pos',
           value: this.currentInvoice?.po_id || null,
           placeholder: 'Search purchase orders...',
-          disabled: isArchived,
+          disabled: pickersDisabled,
           jobId: this.currentInvoice?.job_id || null,
           onChange: (poId) => {
             document.getElementById('edit-po').value = poId || '';
@@ -2387,6 +2818,20 @@ const Modals = {
     } catch (err) {
       console.error('Failed to fetch activity:', err);
       return [];
+    }
+  },
+
+  /**
+   * Fetch approval context (budget + PO impact) for invoice
+   */
+  async fetchApprovalContext(invoiceId) {
+    try {
+      const response = await fetch(`/api/invoices/${invoiceId}/approval-context`);
+      if (!response.ok) return { budget: [], po: null };
+      return await response.json();
+    } catch (err) {
+      console.error('Failed to fetch approval context:', err);
+      return { budget: [], po: null };
     }
   },
 
