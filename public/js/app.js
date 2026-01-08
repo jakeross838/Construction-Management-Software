@@ -221,6 +221,14 @@ function renderInvoiceCard(inv) {
       allocationInfo = `<span class="allocation-badge ${allocClass}" title="Allocated: ${formatMoney(totalAllocated)} of ${formatMoney(invoiceAmount)}">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
     }
 
+    // Paid to Vendor badge
+    let paidToVendorBadge = '';
+    if (inv.paid_to_vendor) {
+      const paidDate = inv.paid_to_vendor_date ? formatDate(inv.paid_to_vendor_date) : '';
+      const paidRef = inv.paid_to_vendor_ref ? ` - ${inv.paid_to_vendor_ref}` : '';
+      paidToVendorBadge = `<span class="paid-vendor-badge" title="Paid to vendor${paidDate ? ' on ' + paidDate : ''}${paidRef}">✓ Paid to Vendor</span>`;
+    }
+
     return `
     <div class="invoice-card status-${inv.status}" onclick="openEditModal('${inv.id}')">
       <div class="invoice-main">
@@ -231,6 +239,7 @@ function renderInvoiceCard(inv) {
           <span>${formatDate(inv.invoice_date)}</span>
           ${poInfo}
           ${allocationInfo}
+          ${paidToVendorBadge}
         </div>
       </div>
       <div class="invoice-amount">${formatMoney(displayAmount)}${amountSubtext}</div>

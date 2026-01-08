@@ -478,6 +478,15 @@ body {
   color: var(--text-secondary);
 }
 
+.paid-vendor-badge {
+  background: rgba(34, 197, 94, 0.15);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  border: 1px solid var(--approved);
+  color: var(--approved);
+}
+
 .invoice-amount {
   font-size: 1.25rem;
   font-weight: 700;
@@ -1141,6 +1150,70 @@ body {
   width: 100%;
   margin-left: 26px;
   margin-top: -0.25rem;
+}
+
+/* Vendor Payment Section */
+.vendor-payment-section {
+  background: rgba(34, 197, 94, 0.05);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.vendor-payment-section h5 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--approved);
+  margin-bottom: 0.75rem;
+}
+
+.vendor-payment-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.vendor-payment-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--approved);
+}
+
+.vendor-payment-checkbox label {
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.vendor-payment-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.vendor-payment-details .form-group {
+  margin-bottom: 0;
+}
+
+.vendor-payment-details label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+  display: block;
+}
+
+.vendor-payment-details input {
+  width: 100%;
+  padding: 0.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
 }
 
 /* ============================================================

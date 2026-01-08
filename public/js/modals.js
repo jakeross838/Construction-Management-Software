@@ -413,6 +413,37 @@ const Modals = {
                   </div>
                   ` : ''}
 
+                  ${['approved', 'in_draw', 'paid'].includes(invoice.status) ? `
+                  <div class="form-section vendor-payment-section">
+                    <h3>Vendor Payment</h3>
+                    <div class="vendor-payment-toggle">
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="paid-to-vendor"
+                          ${invoice.paid_to_vendor ? 'checked' : ''}
+                          onchange="Modals.togglePaidToVendor(this.checked)">
+                        <span class="checkbox-text">Paid to Vendor</span>
+                      </label>
+                    </div>
+                    <div class="vendor-payment-details" id="vendor-payment-details" style="${invoice.paid_to_vendor ? '' : 'display: none;'}">
+                      <div class="form-row">
+                        <div class="form-group">
+                          <label>Payment Date</label>
+                          <input type="date" id="paid-to-vendor-date"
+                            value="${invoice.paid_to_vendor_date || ''}"
+                            onchange="Modals.markDirty()">
+                        </div>
+                        <div class="form-group">
+                          <label>Reference #</label>
+                          <input type="text" id="paid-to-vendor-ref"
+                            value="${this.escapeHtml(invoice.paid_to_vendor_ref || '')}"
+                            placeholder="Check #, Transaction ID"
+                            onchange="Modals.markDirty()">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  ` : ''}
+
                   <div class="form-section activity-section">
                     <div class="section-header">
                       <h3>Activity</h3>
@@ -819,6 +850,24 @@ const Modals = {
       full.style.display = 'none';
       btn.textContent = 'View history';
     }
+  },
+
+  /**
+   * Toggle paid to vendor checkbox and show/hide details
+   */
+  togglePaidToVendor(checked) {
+    const details = document.getElementById('vendor-payment-details');
+    if (details) {
+      details.style.display = checked ? '' : 'none';
+      // Auto-fill today's date if checking and no date set
+      if (checked) {
+        const dateInput = document.getElementById('paid-to-vendor-date');
+        if (dateInput && !dateInput.value) {
+          dateInput.value = new Date().toISOString().split('T')[0];
+        }
+      }
+    }
+    this.markDirty();
   },
 
   /**
@@ -1502,6 +1551,14 @@ const Modals = {
       po_id: this.getFormValue('po_id') || null,
       notes: this.getFormValue('notes') || null
     };
+
+    // Add paid to vendor fields if checkbox exists (only shown for approved+ invoices)
+    const paidToVendorCheckbox = document.getElementById('paid-to-vendor');
+    if (paidToVendorCheckbox) {
+      formData.paid_to_vendor = paidToVendorCheckbox.checked;
+      formData.paid_to_vendor_date = document.getElementById('paid-to-vendor-date')?.value || null;
+      formData.paid_to_vendor_ref = document.getElementById('paid-to-vendor-ref')?.value || null;
+    }
 
     // Clear previous errors
     this.clearFieldErrors();

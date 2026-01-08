@@ -4741,7 +4741,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
 
   // Build update object
   const updateFields = {};
-  const editableFields = ['invoice_number', 'invoice_date', 'due_date', 'amount', 'job_id', 'vendor_id', 'po_id', 'notes', 'status'];
+  const editableFields = ['invoice_number', 'invoice_date', 'due_date', 'amount', 'job_id', 'vendor_id', 'po_id', 'notes', 'status', 'paid_to_vendor', 'paid_to_vendor_date', 'paid_to_vendor_ref'];
   for (const field of editableFields) {
     if (updates.hasOwnProperty(field)) {
       updateFields[field] = updates[field];
