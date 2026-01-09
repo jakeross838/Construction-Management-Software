@@ -5271,84 +5271,84 @@ label .ai-indicator {
   white-space: nowrap;
 }
 
-/* PO Modal Form Controls - Dark Theme */
-#poModal .form-control,
-#poModal input[type="text"],
-#poModal input[type="number"],
-#poModal input[type="date"],
-#poModal select,
-#poModal textarea {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  padding: 0.625rem 0.875rem;
-  font-size: 0.9rem;
+/* PO Modal Form Controls - Light Theme (unified two-panel design) */
+#poModal .po-two-panel .form-control,
+#poModal .po-two-panel input[type="text"],
+#poModal .po-two-panel input[type="number"],
+#poModal .po-two-panel input[type="date"],
+#poModal .po-two-panel select,
+#poModal .po-two-panel textarea {
+  background: #ffffff !important;
+  border: 1px solid #c5c7d0 !important;
+  border-radius: 4px;
+  color: #323338 !important;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
   width: 100%;
 }
 
-#poModal .form-control:focus,
-#poModal input:focus,
-#poModal select:focus,
-#poModal textarea:focus {
+#poModal .po-two-panel .form-control:focus,
+#poModal .po-two-panel input:focus,
+#poModal .po-two-panel select:focus,
+#poModal .po-two-panel textarea:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: #0073ea !important;
+  box-shadow: 0 0 0 2px rgba(0, 115, 234, 0.15);
 }
 
-#poModal .form-control::placeholder,
-#poModal input::placeholder,
-#poModal textarea::placeholder {
-  color: var(--text-muted);
+#poModal .po-two-panel .form-control::placeholder,
+#poModal .po-two-panel input::placeholder,
+#poModal .po-two-panel textarea::placeholder {
+  color: #9699a6;
 }
 
-/* Select dropdowns need special handling */
-#poModal select {
+/* Select dropdowns - light theme */
+#poModal .po-two-panel select {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b9cb3' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23676879' d='M6 8L1 3h10z'/%3E%3C/svg%3E") !important;
+  background-color: #ffffff !important;
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   padding-right: 2rem;
   cursor: pointer;
 }
 
-#poModal select option {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+#poModal .po-two-panel select option {
+  background: #ffffff !important;
+  color: #323338 !important;
 }
 
-/* Date inputs calendar icon */
-#poModal input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
+/* Date inputs calendar icon - light theme */
+#poModal .po-two-panel input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: none;
   cursor: pointer;
 }
 
-/* Line item controls in PO modal */
-#poModal .line-item select,
-#poModal .line-item input,
-#poModal .line-item-fields select,
-#poModal .line-item-fields input,
-#poModal .line-items-container select,
-#poModal .line-items-container input {
-  background: var(--bg-secondary) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--text-primary) !important;
+/* Line item controls in PO modal - light theme */
+#poModal .po-two-panel .line-item-edit select,
+#poModal .po-two-panel .line-item-edit input,
+#poModal .po-two-panel .line-items-edit select,
+#poModal .po-two-panel .line-items-edit input {
+  background: #ffffff !important;
+  border: 1px solid #c5c7d0 !important;
+  color: #323338 !important;
 }
 
-#poModal .line-item select option,
-#poModal .line-item-fields select option {
-  background: var(--bg-dark);
-  color: var(--text-primary);
+#poModal .po-two-panel .line-item-edit select option,
+#poModal .po-two-panel .line-items-edit select option {
+  background: #ffffff !important;
+  color: #323338 !important;
 }
 
-/* Force ALL inputs/selects in PO modal to be dark */
+/* Legacy: Force inputs in old PO modal layout to be dark
+   Note: This is overridden by .po-two-panel styles below */
 #poModal select,
 #poModal input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
 #poModal textarea {
-  background-color: var(--bg-secondary) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--text-primary) !important;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   border-radius: 6px;
   padding: 0.625rem 0.875rem;
   font-family: inherit;
@@ -9847,15 +9847,21 @@ textarea.form-control {
   margin-bottom: 0;
 }
 
-.po-two-panel .po-card .form-group label {
+.po-two-panel .po-card .form-group label,
+.po-two-panel label {
   display: block;
   font-size: 0.8125rem;
-  font-weight: 400;
-  color: #676879;
+  font-weight: 500;
+  color: #676879 !important;
   margin-bottom: 0.375rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
 }
 
-.po-two-panel .form-input {
+.po-two-panel .form-input,
+.po-two-panel input,
+.po-two-panel select,
+.po-two-panel textarea {
   width: 100%;
   padding: 0.5rem 0.75rem;
   background: #ffffff !important;
@@ -9867,14 +9873,26 @@ textarea.form-control {
   box-sizing: border-box;
 }
 
-.po-two-panel .form-input:hover {
+.po-two-panel .form-input:hover,
+.po-two-panel input:hover,
+.po-two-panel select:hover,
+.po-two-panel textarea:hover {
   border-color: #0073ea !important;
 }
 
-.po-two-panel .form-input:focus {
+.po-two-panel .form-input:focus,
+.po-two-panel input:focus,
+.po-two-panel select:focus,
+.po-two-panel textarea:focus {
   border-color: #0073ea !important;
   box-shadow: 0 0 0 2px rgba(0, 115, 234, 0.15);
   outline: none;
+}
+
+/* Select dropdown styling */
+.po-two-panel select option {
+  background: #ffffff;
+  color: #323338;
 }
 
 .form-row-2 {
@@ -9897,22 +9915,7 @@ textarea.form-control {
   align-items: center;
 }
 
-.po-two-panel .line-item-edit select,
-.po-two-panel .line-item-edit input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  background: #ffffff !important;
-  border: 1px solid #c5c7d0 !important;
-  border-radius: 4px;
-  color: #323338 !important;
-  font-size: 0.8125rem;
-}
-
-.po-two-panel .line-item-edit select:focus,
-.po-two-panel .line-item-edit input:focus {
-  border-color: #0073ea !important;
-  outline: none;
-}
+/* Line item edit inputs already covered by general input styles above */
 
 .line-item-edit .form-input.amount {
   text-align: right;
