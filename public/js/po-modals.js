@@ -438,20 +438,76 @@ class POModals {
 
   async openAttachment(attachmentId) {
     try {
+      // Find the attachment info
+      const att = this.attachments.find(a => a.id === attachmentId);
+      if (!att) throw new Error('Attachment not found');
+
       const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/attachments/${attachmentId}/url`);
       if (!res.ok) throw new Error('Failed to get URL');
       const data = await res.json();
+
       if (data.url) {
-        // Open in a new window (not tab) with specific dimensions
-        const width = Math.min(1200, window.screen.width - 100);
-        const height = Math.min(800, window.screen.height - 100);
-        const left = (window.screen.width - width) / 2;
-        const top = (window.screen.height - height) / 2;
-        window.open(data.url, 'attachment_viewer', `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes`);
+        this.showAttachmentViewer(data.url, att.file_name, att.file_type);
       }
     } catch (err) {
       window.showToast?.('Failed to open attachment', 'error');
     }
+  }
+
+  showAttachmentViewer(url, fileName, fileType) {
+    // Remove existing viewer if any
+    const existing = document.getElementById('attachmentViewer');
+    if (existing) existing.remove();
+
+    const isImage = fileType === 'image';
+    const isPdf = fileType === 'pdf';
+
+    const viewer = document.createElement('div');
+    viewer.id = 'attachmentViewer';
+    viewer.className = 'attachment-viewer-overlay';
+    viewer.innerHTML = `
+      <div class="attachment-viewer-container">
+        <div class="attachment-viewer-header">
+          <span class="viewer-filename">${this.escapeHtml(fileName)}</span>
+          <div class="viewer-actions">
+            <a href="${url}" download="${this.escapeHtml(fileName)}" class="btn btn-secondary btn-sm">Download</a>
+            <button class="btn-close-viewer" onclick="window.poModals.closeAttachmentViewer()">×</button>
+          </div>
+        </div>
+        <div class="attachment-viewer-content">
+          ${isPdf ? `<iframe src="${url}" class="pdf-viewer-frame"></iframe>` : ''}
+          ${isImage ? `<img src="${url}" alt="${this.escapeHtml(fileName)}" class="image-viewer">` : ''}
+          ${!isPdf && !isImage ? `
+            <div class="unsupported-preview">
+              <span class="preview-icon">${this.getFileIcon(fileType)}</span>
+              <p>Preview not available for this file type</p>
+              <a href="${url}" download="${this.escapeHtml(fileName)}" class="btn btn-primary">Download File</a>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    // Close on backdrop click
+    viewer.addEventListener('click', (e) => {
+      if (e.target === viewer) this.closeAttachmentViewer();
+    });
+
+    // Close on Escape key
+    const escHandler = (e) => {
+      if (e.key === 'Escape') {
+        this.closeAttachmentViewer();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    document.body.appendChild(viewer);
+  }
+
+  closeAttachmentViewer() {
+    const viewer = document.getElementById('attachmentViewer');
+    if (viewer) viewer.remove();
   }
 
   formatFileSize(bytes) {
