@@ -9713,6 +9713,32 @@ textarea.form-control {
   color: #856404;
 }
 
+/* Override dark theme for invoice items in po-two-panel */
+#poModal .po-two-panel .invoice-item {
+  background: #f6f7fb;
+}
+
+#poModal .po-two-panel .invoice-item:hover {
+  background: #e6e9ef;
+}
+
+#poModal .po-two-panel .inv-number {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #0073ea !important;
+}
+
+#poModal .po-two-panel .inv-date {
+  font-size: 0.75rem;
+  color: #9699a6 !important;
+}
+
+#poModal .po-two-panel .inv-amount {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #323338 !important;
+}
+
 /* Upload area */
 .upload-area {
   margin-bottom: 0.75rem;
