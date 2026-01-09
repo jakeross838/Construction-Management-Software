@@ -442,7 +442,12 @@ class POModals {
       if (!res.ok) throw new Error('Failed to get URL');
       const data = await res.json();
       if (data.url) {
-        window.open(data.url, '_blank');
+        // Open in a new window (not tab) with specific dimensions
+        const width = Math.min(1200, window.screen.width - 100);
+        const height = Math.min(800, window.screen.height - 100);
+        const left = (window.screen.width - width) / 2;
+        const top = (window.screen.height - height) / 2;
+        window.open(data.url, 'attachment_viewer', `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes`);
       }
     } catch (err) {
       window.showToast?.('Failed to open attachment', 'error');
