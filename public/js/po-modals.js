@@ -47,9 +47,13 @@ class POModals {
         fetch(`/api/purchase-orders/${poId}/attachments`)
       ]);
 
-      this.currentPO.invoices = await invRes.json();
-      this.currentPO.activity = await actRes.json();
-      this.attachments = await attRes.json();
+      const invoicesData = await invRes.json();
+      const activityData = await actRes.json();
+      const attachmentsData = await attRes.json();
+
+      this.currentPO.invoices = Array.isArray(invoicesData) ? invoicesData : [];
+      this.currentPO.activity = Array.isArray(activityData) ? activityData : [];
+      this.attachments = Array.isArray(attachmentsData) ? attachmentsData : [];
 
       this.renderPOModal();
     } catch (err) {
@@ -576,28 +580,46 @@ class POModals {
         <button class="btn btn-primary" onclick="window.poModals.savePO()">Save Changes</button>
       `;
     } else {
-      const status = po.status_detail || 'pending';
-      const approval = po.approval_status || 'pending';
+      // Simplified status workflow: draft → sent → approved → closed
+      const statusDetail = po.status_detail || 'pending';
+      const approvalStatus = po.approval_status || 'pending';
 
-      if (status === 'pending') {
+      // Determine effective status
+      let effectiveStatus = 'draft';
+      if (statusDetail === 'voided' || statusDetail === 'cancelled') effectiveStatus = 'voided';
+      else if (statusDetail === 'closed' || statusDetail === 'completed') effectiveStatus = 'completed';
+      else if (approvalStatus === 'approved' || statusDetail === 'approved') effectiveStatus = 'approved';
+      else if (statusDetail === 'sent' || statusDetail === 'active') effectiveStatus = 'sent';
+
+      // Left side: Delete (only for draft)
+      if (effectiveStatus === 'draft') {
         left = `<button class="btn btn-danger-outline" onclick="window.poModals.deletePO()">Delete</button>`;
       }
 
+      // Right side: Always show Close button
       right = `<button class="btn btn-secondary" onclick="window.poModals.closeModal()">Close</button>`;
 
-      if (status !== 'closed') {
+      // Edit button (not for completed/voided)
+      if (!['completed', 'voided'].includes(effectiveStatus)) {
         right += `<button class="btn btn-secondary" onclick="window.poModals.startEdit()">Edit</button>`;
       }
 
-      if (status === 'pending' && approval === 'pending') {
-        right += `<button class="btn btn-primary" onclick="window.poModals.submitForApproval()">Submit for Approval</button>`;
-      } else if (approval === 'pending' && status !== 'pending') {
-        right += `<button class="btn btn-danger-outline" onclick="window.poModals.rejectPO()">Reject</button>`;
-        right += `<button class="btn btn-success" onclick="window.poModals.approvePO()">Approve</button>`;
-      } else if (['approved', 'active'].includes(status)) {
-        right += `<button class="btn btn-secondary" onclick="window.poModals.closePO()">Close PO</button>`;
-      } else if (status === 'closed') {
-        right += `<button class="btn btn-secondary" onclick="window.poModals.reopenPO()">Reopen</button>`;
+      // Status-specific actions
+      switch (effectiveStatus) {
+        case 'draft':
+          right += `<button class="btn btn-primary" onclick="window.poModals.sendPO()">Send to Vendor</button>`;
+          break;
+        case 'sent':
+          left += `<button class="btn btn-danger-outline" onclick="window.poModals.voidPO()">Void</button>`;
+          right += `<button class="btn btn-success" onclick="window.poModals.approvePO()">Approve</button>`;
+          break;
+        case 'approved':
+          left += `<button class="btn btn-danger-outline" onclick="window.poModals.voidPO()">Void</button>`;
+          right += `<button class="btn btn-success" onclick="window.poModals.completePO()">Mark Complete</button>`;
+          break;
+        case 'completed':
+          right += `<button class="btn btn-secondary" onclick="window.poModals.reopenPO()">Reopen</button>`;
+          break;
       }
     }
 
@@ -769,84 +791,180 @@ class POModals {
   }
 
   async submitForApproval() {
-    if (!confirm('Submit this PO for approval?')) return;
-    try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/submit`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed');
-      window.showToast?.('Submitted for approval', 'success');
-      if (window.loadPOs) window.loadPOs();
-      this.openPO(this.currentPO.id);
-    } catch (err) { window.showToast?.(err.message, 'error'); }
+    // Legacy method - redirect to sendPO
+    return this.sendPO();
+  }
+
+  async sendPO() {
+    const poId = this.currentPO.id;
+    window.showConfirmDialog(
+      'Send to Vendor',
+      'Send this PO to the vendor? This will commit the amount to the job budget.',
+      'Send PO',
+      'btn-primary',
+      async () => {
+        try {
+          const res = await fetch(`/api/purchase-orders/${poId}/send`, { method: 'POST' });
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to send PO');
+          }
+          window.showToast?.('PO sent to vendor', 'success');
+          if (window.loadPOs) window.loadPOs();
+          window.poModals.openPO(poId);
+        } catch (err) { window.showToast?.(err.message, 'error'); }
+      }
+    );
   }
 
   async approvePO() {
-    if (!confirm('Approve this PO?')) return;
-    try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/approve`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed');
-      window.showToast?.('PO approved', 'success');
-      if (window.loadPOs) window.loadPOs();
-      this.openPO(this.currentPO.id);
-    } catch (err) { window.showToast?.(err.message, 'error'); }
+    const poId = this.currentPO.id;
+    window.showConfirmDialog(
+      'Approve PO',
+      'Approve this purchase order?',
+      'Approve',
+      'btn-success',
+      async () => {
+        try {
+          const res = await fetch(`/api/purchase-orders/${poId}/approve`, { method: 'POST' });
+          if (!res.ok) throw new Error('Failed');
+          window.showToast?.('PO approved', 'success');
+          if (window.loadPOs) window.loadPOs();
+          window.poModals.openPO(poId);
+        } catch (err) { window.showToast?.(err.message, 'error'); }
+      }
+    );
   }
 
   async rejectPO() {
-    const reason = prompt('Reason for rejection:');
-    if (reason === null) return;
-    try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
-      if (!res.ok) throw new Error('Failed');
-      window.showToast?.('PO rejected', 'success');
-      if (window.loadPOs) window.loadPOs();
-      this.openPO(this.currentPO.id);
-    } catch (err) { window.showToast?.(err.message, 'error'); }
+    const poId = this.currentPO.id;
+    window.showConfirmDialog(
+      'Reject PO',
+      'Are you sure you want to reject this purchase order?',
+      'Reject',
+      'btn-danger',
+      async (reason) => {
+        try {
+          const res = await fetch(`/api/purchase-orders/${poId}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+          if (!res.ok) throw new Error('Failed');
+          window.showToast?.('PO rejected', 'success');
+          if (window.loadPOs) window.loadPOs();
+          window.poModals.openPO(poId);
+        } catch (err) { window.showToast?.(err.message, 'error'); }
+      },
+      { label: 'Reason for rejection', placeholder: 'Enter reason...', required: true }
+    );
   }
 
   async closePO() {
-    if (!confirm('Close this PO?')) return;
-    try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/close`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed');
-      window.showToast?.('PO closed', 'success');
-      if (window.loadPOs) window.loadPOs();
-      this.openPO(this.currentPO.id);
-    } catch (err) { window.showToast?.(err.message, 'error'); }
+    // Legacy - redirect to completePO
+    return this.completePO();
+  }
+
+  async completePO() {
+    const poId = this.currentPO.id;
+    window.showConfirmDialog(
+      'Complete PO',
+      'Mark this purchase order as complete?',
+      'Mark Complete',
+      'btn-success',
+      async () => {
+        try {
+          const res = await fetch(`/api/purchase-orders/${poId}/complete`, { method: 'POST' });
+          if (!res.ok) throw new Error('Failed');
+          window.showToast?.('PO marked complete', 'success');
+          if (window.loadPOs) window.loadPOs();
+          window.poModals.openPO(poId);
+        } catch (err) { window.showToast?.(err.message, 'error'); }
+      }
+    );
+  }
+
+  async voidPO() {
+    const poId = this.currentPO.id;
+    window.showConfirmDialog(
+      'Void PO',
+      'Are you sure you want to void this purchase order? This will remove it from budget commitments.',
+      'Void PO',
+      'btn-danger',
+      async (reason) => {
+        try {
+          const res = await fetch(`/api/purchase-orders/${poId}/void`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+          });
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to void PO');
+          }
+          window.showToast?.('PO voided', 'success');
+          if (window.loadPOs) window.loadPOs();
+          window.poModals.openPO(poId);
+        } catch (err) { window.showToast?.(err.message, 'error'); }
+      },
+      { label: 'Reason for voiding', placeholder: 'Enter reason...', required: true }
+    );
   }
 
   async reopenPO() {
-    if (!confirm('Reopen this PO?')) return;
-    try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/reopen`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed');
-      window.showToast?.('PO reopened', 'success');
-      if (window.loadPOs) window.loadPOs();
-      this.openPO(this.currentPO.id);
-    } catch (err) { window.showToast?.(err.message, 'error'); }
+    const poId = this.currentPO.id;
+    window.showConfirmDialog(
+      'Reopen PO',
+      'Reopen this purchase order?',
+      'Reopen',
+      'btn-primary',
+      async () => {
+        try {
+          const res = await fetch(`/api/purchase-orders/${poId}/reopen`, { method: 'POST' });
+          if (!res.ok) throw new Error('Failed');
+          window.showToast?.('PO reopened', 'success');
+          if (window.loadPOs) window.loadPOs();
+          window.poModals.openPO(poId);
+        } catch (err) { window.showToast?.(err.message, 'error'); }
+      }
+    );
   }
 
   async deletePO() {
-    if (!confirm('Delete this PO?')) return;
-    try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed');
-      window.showToast?.('PO deleted', 'success');
-      if (window.loadPOs) window.loadPOs();
-      this.closeModal();
-    } catch (err) { window.showToast?.(err.message, 'error'); }
+    const poId = this.currentPO.id;
+    window.showConfirmDialog(
+      'Delete PO',
+      'Are you sure you want to delete this purchase order? This action cannot be undone.',
+      'Delete',
+      'btn-danger',
+      async () => {
+        try {
+          const res = await fetch(`/api/purchase-orders/${poId}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Failed');
+          window.showToast?.('PO deleted', 'success');
+          if (window.loadPOs) window.loadPOs();
+          window.poModals.closeModal();
+        } catch (err) { window.showToast?.(err.message, 'error'); }
+      }
+    );
   }
 
   async downloadAttachment(id) { window.open(`/api/attachments/${id}/download`, '_blank'); }
 
   async deleteAttachment(id) {
-    if (!confirm('Delete attachment?')) return;
-    try {
-      const res = await fetch(`/api/attachments/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed');
-      window.showToast?.('Deleted', 'success');
-      const attRes = await fetch(`/api/purchase-orders/${this.currentPO.id}/attachments`);
-      this.attachments = await attRes.json();
-      this.renderPOModal();
-    } catch (err) { window.showToast?.(err.message, 'error'); }
+    const poId = this.currentPO.id;
+    window.showConfirmDialog(
+      'Delete Attachment',
+      'Are you sure you want to delete this attachment?',
+      'Delete',
+      'btn-danger',
+      async () => {
+        try {
+          const res = await fetch(`/api/attachments/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Failed');
+          window.showToast?.('Attachment deleted', 'success');
+          const attRes = await fetch(`/api/purchase-orders/${poId}/attachments`);
+          window.poModals.attachments = await attRes.json();
+          window.poModals.renderPOModal();
+        } catch (err) { window.showToast?.(err.message, 'error'); }
+      }
+    );
   }
 
   // Utility
@@ -855,8 +973,24 @@ class POModals {
   formatRelativeTime(d) { if (!d) return ''; const ms = Date.now() - new Date(d); const m = Math.floor(ms/60000), h = Math.floor(ms/3600000), day = Math.floor(ms/86400000); if (m < 1) return 'now'; if (m < 60) return m + 'm'; if (h < 24) return h + 'h'; if (day < 7) return day + 'd'; return this.formatDate(d); }
   formatStatus(s) { return { received: 'Received', needs_approval: 'Needs Approval', approved: 'Approved', in_draw: 'In Draw', paid: 'Paid', denied: 'Denied' }[s] || s; }
   escapeHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  getStatusClass(sd, as) { if (as === 'rejected') return 'rejected'; if (as === 'approved') return 'approved'; if (sd === 'closed') return 'closed'; if (sd === 'active') return 'active'; return 'draft'; }
-  getStatusLabel(sd, as) { if (as === 'rejected') return 'Rejected'; if (as === 'approved' && sd === 'closed') return 'Closed'; if (as === 'approved') return 'Approved'; if (sd === 'active') return 'Active'; return 'Draft'; }
+  getStatusClass(sd, as) {
+    // Simplified status: draft → sent → approved → completed
+    if (sd === 'voided' || sd === 'cancelled') return 'voided';
+    if (sd === 'closed' || sd === 'completed') return 'completed';
+    if (as === 'rejected') return 'rejected';
+    if (as === 'approved' || sd === 'approved') return 'approved';
+    if (sd === 'sent' || sd === 'active') return 'sent';
+    return 'draft';
+  }
+  getStatusLabel(sd, as) {
+    // Simplified status labels
+    if (sd === 'voided' || sd === 'cancelled') return 'Voided';
+    if (sd === 'closed' || sd === 'completed') return 'Completed';
+    if (as === 'rejected') return 'Rejected';
+    if (as === 'approved' || sd === 'approved') return 'Approved';
+    if (sd === 'sent' || sd === 'active') return 'Sent';
+    return 'Draft';
+  }
   getFileIcon(t) { if (!t) return '📎'; if (t.includes('pdf')) return '📄'; if (t.includes('image')) return '🖼️'; if (t.includes('excel')||t.includes('spreadsheet')) return '📊'; return '📎'; }
 }
 

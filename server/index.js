@@ -348,6 +348,7 @@ app.get('/api/jobs/:id/purchase-orders', async (req, res) => {
         vendor:v2_vendors(id, name)
       `)
       .eq('job_id', req.params.id)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -434,6 +435,7 @@ app.get('/api/purchase-orders', async (req, res) => {
           cost_code:v2_cost_codes(id, code, name)
         )
       `)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (job_id) query = query.eq('job_id', job_id);
@@ -684,7 +686,58 @@ app.delete('/api/purchase-orders/:id', asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Purchase order deleted' });
 }));
 
-// Submit PO for approval
+// Send PO to vendor (draft → sent, commits to budget)
+app.post('/api/purchase-orders/:id/send', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { sent_by } = req.body;
+
+  const { data: po, error: fetchError } = await supabase
+    .from('v2_purchase_orders')
+    .select('*, line_items:v2_po_line_items(id, cost_code_id, amount)')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Only draft POs can be sent
+  const draftStatuses = [null, undefined, 'pending', 'draft'];
+  if (!draftStatuses.includes(po.status_detail)) {
+    throw new AppError('VALIDATION_FAILED', 'Only draft POs can be sent to vendor');
+  }
+
+  // Update PO status to sent
+  const { data: updated, error } = await supabase
+    .from('v2_purchase_orders')
+    .update({
+      status_detail: 'sent',
+      status: 'open'
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Log activity
+  await supabase
+    .from('v2_po_activity')
+    .insert({
+      po_id: id,
+      action: 'sent',
+      performed_by: sent_by || 'system',
+      details: { total_amount: po.total_amount }
+    });
+
+  // Broadcast update
+  broadcast({ type: 'po_update', data: { id, action: 'sent' } });
+
+  res.json({ success: true, po: updated });
+}));
+
+// Submit PO for approval (legacy - redirects to send)
 app.post('/api/purchase-orders/:id/submit', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { submitted_by } = req.body;
@@ -874,7 +927,55 @@ app.post('/api/purchase-orders/:id/reject', asyncHandler(async (req, res) => {
   res.json({ success: true, po: updated });
 }));
 
-// Close PO
+// Complete PO (alias: close)
+app.post('/api/purchase-orders/:id/complete', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { completed_by } = req.body;
+
+  const { data: po, error: fetchError } = await supabase
+    .from('v2_purchase_orders')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  if (!['approved', 'active', 'sent'].includes(po.status_detail) && po.approval_status !== 'approved') {
+    throw new AppError('VALIDATION_FAILED', 'Only sent or approved POs can be completed');
+  }
+
+  const { data: updated, error } = await supabase
+    .from('v2_purchase_orders')
+    .update({
+      status: 'closed',
+      status_detail: 'completed',
+      closed_at: new Date().toISOString(),
+      closed_by: completed_by || 'system'
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Log activity
+  await supabase
+    .from('v2_po_activity')
+    .insert({
+      po_id: id,
+      action: 'completed',
+      performed_by: completed_by || 'system',
+      details: {}
+    });
+
+  broadcast({ type: 'po_update', data: { id, action: 'completed' } });
+  res.json({ success: true, po: updated });
+}));
+
+// Close PO (legacy - redirects to complete)
 app.post('/api/purchase-orders/:id/close', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { closed_by, reason } = req.body;
@@ -898,7 +999,7 @@ app.post('/api/purchase-orders/:id/close', asyncHandler(async (req, res) => {
     .from('v2_purchase_orders')
     .update({
       status: 'closed',
-      status_detail: 'closed',
+      status_detail: 'completed',
       closed_at: new Date().toISOString(),
       closed_by: closed_by || 'system',
       closed_reason: reason || 'Manually closed'
@@ -914,11 +1015,65 @@ app.post('/api/purchase-orders/:id/close', asyncHandler(async (req, res) => {
     .from('v2_po_activity')
     .insert({
       po_id: id,
-      action: 'closed',
+      action: 'completed',
       performed_by: closed_by || 'system',
       details: { reason }
     });
 
+  res.json({ success: true, po: updated });
+}));
+
+// Void PO (cancels PO and removes budget commitment)
+app.post('/api/purchase-orders/:id/void', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { reason, voided_by } = req.body;
+
+  if (!reason || !reason.trim()) {
+    throw new AppError('VALIDATION_FAILED', 'Reason is required for voiding a PO');
+  }
+
+  const { data: po, error: fetchError } = await supabase
+    .from('v2_purchase_orders')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Can void any PO that's not already voided or completed
+  if (['voided', 'cancelled', 'completed', 'closed'].includes(po.status_detail)) {
+    throw new AppError('VALIDATION_FAILED', 'This PO cannot be voided');
+  }
+
+  const { data: updated, error } = await supabase
+    .from('v2_purchase_orders')
+    .update({
+      status: 'cancelled',
+      status_detail: 'voided',
+      voided_at: new Date().toISOString(),
+      voided_by: voided_by || 'system',
+      voided_reason: reason
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Log activity
+  await supabase
+    .from('v2_po_activity')
+    .insert({
+      po_id: id,
+      action: 'voided',
+      performed_by: voided_by || 'system',
+      details: { reason }
+    });
+
+  broadcast({ type: 'po_update', data: { id, action: 'voided' } });
   res.json({ success: true, po: updated });
 }));
 
@@ -938,15 +1093,15 @@ app.post('/api/purchase-orders/:id/reopen', asyncHandler(async (req, res) => {
     throw new AppError('NOT_FOUND', 'Purchase order not found');
   }
 
-  if (po.status_detail !== 'closed') {
-    throw new AppError('VALIDATION_FAILED', 'Only closed POs can be reopened');
+  if (!['closed', 'completed'].includes(po.status_detail)) {
+    throw new AppError('VALIDATION_FAILED', 'Only closed or completed POs can be reopened');
   }
 
   const { data: updated, error } = await supabase
     .from('v2_purchase_orders')
     .update({
       status: 'open',
-      status_detail: 'active',
+      status_detail: 'approved',
       closed_at: null,
       closed_by: null,
       closed_reason: null
@@ -978,7 +1133,7 @@ app.get('/api/purchase-orders/:id/activity', asyncHandler(async (req, res) => {
     .from('v2_po_activity')
     .select('*')
     .eq('po_id', id)
-    .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
@@ -997,7 +1152,8 @@ app.get('/api/purchase-orders/:id/invoices', asyncHandler(async (req, res) => {
     `)
     .eq('po_id', id)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false });
+    .is('deleted_at', null)
+      .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
@@ -1011,7 +1167,7 @@ app.get('/api/purchase-orders/:id/attachments', asyncHandler(async (req, res) =>
     .from('v2_po_attachments')
     .select('*')
     .eq('po_id', id)
-    .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data || []);
@@ -1184,6 +1340,7 @@ app.get('/api/invoices', async (req, res) => {
         )
       `)
       .is('deleted_at', null)  // Filter out soft-deleted invoices
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (job_id) query = query.eq('job_id', job_id);
@@ -1209,7 +1366,8 @@ app.get('/api/invoices/needs-review', asyncHandler(async (req, res) => {
     `)
     .eq('needs_review', true)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false });
+    .is('deleted_at', null)
+      .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
@@ -1226,7 +1384,8 @@ app.get('/api/invoices/low-confidence', asyncHandler(async (req, res) => {
     `)
     .eq('ai_processed', true)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false });
+    .is('deleted_at', null)
+      .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -1249,7 +1408,8 @@ app.get('/api/invoices/no-job', asyncHandler(async (req, res) => {
     `)
     .is('job_id', null)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false });
+    .is('deleted_at', null)
+      .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
@@ -1295,6 +1455,7 @@ app.get('/api/invoices/:id/activity', async (req, res) => {
       .from('v2_invoice_activity')
       .select('*')
       .eq('invoice_id', req.params.id)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -2234,16 +2395,17 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       `)
       .eq('invoice.job_id', jobId);
 
-    // Get committed amounts from POs
+    // Get committed amounts from POs (only sent or approved POs commit to budget)
     const { data: poLines } = await supabase
       .from('v2_po_line_items')
       .select(`
         amount,
         cost_code_id,
-        po:v2_purchase_orders!inner(job_id, status)
+        po:v2_purchase_orders!inner(job_id, status, status_detail, approval_status)
       `)
       .eq('po.job_id', jobId)
-      .neq('po.status', 'cancelled');
+      .neq('po.status', 'cancelled')
+      .or('status_detail.eq.sent,status_detail.eq.approved,approval_status.eq.approved', { foreignTable: 'po' });
 
     // Build actuals and committed by cost code
     const actualsByCostCode = {};
@@ -2339,6 +2501,7 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
         po:v2_purchase_orders!inner(id, po_number, job_id, vendor:v2_vendors(id, name))
       `)
       .eq('po.job_id', jobId)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     // Calculate change order totals (only approved ones affect contract)
@@ -2802,6 +2965,7 @@ app.get('/api/draws/:id', async (req, res) => {
       .from('v2_draw_activity')
       .select('*')
       .eq('draw_id', drawId)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     res.json({
@@ -3597,6 +3761,7 @@ app.get('/api/change-orders/:id', async (req, res) => {
       .from('v2_job_co_activity')
       .select('*')
       .eq('change_order_id', id)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     res.json({ ...co, activity: activity || [] });
@@ -4126,6 +4291,7 @@ app.get('/api/draws/:id/activity', async (req, res) => {
       .from('v2_draw_activity')
       .select('*')
       .eq('draw_id', drawId)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;

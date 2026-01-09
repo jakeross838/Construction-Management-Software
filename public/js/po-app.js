@@ -284,34 +284,25 @@ function renderPOCard(po) {
   `;
 }
 
-function getStatusLabel(status, approvalStatus) {
-  if (approvalStatus === 'rejected') return 'Rejected';
-  if (approvalStatus === 'pending' && status === 'pending') return 'Pending Approval';
 
-  const labels = {
-    pending: 'Draft',
-    approved: 'Approved',
-    active: 'Active',
-    open: 'Active',
-    closed: 'Closed',
-    cancelled: 'Cancelled'
-  };
-  return labels[status] || status;
+function getStatusLabel(statusDetail, approvalStatus) {
+  // Simplified workflow: Draft → Sent → Approved → Completed (or Voided)
+  if (statusDetail === 'voided' || statusDetail === 'cancelled') return 'Voided';
+  if (statusDetail === 'closed' || statusDetail === 'completed') return 'Completed';
+  if (approvalStatus === 'rejected') return 'Rejected';
+  if (approvalStatus === 'approved' || statusDetail === 'approved') return 'Approved';
+  if (statusDetail === 'sent' || statusDetail === 'active') return 'Sent';
+  return 'Draft';
 }
 
-function getStatusClass(status, approvalStatus) {
+function getStatusClass(statusDetail, approvalStatus) {
+  // Simplified workflow: Draft → Sent → Approved → Completed (or Voided)
+  if (statusDetail === 'voided' || statusDetail === 'cancelled') return 'voided';
+  if (statusDetail === 'closed' || statusDetail === 'completed') return 'completed';
   if (approvalStatus === 'rejected') return 'rejected';
-  if (approvalStatus === 'pending' && status === 'pending') return 'pending-approval';
-
-  const classes = {
-    pending: 'pending',
-    approved: 'approved',
-    active: 'active',
-    open: 'active',
-    closed: 'closed',
-    cancelled: 'cancelled'
-  };
-  return classes[status] || 'pending';
+  if (approvalStatus === 'approved' || statusDetail === 'approved') return 'approved';
+  if (statusDetail === 'sent' || statusDetail === 'active') return 'sent';
+  return 'draft';
 }
 
 // ============================================================
@@ -378,3 +369,62 @@ async function refreshPOList() {
 // Export for modals
 window.poState = state;
 window.refreshPOList = refreshPOList;
+
+// ============================================================
+// CONFIRM DIALOG
+// ============================================================
+
+let confirmCallback = null;
+
+
+function showConfirmDialog(title, message, buttonText, buttonClass, callback, inputOptions) {
+  const dialog = document.getElementById('confirmDialog');
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMessage').textContent = message;
+
+  const inputDiv = document.getElementById('confirmInput');
+  const inputField = document.getElementById('confirmInputField');
+  const inputLabel = document.getElementById('confirmInputLabel');
+
+  if (inputOptions) {
+    inputDiv.style.display = 'block';
+    inputLabel.textContent = inputOptions.label || '';
+    inputField.value = '';
+    inputField.placeholder = inputOptions.placeholder || '';
+    inputField.required = inputOptions.required || false;
+  } else {
+    inputDiv.style.display = 'none';
+  }
+
+  const btn = document.getElementById('confirmBtn');
+  btn.textContent = buttonText || 'Confirm';
+  btn.className = 'btn ' + (buttonClass || 'btn-primary');
+
+  confirmCallback = callback;
+  btn.onclick = () => {
+    const inputValue = inputOptions ? inputField.value : null;
+    if (inputOptions?.required && !inputValue?.trim()) {
+      window.showToast?.('Please fill in the required field', 'error');
+      return;
+    }
+    const cb = confirmCallback;
+    closeConfirmModal();
+    if (cb) cb(inputValue);
+  };
+
+  // Show dialog with proper class for opacity transition
+  dialog.style.display = 'flex';
+  dialog.classList.add('show');
+  if (inputOptions) inputField.focus();
+}
+
+function closeConfirmModal() {
+  const dialog = document.getElementById('confirmDialog');
+  dialog.classList.remove('show');
+  dialog.style.display = 'none';
+  document.getElementById('confirmInputField').value = '';
+  confirmCallback = null;
+}
+
+window.showConfirmDialog = showConfirmDialog;
+window.closeConfirmModal = closeConfirmModal;
