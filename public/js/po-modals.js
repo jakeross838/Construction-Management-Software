@@ -241,36 +241,6 @@ class POModals {
         `}
       </div>
 
-      <!-- Attachments -->
-      <div class="po-card">
-        <div class="card-title-row">
-          <h4>Attachments</h4>
-          ${this.attachments.length > 0 ? `<span class="count-badge">${this.attachments.length}</span>` : ''}
-        </div>
-
-        <div class="upload-area" id="uploadZone">
-          <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="display:none">
-          <div class="upload-trigger" onclick="document.getElementById('fileInput').click()">
-            <span class="upload-icon">+</span>
-            <span class="upload-label">Add files</span>
-          </div>
-        </div>
-
-        ${this.attachments.length === 0 ? `
-          <p class="empty-text">No attachments</p>
-        ` : `
-          <div class="attachment-list">
-            ${this.attachments.map(att => `
-              <div class="attachment-item">
-                <span class="att-icon">${this.getFileIcon(att.file_type)}</span>
-                <span class="att-name">${this.escapeHtml(att.file_name)}</span>
-                <button class="btn-icon-sm" onclick="window.poModals.downloadAttachment('${att.id}')" title="Download">↓</button>
-                <button class="btn-icon-sm danger" onclick="window.poModals.deleteAttachment('${att.id}')" title="Delete">×</button>
-              </div>
-            `).join('')}
-          </div>
-        `}
-      </div>
     `;
   }
 
@@ -333,6 +303,8 @@ class POModals {
           <textarea id="poNotes" rows="2" class="form-input" placeholder="Notes...">${this.escapeHtml(po.notes || '')}</textarea>
         </div>
       </div>
+
+      ${this.renderAttachmentsSection()}
     `;
   }
 
@@ -402,8 +374,86 @@ class POModals {
       </div>
       ` : ''}
 
+      ${this.renderAttachmentsSection()}
+
       ${this.renderActivity()}
     `;
+  }
+
+  // ============================================================
+  // ATTACHMENTS SECTION (Right Panel)
+  // ============================================================
+
+  renderAttachmentsSection() {
+    const isNew = !this.currentPO.id;
+
+    return `
+      <div class="po-card">
+        <div class="card-title-row">
+          <h4>Attachments</h4>
+          ${this.attachments.length > 0 ? `<span class="count-badge">${this.attachments.length}</span>` : ''}
+        </div>
+
+        ${!isNew ? `
+        <div class="upload-area" id="uploadZone">
+          <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="display:none">
+          <div class="upload-trigger" onclick="document.getElementById('fileInput').click()">
+            <span class="upload-icon">+</span>
+            <span class="upload-label">Add files</span>
+          </div>
+        </div>
+        ` : `
+        <p class="empty-text">Save PO first to add attachments</p>
+        `}
+
+        ${this.attachments.length === 0 ? '' : `
+          <div class="attachments-grid">
+            ${this.attachments.map(att => this.renderAttachmentPreview(att)).join('')}
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  renderAttachmentPreview(att) {
+    const isImage = att.file_type === 'image';
+    const isPdf = att.file_type === 'pdf';
+    const previewUrl = att.storage_path ? `/api/purchase-orders/${this.currentPO.id}/attachments/${att.id}/url` : null;
+
+    return `
+      <div class="attachment-preview" onclick="window.poModals.openAttachment('${att.id}')">
+        <div class="attachment-thumb ${att.file_type}">
+          ${isImage ? `<img src="${previewUrl}" alt="${this.escapeHtml(att.file_name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="thumb-icon" style="display:none">🖼️</span>` : ''}
+          ${isPdf ? `<span class="thumb-icon">📄</span>` : ''}
+          ${!isImage && !isPdf ? `<span class="thumb-icon">${this.getFileIcon(att.file_type)}</span>` : ''}
+        </div>
+        <div class="attachment-info">
+          <span class="att-filename">${this.escapeHtml(att.file_name)}</span>
+          <span class="att-size">${this.formatFileSize(att.file_size)}</span>
+        </div>
+        <button class="btn-delete-att" onclick="event.stopPropagation(); window.poModals.deleteAttachment('${att.id}')" title="Delete">×</button>
+      </div>
+    `;
+  }
+
+  async openAttachment(attachmentId) {
+    try {
+      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/attachments/${attachmentId}/url`);
+      if (!res.ok) throw new Error('Failed to get URL');
+      const data = await res.json();
+      if (data.url) {
+        window.open(data.url, '_blank');
+      }
+    } catch (err) {
+      window.showToast?.('Failed to open attachment', 'error');
+    }
+  }
+
+  formatFileSize(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
   renderActivity() {
