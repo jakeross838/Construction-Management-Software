@@ -38,10 +38,10 @@ test.describe('PO Modal - Final Verification', () => {
     expect(formInputs).toBe(0);
     console.log('✓ No form inputs (read-only mode)');
 
-    // Should have info-grid with values
-    const infoGrid = await page.locator('#poModal .info-grid').count();
-    expect(infoGrid).toBeGreaterThan(0);
-    console.log('✓ Info grid present');
+    // Should have two-panel layout with info section
+    const leftPanel = await page.locator('#poModal .po-left-panel').count();
+    expect(leftPanel).toBe(1);
+    console.log('✓ Two-panel layout present');
 
     // Should have Edit button
     const editBtn = page.locator('#poModalFooter button:has-text("Edit")');

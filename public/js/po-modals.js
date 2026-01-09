@@ -1,5 +1,5 @@
 // ============================================================
-// PO MODALS - Clean Design (Matching Invoice Modal Style)
+// PO MODALS - Two Panel Layout
 // ============================================================
 
 class POModals {
@@ -35,14 +35,12 @@ class POModals {
       document.getElementById('poModalBody').innerHTML = '<div class="loading">Loading...</div>';
       this.openModal();
 
-      // Load PO data
       const res = await fetch(`/api/purchase-orders/${poId}`);
       if (!res.ok) throw new Error('Failed to load PO');
 
       this.currentPO = await res.json();
       this.currentLineItems = this.currentPO.line_items || [];
 
-      // Load additional data in parallel
       const [invRes, actRes, attRes] = await Promise.all([
         fetch(`/api/purchase-orders/${poId}/invoices`),
         fetch(`/api/purchase-orders/${poId}/activity`),
@@ -90,7 +88,7 @@ class POModals {
   }
 
   // ============================================================
-  // RENDER MODAL - SINGLE PANEL DESIGN
+  // RENDER MODAL - TWO PANEL LAYOUT
   // ============================================================
 
   renderPOModal() {
@@ -112,9 +110,9 @@ class POModals {
       }
     }
 
-    // Render single body panel
+    // Render two-panel body
     const body = document.getElementById('poModalBody');
-    body.innerHTML = this.renderModalContent();
+    body.innerHTML = this.renderTwoPanelLayout();
 
     this.renderFooterActions();
 
@@ -125,69 +123,134 @@ class POModals {
   }
 
   // ============================================================
-  // MODAL CONTENT - UNIFIED LAYOUT
+  // TWO PANEL LAYOUT
   // ============================================================
 
-  renderModalContent() {
+  renderTwoPanelLayout() {
     const po = this.currentPO;
     const isNew = !po.id;
-    // Only allow editing when creating new or explicitly in edit mode
     const canEdit = isNew || this.isEditing;
 
     return `
-      ${!isNew ? this.renderSummaryCard() : ''}
-      ${this.renderDetailsSection(canEdit)}
-      ${this.renderLineItemsSection(canEdit)}
-      ${!isNew ? this.renderInvoicesSection() : ''}
-      ${this.renderNotesSection(canEdit)}
-      ${!isNew ? this.renderAttachmentsSection() : ''}
-    `;
-  }
-
-  renderSummaryCard() {
-    const po = this.currentPO;
-    const totalAmount = parseFloat(po.total_amount || 0);
-    const billedAmount = (po.invoices || [])
-      .filter(inv => ['approved', 'in_draw', 'paid'].includes(inv.status))
-      .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
-    const remainingAmount = totalAmount - billedAmount;
-    const billedPercent = totalAmount > 0 ? Math.round((billedAmount / totalAmount) * 100) : 0;
-
-    return `
-      <div class="po-summary-card">
-        <div class="summary-stats">
-          <div class="stat-item">
-            <span class="stat-label">PO Total</span>
-            <span class="stat-value">${this.formatMoney(totalAmount)}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Billed</span>
-            <span class="stat-value">${this.formatMoney(billedAmount)}</span>
-          </div>
-          <div class="stat-item ${remainingAmount < 0 ? 'negative' : ''}">
-            <span class="stat-label">Remaining</span>
-            <span class="stat-value">${this.formatMoney(remainingAmount)}</span>
-          </div>
+      <div class="po-split-view">
+        <!-- Left Panel: Summary & Invoices -->
+        <div class="po-left-panel">
+          ${this.renderLeftPanel(isNew)}
         </div>
-        <div class="summary-progress">
-          <div class="progress-bar">
-            <div class="progress-fill ${billedPercent > 100 ? 'over' : ''}" style="width: ${Math.min(billedPercent, 100)}%"></div>
-          </div>
-          <span class="progress-label">${billedPercent}% billed</span>
+
+        <!-- Right Panel: Details & Line Items -->
+        <div class="po-right-panel">
+          ${this.renderRightPanel(canEdit, isNew)}
         </div>
       </div>
     `;
   }
 
-  renderDetailsSection(canEdit) {
+  renderLeftPanel(isNew) {
     const po = this.currentPO;
     const vendor = po.vendor || window.poState?.vendors?.find(v => v.id === po.vendor_id);
     const job = po.job || window.poState?.jobs?.find(j => j.id === po.job_id);
 
-    if (canEdit || this.isEditing) {
+    const totalAmount = parseFloat(po.total_amount || 0);
+    const billedAmount = (po.invoices || [])
+      .filter(inv => ['approved', 'in_draw', 'paid'].includes(inv.status))
+      .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+    const paidAmount = (po.invoices || [])
+      .filter(inv => inv.status === 'paid')
+      .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+    const remainingAmount = totalAmount - billedAmount;
+    const billedPercent = totalAmount > 0 ? Math.round((billedAmount / totalAmount) * 100) : 0;
+
+    if (isNew) {
       return `
+        <div class="po-summary-section">
+          <div class="summary-placeholder">
+            <div class="placeholder-icon">📋</div>
+            <p>Fill in the details to create a new Purchase Order</p>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <!-- Amount Summary -->
+      <div class="po-summary-section">
+        <div class="po-amount-display">
+          <span class="amount-label">PO Amount</span>
+          <span class="amount-value">${this.formatMoney(totalAmount)}</span>
+        </div>
+
+        <div class="po-progress-section">
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill ${billedPercent > 100 ? 'over' : ''}" style="width: ${Math.min(billedPercent, 100)}%"></div>
+          </div>
+          <div class="progress-stats">
+            <div class="progress-stat">
+              <span class="stat-value">${this.formatMoney(billedAmount)}</span>
+              <span class="stat-label">Billed</span>
+            </div>
+            <div class="progress-stat">
+              <span class="stat-value ${remainingAmount < 0 ? 'negative' : ''}">${this.formatMoney(remainingAmount)}</span>
+              <span class="stat-label">Remaining</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Job & Vendor Info -->
+      <div class="po-info-section">
+        <div class="info-row">
+          <span class="info-label">Job</span>
+          <span class="info-value">${job?.name || '—'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Vendor</span>
+          <span class="info-value">${vendor?.name || '—'}</span>
+        </div>
+        ${po.description ? `
+        <div class="info-row">
+          <span class="info-label">Description</span>
+          <span class="info-value">${this.escapeHtml(po.description)}</span>
+        </div>
+        ` : ''}
+        ${po.approved_at ? `
+        <div class="info-row">
+          <span class="info-label">Approved</span>
+          <span class="info-value">${this.formatDate(po.approved_at)}${po.approved_by ? ` by ${po.approved_by}` : ''}</span>
+        </div>
+        ` : ''}
+      </div>
+
+      <!-- Linked Invoices -->
+      ${this.renderLinkedInvoices()}
+
+      <!-- Attachments -->
+      ${this.renderAttachmentsList()}
+    `;
+  }
+
+  renderRightPanel(canEdit, isNew) {
+    if (canEdit) {
+      return this.renderEditForm();
+    }
+    return this.renderReadOnlyDetails();
+  }
+
+  // ============================================================
+  // EDIT FORM (Right Panel)
+  // ============================================================
+
+  renderEditForm() {
+    const po = this.currentPO;
+    const isNew = !po.id;
+    const costCodes = window.poState?.costCodes || [];
+    const total = this.currentLineItems.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+
+    return `
+      <div class="po-edit-form">
+        <!-- Basic Info -->
         <div class="form-section">
-          <h3>PO Details</h3>
+          <h4>PO Details</h4>
 
           <div class="form-group">
             <label>PO Number</label>
@@ -207,262 +270,206 @@ class POModals {
 
           <div class="form-group">
             <label>Description</label>
-            <input type="text" id="poDescription" value="${this.escapeHtml(po.description || '')}" class="form-control" placeholder="Brief description of work">
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>Assigned To</label>
-              <input type="text" id="poAssignedTo" value="${this.escapeHtml(po.assigned_to || '')}" class="form-control" placeholder="PM, Super, etc.">
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>Start Date</label>
-              <input type="date" id="poStartDate" value="${po.schedule_start_date || ''}" class="form-control">
-            </div>
-            <div class="form-group">
-              <label>End Date</label>
-              <input type="date" id="poEndDate" value="${po.schedule_end_date || ''}" class="form-control">
-            </div>
+            <input type="text" id="poDescription" value="${this.escapeHtml(po.description || '')}" class="form-control" placeholder="Brief description">
           </div>
         </div>
-      `;
-    }
 
-    // Read-only view
-    return `
-      <div class="form-section">
-        <h3>PO Details</h3>
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">Job</span>
-            <span class="info-value">${job?.name || 'Not assigned'}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Vendor</span>
-            <span class="info-value">${vendor?.name || 'Not assigned'}</span>
-          </div>
-          ${po.description ? `
-          <div class="info-item full-width">
-            <span class="info-label">Description</span>
-            <span class="info-value">${this.escapeHtml(po.description)}</span>
-          </div>` : ''}
-          ${po.assigned_to ? `
-          <div class="info-item">
-            <span class="info-label">Assigned To</span>
-            <span class="info-value">${this.escapeHtml(po.assigned_to)}</span>
-          </div>` : ''}
-          ${po.schedule_start_date || po.schedule_end_date ? `
-          <div class="info-item">
-            <span class="info-label">Schedule</span>
-            <span class="info-value">${po.schedule_start_date ? this.formatDate(po.schedule_start_date) : ''} ${po.schedule_start_date && po.schedule_end_date ? ' → ' : ''} ${po.schedule_end_date ? this.formatDate(po.schedule_end_date) : ''}</span>
-          </div>` : ''}
-        </div>
-      </div>
-    `;
-  }
-
-  renderLineItemsSection(canEdit) {
-    const costCodes = window.poState?.costCodes || [];
-    const total = this.currentLineItems.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
-
-    if (canEdit || this.isEditing) {
-      return `
+        <!-- Line Items -->
         <div class="form-section">
           <div class="section-header">
-            <h3>Line Items</h3>
-            <button type="button" class="btn-add-line" onclick="window.poModals.addLineItem()">+ Add line</button>
+            <h4>Line Items</h4>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="window.poModals.addLineItem()">+ Add</button>
           </div>
 
-          <div class="line-items-container" id="lineItemsContainer">
+          <div class="line-items-list" id="lineItemsContainer">
             ${this.currentLineItems.length === 0 ?
-              `<div class="empty-state small">No line items yet. Click "+ Add line" to add one.</div>` :
+              `<div class="empty-state small">No line items yet</div>` :
               this.currentLineItems.map((item, index) => `
-                <div class="line-item" data-index="${index}">
-                  <div class="line-item-fields">
-                    <select onchange="window.poModals.updateLineItem(${index}, 'cost_code_id', this.value)">
-                      <option value="">Select cost code</option>
-                      ${costCodes.map(cc => `
-                        <option value="${cc.id}" ${item.cost_code_id === cc.id ? 'selected' : ''}>${cc.code} - ${cc.name}</option>
-                      `).join('')}
-                    </select>
-                    <input type="text" placeholder="Description" value="${this.escapeHtml(item.description || '')}"
-                      onchange="window.poModals.updateLineItem(${index}, 'description', this.value)">
-                    <input type="number" placeholder="0.00" value="${item.amount || ''}" step="0.01"
-                      onchange="window.poModals.updateLineItem(${index}, 'amount', this.value)">
-                    <button type="button" class="btn-delete-row" onclick="window.poModals.removeLineItem(${index})">×</button>
-                  </div>
+                <div class="line-item-row" data-index="${index}">
+                  <select class="form-control cc-select" onchange="window.poModals.updateLineItem(${index}, 'cost_code_id', this.value)">
+                    <option value="">Select cost code</option>
+                    ${costCodes.map(cc => `
+                      <option value="${cc.id}" ${item.cost_code_id === cc.id ? 'selected' : ''}>${cc.code} - ${cc.name}</option>
+                    `).join('')}
+                  </select>
+                  <input type="text" placeholder="Description" value="${this.escapeHtml(item.description || '')}" class="form-control"
+                    onchange="window.poModals.updateLineItem(${index}, 'description', this.value)">
+                  <input type="number" placeholder="0.00" value="${item.amount || ''}" step="0.01" class="form-control amount-field"
+                    onchange="window.poModals.updateLineItem(${index}, 'amount', this.value)">
+                  <button type="button" class="btn-icon-delete" onclick="window.poModals.removeLineItem(${index})">×</button>
                 </div>
               `).join('')
             }
           </div>
 
-          <div class="line-items-total">
-            <span>Total:</span>
-            <span id="lineItemsTotal">${this.formatMoney(total)}</span>
+          <div class="line-items-footer">
+            <span class="total-label">Total:</span>
+            <span class="total-value" id="lineItemsTotal">${this.formatMoney(total)}</span>
           </div>
         </div>
-      `;
-    }
 
-    // Read-only
-    return `
-      <div class="form-section">
-        <div class="section-header">
-          <h3>Line Items</h3>
-          <span class="count-badge">${this.currentLineItems.length}</span>
-        </div>
-
-        <div class="line-items-readonly">
-          ${this.currentLineItems.length === 0 ?
-            `<div class="empty-state small">No line items</div>` :
-            this.currentLineItems.map(item => {
-              const cc = item.cost_code || costCodes.find(c => c.id === item.cost_code_id);
-              return `
-                <div class="line-item-row">
-                  <span class="li-code">${cc?.code || ''}</span>
-                  <span class="li-name">${cc?.name || item.description || ''}</span>
-                  <span class="li-amount">${this.formatMoney(item.amount)}</span>
-                </div>
-              `;
-            }).join('')
-          }
-        </div>
-
-        <div class="line-items-total">
-          <span>Total:</span>
-          <span>${this.formatMoney(total)}</span>
-        </div>
-      </div>
-    `;
-  }
-
-  renderInvoicesSection() {
-    const invoices = this.currentPO.invoices || [];
-
-    if (invoices.length === 0) {
-      return `
+        <!-- Scope & Notes -->
         <div class="form-section">
-          <div class="section-header">
-            <h3>Linked Invoices</h3>
-          </div>
-          <div class="empty-state small">No invoices linked to this PO</div>
-        </div>
-      `;
-    }
-
-    const totalBilled = invoices
-      .filter(inv => ['approved', 'in_draw', 'paid'].includes(inv.status))
-      .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
-
-    const getStatusLabel = (status) => {
-      const labels = {
-        'received': 'Received',
-        'needs_approval': 'Needs Approval',
-        'approved': 'Approved',
-        'in_draw': 'In Draw',
-        'paid': 'Paid'
-      };
-      return labels[status] || status;
-    };
-
-    return `
-      <div class="form-section">
-        <div class="section-header">
-          <h3>Linked Invoices</h3>
-          <span class="count-badge">${invoices.length}</span>
-        </div>
-
-        <div class="linked-invoices-table">
-          <div class="invoices-header">
-            <span>Invoice #</span>
-            <span>Date</span>
-            <span>Status</span>
-            <span>Amount</span>
-          </div>
-          ${invoices.map(inv => `
-            <div class="invoice-row" onclick="window.location.href='index.html?invoice=${inv.id}'">
-              <span class="inv-number">${inv.invoice_number || '—'}</span>
-              <span class="inv-date">${this.formatDate(inv.invoice_date)}</span>
-              <span><span class="status-pill status-${inv.status}">${getStatusLabel(inv.status)}</span></span>
-              <span class="inv-amount">${this.formatMoney(inv.amount)}</span>
-            </div>
-          `).join('')}
-        </div>
-
-        <div class="invoices-total">
-          <span>Total Billed:</span>
-          <span class="total-amount">${this.formatMoney(totalBilled)}</span>
-        </div>
-      </div>
-    `;
-  }
-
-  renderNotesSection(canEdit) {
-    const po = this.currentPO;
-
-    if (canEdit || this.isEditing) {
-      return `
-        <div class="form-section">
-          <h3>Scope & Notes</h3>
+          <h4>Scope & Notes</h4>
           <div class="form-group">
             <label>Scope of Work</label>
             <textarea id="poScopeOfWork" rows="3" class="form-control" placeholder="Describe the work...">${this.escapeHtml(po.scope_of_work || '')}</textarea>
           </div>
           <div class="form-group">
-            <label>Notes</label>
-            <textarea id="poNotes" rows="2" class="form-control" placeholder="Internal notes...">${this.escapeHtml(po.notes || '')}</textarea>
+            <label>Internal Notes</label>
+            <textarea id="poNotes" rows="2" class="form-control" placeholder="Notes...">${this.escapeHtml(po.notes || '')}</textarea>
           </div>
         </div>
-      `;
-    }
-
-    if (!po.scope_of_work && !po.notes) return '';
-
-    return `
-      <div class="form-section">
-        <h3>Scope & Notes</h3>
-        ${po.scope_of_work ? `
-          <div class="notes-content">
-            <strong>Scope of Work:</strong>
-            <p>${this.escapeHtml(po.scope_of_work).replace(/\n/g, '<br>')}</p>
-          </div>
-        ` : ''}
-        ${po.notes ? `
-          <div class="notes-content">
-            <strong>Notes:</strong>
-            <p>${this.escapeHtml(po.notes)}</p>
-          </div>
-        ` : ''}
       </div>
     `;
   }
 
-  renderAttachmentsSection() {
+  // ============================================================
+  // READ-ONLY DETAILS (Right Panel)
+  // ============================================================
+
+  renderReadOnlyDetails() {
+    const po = this.currentPO;
+    const costCodes = window.poState?.costCodes || [];
+    const total = this.currentLineItems.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+
     return `
-      <div class="form-section">
-        <div class="section-header">
-          <h3>Attachments</h3>
-          <button type="button" class="btn-add-line" onclick="document.getElementById('poFileInput').click()">+ Upload</button>
-          <input type="file" id="poFileInput" style="display: none" onchange="window.poModals.uploadFile(this.files[0])">
+      <div class="po-details-view">
+        <!-- Line Items -->
+        <div class="detail-section">
+          <h4>Line Items</h4>
+          ${this.currentLineItems.length === 0 ?
+            `<div class="empty-state small">No line items</div>` :
+            `<div class="line-items-display">
+              ${this.currentLineItems.map(item => {
+                const cc = item.cost_code || costCodes.find(c => c.id === item.cost_code_id);
+                return `
+                  <div class="line-item-display">
+                    <div class="item-info">
+                      <span class="item-code">${cc?.code || ''}</span>
+                      <span class="item-name">${cc?.name || item.description || '—'}</span>
+                    </div>
+                    <span class="item-amount">${this.formatMoney(item.amount)}</span>
+                  </div>
+                `;
+              }).join('')}
+              <div class="line-items-total-row">
+                <span>Total</span>
+                <span>${this.formatMoney(total)}</span>
+              </div>
+            </div>`
+          }
         </div>
 
-        ${this.attachments.length === 0 ?
-          '<div class="empty-state small">No attachments</div>' :
-          `<div class="attachments-list">
-            ${this.attachments.map(att => `
-              <div class="attachment-row">
-                <span class="att-icon">${this.getFileIcon(att.file_type)}</span>
-                <span class="att-name">${this.escapeHtml(att.file_name)}</span>
-                <span class="att-size">${this.formatFileSize(att.file_size)}</span>
-                <button class="btn-icon" onclick="window.poModals.downloadAttachment('${att.id}')" title="Download">↓</button>
-                <button class="btn-icon btn-delete" onclick="window.poModals.deleteAttachment('${att.id}')" title="Delete">×</button>
+        <!-- Scope of Work -->
+        ${po.scope_of_work ? `
+        <div class="detail-section">
+          <h4>Scope of Work</h4>
+          <div class="scope-text">${this.escapeHtml(po.scope_of_work).replace(/\n/g, '<br>')}</div>
+        </div>
+        ` : ''}
+
+        <!-- Notes -->
+        ${po.notes ? `
+        <div class="detail-section">
+          <h4>Notes</h4>
+          <div class="notes-text">${this.escapeHtml(po.notes).replace(/\n/g, '<br>')}</div>
+        </div>
+        ` : ''}
+
+        <!-- Activity Log -->
+        ${this.renderActivityLog()}
+      </div>
+    `;
+  }
+
+  // ============================================================
+  // LINKED INVOICES (Left Panel)
+  // ============================================================
+
+  renderLinkedInvoices() {
+    const invoices = this.currentPO.invoices || [];
+
+    if (invoices.length === 0) {
+      return `
+        <div class="po-invoices-section">
+          <h4>Linked Invoices</h4>
+          <div class="empty-state small">No invoices linked</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="po-invoices-section">
+        <h4>Linked Invoices <span class="count-badge">${invoices.length}</span></h4>
+        <div class="invoices-list">
+          ${invoices.map(inv => `
+            <div class="invoice-item" onclick="window.location.href='index.html?invoice=${inv.id}'">
+              <div class="invoice-info">
+                <span class="invoice-number">#${inv.invoice_number || '—'}</span>
+                <span class="invoice-date">${this.formatDate(inv.invoice_date)}</span>
               </div>
-            `).join('')}
-          </div>`
-        }
+              <div class="invoice-right">
+                <span class="invoice-amount">${this.formatMoney(inv.amount)}</span>
+                <span class="status-dot status-${inv.status}"></span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // ============================================================
+  // ATTACHMENTS LIST (Left Panel)
+  // ============================================================
+
+  renderAttachmentsList() {
+    if (this.attachments.length === 0) {
+      return '';
+    }
+
+    return `
+      <div class="po-attachments-section">
+        <h4>Attachments <span class="count-badge">${this.attachments.length}</span></h4>
+        <div class="attachments-list">
+          ${this.attachments.map(att => `
+            <div class="attachment-item">
+              <span class="att-icon">${this.getFileIcon(att.file_type)}</span>
+              <span class="att-name">${this.escapeHtml(att.file_name)}</span>
+              <button class="btn-icon" onclick="window.poModals.downloadAttachment('${att.id}')" title="Download">↓</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // ============================================================
+  // ACTIVITY LOG (Right Panel, Read-Only)
+  // ============================================================
+
+  renderActivityLog() {
+    const activity = this.currentPO.activity || [];
+
+    if (activity.length === 0) {
+      return '';
+    }
+
+    return `
+      <div class="detail-section">
+        <h4>Activity</h4>
+        <div class="activity-list">
+          ${activity.slice(0, 5).map(act => `
+            <div class="activity-item">
+              <span class="activity-dot"></span>
+              <div class="activity-content">
+                <span class="activity-text">${this.escapeHtml(act.description || act.action)}</span>
+                <span class="activity-time">${this.formatRelativeTime(act.created_at)}</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
   }
@@ -492,7 +499,7 @@ class POModals {
       const status = po.status_detail || 'pending';
       const approval = po.approval_status || 'pending';
 
-      // Close button always
+      // Close button
       actions += `<button class="btn btn-secondary" onclick="window.poModals.closeModal()">Close</button>`;
 
       // Edit button - allow for most statuses except closed
@@ -532,7 +539,12 @@ class POModals {
 
   cancelEdit() {
     this.isEditing = false;
-    this.openPO(this.currentPO.id);
+    // Reload original data
+    if (this.currentPO.id) {
+      this.openPO(this.currentPO.id);
+    } else {
+      this.closeModal();
+    }
   }
 
   // ============================================================
@@ -565,9 +577,27 @@ class POModals {
   refreshLineItems() {
     const isNew = !this.currentPO.id;
     const canEdit = isNew || this.isEditing;
-    const section = document.querySelector('.form-section:has(#lineItemsContainer)');
-    if (section) {
-      section.outerHTML = this.renderLineItemsSection(canEdit);
+    const container = document.getElementById('lineItemsContainer');
+    if (container && canEdit) {
+      const costCodes = window.poState?.costCodes || [];
+      container.innerHTML = this.currentLineItems.length === 0 ?
+        `<div class="empty-state small">No line items yet</div>` :
+        this.currentLineItems.map((item, index) => `
+          <div class="line-item-row" data-index="${index}">
+            <select class="form-control cc-select" onchange="window.poModals.updateLineItem(${index}, 'cost_code_id', this.value)">
+              <option value="">Select cost code</option>
+              ${costCodes.map(cc => `
+                <option value="${cc.id}" ${item.cost_code_id === cc.id ? 'selected' : ''}>${cc.code} - ${cc.name}</option>
+              `).join('')}
+            </select>
+            <input type="text" placeholder="Description" value="${this.escapeHtml(item.description || '')}" class="form-control"
+              onchange="window.poModals.updateLineItem(${index}, 'description', this.value)">
+            <input type="number" placeholder="0.00" value="${item.amount || ''}" step="0.01" class="form-control amount-field"
+              onchange="window.poModals.updateLineItem(${index}, 'amount', this.value)">
+            <button type="button" class="btn-icon-delete" onclick="window.poModals.removeLineItem(${index})">×</button>
+          </div>
+        `).join('');
+      this.updateLineItemsTotal();
     }
   }
 
@@ -578,66 +608,6 @@ class POModals {
   }
 
   // ============================================================
-  // FILE MANAGEMENT
-  // ============================================================
-
-  async uploadFile(file) {
-    if (!file || !this.currentPO.id) return;
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/attachments`, {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!res.ok) throw new Error('Upload failed');
-
-      const attachment = await res.json();
-      this.attachments.push(attachment);
-      this.renderPOModal();
-      window.showToast?.('File uploaded', 'success');
-    } catch (err) {
-      console.error('Upload failed:', err);
-      window.showToast?.('Failed to upload file', 'error');
-    }
-  }
-
-  async downloadAttachment(attachmentId) {
-    try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/attachments/${attachmentId}/url`);
-      if (!res.ok) throw new Error('Failed to get download URL');
-
-      const { url } = await res.json();
-      window.open(url, '_blank');
-    } catch (err) {
-      console.error('Download failed:', err);
-      window.showToast?.('Failed to download file', 'error');
-    }
-  }
-
-  async deleteAttachment(attachmentId) {
-    if (!confirm('Delete this file?')) return;
-
-    try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/attachments/${attachmentId}`, {
-        method: 'DELETE'
-      });
-
-      if (!res.ok) throw new Error('Delete failed');
-
-      this.attachments = this.attachments.filter(a => a.id !== attachmentId);
-      this.renderPOModal();
-      window.showToast?.('File deleted', 'success');
-    } catch (err) {
-      console.error('Delete failed:', err);
-      window.showToast?.('Failed to delete file', 'error');
-    }
-  }
-
-  // ============================================================
   // SAVE PO
   // ============================================================
 
@@ -645,136 +615,220 @@ class POModals {
     const po = this.currentPO;
     const isNew = !po.id;
 
-    // Gather form data
-    const data = {
-      po_number: document.getElementById('poNumber')?.value || null,
-      job_id: po.job_id,
-      vendor_id: po.vendor_id,
-      description: document.getElementById('poDescription')?.value || '',
-      assigned_to: document.getElementById('poAssignedTo')?.value || '',
-      schedule_start_date: document.getElementById('poStartDate')?.value || null,
-      schedule_end_date: document.getElementById('poEndDate')?.value || null,
-      scope_of_work: document.getElementById('poScopeOfWork')?.value || '',
-      notes: document.getElementById('poNotes')?.value || '',
-      line_items: this.currentLineItems.filter(li => li.cost_code_id || li.description || li.amount)
-    };
+    // Get form values
+    const poNumber = document.getElementById('poNumber')?.value?.trim();
+    const description = document.getElementById('poDescription')?.value?.trim();
+    const scopeOfWork = document.getElementById('poScopeOfWork')?.value?.trim();
+    const notes = document.getElementById('poNotes')?.value?.trim();
 
-    // Calculate total from line items
-    data.total_amount = data.line_items.reduce((sum, li) => sum + parseFloat(li.amount || 0), 0);
+    // Get job/vendor from pickers
+    const jobId = this.selectedJobId || po.job_id;
+    const vendorId = this.selectedVendorId || po.vendor_id;
 
     // Validate
-    if (!data.job_id) {
+    if (!jobId) {
       window.showToast?.('Please select a job', 'error');
       return;
     }
-    if (!data.vendor_id) {
+    if (!vendorId) {
       window.showToast?.('Please select a vendor', 'error');
       return;
     }
 
-    try {
-      const url = isNew ? '/api/purchase-orders' : `/api/purchase-orders/${po.id}`;
-      const method = isNew ? 'POST' : 'PATCH';
+    // Calculate total
+    const totalAmount = this.currentLineItems.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
+    const data = {
+      po_number: poNumber || null,
+      job_id: jobId,
+      vendor_id: vendorId,
+      description,
+      scope_of_work: scopeOfWork,
+      notes,
+      total_amount: totalAmount,
+      line_items: this.currentLineItems.filter(li => li.cost_code_id || li.description || li.amount)
+    };
+
+    try {
+      let res;
+      if (isNew) {
+        res = await fetch('/api/purchase-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+      } else {
+        res = await fetch(`/api/purchase-orders/${po.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+      }
 
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Failed to save');
       }
 
-      const savedPO = await res.json();
+      const saved = await res.json();
+      window.showToast?.(isNew ? 'Purchase Order created' : 'Purchase Order updated', 'success');
 
-      window.showToast?.(isNew ? 'PO created' : 'PO saved', 'success');
-      window.refreshPOList?.();
+      // Refresh list
+      if (window.loadPOs) window.loadPOs();
 
-      if (isNew) {
-        this.closeModal();
-      } else {
-        this.isEditing = false;
-        this.openPO(savedPO.id);
-      }
+      // Reopen in view mode
+      this.isEditing = false;
+      this.openPO(saved.id);
     } catch (err) {
-      console.error('Save failed:', err);
-      window.showToast?.(err.message || 'Failed to save PO', 'error');
+      console.error('Save error:', err);
+      window.showToast?.(err.message || 'Failed to save', 'error');
     }
   }
 
   // ============================================================
-  // WORKFLOW ACTIONS
+  // PO ACTIONS
   // ============================================================
 
   async submitForApproval() {
-    await this.performAction('submit', 'Submitted for approval');
-  }
-
-  async approvePO() {
-    await this.performAction('approve', 'PO approved');
-  }
-
-  async rejectPO() {
-    const reason = prompt('Rejection reason:');
-    if (reason === null) return;
-    await this.performAction('reject', 'PO rejected', { reason });
-  }
-
-  async closePO() {
-    const reason = prompt('Close reason (optional):');
-    if (reason === null) return;
-    await this.performAction('close', 'PO closed', { reason });
-  }
-
-  async reopenPO() {
-    await this.performAction('reopen', 'PO reopened');
-  }
-
-  async deletePO() {
-    if (!confirm('Are you sure you want to delete this PO?')) return;
+    if (!confirm('Submit this PO for approval?')) return;
 
     try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}`, {
-        method: 'DELETE'
-      });
+      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/submit`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to submit');
 
-      if (!res.ok) throw new Error('Delete failed');
-
-      window.showToast?.('PO deleted', 'success');
-      window.refreshPOList?.();
-      this.closeModal();
+      window.showToast?.('PO submitted for approval', 'success');
+      if (window.loadPOs) window.loadPOs();
+      this.openPO(this.currentPO.id);
     } catch (err) {
-      console.error('Delete failed:', err);
-      window.showToast?.('Failed to delete PO', 'error');
+      window.showToast?.(err.message, 'error');
     }
   }
 
-  async performAction(action, successMessage, body = {}) {
+  async approvePO() {
+    if (!confirm('Approve this Purchase Order?')) return;
+
     try {
-      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/approve`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to approve');
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || `Failed to ${action}`);
-      }
-
-      window.showToast?.(successMessage, 'success');
-      window.refreshPOList?.();
+      window.showToast?.('PO approved', 'success');
+      if (window.loadPOs) window.loadPOs();
       this.openPO(this.currentPO.id);
     } catch (err) {
-      console.error(`${action} failed:`, err);
-      window.showToast?.(err.message || `Failed to ${action}`, 'error');
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  async rejectPO() {
+    const reason = prompt('Reason for rejection (optional):');
+    if (reason === null) return;
+
+    try {
+      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      if (!res.ok) throw new Error('Failed to reject');
+
+      window.showToast?.('PO rejected', 'success');
+      if (window.loadPOs) window.loadPOs();
+      this.openPO(this.currentPO.id);
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  async closePO() {
+    if (!confirm('Close this PO? It will no longer accept new invoices.')) return;
+
+    try {
+      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/close`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to close');
+
+      window.showToast?.('PO closed', 'success');
+      if (window.loadPOs) window.loadPOs();
+      this.openPO(this.currentPO.id);
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  async reopenPO() {
+    if (!confirm('Reopen this PO?')) return;
+
+    try {
+      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/reopen`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to reopen');
+
+      window.showToast?.('PO reopened', 'success');
+      if (window.loadPOs) window.loadPOs();
+      this.openPO(this.currentPO.id);
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  async deletePO() {
+    if (!confirm('Delete this PO? This cannot be undone.')) return;
+
+    try {
+      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+
+      window.showToast?.('PO deleted', 'success');
+      if (window.loadPOs) window.loadPOs();
+      this.closeModal();
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
     }
   }
 
   // ============================================================
-  // PICKERS
+  // ATTACHMENTS
+  // ============================================================
+
+  async uploadFile(file) {
+    if (!file || !this.currentPO.id) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`/api/purchase-orders/${this.currentPO.id}/attachments`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) throw new Error('Upload failed');
+
+      window.showToast?.('File uploaded', 'success');
+      this.openPO(this.currentPO.id);
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  async downloadAttachment(attachmentId) {
+    window.open(`/api/attachments/${attachmentId}/download`, '_blank');
+  }
+
+  async deleteAttachment(attachmentId) {
+    if (!confirm('Delete this attachment?')) return;
+
+    try {
+      const res = await fetch(`/api/attachments/${attachmentId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+
+      window.showToast?.('Attachment deleted', 'success');
+      this.openPO(this.currentPO.id);
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  // ============================================================
+  // PICKERS INITIALIZATION
   // ============================================================
 
   initializePickers() {
@@ -785,22 +839,24 @@ class POModals {
     const jobContainer = document.getElementById('po-job-picker-container');
     if (jobContainer) {
       jobContainer.innerHTML = `
-        <select id="poJobSelect" class="form-control" onchange="window.poModals.currentPO.job_id = this.value">
+        <select id="poJobSelect" class="form-control" onchange="window.poModals.selectedJobId = this.value">
           <option value="">Select Job</option>
           ${jobs.map(j => `<option value="${j.id}" ${j.id === this.currentPO.job_id ? 'selected' : ''}>${j.name}</option>`).join('')}
         </select>
       `;
+      this.selectedJobId = this.currentPO.job_id;
     }
 
     // Vendor picker
     const vendorContainer = document.getElementById('po-vendor-picker-container');
     if (vendorContainer) {
       vendorContainer.innerHTML = `
-        <select id="poVendorSelect" class="form-control" onchange="window.poModals.currentPO.vendor_id = this.value">
+        <select id="poVendorSelect" class="form-control" onchange="window.poModals.selectedVendorId = this.value">
           <option value="">Select Vendor</option>
           ${vendors.map(v => `<option value="${v.id}" ${v.id === this.currentPO.vendor_id ? 'selected' : ''}>${v.name}</option>`).join('')}
         </select>
       `;
+      this.selectedVendorId = this.currentPO.vendor_id;
     }
   }
 
@@ -819,9 +875,62 @@ class POModals {
   }
 
   formatDate(dateStr) {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
+  formatRelativeTime(dateStr) {
     if (!dateStr) return '';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return this.formatDate(dateStr);
+  }
+
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  getStatusClass(statusDetail, approvalStatus) {
+    if (approvalStatus === 'rejected') return 'rejected';
+    if (approvalStatus === 'approved') return 'approved';
+    if (statusDetail === 'closed') return 'closed';
+    if (statusDetail === 'active') return 'active';
+    return 'draft';
+  }
+
+  getStatusLabel(statusDetail, approvalStatus) {
+    if (approvalStatus === 'rejected') return 'Rejected';
+    if (approvalStatus === 'approved' && statusDetail === 'closed') return 'Closed';
+    if (approvalStatus === 'approved') return 'Approved';
+    if (statusDetail === 'active') return 'Active';
+    return 'Draft';
+  }
+
+  getFileIcon(fileType) {
+    if (!fileType) return '📎';
+    if (fileType.includes('pdf')) return '📄';
+    if (fileType.includes('image')) return '🖼️';
+    if (fileType.includes('excel') || fileType.includes('spreadsheet')) return '📊';
+    if (fileType.includes('word') || fileType.includes('document')) return '📝';
+    return '📎';
   }
 
   formatFileSize(bytes) {
@@ -830,63 +939,7 @@ class POModals {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
-
-  getFileIcon(fileType) {
-    if (!fileType) return '📄';
-    if (fileType.includes('pdf')) return '📕';
-    if (fileType.includes('image')) return '🖼';
-    if (fileType.includes('word') || fileType.includes('doc')) return '📘';
-    if (fileType.includes('excel') || fileType.includes('sheet')) return '📗';
-    return '📄';
-  }
-
-  getStatusLabel(status, approvalStatus) {
-    if (approvalStatus === 'rejected') return 'Rejected';
-    if (approvalStatus === 'pending' && status === 'pending') return 'Draft';
-    if (approvalStatus === 'pending') return 'Pending Approval';
-
-    const labels = {
-      pending: 'Draft',
-      approved: 'Approved',
-      active: 'Active',
-      open: 'Active',
-      closed: 'Closed',
-      cancelled: 'Cancelled'
-    };
-    return labels[status] || status;
-  }
-
-  getStatusClass(status, approvalStatus) {
-    if (approvalStatus === 'rejected') return 'rejected';
-    if (approvalStatus === 'pending' && status === 'pending') return 'pending';
-    if (approvalStatus === 'pending') return 'pending-approval';
-
-    const classes = {
-      pending: 'pending',
-      approved: 'approved',
-      active: 'active',
-      open: 'active',
-      closed: 'closed',
-      cancelled: 'cancelled'
-    };
-    return classes[status] || 'pending';
-  }
-
-  escapeHtml(str) {
-    if (!str) return '';
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
 }
 
-// Initialize
+// Initialize global instance
 window.poModals = new POModals();
-
-// Modal close helper
-function closeConfirmModal() {
-  document.getElementById('confirmDialog')?.classList.remove('show');
-}
