@@ -944,15 +944,20 @@ app.get('/api/purchase-orders/:id/attachments', asyncHandler(async (req, res) =>
 }));
 
 // Upload PO attachment
-app.post('/api/purchase-orders/:id/attachments', asyncHandler(async (req, res) => {
+app.post('/api/purchase-orders/:id/attachments', upload.single('file'), asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  // Check if using multipart form data
-  if (!req.files || !req.files.file) {
+  // Check if file was uploaded via multer
+  if (!req.file) {
     throw new AppError('VALIDATION_FAILED', 'No file uploaded');
   }
 
-  const file = req.files.file;
+  const file = {
+    name: req.file.originalname,
+    data: req.file.buffer,
+    size: req.file.size,
+    mimetype: req.file.mimetype
+  };
   const { description, category } = req.body;
 
   // Determine file type
