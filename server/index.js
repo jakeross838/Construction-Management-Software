@@ -210,6 +210,56 @@ app.get('/api/jobs/:id', async (req, res) => {
   }
 });
 
+// Delete a job (admin cleanup)
+app.delete('/api/jobs/:id', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+
+    // Get related IDs first
+    const { data: draws } = await supabase.from('v2_draws').select('id').eq('job_id', jobId);
+    const { data: invoices } = await supabase.from('v2_invoices').select('id').eq('job_id', jobId);
+    const { data: pos } = await supabase.from('v2_purchase_orders').select('id').eq('job_id', jobId);
+
+    const drawIds = draws?.map(d => d.id) || [];
+    const invoiceIds = invoices?.map(i => i.id) || [];
+    const poIds = pos?.map(p => p.id) || [];
+
+    // Delete related data
+    await supabase.from('v2_budget_lines').delete().eq('job_id', jobId);
+
+    if (drawIds.length > 0) {
+      await supabase.from('v2_draw_allocations').delete().in('draw_id', drawIds);
+      await supabase.from('v2_draw_invoices').delete().in('draw_id', drawIds);
+      await supabase.from('v2_draw_activity').delete().in('draw_id', drawIds);
+      await supabase.from('v2_draws').delete().eq('job_id', jobId);
+    }
+
+    if (invoiceIds.length > 0) {
+      await supabase.from('v2_invoice_allocations').delete().in('invoice_id', invoiceIds);
+      await supabase.from('v2_invoice_activity').delete().in('invoice_id', invoiceIds);
+      await supabase.from('v2_invoices').delete().eq('job_id', jobId);
+    }
+
+    if (poIds.length > 0) {
+      await supabase.from('v2_po_line_items').delete().in('po_id', poIds);
+      await supabase.from('v2_po_activity').delete().in('po_id', poIds);
+      await supabase.from('v2_purchase_orders').delete().eq('job_id', jobId);
+    }
+
+    // Delete the job
+    const { error } = await supabase
+      .from('v2_jobs')
+      .delete()
+      .eq('id', jobId);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting job:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get purchase orders for a specific job
 app.get('/api/jobs/:id/purchase-orders', async (req, res) => {
   try {
@@ -417,6 +467,19 @@ app.post('/api/purchase-orders', async (req, res) => {
   try {
     const { line_items, ...poData } = req.body;
 
+    // Validate line items have cost codes
+    if (!line_items || line_items.length === 0) {
+      return res.status(400).json({ error: 'At least one line item is required' });
+    }
+
+    const missingCostCodes = line_items.filter(item => !item.cost_code_id);
+    if (missingCostCodes.length > 0) {
+      return res.status(400).json({
+        error: 'All line items must have a cost code assigned',
+        details: `${missingCostCodes.length} line item(s) missing cost codes`
+      });
+    }
+
     // Create PO
     const { data: po, error: poError } = await supabase
       .from('v2_purchase_orders')
@@ -427,13 +490,11 @@ app.post('/api/purchase-orders', async (req, res) => {
     if (poError) throw poError;
 
     // Create line items
-    if (line_items && line_items.length > 0) {
-      const { error: itemsError } = await supabase
-        .from('v2_po_line_items')
-        .insert(line_items.map(item => ({ ...item, po_id: po.id })));
+    const { error: itemsError } = await supabase
+      .from('v2_po_line_items')
+      .insert(line_items.map(item => ({ ...item, po_id: po.id })));
 
-      if (itemsError) throw itemsError;
-    }
+    if (itemsError) throw itemsError;
 
     res.json(po);
   } catch (err) {
@@ -470,6 +531,16 @@ app.patch('/api/purchase-orders/:id', asyncHandler(async (req, res) => {
 
   // Update line items if provided
   if (line_items && Array.isArray(line_items)) {
+    // Validate all line items have cost codes
+    if (line_items.length === 0) {
+      throw new AppError('VALIDATION_ERROR', 'At least one line item is required');
+    }
+
+    const missingCostCodes = line_items.filter(item => !item.cost_code_id);
+    if (missingCostCodes.length > 0) {
+      throw new AppError('VALIDATION_ERROR', `All line items must have a cost code assigned (${missingCostCodes.length} missing)`);
+    }
+
     // Delete existing line items
     await supabase
       .from('v2_po_line_items')
@@ -477,13 +548,11 @@ app.patch('/api/purchase-orders/:id', asyncHandler(async (req, res) => {
       .eq('po_id', id);
 
     // Insert new line items
-    if (line_items.length > 0) {
-      const { error: itemsError } = await supabase
-        .from('v2_po_line_items')
-        .insert(line_items.map(item => ({ ...item, po_id: id })));
+    const { error: itemsError } = await supabase
+      .from('v2_po_line_items')
+      .insert(line_items.map(item => ({ ...item, po_id: id })));
 
-      if (itemsError) throw new AppError('DATABASE_ERROR', itemsError.message);
-    }
+    if (itemsError) throw new AppError('DATABASE_ERROR', itemsError.message);
   }
 
   // Log activity
@@ -2944,6 +3013,44 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
     res.json({ success: true, new_total: newTotal, draw_number: draw.draw_number });
   } catch (err) {
     console.error('Error removing invoice from draw:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete a draw (admin cleanup)
+app.delete('/api/draws/:id', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+
+    // Delete draw allocations first
+    await supabase
+      .from('v2_draw_allocations')
+      .delete()
+      .eq('draw_id', drawId);
+
+    // Delete draw invoices
+    await supabase
+      .from('v2_draw_invoices')
+      .delete()
+      .eq('draw_id', drawId);
+
+    // Delete draw activity
+    await supabase
+      .from('v2_draw_activity')
+      .delete()
+      .eq('draw_id', drawId);
+
+    // Delete the draw
+    const { error } = await supabase
+      .from('v2_draws')
+      .delete()
+      .eq('id', drawId);
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting draw:', err);
     res.status(500).json({ error: err.message });
   }
 });

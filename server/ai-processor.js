@@ -833,6 +833,8 @@ async function findOrCreatePO(jobId, vendorId, invoiceData, jobName) {
   if (!jobId || !vendorId) return null;
 
   // Look for existing open PO for this vendor/job
+  // NOTE: We no longer auto-create POs because they require cost codes on line items.
+  // POs should be created manually with proper cost codes, then invoices linked to them.
   const { data: existingPOs } = await supabase
     .from('v2_purchase_orders')
     .select('*')
@@ -845,48 +847,9 @@ async function findOrCreatePO(jobId, vendorId, invoiceData, jobName) {
     return { po: existingPOs[0], isNew: false };
   }
 
-  // Create draft PO
-  const { count } = await supabase
-    .from('v2_purchase_orders')
-    .select('*', { count: 'exact', head: true })
-    .eq('job_id', jobId);
-
-  const sequence = (count || 0) + 1;
-  const poNumber = standards.generatePONumber(jobName || 'Job', sequence);
-
-  const totalAmount = invoiceData.totalAmount || invoiceData.amounts?.totalAmount || 0;
-
-  const { data: newPO, error } = await supabase
-    .from('v2_purchase_orders')
-    .insert({
-      job_id: jobId,
-      vendor_id: vendorId,
-      po_number: poNumber,
-      description: `Auto-generated from Invoice ${invoiceData.invoiceNumber || 'N/A'}`,
-      total_amount: totalAmount,
-      status: 'open'
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Failed to create PO:', error.message);
-    return null;
-  }
-
-  // Create line items from invoice
-  if (invoiceData.lineItems?.length > 0) {
-    const lineItems = invoiceData.lineItems.map(li => ({
-      po_id: newPO.id,
-      description: li.description,
-      amount: li.amount || 0,
-      invoiced_amount: 0
-    }));
-
-    await supabase.from('v2_po_line_items').insert(lineItems);
-  }
-
-  return { po: newPO, isNew: true, poNumber };
+  // Don't auto-create POs - they require cost codes which aren't available at this stage
+  // User should create PO manually with cost codes, then link invoice to it
+  return null;
 }
 
 // ============================================================
