@@ -1266,7 +1266,7 @@ app.get('/api/invoices/:id', async (req, res) => {
         job:v2_jobs(id, name, address),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
-          id, amount, notes, job_id,
+          id, amount, notes, job_id, po_line_item_id,
           cost_code:v2_cost_codes(id, code, name, category)
         ),
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
@@ -1313,7 +1313,7 @@ app.get('/api/invoices/:id/approval-context', async (req, res) => {
       .select(`
         id, job_id, po_id, amount, status,
         allocations:v2_invoice_allocations(
-          id, amount, cost_code_id,
+          id, amount, cost_code_id, po_line_item_id,
           cost_code:v2_cost_codes(id, code, name)
         ),
         po:v2_purchase_orders(

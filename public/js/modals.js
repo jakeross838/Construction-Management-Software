@@ -537,7 +537,7 @@ const Modals = {
             ${this.currentPOLineItems.length > 0 ? `
             <div class="line-item-field flex-1">
               <label class="field-label">PO Line Item</label>
-              <select class="field-input po-line-select" onchange="Modals.updateAllocation(${index}, 'po_line_item_id', this.value)">
+              <select class="field-input po-line-select" onchange="Modals.updateAllocation(${index}, 'po_line_item_id', this.value)" ${['approved', 'in_draw', 'paid'].includes(this.currentInvoice?.status) ? 'disabled' : ''}>
                 <option value="">-- Select Line --</option>
                 ${this.currentPOLineItems.map(li => `
                   <option value="${li.id}" ${alloc.po_line_item_id === li.id ? 'selected' : ''}>
