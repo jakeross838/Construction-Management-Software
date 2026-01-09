@@ -131,7 +131,8 @@ class POModals {
   renderModalContent() {
     const po = this.currentPO;
     const isNew = !po.id;
-    const canEdit = isNew || ['pending'].includes(po.status_detail) || po.approval_status === 'rejected';
+    // Only allow editing when creating new or explicitly in edit mode
+    const canEdit = isNew || this.isEditing;
 
     return `
       ${!isNew ? this.renderSummaryCard() : ''}
@@ -494,8 +495,8 @@ class POModals {
       // Close button always
       actions += `<button class="btn btn-secondary" onclick="window.poModals.closeModal()">Close</button>`;
 
-      // Edit button for pending POs
-      if (['pending'].includes(status) || approval === 'rejected') {
+      // Edit button - allow for most statuses except closed
+      if (status !== 'closed') {
         actions += `<button class="btn btn-secondary" onclick="window.poModals.startEdit()">Edit</button>`;
       }
 
@@ -562,10 +563,11 @@ class POModals {
   }
 
   refreshLineItems() {
-    const canEdit = !this.currentPO.id || ['pending'].includes(this.currentPO.status_detail) || this.currentPO.approval_status === 'rejected';
+    const isNew = !this.currentPO.id;
+    const canEdit = isNew || this.isEditing;
     const section = document.querySelector('.form-section:has(#lineItemsContainer)');
     if (section) {
-      section.outerHTML = this.renderLineItemsSection(canEdit || this.isEditing);
+      section.outerHTML = this.renderLineItemsSection(canEdit);
     }
   }
 
