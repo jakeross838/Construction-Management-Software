@@ -52,7 +52,7 @@ test.describe('Ross Built CMS - Full App Test', () => {
 
   test('1. Page loads without errors', async ({ page }) => {
     await page.goto('http://localhost:3001');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Wait for invoices to load
     await page.waitForTimeout(2000);
@@ -68,7 +68,7 @@ test.describe('Ross Built CMS - Full App Test', () => {
 
   test('2. Invoice list displays correctly', async ({ page }) => {
     await page.goto('http://localhost:3001');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // Check if invoices loaded (either cards or empty state)
@@ -84,7 +84,7 @@ test.describe('Ross Built CMS - Full App Test', () => {
 
   test('3. Click invoice card - open edit modal', async ({ page }) => {
     await page.goto('http://localhost:3001');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // Find first invoice card
@@ -114,7 +114,7 @@ test.describe('Ross Built CMS - Full App Test', () => {
 
   test('4. Test Approve button flow', async ({ page }) => {
     await page.goto('http://localhost:3001');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // Look for a "needs_approval" invoice that can be approved
@@ -164,30 +164,36 @@ test.describe('Ross Built CMS - Full App Test', () => {
     }
   });
 
-  test('5. Test all filter buttons', async ({ page }) => {
+  test('5. Test status filter dropdown', async ({ page }) => {
     await page.goto('http://localhost:3001');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
-    const filters = ['Needs Approval', 'Approved', 'In Draw', 'Archive'];
+    // UI now uses a select dropdown for status filtering
+    const statusFilter = page.locator('#statusFilter');
+    if (await statusFilter.count() > 0) {
+      const options = ['needs_approval', 'approved', 'in_draw', 'archive'];
 
-    for (const filterText of filters) {
-      const filterBtn = page.locator(`.filter-btn:has-text("${filterText}")`);
-      if (await filterBtn.count() > 0) {
-        console.log(`Clicking filter: ${filterText}`);
-        await filterBtn.click();
-        await page.waitForTimeout(1000);
+      for (const optionValue of options) {
+        console.log(`Selecting filter: ${optionValue}`);
+        await statusFilter.selectOption(optionValue);
+        await page.waitForTimeout(500);
 
         if (consoleErrors.length > 0) {
-          console.log(`Errors after ${filterText}:`, consoleErrors);
+          console.log(`Errors after ${optionValue}:`, consoleErrors);
         }
       }
+
+      // Reset to all
+      await statusFilter.selectOption('');
+    } else {
+      console.log('Status filter dropdown not found');
     }
   });
 
   test('6. Test Upload Invoice modal', async ({ page }) => {
     await page.goto('http://localhost:3001');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // Click upload button
@@ -212,7 +218,7 @@ test.describe('Ross Built CMS - Full App Test', () => {
 
   test('7. Debug: Check what happens on invoice click', async ({ page }) => {
     await page.goto('http://localhost:3001');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // Inject debug logging

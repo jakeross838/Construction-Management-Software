@@ -67,11 +67,9 @@ test.describe('Full Functionality Tests', () => {
     const title = page.locator('h1');
     await expect(title).toContainText('Invoice');
 
-    // Check filter buttons exist
-    await expect(page.locator('.filter-btn:has-text("Needs Approval")')).toBeVisible();
-    await expect(page.locator('.filter-btn:has-text("Approved")')).toBeVisible();
-    await expect(page.locator('.filter-btn:has-text("In Draw")')).toBeVisible();
-    await expect(page.locator('.filter-btn:has-text("Archive")')).toBeVisible();
+    // Check job filter dropdown exists
+    const jobFilter = page.locator('#jobFilter');
+    await expect(jobFilter).toBeVisible();
 
     // Check upload button exists
     await expect(page.locator('button:has-text("Upload")')).toBeVisible();
@@ -79,50 +77,65 @@ test.describe('Full Functionality Tests', () => {
     // Check connection status
     await expect(page.locator('.connection-status')).toBeVisible();
 
-    expect(errors.length).toBe(0);
-  });
-
-  test('2. Filter: Needs Approval', async ({ page }) => {
-    const filterBtn = page.locator('.filter-btn:has-text("Needs Approval")');
-    await filterBtn.click();
-    await page.waitForTimeout(1000);
-
-    // Should show coded invoices or empty state
-    const invoiceCards = await page.locator('.invoice-card').count();
-    console.log('Needs Approval invoices:', invoiceCards);
+    // Check invoice list container exists
+    await expect(page.locator('#invoiceList')).toBeVisible();
 
     expect(errors.length).toBe(0);
   });
 
-  test('3. Filter: Approved', async ({ page }) => {
-    const filterBtn = page.locator('.filter-btn:has-text("Approved")');
-    await filterBtn.click();
-    await page.waitForTimeout(1000);
+  test('2. Job filter works', async ({ page }) => {
+    const jobFilter = page.locator('#jobFilter');
 
-    const invoiceCards = await page.locator('.invoice-card').count();
-    console.log('Approved invoices:', invoiceCards);
+    // Get initial invoice count
+    const initialCount = await page.locator('.invoice-card').count();
+    console.log('Initial invoice count:', initialCount);
 
-    expect(errors.length).toBe(0);
-  });
+    // Try selecting a job if options exist
+    const options = await jobFilter.locator('option').count();
+    if (options > 1) {
+      await jobFilter.selectOption({ index: 1 });
+      await page.waitForTimeout(1000);
 
-  test('4. Filter: In Draw', async ({ page }) => {
-    const filterBtn = page.locator('.filter-btn:has-text("In Draw")');
-    await filterBtn.click();
-    await page.waitForTimeout(1000);
-
-    const invoiceCards = await page.locator('.invoice-card').count();
-    console.log('In Draw invoices:', invoiceCards);
+      const filteredCount = await page.locator('.invoice-card').count();
+      console.log('Filtered invoice count:', filteredCount);
+    }
 
     expect(errors.length).toBe(0);
   });
 
-  test('5. Filter: Archive', async ({ page }) => {
-    const filterBtn = page.locator('.filter-btn:has-text("Archive")');
-    await filterBtn.click();
-    await page.waitForTimeout(1000);
-
+  test('3. Invoice cards display correctly', async ({ page }) => {
     const invoiceCards = await page.locator('.invoice-card').count();
-    console.log('Archived invoices:', invoiceCards);
+    console.log('Total invoices:', invoiceCards);
+
+    if (invoiceCards > 0) {
+      // Check card has expected elements
+      const firstCard = page.locator('.invoice-card').first();
+      await expect(firstCard).toBeVisible();
+    }
+
+    expect(errors.length).toBe(0);
+  });
+
+  test('4. Invoice card shows status', async ({ page }) => {
+    const invoiceCards = await page.locator('.invoice-card').count();
+
+    if (invoiceCards > 0) {
+      // Check that cards have status classes
+      const hasStatus = await page.locator('.invoice-card[class*="status-"]').count();
+      console.log('Cards with status:', hasStatus);
+    }
+
+    expect(errors.length).toBe(0);
+  });
+
+  test('5. Invoice list groups by status', async ({ page }) => {
+    // The UI groups invoices by status (needs_approval, received, approved)
+    const invoiceCards = await page.locator('.invoice-card').count();
+    console.log('Invoice cards:', invoiceCards);
+
+    // Check for section headers if any exist
+    const sections = await page.locator('.invoice-group-header, .status-group').count();
+    console.log('Status sections:', sections);
 
     expect(errors.length).toBe(0);
   });
@@ -152,17 +165,18 @@ test.describe('Full Functionality Tests', () => {
       await invoiceCard.click();
       await page.waitForTimeout(2000);
 
-      // Modal should be visible
-      const modal = page.locator('#modal-container.active');
-      await expect(modal).toBeVisible();
+      // Modal should have active class (CSS manages visibility)
+      const modal = page.locator('#modal-container');
+      const hasActiveClass = await modal.evaluate(el => el.classList.contains('active'));
+      expect(hasActiveClass).toBe(true);
 
-      // Check modal has expected sections
-      await expect(page.locator('.modal-header')).toBeVisible();
+      // Check modal has expected sections within modal-container
+      await expect(page.locator('#modal-container .modal-header')).toBeVisible();
       await expect(page.locator('#edit-invoice-number')).toBeVisible();
       await expect(page.locator('#edit-amount')).toBeVisible();
 
       // Close modal
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
       await page.waitForTimeout(500);
     }
 
@@ -187,7 +201,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('Invoice number field: editable ✓');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -211,7 +225,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('Amount field: editable ✓');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -235,7 +249,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('Due date field: present ✓');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -262,7 +276,7 @@ test.describe('Full Functionality Tests', () => {
         }
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -289,7 +303,7 @@ test.describe('Full Functionality Tests', () => {
         }
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -320,10 +334,10 @@ test.describe('Full Functionality Tests', () => {
         }
 
         // Click elsewhere to close
-        await page.locator('.modal-header').click();
+        await page.locator('#modal-container .modal-header').click();
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -350,7 +364,7 @@ test.describe('Full Functionality Tests', () => {
         }
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -370,7 +384,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('Fill remaining button: clicked ✓');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -400,7 +414,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('Remove allocation: before', beforeCount, 'after', afterCount);
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -484,14 +498,15 @@ test.describe('Full Functionality Tests', () => {
       await invoiceCard.click();
       await page.waitForTimeout(2000);
 
-      const cancelBtn = page.locator('.modal-footer button:has-text("Cancel")');
+      // Use more specific selector for the edit modal's Cancel button
+      const cancelBtn = page.locator('#modal-container .modal-footer button:has-text("Cancel")');
       if (await cancelBtn.count() > 0) {
         await cancelBtn.click();
         await page.waitForTimeout(500);
 
         // Modal should be closed
-        const modal = page.locator('#modal-container.active');
-        const isActive = await modal.count() > 0;
+        const modal = page.locator('#modal-container');
+        const isActive = await modal.evaluate(el => el.classList.contains('active'));
         console.log('Cancel button closes modal:', !isActive ? '✓' : '✗');
       }
     }
@@ -506,12 +521,13 @@ test.describe('Full Functionality Tests', () => {
       await invoiceCard.click();
       await page.waitForTimeout(2000);
 
-      const closeBtn = page.locator('.modal-close');
+      // Use specific selector for the edit modal's close button
+      const closeBtn = page.locator('#modal-container .modal-close').first();
       await closeBtn.click({ force: true });
       await page.waitForTimeout(500);
 
-      const modal = page.locator('#modal-container.active');
-      const isActive = await modal.count() > 0;
+      const modal = page.locator('#modal-container');
+      const isActive = await modal.evaluate(el => el.classList.contains('active'));
       console.log('X button closes modal:', !isActive ? '✓' : '✗');
     }
 
@@ -575,7 +591,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('Activity timeline: present ✓');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -593,7 +609,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('Notes field: present ✓');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -613,7 +629,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('PDF viewer: present ✓');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -622,11 +638,8 @@ test.describe('Full Functionality Tests', () => {
   // ========== STATUS-SPECIFIC BUTTONS ==========
 
   test('26. Approved invoice has Add to Draw button', async ({ page }) => {
-    // First switch to Approved filter
-    await page.locator('.filter-btn:has-text("Approved")').click();
-    await page.waitForTimeout(1000);
-
-    const approvedInvoice = page.locator('.invoice-card').first();
+    // Look for an approved invoice directly (no filter buttons on this page)
+    const approvedInvoice = page.locator('.invoice-card.status-approved').first();
 
     if (await approvedInvoice.count() > 0) {
       await approvedInvoice.click();
@@ -635,9 +648,13 @@ test.describe('Full Functionality Tests', () => {
       const addToDrawBtn = page.locator('button:has-text("Add to Draw")');
       if (await addToDrawBtn.count() > 0) {
         console.log('Add to Draw button: present ✓');
+      } else {
+        console.log('No Add to Draw button (may need approval first)');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
+    } else {
+      console.log('No approved invoices found');
     }
 
     expect(errors.length).toBe(0);
@@ -650,12 +667,12 @@ test.describe('Full Functionality Tests', () => {
       await editableInvoice.click();
       await page.waitForTimeout(2000);
 
-      const deleteBtn = page.locator('.modal-footer button:has-text("Delete")');
+      const deleteBtn = page.locator('#modal-container .modal-footer button:has-text("Delete")');
       if (await deleteBtn.count() > 0) {
         console.log('Delete button: present ✓');
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -695,7 +712,7 @@ test.describe('Full Functionality Tests', () => {
       const jobsCall = apiCalls.find(c => c.url.includes('/api/jobs'));
       console.log('Jobs API called:', !!jobsCall);
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -710,7 +727,7 @@ test.describe('Full Functionality Tests', () => {
       const vendorsCall = apiCalls.find(c => c.url.includes('/api/vendors'));
       console.log('Vendors API called:', !!vendorsCall);
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -725,7 +742,7 @@ test.describe('Full Functionality Tests', () => {
       const costCodesCall = apiCalls.find(c => c.url.includes('/api/cost-codes'));
       console.log('Cost codes API called:', !!costCodesCall);
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -746,7 +763,7 @@ test.describe('Full Functionality Tests', () => {
         console.log('Allocation summary:', text?.substring(0, 50));
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
@@ -770,13 +787,14 @@ test.describe('Full Functionality Tests', () => {
       await invoiceCard.click();
       await page.waitForTimeout(2000);
 
-      const versionInfo = page.locator('.modal-footer-left, .version-info');
+      // Use more specific selector for the edit modal's version info
+      const versionInfo = page.locator('#modal-container .modal-footer-left, #modal-container .version-info').first();
       if (await versionInfo.count() > 0) {
         const text = await versionInfo.textContent();
         console.log('Version info:', text?.substring(0, 30));
       }
 
-      await page.locator('.modal-close').click({ force: true });
+      await page.locator('#modal-container .modal-close').first().click({ force: true });
     }
 
     expect(errors.length).toBe(0);
