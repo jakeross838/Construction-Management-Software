@@ -1159,6 +1159,13 @@ const Modals = {
         buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.removeFromDraw()">Remove from Draw</button>`);
         break;
 
+      case 'denied':
+        // Denied - can be edited and resubmitted, or deleted
+        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
+        buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice(true)">Save</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.resubmitInvoice()">Resubmit</button>`);
+        break;
+
       default:
         // Unknown status - just save
         buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveInvoice()">Save</button>`);
@@ -1816,6 +1823,79 @@ const Modals = {
       type: 'warning',
       onConfirm: async () => {
         await this.saveWithStatus('needs_approval', 'Invoice unapproved');
+      }
+    });
+  },
+
+  /**
+   * Deny invoice - show dialog for reason then transition to denied status
+   */
+  denyInvoice() {
+    const modal = `
+      <div class="confirm-modal denial-modal">
+        <div class="modal-header">
+          <h2>Deny Invoice</h2>
+          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="confirm-icon confirm-danger">❌</div>
+          <div class="confirm-message">
+            <p>Denying invoice <strong>#${this.currentInvoice?.invoice_number || 'N/A'}</strong></p>
+            <p>This will send the invoice back to the accountant for corrections.</p>
+            <p style="margin-top: 12px;"><strong>Reason for denial:</strong></p>
+            <textarea id="denialReasonInput" class="denial-reason-input" rows="3"
+              placeholder="Explain why this invoice is being denied..."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="window.Modals.closeConfirmDialog()">Cancel</button>
+          <button class="btn btn-danger" onclick="window.Modals.submitDenial()">Deny Invoice</button>
+        </div>
+      </div>
+    `;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'confirm-overlay';
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = modal;
+    document.body.appendChild(overlay);
+
+    // Focus the textarea
+    setTimeout(() => {
+      document.getElementById('denialReasonInput')?.focus();
+    }, 100);
+  },
+
+  /**
+   * Submit denial with reason
+   */
+  async submitDenial() {
+    const reasonInput = document.getElementById('denialReasonInput');
+    const reason = reasonInput?.value?.trim();
+
+    if (!reason) {
+      window.toasts?.error('Please provide a reason for denial');
+      reasonInput?.focus();
+      return;
+    }
+
+    this.closeConfirmDialog();
+    await this.saveWithStatus('denied', 'Invoice denied', { denial_reason: reason });
+  },
+
+  /**
+   * Resubmit a denied invoice - transitions back to received for processing
+   */
+  resubmitInvoice() {
+    this.showConfirmDialog({
+      title: 'Resubmit Invoice',
+      message: 'Resubmit this invoice for processing? It will return to "Received" status for review.',
+      confirmText: 'Resubmit',
+      type: 'info',
+      onConfirm: async () => {
+        await this.saveWithStatus('received', 'Invoice resubmitted');
       }
     });
   },

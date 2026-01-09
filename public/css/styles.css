@@ -4224,6 +4224,12 @@ label .ai-indicator {
   margin-top: 0;
 }
 
+.invoice-group-header.denied-header {
+  color: var(--danger);
+  border-bottom-color: var(--danger);
+  background: rgba(248, 81, 73, 0.1);
+}
+
 /* Partial Approval Dialog */
 .partial-approval-summary {
   background: var(--bg-tertiary);
@@ -4256,13 +4262,34 @@ label .ai-indicator {
   border-color: var(--primary);
 }
 
+/* Denial modal textarea */
+.denial-reason-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary) !important;
+  color: var(--text);
+  font-size: 14px;
+  resize: vertical;
+  min-height: 80px;
+  display: block;
+  box-sizing: border-box;
+}
+
+.denial-reason-input:focus {
+  outline: none;
+  border-color: var(--danger);
+}
+
 /* Ensure confirm overlay is on top of everything */
 #confirm-overlay {
   z-index: 99999 !important;
 }
 
 #confirm-overlay .confirm-modal,
-#confirm-overlay .partial-approval-modal {
+#confirm-overlay .partial-approval-modal,
+#confirm-overlay .denial-modal {
   background: var(--bg-card);
   z-index: 100000;
 }

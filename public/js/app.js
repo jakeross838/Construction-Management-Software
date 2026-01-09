@@ -137,12 +137,12 @@ function renderInvoiceList() {
     // Archive = paid only
     filtered = filtered.filter(inv => inv.status === 'paid');
   } else if (state.currentStatusFilter === 'approval') {
-    // "Invoicing" tab includes received, needs_approval, and approved
-    // Sort: needs_approval first, then approved, then received
+    // "Invoicing" tab includes received, needs_approval, approved, and denied
+    // Sort: needs_approval first, then denied, then received, then approved
     filtered = filtered.filter(inv =>
-      inv.status === 'received' || inv.status === 'needs_approval' || inv.status === 'approved'
+      inv.status === 'received' || inv.status === 'needs_approval' || inv.status === 'approved' || inv.status === 'denied'
     );
-    const statusOrder = { 'needs_approval': 0, 'received': 1, 'approved': 2 };
+    const statusOrder = { 'needs_approval': 0, 'denied': 1, 'received': 2, 'approved': 3 };
     filtered.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
   } else {
     // Specific status
@@ -166,6 +166,7 @@ function renderInvoiceList() {
   if (state.currentStatusFilter === 'approval') {
     const groups = {
       needs_approval: filtered.filter(inv => inv.status === 'needs_approval'),
+      denied: filtered.filter(inv => inv.status === 'denied'),
       received: filtered.filter(inv => inv.status === 'received'),
       approved: filtered.filter(inv => inv.status === 'approved')
     };
@@ -175,6 +176,11 @@ function renderInvoiceList() {
     if (groups.needs_approval.length > 0) {
       html += '<div class="invoice-group-header">Needs Approval</div>';
       html += groups.needs_approval.map(inv => renderInvoiceCard(inv)).join('');
+    }
+
+    if (groups.denied.length > 0) {
+      html += '<div class="invoice-group-header denied-header">Denied - Needs Correction</div>';
+      html += groups.denied.map(inv => renderInvoiceCard(inv)).join('');
     }
 
     if (groups.received.length > 0) {

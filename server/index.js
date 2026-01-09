@@ -4872,8 +4872,8 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
   }
 
   // Check if invoice is archived (read-only) - allow status changes to unarchive
-  const archivedStatuses = ['paid', 'denied'];
-  const allowedUnarchiveStatuses = ['approved', 'needs_approval', 'in_draw'];
+  const archivedStatuses = ['paid'];
+  const allowedUnarchiveStatuses = ['approved', 'needs_approval', 'in_draw', 'received'];
   if (archivedStatuses.includes(existing.status) && !allowedUnarchiveStatuses.includes(updates.status)) {
     throw new AppError('ARCHIVED_INVOICE', `Cannot edit archived invoice (status: ${existing.status})`, { status: 400 });
   }

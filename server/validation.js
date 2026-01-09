@@ -41,11 +41,12 @@ const VALIDATION_RULES = {
 // ============================================================
 
 const STATUS_TRANSITIONS = {
-  received: ['needs_approval', 'deleted'],
-  needs_approval: ['approved', 'received', 'deleted'],
+  received: ['needs_approval', 'denied', 'deleted'],
+  needs_approval: ['approved', 'denied', 'received', 'deleted'],
   approved: ['in_draw', 'needs_approval'],
   in_draw: ['paid', 'approved'],
-  paid: []     // Archived - read only
+  paid: [],     // Archived - read only
+  denied: ['received', 'deleted']  // Can resubmit or delete
 };
 
 // ============================================================
