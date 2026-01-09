@@ -11,6 +11,7 @@ const Modals = {
   lockId: null,
   currentInvoice: null,
   currentAllocations: [],
+  currentPOLineItems: [],  // PO line items for linking allocations
   isDirty: false,
   isPartialPaymentMode: false,  // When false, amount is locked to full invoice
 
@@ -73,12 +74,18 @@ const Modals = {
       this.currentInvoice = invoice;
       this.isPartialPaymentMode = false;  // Reset to full payment mode for each invoice
 
-      // Fetch allocations, activity, and approval context
+      // Fetch allocations, activity, approval context, and PO line items
       const [allocations, activity, approvalContext] = await Promise.all([
         this.fetchAllocations(invoiceId),
         this.fetchActivity(invoiceId),
         this.fetchApprovalContext(invoiceId)
       ]);
+      // Fetch PO line items if invoice has a PO
+      if (invoice.po_id) {
+        await this.fetchPOLineItems(invoice.po_id);
+      } else {
+        this.currentPOLineItems = [];
+      }
       // Initialize with one empty allocation if none exist
       // This ensures the UI row has a backing data entry
       this.currentAllocations = allocations.length > 0
@@ -527,6 +534,20 @@ const Modals = {
                 ${costCodeLocked ? `<button type="button" class="picker-edit-btn cc-edit-btn" onclick="Modals.unlockCostCode(${index})" title="Edit">✎</button>` : ''}
               </div>
             </div>
+            ${this.currentPOLineItems.length > 0 ? `
+            <div class="line-item-field flex-1">
+              <label class="field-label">PO Line Item</label>
+              <select class="field-input po-line-select" onchange="Modals.updateAllocation(${index}, 'po_line_item_id', this.value)">
+                <option value="">-- Select Line --</option>
+                ${this.currentPOLineItems.map(li => `
+                  <option value="${li.id}" ${alloc.po_line_item_id === li.id ? 'selected' : ''}>
+                    ${li.cost_code?.code || 'N/A'} - ${parseFloat(li.amount).toLocaleString()} (${li.description || 'No desc'})
+                  </option>
+                `).join('')}
+              </select>
+              <div class="po-line-remaining">${this.getPOLineRemaining(alloc.po_line_item_id)}</div>
+            </div>
+            ` : ''}
             <div class="line-item-field amount-field">
               <label class="field-label">Amount ${!amountReadonly ? '<span class="required">*</span>' : '<span class="amount-locked-hint">(Full)</span>'}</label>
               <div class="amount-input-group ${amountReadonly ? 'locked' : ''}">
@@ -564,6 +585,20 @@ const Modals = {
     const num = parseFloat(amount);
     if (isNaN(num)) return '';
     return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  },
+
+  /**
+   * Get remaining amount for a PO line item
+   */
+  getPOLineRemaining(poLineItemId) {
+    if (!poLineItemId) return '';
+    const li = this.currentPOLineItems.find(l => l.id === poLineItemId);
+    if (!li) return '';
+    const budgeted = parseFloat(li.amount) || 0;
+    const invoiced = parseFloat(li.invoiced_amount) || 0;
+    const remaining = budgeted - invoiced;
+    const pct = budgeted > 0 ? Math.round((invoiced / budgeted) * 100) : 0;
+    return `<span class="po-line-stats">Remaining: ${remaining.toLocaleString(undefined, {minimumFractionDigits: 2})} (${pct}% billed)</span>`;
   },
 
   /**
@@ -2805,8 +2840,12 @@ const Modals = {
           placeholder: 'Search purchase orders...',
           disabled: pickersDisabled,
           jobId: this.currentInvoice?.job_id || null,
-          onChange: (poId) => {
+          onChange: async (poId) => {
             document.getElementById('edit-po').value = poId || '';
+            // Fetch PO line items when PO changes
+            await this.fetchPOLineItems(poId);
+            // Refresh allocations UI to show PO line item picker
+            this.refreshAllocationsUI();
             this.markDirty();
           }
         });
@@ -2846,6 +2885,27 @@ const Modals = {
       return await response.json();
     } catch (err) {
       console.error('Failed to fetch allocations:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Fetch PO line items for a specific PO
+   */
+  async fetchPOLineItems(poId) {
+    if (!poId) {
+      this.currentPOLineItems = [];
+      return [];
+    }
+    try {
+      const response = await fetch(`/api/purchase-orders/${poId}`);
+      if (!response.ok) return [];
+      const po = await response.json();
+      this.currentPOLineItems = po.line_items || [];
+      return this.currentPOLineItems;
+    } catch (err) {
+      console.error('Failed to fetch PO line items:', err);
+      this.currentPOLineItems = [];
       return [];
     }
   },

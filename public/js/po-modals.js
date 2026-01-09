@@ -342,13 +342,29 @@ class POModals {
           <div class="line-items-view">
             ${this.currentLineItems.map(item => {
               const cc = item.cost_code || costCodes.find(c => c.id === item.cost_code_id);
+              const budgeted = parseFloat(item.amount) || 0;
+              const invoiced = parseFloat(item.invoiced_amount) || 0;
+              const remaining = budgeted - invoiced;
+              const pct = budgeted > 0 ? Math.round((invoiced / budgeted) * 100) : 0;
+              const statusClass = pct >= 100 ? 'fully-billed' : pct > 0 ? 'partial-billed' : 'not-billed';
               return `
-                <div class="line-item-view">
-                  <div class="li-info">
-                    <span class="li-code">${cc?.code || '—'}</span>
-                    <span class="li-name">${cc?.name || item.description || 'No description'}</span>
+                <div class="line-item-view ${statusClass}">
+                  <div class="li-header">
+                    <div class="li-info">
+                      <span class="li-code">${cc?.code || '—'}</span>
+                      <span class="li-name">${cc?.name || item.description || 'No description'}</span>
+                    </div>
+                    <span class="li-amount">${this.formatMoney(budgeted)}</span>
                   </div>
-                  <span class="li-amount">${this.formatMoney(item.amount)}</span>
+                  <div class="li-billing-row">
+                    <div class="li-progress-bar">
+                      <div class="li-progress-fill" style="width: ${Math.min(pct, 100)}%"></div>
+                    </div>
+                    <div class="li-billing-stats">
+                      <span class="li-billed">Billed: ${this.formatMoney(invoiced)} (${pct}%)</span>
+                      <span class="li-remaining">Remaining: ${this.formatMoney(remaining)}</span>
+                    </div>
+                  </div>
                 </div>
               `;
             }).join('')}
@@ -592,9 +608,32 @@ class POModals {
   // HELPERS
   // ============================================================
 
-  openInvoice(invoiceId) {
-    this.closeModal();
-    window.location.href = `index.html?openInvoice=${invoiceId}`;
+  async openInvoice(invoiceId) {
+    try {
+      // Fetch invoice to get PDF URL
+      const res = await fetch(`/api/invoices/${invoiceId}`);
+      if (!res.ok) {
+        throw new Error('Invoice not found');
+      }
+      const invoice = await res.json();
+
+      // Prefer stamped PDF, fall back to original
+      const pdfUrl = invoice.pdf_stamped_url || invoice.pdf_url;
+
+      if (!pdfUrl) {
+        window.showToast?.('No PDF attached to this invoice', 'error');
+        return;
+      }
+
+      // Build filename from invoice data
+      const fileName = `${invoice.invoice_number || 'Invoice'}.pdf`;
+
+      // Open in the attachment viewer
+      this.showAttachmentViewer(pdfUrl, fileName, 'pdf');
+    } catch (err) {
+      console.error('Failed to open invoice PDF:', err);
+      window.showToast?.('Failed to open invoice', 'error');
+    }
   }
 
   setupFileUpload() {

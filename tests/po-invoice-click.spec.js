@@ -1,11 +1,11 @@
 const { test, expect } = require('@playwright/test');
 
-test('Clicking linked invoice opens that invoice', async ({ page }) => {
+test('Clicking linked invoice opens PDF viewer', async ({ page }) => {
   // Listen for console messages
   page.on('console', msg => {
     const text = msg.text();
-    if (text.includes('openInvoice') || text.includes('Opening') || text.includes('Calling') || msg.type() === 'error') {
-      console.log('Browser:', text);
+    if (msg.type() === 'error') {
+      console.log('Browser Error:', text);
     }
   });
 
@@ -33,37 +33,46 @@ test('Clicking linked invoice opens that invoice', async ({ page }) => {
     // Click on the first linked invoice
     await invoiceItems.first().click();
 
-    // Wait for navigation and page load
-    await page.waitForURL('**/index.html**', { timeout: 5000 });
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000); // Wait longer for modal to open
+    // Wait for PDF viewer to appear (should NOT navigate away)
+    await page.waitForTimeout(2000);
 
-    console.log('Navigated to:', page.url());
+    // Should still be on the POs page
+    expect(page.url()).toContain('pos.html');
+    console.log('Still on POs page:', page.url());
 
-    // Check that we're on the invoices page
-    expect(page.url()).toContain('index.html');
+    // Check if the attachment viewer opened
+    const attachmentViewer = page.locator('#attachmentViewer');
+    const viewerVisible = await attachmentViewer.count() > 0;
+    console.log('PDF viewer visible:', viewerVisible);
 
-    // Check if the invoice edit modal opened (edit modal goes into modal-container)
-    const modalContainer = page.locator('#modal-container');
-    const containerClass = await modalContainer.evaluate(el => el.className);
-    console.log('Modal container class:', containerClass);
+    if (viewerVisible) {
+      // Check it has a PDF iframe
+      const pdfFrame = page.locator('#attachmentViewer iframe');
+      const hasFrame = await pdfFrame.count() > 0;
+      console.log('PDF iframe present:', hasFrame);
 
-    // The modal container gets 'active' class when a modal is shown
-    const modalVisible = containerClass.includes('active');
-    console.log('Invoice modal visible:', modalVisible);
+      // Take screenshot
+      await page.screenshot({
+        path: 'tests/screenshots/style-check/16-invoice-pdf-viewer.png',
+        fullPage: false
+      });
+      console.log('Screenshot saved');
 
-    // Take screenshot
-    await page.screenshot({
-      path: 'tests/screenshots/style-check/16-opened-invoice.png',
-      fullPage: false
-    });
-    console.log('Screenshot saved');
+      // Close the viewer
+      await page.locator('.btn-close-viewer').click();
+      await page.waitForTimeout(500);
 
-    if (modalVisible) {
-      console.log('✓ Invoice modal opened successfully');
+      console.log('✓ Invoice PDF viewer opened successfully');
     } else {
-      console.log('✗ Invoice modal did not open - checking if openInvoice code ran');
+      console.log('✗ PDF viewer did not open');
+      // Take debug screenshot
+      await page.screenshot({
+        path: 'tests/screenshots/style-check/16-pdf-viewer-debug.png',
+        fullPage: false
+      });
     }
+
+    expect(viewerVisible).toBe(true);
   } else {
     console.log('No linked invoices to test');
   }

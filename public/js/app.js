@@ -105,10 +105,18 @@ async function loadInvoices() {
     if (openInvoiceId) {
       // Clear the URL parameter without reloading
       window.history.replaceState({}, '', window.location.pathname);
-      // Open the invoice modal
-      setTimeout(() => {
-        Modals.openEditModal(openInvoiceId);
-      }, 100);
+      // Open the invoice modal after DOM is ready
+      setTimeout(async () => {
+        try {
+          const success = await openEditModal(openInvoiceId);
+          if (!success) {
+            window.toasts?.error('Could not open invoice', { details: 'Invoice may not exist or is locked' });
+          }
+        } catch (err) {
+          console.error('Failed to open linked invoice:', err);
+          window.toasts?.error('Failed to open invoice');
+        }
+      }, 300);
     }
   } catch (err) {
     console.error('Failed to load invoices:', err);

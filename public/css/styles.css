@@ -2896,6 +2896,7 @@ label .ai-indicator {
 .line-item-field.flex-2 {
   flex: 2;
 }
+.line-item-field.flex-1 {  flex: 1;  min-width: 120px;}/* PO Line Item dropdown */.po-line-select {  width: 100%;  font-size: 0.8125rem;  padding: 0.5rem;  background: var(--bg-card);  border: 1px solid var(--border);  border-radius: 6px;  color: var(--text-primary);}.po-line-select:focus {  outline: none;  border-color: var(--accent-blue);}.po-line-remaining {  margin-top: 0.25rem;  font-size: 0.7rem;  color: var(--text-secondary);}.po-line-stats {  color: var(--accent-green);}
 
 /* Delete row button - X icon */
 .btn-delete-row {
@@ -10344,4 +10345,65 @@ textarea.form-control {
   .form-row-2 {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==========================================================
+   PO Line Item Billing Status
+   ========================================================== */
+
+.line-item-view .li-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.line-item-view .li-billing-row {
+  margin-top: 0.25rem;
+}
+
+.line-item-view .li-progress-bar {
+  height: 4px;
+  background: var(--bg-card);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 0.35rem;
+}
+
+.line-item-view .li-progress-fill {
+  height: 100%;
+  background: var(--accent-green);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.line-item-view.partial-billed .li-progress-fill {
+  background: var(--accent-blue);
+}
+
+.line-item-view.fully-billed .li-progress-fill {
+  background: var(--accent-green);
+}
+
+.line-item-view .li-billing-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.line-item-view .li-billed {
+  color: var(--accent-blue);
+}
+
+.line-item-view.fully-billed .li-billed {
+  color: var(--accent-green);
+}
+
+.line-item-view .li-remaining {
+  color: var(--text-secondary);
+}
+
+.line-item-view.fully-billed .li-remaining {
+  color: var(--accent-green);
 }

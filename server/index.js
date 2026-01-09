@@ -87,7 +87,81 @@ async function logActivity(invoiceId, action, performedBy, details = {}) {
 }
 
 // ============================================================
-// OWNER DASHBOARD STATS (All Jobs)
+// PO LINE ITEM HELPERS
+// ============================================================
+
+/**
+ * Update PO line items' invoiced_amount when allocations change.
+ */
+async function updatePOLineItemsForAllocations(poId, allocations, add = true) {
+  if (!poId || !allocations || allocations.length === 0) return;
+
+  for (const alloc of allocations) {
+    let poLineItem = null;
+
+    // Priority 1: Direct po_line_item_id link
+    if (alloc.po_line_item_id) {
+      const { data } = await supabase
+        .from('v2_po_line_items')
+        .select('id, invoiced_amount')
+        .eq('id', alloc.po_line_item_id)
+        .eq('po_id', poId)
+        .single();
+      poLineItem = data;
+    }
+
+    // Priority 2: Fall back to cost code matching
+    if (!poLineItem) {
+      const costCodeId = alloc.cost_code_id || alloc.cost_code?.id;
+      if (costCodeId) {
+        const { data } = await supabase
+          .from('v2_po_line_items')
+          .select('id, invoiced_amount')
+          .eq('po_id', poId)
+          .eq('cost_code_id', costCodeId)
+          .single();
+        poLineItem = data;
+      }
+    }
+
+    if (poLineItem) {
+      const currentAmount = parseFloat(poLineItem.invoiced_amount) || 0;
+      const allocAmount = parseFloat(alloc.amount) || 0;
+      const newAmount = add
+        ? currentAmount + allocAmount
+        : Math.max(0, currentAmount - allocAmount);
+
+      await supabase
+        .from('v2_po_line_items')
+        .update({ invoiced_amount: newAmount })
+        .eq('id', poLineItem.id);
+    }
+  }
+}
+
+/**
+ * Sync PO line items when allocations change on an invoice.
+ */
+async function syncPOLineItemsOnAllocationChange(invoice, oldAllocations, newAllocations, oldPoId = null) {
+  const billableStatuses = ['approved', 'in_draw', 'paid'];
+  if (!billableStatuses.includes(invoice.status)) return;
+
+  const effectiveOldPoId = oldPoId || invoice.po_id;
+
+  if (effectiveOldPoId && effectiveOldPoId !== invoice.po_id) {
+    await updatePOLineItemsForAllocations(effectiveOldPoId, oldAllocations, false);
+  }
+
+  if (invoice.po_id) {
+    if (effectiveOldPoId === invoice.po_id) {
+      await updatePOLineItemsForAllocations(invoice.po_id, oldAllocations, false);
+    }
+    await updatePOLineItemsForAllocations(invoice.po_id, newAllocations, true);
+  }
+}
+
+// ============================================================
+// // OWNER DASHBOARD STATS (All Jobs)
 // ============================================================
 
 app.get('/api/dashboard/stats', async (req, res) => {
@@ -1604,7 +1678,8 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
           cost_code_id: a.cost_code_id,
           amount: a.amount,
           notes: a.notes,
-          job_id: a.job_id || null
+          job_id: a.job_id || null,
+          po_line_item_id: a.po_line_item_id || null
         })));
     }
 
@@ -2050,7 +2125,8 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
           cost_code_id: a.cost_code_id,
           amount: a.amount,
           notes: a.notes,
-          job_id: a.job_id || null
+          job_id: a.job_id || null,
+          po_line_item_id: a.po_line_item_id || null
         })));
 
       if (error) throw error;
@@ -2815,7 +2891,7 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
       .from('v2_invoices')
       .select(`
         id, amount, pdf_stamped_url,
-        allocations:v2_invoice_allocations(amount)
+        allocations:v2_invoice_allocations(amount, po_line_item_id)
       `)
       .in('id', invoice_ids);
 
@@ -3071,7 +3147,7 @@ app.post('/api/draws/:id/recalculate', async (req, res) => {
       .select(`
         invoice:v2_invoices(
           amount,
-          allocations:v2_invoice_allocations(amount)
+          allocations:v2_invoice_allocations(amount, po_line_item_id)
         )
       `)
       .eq('draw_id', drawId);
@@ -4313,7 +4389,7 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
         invoice:v2_invoices(
           id, invoice_number, invoice_date, amount,
           vendor:v2_vendors(name),
-          allocations:v2_invoice_allocations(amount, cost_code:v2_cost_codes(id, code, name))
+          allocations:v2_invoice_allocations(amount, po_line_item_id, cost_code:v2_cost_codes(id, code, name))
         )
       `)
       .eq('draw_id', drawId);
@@ -4338,7 +4414,7 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
       const prevDrawIds = previousDraws.map(d => d.id);
       const { data: prevInvoices } = await supabase
         .from('v2_draw_invoices')
-        .select(`invoice:v2_invoices(allocations:v2_invoice_allocations(amount, cost_code_id))`)
+        .select(`invoice:v2_invoices(allocations:v2_invoice_allocations(amount, cost_code_id, po_line_item_id))`)
         .in('draw_id', prevDrawIds);
 
       prevInvoices?.forEach(di => {
@@ -5285,7 +5361,8 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         cost_code_id: a.cost_code_id,
         amount: parseFloat(a.amount) || 0,
         notes: a.notes || null,
-        job_id: a.job_id || null
+        job_id: a.job_id || null,
+        po_line_item_id: a.po_line_item_id || null
       }));
 
     if (allocsToInsert.length > 0) {
@@ -5403,7 +5480,8 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
         cost_code_id: a.cost_code_id,
         amount: a.amount,
         notes: a.notes,
-        job_id: a.job_id || null
+        job_id: a.job_id || null,
+        po_line_item_id: a.po_line_item_id || null
       }));
       await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
     }
@@ -5431,7 +5509,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       vendor:v2_vendors(id, name),
       po:v2_purchase_orders(id, po_number, description, total_amount),
-      allocations:v2_invoice_allocations(id, amount, cost_code_id, cost_code:v2_cost_codes(code, name))
+      allocations:v2_invoice_allocations(id, amount, cost_code_id, po_line_item_id, cost_code:v2_cost_codes(code, name))
     `)
     .eq('id', invoiceId)
     .is('deleted_at', null)
@@ -5497,6 +5575,13 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
       updateData.pdf_stamped_url = null;
       updateData.approved_at = null;
       updateData.approved_by = null;
+
+      // Revert PO line items if moving FROM billable status
+      if (['approved', 'in_draw', 'paid'].includes(invoice.status)) {
+        if (invoice.po?.id && invoice.allocations && invoice.allocations.length > 0) {
+          await updatePOLineItemsForAllocations(invoice.po.id, invoice.allocations, false);
+        }
+      }
       break;
 
     case 'approved':
@@ -5511,7 +5596,8 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
           cost_code_id: a.cost_code_id,
           amount: a.amount,
           notes: a.notes,
-          job_id: a.job_id || null
+          job_id: a.job_id || null,
+          po_line_item_id: a.po_line_item_id || null
         }));
         await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
       }
