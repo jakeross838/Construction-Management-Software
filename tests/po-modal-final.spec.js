@@ -38,9 +38,9 @@ test.describe('PO Modal - Final Verification', () => {
     expect(formInputs).toBe(0);
     console.log('✓ No form inputs (read-only mode)');
 
-    // Should have two-panel layout with info section
-    const leftPanel = await page.locator('#poModal .po-left-panel').count();
-    expect(leftPanel).toBe(1);
+    // Should have two-panel layout with summary panel
+    const summaryPanel = await page.locator('#poModal .po-summary-panel').count();
+    expect(summaryPanel).toBe(1);
     console.log('✓ Two-panel layout present');
 
     // Should have Edit button

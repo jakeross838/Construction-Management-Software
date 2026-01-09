@@ -98,6 +98,18 @@ async function loadInvoices() {
     const res = await fetch('/api/invoices');
     state.invoices = await res.json();
     renderInvoiceList();
+
+    // Check for openInvoice query parameter (from PO modal linking)
+    const urlParams = new URLSearchParams(window.location.search);
+    const openInvoiceId = urlParams.get('openInvoice');
+    if (openInvoiceId) {
+      // Clear the URL parameter without reloading
+      window.history.replaceState({}, '', window.location.pathname);
+      // Open the invoice modal
+      setTimeout(() => {
+        Modals.openEditModal(openInvoiceId);
+      }, 100);
+    }
   } catch (err) {
     console.error('Failed to load invoices:', err);
   }

@@ -8837,361 +8837,446 @@ textarea.form-control {
 }
 
 /* ============================================================
-   PO MODAL - TWO PANEL LAYOUT
+   PO MODAL - TWO PANEL LAYOUT (Monday.com Light Theme)
    ============================================================ */
 
-/* Split View Container */
-.po-split-view {
+/* PO Modal Split View */
+.po-modal-split {
   display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 0;
+  grid-template-columns: 340px 1fr;
   height: 100%;
   min-height: 0;
 }
 
-/* Left Panel */
-.po-left-panel {
-  background: var(--bg-card);
-  border-right: 1px solid var(--border);
+/* Summary Panel (Left) - Dark theme for contrast like PDF viewer */
+.po-summary-panel {
+  background: #1a1d21;
+  border-right: 1px solid #30363d;
   padding: 1.5rem;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
-/* Right Panel */
-.po-right-panel {
-  padding: 1.5rem;
-  overflow-y: auto;
-  background: var(--bg-primary);
+/* Summary Placeholder for New PO */
+.po-summary-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #8b949e;
+  text-align: center;
 }
 
-/* Summary Section (Left Panel) */
-.po-summary-section {
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--border);
+.po-summary-placeholder .placeholder-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
 }
 
-.po-amount-display {
+.po-summary-placeholder p {
+  font-size: 0.875rem;
+}
+
+/* Amount Card */
+.po-amount-card {
+  background: #21262d;
+  border-radius: 8px;
+  padding: 1.25rem;
+  border: 1px solid #30363d;
+}
+
+.po-amount-card .amount-header {
   text-align: center;
   margin-bottom: 1rem;
 }
 
-.po-amount-display .amount-label {
+.po-amount-card .amount-label {
   display: block;
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  font-size: 0.7rem;
+  color: #8b949e;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 0.25rem;
 }
 
-.po-amount-display .amount-value {
-  font-size: 2rem;
+.po-amount-card .amount-value {
+  font-size: 1.75rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: #e6edf3;
 }
 
-/* Progress Bar */
-.po-progress-section {
+.po-amount-card .progress-section {
   margin-top: 1rem;
 }
 
-.progress-bar-container {
-  height: 8px;
-  background: var(--bg-hover);
-  border-radius: 4px;
+.po-amount-card .progress-bar {
+  height: 6px;
+  background: #30363d;
+  border-radius: 3px;
   overflow: hidden;
   margin-bottom: 0.75rem;
 }
 
-.progress-bar-fill {
+.po-amount-card .progress-fill {
   height: 100%;
-  background: var(--success);
-  border-radius: 4px;
+  background: #3fb950;
+  border-radius: 3px;
   transition: width 0.3s ease;
 }
 
-.progress-bar-fill.over {
-  background: var(--danger);
+.po-amount-card .progress-fill.over {
+  background: #f85149;
 }
 
-.progress-stats {
+.po-amount-card .progress-labels {
   display: flex;
   justify-content: space-between;
 }
 
-.progress-stat {
+.po-amount-card .progress-item {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.progress-stat .stat-value {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.progress-stat .stat-value.negative {
-  color: var(--danger);
-}
-
-.progress-stat .stat-label {
-  font-size: 0.7rem;
-  color: var(--text-muted);
+.po-amount-card .progress-item .label {
+  font-size: 0.65rem;
+  color: #8b949e;
   text-transform: uppercase;
 }
 
-/* Info Section (Left Panel) */
-.po-info-section {
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--border);
+.po-amount-card .progress-item .value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e6edf3;
 }
 
-.po-info-section .info-row {
+.po-amount-card .progress-item .value.negative {
+  color: #f85149;
+}
+
+/* Info Card */
+.po-info-card {
+  background: #21262d;
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid #30363d;
+}
+
+.po-info-card h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 0.75rem 0;
+}
+
+.po-info-card .info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.po-info-card .info-item {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
-  padding: 0.5rem 0;
-  border-bottom: none;
 }
 
-.po-info-section .info-label {
-  font-size: 0.7rem;
-  color: var(--text-muted);
+.po-info-card .info-item .label {
+  font-size: 0.65rem;
+  color: #8b949e;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  width: auto;
 }
 
-.po-info-section .info-value {
-  font-size: 0.9rem;
-  color: var(--text-primary);
+.po-info-card .info-item .value {
+  font-size: 0.85rem;
+  color: #e6edf3;
   word-break: break-word;
 }
 
-/* Linked Invoices Section (Left Panel) */
-.po-invoices-section h4,
-.po-attachments-section h4 {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  margin: 0 0 0.75rem 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+/* Invoices Card */
+.po-invoices-card {
+  background: #21262d;
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid #30363d;
 }
 
-.count-badge {
-  display: inline-flex;
+.po-invoices-card .card-header {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  background: var(--bg-hover);
-  border-radius: 10px;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.po-invoices-card .card-header h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.po-invoices-card .card-header .count {
+  background: #30363d;
+  color: #e6edf3;
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  padding: 0.125rem 0.5rem;
+  border-radius: 10px;
 }
 
-.invoices-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.po-invoices-card .empty-message {
+  font-size: 0.8rem;
+  color: #8b949e;
+  text-align: center;
+  padding: 0.5rem;
 }
 
-.invoice-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.625rem 0.75rem;
-  background: var(--bg-hover);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.invoice-item:hover {
-  background: var(--bg-primary);
-}
-
-.invoice-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-
-.invoice-number {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.invoice-date {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.invoice-right {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.invoice-amount {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.status-dot.status-approved {
-  background: var(--success);
-}
-
-.status-dot.status-in_draw {
-  background: var(--primary);
-}
-
-.status-dot.status-paid {
-  background: var(--accent-blue);
-}
-
-.status-dot.status-needs_approval,
-.status-dot.status-received {
-  background: var(--warning);
-}
-
-/* Attachments Section (Left Panel) */
-.po-attachments-section .attachments-list {
+.po-invoices-card .invoices-list {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
 }
 
-.attachment-item {
+.po-invoices-card .invoice-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.625rem;
+  background: #161b22;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.po-invoices-card .invoice-row:hover {
+  background: #30363d;
+}
+
+.po-invoices-card .invoice-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.po-invoices-card .invoice-number {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #e6edf3;
+}
+
+.po-invoices-card .invoice-vendor {
+  font-size: 0.7rem;
+  color: #8b949e;
+}
+
+.po-invoices-card .invoice-meta {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.625rem;
-  background: var(--bg-hover);
-  border-radius: var(--radius);
 }
 
-.att-icon {
+.po-invoices-card .invoice-amount {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.po-invoices-card .invoice-status {
+  font-size: 0.65rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.po-invoices-card .invoice-status.status-approved {
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
+}
+
+.po-invoices-card .invoice-status.status-in_draw {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+}
+
+.po-invoices-card .invoice-status.status-paid {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+}
+
+.po-invoices-card .invoice-status.status-needs_approval,
+.po-invoices-card .invoice-status.status-received {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+/* Attachments Card */
+.po-attachments-card {
+  background: #21262d;
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid #30363d;
+}
+
+.po-attachments-card .card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.po-attachments-card .card-header h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.po-attachments-card .card-header .count {
+  background: #30363d;
+  color: #e6edf3;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 10px;
+}
+
+.po-attachments-card .upload-zone {
+  border: 2px dashed #30363d;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  transition: all 0.15s;
+}
+
+.po-attachments-card .upload-zone:hover,
+.po-attachments-card .upload-zone.dragover {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.po-attachments-card .upload-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.po-attachments-card .upload-icon {
   font-size: 1rem;
 }
 
-.att-name {
-  flex: 1;
+.po-attachments-card .upload-text {
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+
+.po-attachments-card .empty-message {
   font-size: 0.8rem;
-  color: var(--text-primary);
+  color: #8b949e;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.po-attachments-card .attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.po-attachments-card .attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  background: #161b22;
+  border-radius: 6px;
+}
+
+.po-attachments-card .att-icon {
+  font-size: 1rem;
+}
+
+.po-attachments-card .att-name {
+  flex: 1;
+  font-size: 0.75rem;
+  color: #e6edf3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.btn-icon {
-  padding: 0.25rem 0.5rem;
+.po-attachments-card .att-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.po-attachments-card .btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: #8b949e;
   cursor: pointer;
   border-radius: 4px;
+  transition: all 0.15s;
 }
 
-.btn-icon:hover {
-  background: var(--bg-primary);
-  color: var(--primary);
+.po-attachments-card .btn-icon:hover {
+  background: #30363d;
+  color: #58a6ff;
 }
 
-/* Placeholder for New PO */
-.summary-placeholder {
-  text-align: center;
-  padding: 2rem 1rem;
-  color: var(--text-muted);
+.po-attachments-card .btn-icon.danger:hover {
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
 }
 
-.placeholder-icon {
-  font-size: 2.5rem;
-  margin-bottom: 0.75rem;
-}
+/* Form Panel (Right) - Light theme like invoice modal */
+/* Uses existing .form-panel styles from invoice modal */
 
-/* Edit Form (Right Panel) */
-.po-edit-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.po-edit-form .form-section {
-  background: var(--bg-card);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  border: 1px solid var(--border);
-}
-
-.po-edit-form .form-section h4 {
-  margin: 0 0 1rem 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.po-edit-form .form-group {
-  margin-bottom: 1rem;
-}
-
-.po-edit-form .form-group:last-child {
-  margin-bottom: 0;
-}
-
-.po-edit-form .form-group label {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.375rem;
-}
-
-.po-edit-form .form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-/* Line Items Edit */
-.line-items-list {
+/* PO Line Items in Form */
+.line-items-container {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 0.5rem;
 }
 
 .line-item-row {
-  display: grid;
-  grid-template-columns: 200px 1fr 120px 32px;
-  gap: 0.5rem;
+  display: flex;
   align-items: center;
+  gap: 0.5rem;
 }
 
-.line-item-row .cc-select {
+.line-item-row .line-item-fields {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr 120px;
+  gap: 0.5rem;
+}
+
+.line-item-row .cost-code-select {
   font-size: 0.85rem;
 }
 
-.line-item-row .amount-field {
+.line-item-row .amount-input {
   text-align: right;
 }
 
-.btn-icon-delete {
+.line-item-row .btn-remove {
   width: 32px;
   height: 32px;
   display: flex;
@@ -9199,105 +9284,83 @@ textarea.form-control {
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-muted);
+  color: #676879;
   cursor: pointer;
-  border-radius: var(--radius);
-  font-size: 1.2rem;
+  border-radius: 4px;
+  font-size: 1.25rem;
   transition: all 0.15s;
 }
 
-.btn-icon-delete:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: var(--danger);
-  color: var(--danger);
+.line-item-row .btn-remove:hover {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: #dc2626;
+  color: #dc2626;
 }
 
-.line-items-footer {
+.line-items-total {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 1rem;
   padding-top: 0.75rem;
   margin-top: 0.5rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid #e6e9ef;
 }
 
-.total-label {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
+.line-items-total .label {
+  font-size: 0.875rem;
+  color: #676879;
 }
 
-.total-value {
+.line-items-total .value {
   font-size: 1.25rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: #323338;
 }
 
-/* Read-Only Details (Right Panel) */
-.po-details-view {
+/* Read-only Line Items */
+.line-items-readonly {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-}
-
-.po-details-view .detail-section {
-  background: var(--bg-card);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  border: 1px solid var(--border);
-}
-
-.po-details-view .detail-section h4 {
-  margin: 0 0 1rem 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-/* Line Items Display (Read-only) */
-.line-items-display {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
 }
 
 .line-item-display {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--border);
+  padding: 0.625rem 0;
+  border-bottom: 1px solid #e6e9ef;
 }
 
 .line-item-display:last-of-type {
   border-bottom: none;
 }
 
-.line-item-display .item-info {
+.line-item-display .item-left {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
 
 .line-item-display .item-code {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: #676879;
   padding: 0.125rem 0.5rem;
-  background: var(--bg-hover);
+  background: #f6f7fb;
   border-radius: 4px;
   font-family: 'SF Mono', Monaco, monospace;
 }
 
 .line-item-display .item-name {
-  color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  color: #323338;
 }
 
 .line-item-display .item-amount {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #323338;
 }
 
 .line-items-total-row {
@@ -9306,94 +9369,44 @@ textarea.form-control {
   align-items: center;
   padding: 0.75rem 0;
   margin-top: 0.5rem;
-  border-top: 2px solid var(--border);
+  border-top: 2px solid #e6e9ef;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #323338;
 }
 
 .line-items-total-row span:last-child {
   font-size: 1.1rem;
 }
 
-/* Scope & Notes Display */
-.scope-text,
-.notes-text {
-  font-size: 0.9rem;
+/* Text Content (Scope, Notes) */
+.text-content {
+  font-size: 0.875rem;
   line-height: 1.6;
-  color: var(--text-secondary);
+  color: #676879;
 }
 
-/* Activity Log (Read-only) */
-.activity-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.activity-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.activity-item .activity-dot {
-  position: relative;
-  left: auto;
-  top: auto;
-  width: 8px;
-  height: 8px;
-  background: var(--primary);
-  border: none;
-  border-radius: 50%;
-  margin-top: 6px;
-  flex-shrink: 0;
-}
-
-.activity-item .activity-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  padding: 0;
-  background: transparent;
-}
-
-.activity-item .activity-text {
+/* Empty Message */
+.empty-message {
   font-size: 0.85rem;
-  color: var(--text-primary);
-}
-
-.activity-item .activity-time {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-/* Empty State */
-.empty-state.small {
-  padding: 1.5rem;
+  color: #9699a6;
   text-align: center;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+  padding: 1rem;
 }
 
-/* Responsive Adjustments */
+/* Responsive */
 @media (max-width: 900px) {
-  .po-split-view {
+  .po-modal-split {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
   }
 
-  .po-left-panel {
+  .po-summary-panel {
     border-right: none;
-    border-bottom: 1px solid var(--border);
-    max-height: 300px;
+    border-bottom: 1px solid #30363d;
+    max-height: 280px;
   }
 
-  .line-item-row {
-    grid-template-columns: 1fr 100px 32px;
-  }
-
-  .line-item-row .cc-select {
-    grid-column: 1 / -1;
+  .line-item-row .line-item-fields {
+    grid-template-columns: 1fr;
   }
 }
