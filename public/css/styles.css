@@ -3585,6 +3585,18 @@ label .ai-indicator {
   border-radius: 8px;
 }
 
+.review-flags-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.review-flags-header h3 {
+  margin: 0;
+  color: #fdab3d;
+}
+
 .review-flags h3 {
   color: #fdab3d;
 }
@@ -3597,8 +3609,14 @@ label .ai-indicator {
 
 .review-flags li {
   padding: 0.25rem 0;
-  color: #676879;
+  color: #c9d1d9;
   font-size: 0.875rem;
+}
+
+.review-flags li::before {
+  content: "•";
+  color: #fdab3d;
+  margin-right: 0.5rem;
 }
 
 /* Job selection modal */
@@ -4939,6 +4957,55 @@ label .ai-indicator {
 
 .inv-status {
   font-size: 0.7rem;
+}
+
+/* Linked Invoice Items (Change Orders) */
+.linked-invoices-list {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.linked-invoice-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.linked-invoice-item:last-child {
+  border-bottom: none;
+}
+
+.linked-invoice-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+
+.linked-invoice-info .invoice-number {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.linked-invoice-info .invoice-vendor {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.linked-invoice-info .invoice-amount {
+  font-weight: 500;
+  font-family: 'SF Mono', monospace;
+}
+
+/* Section header with actions */
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
 /* Activity Timeline */
@@ -7666,6 +7733,10 @@ textarea.form-control {
   visibility: visible !important;
 }
 
+#drawModal.modal-fullscreen-dark.show {
+  display: flex;
+}
+
 #drawModal .modal-content {
   width: 95vw;
   max-width: 1400px;
@@ -7792,6 +7863,50 @@ textarea.form-control {
   color: var(--primary);
 }
 
+/* Draw Edit Mode Styles */
+.summary-card .edit-input {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  margin-top: 0.25rem;
+}
+
+.summary-card .edit-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+}
+
+.draw-notes-section,
+.draw-notes-display {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.draw-notes-section textarea {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  resize: vertical;
+  min-height: 80px;
+}
+
+.draw-notes-section textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
 /* G702 Form Styles */
 .g702-container {
   max-width: 800px;
@@ -7881,6 +7996,49 @@ textarea.form-control {
 .g702-highlight td {
   color: var(--primary);
   font-weight: 600;
+}
+
+/* G702 Edit Mode */
+.g702-edit-input {
+  width: 120px;
+  padding: 0.25rem 0.5rem;
+  font-family: 'SF Mono', monospace;
+  font-size: 0.9rem;
+  text-align: right;
+  background: var(--bg-card);
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.g702-edit-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+}
+
+.g702-override-badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  background: rgba(253, 171, 61, 0.15);
+  color: #fdab3d;
+  border-radius: 3px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.g702-editable-row:hover {
+  background: rgba(88, 166, 255, 0.05);
+}
+
+.g702-amount {
+  text-align: right;
+  font-family: 'SF Mono', monospace;
+  width: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 /* G703 Table Styles */
@@ -8334,6 +8492,10 @@ textarea.form-control {
   visibility: visible !important;
 }
 
+#budgetModal.modal-fullscreen-dark.show {
+  display: flex;
+}
+
 #budgetModal .modal-content {
   width: 95vw;
   max-width: 1400px;
@@ -8657,12 +8819,222 @@ textarea.form-control {
   font-weight: 500;
 }
 
-.budget-table .row-over-budget {
-  background: rgba(248, 81, 73, 0.1);
+/* Budget Health Color Coding */
+.budget-table .budget-ok {
+  background: rgba(63, 185, 80, 0.08);
 }
 
+.budget-table .budget-ok:hover {
+  background: rgba(63, 185, 80, 0.12);
+}
+
+.budget-table .budget-warning {
+  background: rgba(210, 153, 34, 0.12);
+}
+
+.budget-table .budget-warning:hover {
+  background: rgba(210, 153, 34, 0.18);
+}
+
+.budget-table .budget-over,
+.budget-table .row-over-budget {
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.budget-table .budget-over:hover,
 .budget-table .row-over-budget:hover {
+  background: rgba(248, 81, 73, 0.18);
+}
+
+/* Budget health indicator dot */
+.budget-health-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.budget-health-indicator.health-ok {
+  background-color: var(--accent-green);
+}
+
+.budget-health-indicator.health-warning {
+  background-color: var(--accent-orange);
+}
+
+.budget-health-indicator.health-over {
+  background-color: var(--accent-red);
+}
+
+/* Status Workflow Component */
+.status-workflow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 1rem 2rem;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+.workflow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 100px;
+}
+
+.workflow-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card-elevated);
+  border: 2px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.workflow-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.workflow-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.workflow-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.workflow-connector {
+  width: 60px;
+  height: 2px;
+  background: var(--border);
+  margin: 0 0.5rem;
+  margin-bottom: 2rem;
+  transition: background 0.2s ease;
+}
+
+/* Workflow States */
+.workflow-step.completed .workflow-icon {
+  background: var(--accent-green);
+  border-color: var(--accent-green);
+}
+
+.workflow-step.completed .workflow-dot {
+  background: white;
+}
+
+.workflow-step.completed .workflow-label {
+  color: var(--accent-green);
+}
+
+.workflow-step.completed .workflow-date {
+  color: var(--text-secondary);
+}
+
+.workflow-step.current .workflow-icon {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.2);
+}
+
+.workflow-step.current .workflow-dot {
+  background: white;
+}
+
+.workflow-step.current .workflow-label {
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.workflow-connector.completed {
+  background: var(--accent-green);
+}
+
+/* Budget Category Headers */
+.budget-table .category-header,
+.budget-table .division-header {
+  background: var(--bg-card-elevated);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.budget-table .category-header:hover,
+.budget-table .division-header:hover {
+  background: var(--bg-hover);
+}
+
+.budget-table .category-header td,
+.budget-table .division-header td {
+  padding: 0.75rem 1rem;
+  border-top: 2px solid var(--border);
+}
+
+.budget-table .category-header.budget-warning,
+.budget-table .division-header.budget-warning {
+  background: rgba(210, 153, 34, 0.15);
+}
+
+.budget-table .category-header.budget-over,
+.budget-table .division-header.budget-over {
   background: rgba(248, 81, 73, 0.15);
+}
+
+.category-toggle,
+.division-toggle {
+  display: inline-block;
+  width: 1rem;
+  margin-right: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.category-count,
+.division-count {
+  font-weight: normal;
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.budget-table .category-line .cost-code,
+.budget-table .division-line .cost-code {
+  padding-left: 2rem;
+}
+
+/* Collapse/Expand All Buttons */
+.division-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.division-controls button {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.division-controls button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 /* Summary card variants */

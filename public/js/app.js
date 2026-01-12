@@ -488,6 +488,8 @@ function renderInvoiceModal(invoice, activity, approvalContext = {}) {
   const canEdit = ['received', 'needs_approval', 'approved'].includes(invoice.status);
   const canApprove = invoice.status === 'needs_approval';
   const canDelete = ['received', 'needs_approval'].includes(invoice.status);
+  const canMarkPaid = ['approved', 'in_draw'].includes(invoice.status) && !invoice.paid_to_vendor;
+  const canUnmarkPaid = invoice.paid_to_vendor;
 
   let buttons = [`<button class="btn btn-secondary" onclick="closeModal('invoiceModal')">Close</button>`];
 
@@ -501,6 +503,14 @@ function renderInvoiceModal(invoice, activity, approvalContext = {}) {
 
   if (canApprove) {
     buttons.push(`<button class="btn btn-success" onclick="approveInvoice('${invoice.id}')">Approve</button>`);
+  }
+
+  if (canMarkPaid) {
+    buttons.push(`<button class="btn btn-success" onclick="showPaymentModal('${invoice.id}', ${invoice.amount || 0})">Mark Paid to Vendor</button>`);
+  }
+
+  if (canUnmarkPaid) {
+    buttons.push(`<button class="btn btn-outline-warning" onclick="unmarkPaid('${invoice.id}')">Unmark Paid</button>`);
   }
 
   footer.innerHTML = buttons.join('');
@@ -556,6 +566,88 @@ async function approveInvoice(invoiceId) {
   } catch (err) {
     console.error('Failed to approve:', err);
     alert('Failed to approve invoice');
+  }
+}
+
+// ============================================================
+// PAYMENT TRACKING
+// ============================================================
+
+function showPaymentModal(invoiceId, amount) {
+  document.getElementById('paymentInvoiceId').value = invoiceId;
+  document.getElementById('paymentMethod').value = '';
+  document.getElementById('paymentReference').value = '';
+  document.getElementById('paymentDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('paymentAmount').value = '';
+  document.getElementById('paymentAmount').placeholder = `Leave blank for full amount (${formatMoney(amount)})`;
+
+  showModal('paymentModal');
+}
+
+async function confirmMarkPaid() {
+  const invoiceId = document.getElementById('paymentInvoiceId').value;
+  const paymentMethod = document.getElementById('paymentMethod').value;
+  const paymentReference = document.getElementById('paymentReference').value;
+  const paymentDate = document.getElementById('paymentDate').value;
+  const paymentAmount = document.getElementById('paymentAmount').value;
+
+  if (!paymentMethod) {
+    alert('Please select a payment method');
+    return;
+  }
+
+  try {
+    const body = {
+      payment_method: paymentMethod,
+      payment_reference: paymentReference || null,
+      payment_date: paymentDate || null
+    };
+
+    if (paymentAmount) {
+      body.payment_amount = parseFloat(paymentAmount);
+    }
+
+    const res = await fetch(`/api/invoices/${invoiceId}/pay`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to mark as paid');
+    }
+
+    closeModal('paymentModal');
+    closeModal('invoiceModal');
+    loadInvoices();
+    window.toasts?.success('Invoice marked as paid to vendor');
+  } catch (err) {
+    console.error('Failed to mark as paid:', err);
+    alert(err.message || 'Failed to mark invoice as paid');
+  }
+}
+
+async function unmarkPaid(invoiceId) {
+  if (!confirm('Remove payment status from this invoice?')) return;
+
+  try {
+    const res = await fetch(`/api/invoices/${invoiceId}/unpay`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to unmark as paid');
+    }
+
+    closeModal('invoiceModal');
+    loadInvoices();
+    window.toasts?.success('Payment status removed');
+  } catch (err) {
+    console.error('Failed to unmark as paid:', err);
+    alert(err.message || 'Failed to unmark invoice as paid');
   }
 }
 
@@ -887,8 +979,8 @@ function formatMoney(amount) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(parseFloat(amount) || 0);
 }
 

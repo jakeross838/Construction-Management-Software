@@ -13,7 +13,7 @@ const Modals = {
   currentAllocations: [],
   currentPOLineItems: [],  // PO line items for linking allocations
   isDirty: false,
-  isPartialPaymentMode: false,  // When false, amount is locked to full invoice
+  isEditMode: false,  // Start in view mode, click Edit to enable editing
 
   /**
    * Initialize modal system
@@ -72,7 +72,7 @@ const Modals = {
         return false;
       }
       this.currentInvoice = invoice;
-      this.isPartialPaymentMode = false;  // Reset to full payment mode for each invoice
+      this.isEditMode = false;  // Start in view mode
 
       // Fetch allocations, activity, approval context, and PO line items
       const [allocations, activity, approvalContext] = await Promise.all([
@@ -204,14 +204,13 @@ const Modals = {
   buildEditModal(invoice, allocations, activity = [], approvalContext = {}) {
     const statusInfo = window.Validation?.getStatusInfo(invoice.status) || {};
     const isArchived = invoice.status === 'paid';
-    const isReceived = invoice.status === 'received';
-    const isViewOnly = !isReceived; // Only accountant in "received" can edit, PM and beyond is view-only
+    // Can edit if not archived and in edit mode
+    const canEdit = !isArchived && this.isEditMode;
     // Show original PDF for needs_approval/received, stamped for approved+
     const showOriginal = ['needs_approval', 'received'].includes(invoice.status);
 
     // Store for use in field locking
-    this.isViewOnly = isViewOnly;
-    this.isReceived = isReceived;
+    this.canEdit = canEdit;
     const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
 
     // Payment tracking info - use max of billed_amount and paid_amount
@@ -228,9 +227,10 @@ const Modals = {
         <div class="modal modal-fullscreen">
           <div class="modal-header">
             <div class="modal-title">
-              <h2>${isArchived ? 'View Invoice' : 'Edit Invoice'}</h2>
+              <h2>${this.isEditMode ? 'Edit Invoice' : 'View Invoice'}</h2>
               <span class="status-badge status-${invoice.status}">${statusInfo.label || invoice.status}</span>
               ${isArchived ? '<span class="readonly-badge">Read Only</span>' : ''}
+              ${!isArchived && !this.isEditMode ? '<button type="button" class="btn btn-secondary btn-sm" onclick="Modals.enterEditMode()">Edit</button>' : ''}
             </div>
             <button class="modal-close" onclick="Modals.closeActiveModal()">&times;</button>
           </div>
@@ -267,54 +267,38 @@ const Modals = {
 
                     <div class="form-group" data-field="invoice_number">
                       <label for="edit-invoice-number">Invoice Number * ${this.buildAiIndicator(invoice, 'invoice_number')}</label>
-                      <div class="field-with-edit">
-                        <input type="text" id="edit-invoice-number" name="invoice_number"
-                          class="${isReceived ? 'field-locked' : ''}"
-                          value="${this.escapeHtml(invoice.invoice_number || '')}"
-                          ${isViewOnly || isReceived ? 'readonly' : ''}
-                          onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_number')">
-                        ${isReceived ? '<button type="button" class="field-edit-btn" onclick="Modals.unlockField(\'invoice_number\')" title="Edit">✎</button>' : ''}
-                      </div>
+                      <input type="text" id="edit-invoice-number" name="invoice_number"
+                        value="${this.escapeHtml(invoice.invoice_number || '')}"
+                        ${!canEdit ? 'readonly' : ''}
+                        onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_number')">
                       <div class="field-error" id="error-invoice_number"></div>
                     </div>
 
                     <div class="form-group" data-field="amount">
                       <label for="edit-amount">Amount * ${this.buildAiIndicator(invoice, 'amount')}</label>
-                      <div class="field-with-edit">
-                        <input type="text" id="edit-amount" name="amount"
-                          class="${isReceived ? 'field-locked' : ''}"
-                          value="${window.Validation?.formatCurrency(invoice.amount) || ''}"
-                          ${isViewOnly || isReceived ? 'readonly' : ''}
-                          oninput="Modals.handleAmountChange(this); Modals.markFieldOverridden('amount')">
-                        ${isReceived ? '<button type="button" class="field-edit-btn" onclick="Modals.unlockField(\'amount\')" title="Edit">✎</button>' : ''}
-                      </div>
+                      <input type="text" id="edit-amount" name="amount"
+                        value="${window.Validation?.formatCurrency(invoice.amount) || ''}"
+                        ${!canEdit ? 'readonly' : ''}
+                        oninput="Modals.handleAmountChange(this); Modals.markFieldOverridden('amount')">
                       <div class="field-error" id="error-amount"></div>
                     </div>
 
                     <div class="form-row">
                       <div class="form-group" data-field="invoice_date">
                         <label for="edit-invoice-date">Invoice Date * ${this.buildAiIndicator(invoice, 'invoice_date')}</label>
-                        <div class="field-with-edit">
-                          <input type="date" id="edit-invoice-date" name="invoice_date"
-                            class="${isReceived ? 'field-locked' : ''}"
-                            value="${invoice.invoice_date || ''}"
-                            ${isViewOnly || isReceived ? 'readonly' : ''}
-                            onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_date')">
-                          ${isReceived ? '<button type="button" class="field-edit-btn" onclick="Modals.unlockField(\'invoice_date\')" title="Edit">✎</button>' : ''}
-                        </div>
+                        <input type="date" id="edit-invoice-date" name="invoice_date"
+                          value="${invoice.invoice_date || ''}"
+                          ${!canEdit ? 'readonly' : ''}
+                          onchange="Modals.markDirty(); Modals.markFieldOverridden('invoice_date')">
                         <div class="field-error" id="error-invoice_date"></div>
                       </div>
 
                       <div class="form-group" data-field="due_date">
                         <label for="edit-due-date">Due Date</label>
-                        <div class="field-with-edit">
-                          <input type="date" id="edit-due-date" name="due_date"
-                            class="${isReceived ? 'field-locked' : ''}"
-                            value="${invoice.due_date || ''}"
-                            ${isViewOnly || isReceived ? 'readonly' : ''}
-                            onchange="Modals.markDirty()">
-                          ${isReceived ? '<button type="button" class="field-edit-btn" onclick="Modals.unlockField(\'due_date\')" title="Edit">✎</button>' : ''}
-                        </div>
+                        <input type="date" id="edit-due-date" name="due_date"
+                          value="${invoice.due_date || ''}"
+                          ${!canEdit ? 'readonly' : ''}
+                          onchange="Modals.markDirty()">
                         <div class="field-error" id="error-due_date"></div>
                       </div>
                     </div>
@@ -325,30 +309,21 @@ const Modals = {
 
                     <div class="form-group picker-group">
                       <label for="edit-job">Job ${this.buildAiIndicator(invoice, 'job_id')}</label>
-                      <div class="picker-with-edit">
-                        <div id="job-picker-container" class="search-picker-container"></div>
-                        ${isReceived ? '<button type="button" class="picker-edit-btn" onclick="Modals.unlockPicker(\'job-picker-container\')" title="Edit">✎</button>' : ''}
-                      </div>
+                      <div id="job-picker-container" class="search-picker-container"></div>
                       <input type="hidden" id="edit-job" name="job_id">
                       <div class="field-error" id="error-job_id"></div>
                     </div>
 
                     <div class="form-group picker-group">
                       <label for="edit-vendor">Vendor ${this.buildAiIndicator(invoice, 'vendor_id')}</label>
-                      <div class="picker-with-edit">
-                        <div id="vendor-picker-container" class="search-picker-container"></div>
-                        ${isReceived ? '<button type="button" class="picker-edit-btn" onclick="Modals.unlockPicker(\'vendor-picker-container\')" title="Edit">✎</button>' : ''}
-                      </div>
+                      <div id="vendor-picker-container" class="search-picker-container"></div>
                       <input type="hidden" id="edit-vendor" name="vendor_id">
                       <div class="field-error" id="error-vendor_id"></div>
                     </div>
 
                     <div class="form-group picker-group">
                       <label for="edit-po">Purchase Order ${this.buildAiIndicator(invoice, 'po_id')}</label>
-                      <div class="picker-with-edit">
-                        <div id="po-picker-container" class="search-picker-container"></div>
-                        ${isReceived ? '<button type="button" class="picker-edit-btn" onclick="Modals.unlockPicker(\'po-picker-container\')" title="Edit">✎</button>' : ''}
-                      </div>
+                      <div id="po-picker-container" class="search-picker-container"></div>
                       <input type="hidden" id="edit-po" name="po_id">
                       <div class="field-error" id="error-po_id"></div>
                     </div>
@@ -357,16 +332,16 @@ const Modals = {
                   <div class="form-section">
                     <div class="section-header">
                       <h3>Line Items</h3>
-                      ${isReceived ? `
+                      ${canEdit ? `
                         <div class="section-header-actions" id="line-items-actions">
-                          <button type="button" class="btn-partial-payment" onclick="Modals.enablePartialPayment()">
-                            Partial Payment
+                          <button type="button" class="btn-add-line" onclick="Modals.addAllocation()">
+                            + Add Line
                           </button>
                         </div>
                       ` : ''}
                     </div>
                     <div id="allocations-container" class="line-items-container">
-                      ${this.buildAllocationsHtml(allocations, hasPartialPayment ? remainingAmount : invoice.amount, isViewOnly)}
+                      ${this.buildAllocationsHtml(allocations, hasPartialPayment ? remainingAmount : invoice.amount, !canEdit)}
                     </div>
                     <div class="allocation-summary" id="allocation-summary">
                       ${this.buildAllocationSummary(allocations, hasPartialPayment ? remainingAmount : invoice.amount)}
@@ -469,7 +444,7 @@ const Modals = {
                         ${this.buildActivityTimeline(invoice, activity)}
                       </div>
                     </div>
-                    ${!isArchived ? `
+                    ${canEdit ? `
                       <div class="add-note-box">
                         <input type="text" id="edit-notes" name="notes"
                           placeholder="Add a note..."
@@ -480,9 +455,12 @@ const Modals = {
 
                   ${invoice.needs_review ? `
                     <div class="form-section review-flags">
-                      <h3>⚠️ Review Required</h3>
+                      <div class="review-flags-header">
+                        <h3>⚠️ Review Required</h3>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="Modals.clearReviewFlags('${invoice.id}')">Clear Flags</button>
+                      </div>
                       <ul>
-                        ${(invoice.review_flags || []).map(f => `<li>${this.escapeHtml(f)}</li>`).join('')}
+                        ${(invoice.review_flags || []).map(f => `<li>${this.getReviewFlagLabel(f)}</li>`).join('')}
                       </ul>
                     </div>
                   ` : ''}
@@ -505,10 +483,14 @@ const Modals = {
 
   /**
    * Build allocations HTML - Adaptive.build inspired clean line items
+   * @param {Array} allocations - The allocations to render
+   * @param {number} invoiceAmount - Invoice amount for validation
+   * @param {boolean} isReadOnly - If true, fields are not editable
    */
-  buildAllocationsHtml(allocations, invoiceAmount, isArchived = false) {
+  buildAllocationsHtml(allocations, invoiceAmount, isReadOnly = false) {
     // Get cost code confidence from AI data if available
     const costCodeConfidence = this.currentInvoice?.ai_confidence?.costCode || 0;
+    const canEdit = !isReadOnly;
 
     const buildLineItem = (alloc, index) => {
       // Check if this specific allocation is AI-suggested
@@ -518,30 +500,21 @@ const Modals = {
       const icon = confidencePct >= 90 ? '✓' : confidencePct >= 70 ? '◐' : '?';
       const aiBadge = allocIsAi && confidencePct > 0 ? `<span class="ai-badge ${confidenceClass}" title="AI-suggested based on vendor trade type (${confidencePct}% confidence)"><span class="ai-badge-icon">${icon}</span><span class="ai-badge-score">${confidencePct}%</span><span class="ai-badge-label">AI</span></span>` : '';
 
-      // Amount is readonly unless in partial payment mode (or archived/in_draw)
-      const amountReadonly = isArchived || !this.isPartialPaymentMode;
-      // Cost code is locked in received status (click to edit), view-only in other statuses
-      const costCodeLocked = this.isReceived && !this.isPartialPaymentMode;
-      const costCodeViewOnly = isArchived || this.isViewOnly;
-
       return `
         <div class="line-item" data-index="${index}">
           <div class="line-item-header">
             <div class="line-item-field flex-2">
               <label class="field-label">Cost code / Account <span class="required">*</span> ${aiBadge}</label>
-              <div class="cc-picker-with-edit">
-                <div class="cc-picker-container ${costCodeLocked ? 'cc-locked' : ''}" data-index="${index}" data-locked="${costCodeLocked}"></div>
-                ${costCodeLocked ? `<button type="button" class="picker-edit-btn cc-edit-btn" onclick="Modals.unlockCostCode(${index})" title="Edit">✎</button>` : ''}
-              </div>
+              <div class="cc-picker-container" data-index="${index}" data-readonly="${isReadOnly}"></div>
             </div>
             ${this.currentPOLineItems.length > 0 ? `
             <div class="line-item-field flex-1">
               <label class="field-label">PO Line Item</label>
-              <select class="field-input po-line-select" onchange="Modals.updateAllocation(${index}, 'po_line_item_id', this.value)" ${['approved', 'in_draw', 'paid'].includes(this.currentInvoice?.status) ? 'disabled' : ''}>
+              <select class="field-input po-line-select" onchange="Modals.updateAllocation(${index}, 'po_line_item_id', this.value)" ${isReadOnly ? 'disabled' : ''}>
                 <option value="">-- Select Line --</option>
                 ${this.currentPOLineItems.map(li => `
                   <option value="${li.id}" ${alloc.po_line_item_id === li.id ? 'selected' : ''}>
-                    ${li.cost_code?.code || 'N/A'} - ${parseFloat(li.amount).toLocaleString()} (${li.description || 'No desc'})
+                    ${li.cost_code?.code || 'N/A'} - $${parseFloat(li.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${li.description || 'No desc'})
                   </option>
                 `).join('')}
               </select>
@@ -549,16 +522,16 @@ const Modals = {
             </div>
             ` : ''}
             <div class="line-item-field amount-field">
-              <label class="field-label">Amount ${!amountReadonly ? '<span class="required">*</span>' : '<span class="amount-locked-hint">(Full)</span>'}</label>
-              <div class="amount-input-group ${amountReadonly ? 'locked' : ''}">
+              <label class="field-label">Amount <span class="required">*</span></label>
+              <div class="amount-input-group ${isReadOnly ? 'locked' : ''}">
                 <span class="amount-prefix">$</span>
                 <input type="text" class="field-input amount-input" placeholder="0.00"
                   value="${this.formatAmountInput(alloc.amount)}"
                   oninput="Modals.updateAllocation(${index}, 'amount', this.value)"
-                  ${amountReadonly ? 'readonly' : ''}>
+                  ${isReadOnly ? 'readonly' : ''}>
               </div>
             </div>
-            ${!isArchived && this.isPartialPaymentMode ? `
+            ${canEdit && allocations.length > 1 ? `
               <button type="button" class="btn-delete-row" onclick="Modals.removeAllocation(${index})" title="Delete">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -755,79 +728,6 @@ const Modals = {
   formatCurrency(amount) {
     if (amount === null || amount === undefined) return '$0';
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
-  },
-
-  /**
-   * Unlock a locked field for editing
-   */
-  unlockField(fieldId) {
-    const wrapper = document.querySelector(`[data-field="${fieldId}"]`);
-    if (!wrapper) return;
-
-    const input = wrapper.querySelector('input, select');
-    const editBtn = wrapper.querySelector('.field-edit-btn');
-
-    if (input) {
-      input.removeAttribute('readonly');
-      input.classList.remove('field-locked');
-      input.focus();
-    }
-    if (editBtn) {
-      editBtn.style.display = 'none';
-    }
-    wrapper.classList.add('field-unlocked');
-    this.markDirty();
-  },
-
-  /**
-   * Unlock a picker field (Job, Vendor, PO)
-   */
-  unlockPicker(pickerId) {
-    const container = document.getElementById(pickerId);
-    if (!container) return;
-
-    const picker = container.querySelector('.search-picker');
-    const editBtn = container.parentElement.querySelector('.picker-edit-btn');
-
-    if (picker) {
-      picker.classList.remove('disabled');
-      const input = picker.querySelector('.search-picker-input');
-      if (input) {
-        input.removeAttribute('readonly');
-        input.focus();
-      }
-    }
-    if (editBtn) {
-      editBtn.style.display = 'none';
-    }
-    this.markDirty();
-  },
-
-  /**
-   * Unlock a cost code picker in line items
-   */
-  unlockCostCode(index) {
-    const container = document.querySelector(`.cc-picker-container[data-index="${index}"]`);
-    if (!container) return;
-
-    container.classList.remove('cc-locked');
-    container.dataset.locked = 'false';
-
-    const picker = container.querySelector('.cc-picker');
-    const editBtn = container.parentElement.querySelector('.cc-edit-btn');
-
-    if (picker) {
-      picker.classList.remove('disabled');
-      const input = picker.querySelector('.cc-picker-input');
-      if (input) {
-        input.removeAttribute('readonly');
-        input.focus();
-      }
-    }
-    if (editBtn) {
-      editBtn.style.display = 'none';
-    }
-    this.markDirty();
   },
 
   /**
@@ -1175,75 +1075,6 @@ const Modals = {
   },
 
   /**
-   * Enable partial payment mode - unlocks amount editing
-   */
-  enablePartialPayment() {
-    this.isPartialPaymentMode = true;
-
-    // Update the action buttons to show Pay in Full + Add line
-    const actionsContainer = document.getElementById('line-items-actions');
-    if (actionsContainer) {
-      actionsContainer.innerHTML = `
-        <button type="button" class="btn-pay-full" onclick="Modals.payInFull()">
-          Pay in Full
-        </button>
-        <button type="button" class="btn-add-line" onclick="Modals.addAllocation()">
-          + Add line
-        </button>
-      `;
-    }
-
-    // Refresh the allocations UI to unlock the amount fields
-    this.refreshAllocationsUI();
-  },
-
-  /**
-   * Pay in Full - set first allocation to full invoice amount and lock
-   */
-  payInFull() {
-    const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
-    const alreadyBilled = Math.max(
-      parseFloat(this.currentInvoice?.billed_amount || 0),
-      parseFloat(this.currentInvoice?.paid_amount || 0)
-    );
-    const maxAllocatable = invoiceAmount - alreadyBilled;
-
-    // If we have allocations, set the first one to full amount and clear others
-    if (this.currentAllocations.length > 0) {
-      // Keep only the first allocation and set it to full amount
-      const firstAlloc = this.currentAllocations[0];
-      this.currentAllocations = [{
-        cost_code_id: firstAlloc.cost_code_id,
-        amount: maxAllocatable,
-        notes: firstAlloc.notes || ''
-      }];
-    } else {
-      // Create a new allocation with full amount
-      this.currentAllocations = [{
-        cost_code_id: null,
-        amount: maxAllocatable,
-        notes: ''
-      }];
-    }
-
-    // Exit partial payment mode (lock the amount)
-    this.isPartialPaymentMode = false;
-
-    // Update the action buttons back to Partial Payment
-    const actionsContainer = document.getElementById('line-items-actions');
-    if (actionsContainer) {
-      actionsContainer.innerHTML = `
-        <button type="button" class="btn-partial-payment" onclick="Modals.enablePartialPayment()">
-          Partial Payment
-        </button>
-      `;
-    }
-
-    this.refreshAllocationsUI();
-    this.markDirty();
-  },
-
-  /**
    * Add a new allocation row - auto-fills with remaining unallocated amount
    */
   addAllocation() {
@@ -1504,9 +1335,12 @@ const Modals = {
    * Refresh allocations UI
    */
   refreshAllocationsUI() {
+    const isArchived = this.currentInvoice?.status === 'paid';
+    const isReadOnly = isArchived || !this.isEditMode;
+
     const container = document.getElementById('allocations-container');
     if (container) {
-      container.innerHTML = this.buildAllocationsHtml(this.currentAllocations, this.getEffectiveAllocationAmount());
+      container.innerHTML = this.buildAllocationsHtml(this.currentAllocations, this.getEffectiveAllocationAmount(), isReadOnly);
       this.initCostCodePickers();
     }
     this.refreshAllocationSummary();
@@ -1528,6 +1362,7 @@ const Modals = {
    */
   async initCostCodePickers() {
     const isArchived = this.currentInvoice?.status === 'paid';
+    const isReadOnly = isArchived || !this.isEditMode;
 
     // Initialize each picker
     document.querySelectorAll('.cc-picker-container').forEach(container => {
@@ -1535,12 +1370,10 @@ const Modals = {
       const allocation = this.currentAllocations[index];
       const currentValue = allocation?.cost_code_id || null;
       const originalValue = currentValue; // Store original to detect changes
-      // Check if this picker should be locked (received status with locked attribute)
-      const isLocked = container.dataset.locked === 'true';
 
       window.CostCodePicker.init(container, {
         value: currentValue,
-        disabled: isArchived || this.isViewOnly || isLocked,
+        disabled: isReadOnly,
         onChange: (codeId) => {
           this.updateAllocation(index, 'cost_code_id', codeId);
           // Mark cost code AI badge as overridden when changed
@@ -2698,6 +2531,29 @@ const Modals = {
   },
 
   /**
+   * Enter edit mode - enables all form fields
+   */
+  enterEditMode() {
+    if (this.currentInvoice?.status === 'paid') {
+      window.showToast?.('Cannot edit archived invoices', 'error');
+      return;
+    }
+    this.isEditMode = true;
+    // Re-render the modal with edit mode enabled
+    const modal = this.buildEditModal(
+      this.currentInvoice,
+      this.currentAllocations,
+      this.currentActivity || [],
+      this.currentApprovalContext || {}
+    );
+    const container = document.getElementById('modal-container');
+    if (container) {
+      container.innerHTML = modal;
+      this.populateDropdowns();
+    }
+  },
+
+  /**
    * Get the original AI value for a field
    */
   getOriginalAiValue(fieldName) {
@@ -2873,8 +2729,8 @@ const Modals = {
    */
   async populateDropdowns() {
     const isArchived = this.currentInvoice?.status === 'paid';
-    // Pickers start disabled - in "received" can unlock with edit button, otherwise permanently disabled
-    const pickersDisabled = this.isViewOnly || this.isReceived;
+    // Pickers disabled when not in edit mode or archived
+    const pickersDisabled = isArchived || !this.isEditMode;
 
     try {
       // Initialize Job picker
@@ -3076,6 +2932,58 @@ const Modals = {
     if (score >= 0.90) return 'confidence-high';
     if (score >= 0.60) return 'confidence-medium';
     return 'confidence-low';
+  },
+
+  /**
+   * Convert review flag codes to human-readable labels
+   */
+  getReviewFlagLabel(flag) {
+    const labels = {
+      'low_text_quality': 'Document quality is poor - verify extracted data',
+      'missing_job_reference': 'No job reference found on invoice',
+      'verify_date': 'Invoice date may need verification',
+      'verify_amount': 'Amount may need verification',
+      'missing_vendor': 'Vendor could not be identified',
+      'duplicate_possible': 'Possible duplicate invoice',
+      'missing_invoice_number': 'No invoice number found',
+      'po_mismatch': 'PO reference may not match'
+    };
+    return labels[flag] || flag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  },
+
+  /**
+   * Clear review flags for an invoice
+   */
+  async clearReviewFlags(invoiceId) {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          needs_review: false,
+          review_flags: []
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to clear flags');
+
+      window.showToast?.('Review flags cleared', 'success');
+
+      // Refresh the invoice view
+      if (this.currentInvoice && this.currentInvoice.id === invoiceId) {
+        this.currentInvoice.needs_review = false;
+        this.currentInvoice.review_flags = [];
+        this.openInvoice(invoiceId);
+      }
+
+      // Refresh the main list
+      if (typeof refreshInvoices === 'function') {
+        refreshInvoices();
+      }
+    } catch (err) {
+      console.error('Error clearing flags:', err);
+      window.showToast?.('Failed to clear flags', 'error');
+    }
   },
 
   /**

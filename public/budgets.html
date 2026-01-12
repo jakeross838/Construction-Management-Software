@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Budgets</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260109v">
+  <link rel="stylesheet" href="css/styles.css?v=20260112a">
 </head>
 <body>
   <div class="app">
@@ -86,6 +86,10 @@
               <div class="summary-label">Remaining</div>
               <div class="summary-value" id="summaryRemaining">$0</div>
             </div>
+            <div class="summary-card" id="overBudgetCard">
+              <div class="summary-label">Over Budget</div>
+              <div class="summary-value" id="summaryOverBudget">0 items</div>
+            </div>
           </div>
         </section>
 
@@ -94,6 +98,10 @@
           <div class="section-header">
             <h3>Budget by Cost Code</h3>
             <span class="section-subtitle">Live view - updates when invoices are approved</span>
+            <div class="division-controls">
+              <button onclick="toggleAllGroups(false)">Expand All</button>
+              <button onclick="toggleAllGroups(true)">Collapse All</button>
+            </div>
           </div>
           <div class="g703-container">
             <div class="g703-table-wrapper">
@@ -123,29 +131,37 @@
           </div>
         </section>
 
-        <!-- Change Orders Section -->
+        <!-- Change Orders Section (PCCOs) -->
         <section class="draw-section">
           <div class="section-header">
-            <h3>Change Orders</h3>
-            <span class="section-badge" id="changeOrderCount">0 change orders</span>
+            <h3>Prime Contract Change Orders (PCCOs)</h3>
+            <div class="section-header-actions">
+              <span class="section-badge" id="changeOrderCount">0 change orders</span>
+              <button class="btn btn-sm btn-primary" onclick="showAddCOModal()">+ Add Change Order</button>
+            </div>
           </div>
           <div class="invoices-container">
-            <table class="invoices-table">
+            <table class="invoices-table co-table">
               <thead>
                 <tr>
-                  <th>CO #</th>
-                  <th>PO</th>
+                  <th style="width: 60px;">PCCO #</th>
                   <th>Description</th>
-                  <th>Reason</th>
-                  <th>Amount</th>
-                  <th>Status</th>
+                  <th style="width: 100px;">Base Amount</th>
+                  <th style="width: 80px;">GC Fee</th>
+                  <th style="width: 100px;">Total</th>
+                  <th style="width: 60px;">Days</th>
+                  <th style="width: 80px;">Billed</th>
+                  <th style="width: 80px;">Status</th>
+                  <th style="width: 100px;">Actions</th>
                 </tr>
               </thead>
               <tbody id="changeOrdersBody">
                 <tr>
-                  <td colspan="6" class="empty-state">No change orders</td>
+                  <td colspan="9" class="empty-state">No change orders</td>
                 </tr>
               </tbody>
+              <tfoot id="changeOrdersFooter">
+              </tfoot>
             </table>
           </div>
         </section>
@@ -153,6 +169,120 @@
 
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeBudgetModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Order Modal -->
+  <div id="coModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2 id="coModalTitle">Add Change Order</h2>
+        <button class="close-btn" onclick="closeModal('coModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="coEditId">
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>PCCO Number *</label>
+            <input type="number" id="coNumber" class="form-control" min="1" required>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>First Billed on App #</label>
+            <input type="number" id="coAppNumber" class="form-control" min="1">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description *</label>
+          <input type="text" id="coTitle" class="form-control" placeholder="e.g., Added helical piles near pool" required>
+        </div>
+        <div class="form-group">
+          <label>Reason</label>
+          <select id="coReason" class="form-control">
+            <option value="scope_change">Scope Change</option>
+            <option value="owner_request">Owner Request</option>
+            <option value="unforeseen_conditions">Unforeseen Conditions</option>
+            <option value="design_change">Design Change</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Base Amount *</label>
+            <input type="number" id="coBaseAmount" class="form-control" step="0.01" min="0" required onchange="calculateCOTotal()">
+          </div>
+          <div class="form-group" style="flex: 0.7;">
+            <label>GC Fee %</label>
+            <input type="number" id="coGCFeePercent" class="form-control" step="0.1" value="20" onchange="calculateCOTotal()">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>GC Fee Amount</label>
+            <input type="number" id="coGCFeeAmount" class="form-control" step="0.01" readonly>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 2;">
+            <label>Total Amount</label>
+            <input type="text" id="coTotalAmount" class="form-control" readonly style="font-weight: bold; font-size: 1.1rem;">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Days Added *</label>
+            <input type="number" id="coDaysAdded" class="form-control" value="0" required placeholder="0">
+            <small class="form-hint">Schedule impact (can be 0 or negative)</small>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="coStatus" class="form-control">
+            <option value="draft">Draft</option>
+            <option value="pending_approval">Pending Approval</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+
+        <!-- Linked Invoices Section (only shown when editing) -->
+        <div id="coInvoicesSection" style="display: none; margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+          <div class="section-header" style="margin-bottom: 0.5rem;">
+            <h4 style="margin: 0;">Linked Invoices</h4>
+            <button class="btn btn-sm btn-secondary" onclick="showLinkInvoiceModal()">+ Link Invoice</button>
+          </div>
+          <div id="coLinkedInvoices" class="linked-invoices-list">
+            <div class="empty-state" style="padding: 0.5rem;">No invoices linked</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('coModal')">Cancel</button>
+        <button class="btn btn-danger" id="coDeleteBtn" onclick="deleteChangeOrder()" style="display: none;">Delete</button>
+        <button class="btn btn-primary" onclick="saveChangeOrder()">Save Change Order</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link Invoice Modal -->
+  <div id="linkInvoiceModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Link Invoice to Change Order</h2>
+        <button class="close-btn" onclick="closeModal('linkInvoiceModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Select Invoice</label>
+          <select id="linkInvoiceSelect" class="form-control">
+            <option value="">Select an invoice...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Amount from this invoice for CO (optional)</label>
+          <input type="number" id="linkInvoiceAmount" class="form-control" step="0.01" placeholder="Leave blank for full invoice amount">
+          <small class="form-hint">If this invoice covers multiple COs, enter the portion for this CO</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('linkInvoiceModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="linkInvoice()">Link Invoice</button>
       </div>
     </div>
   </div>
@@ -257,7 +387,7 @@
 
         // Show the modal with budget data
         renderBudgetModal();
-        document.getElementById('budgetModal').style.display = 'flex';
+        document.getElementById('budgetModal').classList.add('show');
 
         // Update content area with summary
         renderBudgetSummaryCard();
@@ -275,7 +405,7 @@
       const percentComplete = totalContract > 0 ? (data.totals.billed / totalContract) * 100 : 0;
 
       document.getElementById('budgetContent').innerHTML = `
-        <div class="budget-summary-card" onclick="document.getElementById('budgetModal').style.display='flex'">
+        <div class="budget-summary-card" onclick="document.getElementById('budgetModal').classList.add('show')">
           <div class="budget-card-header">
             <h3>${job.name}</h3>
             <span class="btn btn-sm btn-primary">View Details</span>
@@ -325,11 +455,74 @@
       document.getElementById('summaryRemaining').textContent = formatMoney(remaining);
       document.getElementById('varianceCard').className = `summary-card ${remaining < 0 ? 'over-budget' : ''}`;
 
+      // Count over-budget items
+      const overBudgetCount = (data.lines || []).filter(line => {
+        const budgeted = line.budgeted || 0;
+        const billed = line.billed || 0;
+        return budgeted > 0 && billed > budgeted;
+      }).length;
+      document.getElementById('summaryOverBudget').textContent = `${overBudgetCount} item${overBudgetCount !== 1 ? 's' : ''}`;
+      document.getElementById('overBudgetCard').className = `summary-card ${overBudgetCount > 0 ? 'over-budget' : ''}`;
+
       // Budget lines table
       renderBudgetTable(data.lines);
 
-      // Change orders
-      renderChangeOrders(data.changeOrders || []);
+      // Change orders (PCCOs - job change orders)
+      renderChangeOrders(data.jobChangeOrders || []);
+    }
+
+    // Category sort order - follows construction flow, General Conditions at bottom
+    const CATEGORY_ORDER = [
+      'Pre-Construction & Design',
+      'Permits & Fees',
+      'Site Work',
+      'Foundation',
+      'Framing & Structure',
+      'Roofing',
+      'Windows & Doors',
+      'Plumbing',
+      'Electrical & Low Voltage',
+      'HVAC',
+      'Gas',
+      'Fireplace',
+      'Insulation',
+      'Drywall & Ceilings',
+      'Exterior Finishes',
+      'Painting',
+      'Flooring & Tile',
+      'Cabinetry & Countertops',
+      'Interior Trim & Doors',
+      'Appliances',
+      'Hardware & Accessories',
+      'Glass & Mirrors',
+      'Closets',
+      'Garage Doors',
+      'Specialty Items',
+      'Outdoor & Pool',
+      'Landscaping & Hardscape',
+      // General Conditions at bottom
+      'General Conditions'
+    ];
+
+    // Track collapsed groups
+    let collapsedGroups = new Set();
+
+    function toggleGroup(groupName) {
+      if (collapsedGroups.has(groupName)) {
+        collapsedGroups.delete(groupName);
+      } else {
+        collapsedGroups.add(groupName);
+      }
+      renderBudgetTable(state.budgetData?.lines || []);
+    }
+
+    function toggleAllGroups(collapse) {
+      if (collapse) {
+        CATEGORY_ORDER.forEach(cat => collapsedGroups.add(cat));
+      } else {
+        collapsedGroups.clear();
+      }
+      renderBudgetTable(state.budgetData?.lines || []);
     }
 
     function renderBudgetTable(lines) {
@@ -345,35 +538,118 @@
       // Filter out lines with no cost code (orphan allocations)
       const validLines = lines.filter(line => line.costCode && line.costCode.trim() !== '');
 
-      // Sort by cost code
-      validLines.sort((a, b) => (a.costCode || '').localeCompare(b.costCode || ''));
+      // Group by category
+      const groupedLines = {};
+      validLines.forEach(line => {
+        const category = line.category || 'Uncategorized';
+        if (!groupedLines[category]) {
+          groupedLines[category] = [];
+        }
+        groupedLines[category].push(line);
+      });
 
-      tbody.innerHTML = validLines.map(line => {
-        const budgeted = line.budgeted || 0;
-        const committed = line.committed || 0;
-        const billed = line.billed || 0;
-        const paid = line.paid || 0;
-        const remaining = budgeted - billed;
-        const variance = budgeted - billed;
-        const percentComplete = budgeted > 0 ? (billed / budgeted) * 100 : (billed > 0 ? 100 : 0);
+      // Sort each group by cost code
+      Object.values(groupedLines).forEach(group => {
+        group.sort((a, b) => (a.costCode || '').localeCompare(b.costCode || ''));
+      });
 
-        const varianceClass = variance < 0 ? 'over-budget' : '';
-        const rowClass = billed > budgeted && budgeted > 0 ? 'row-over-budget' : '';
+      // Sort categories by defined order
+      const sortedCategories = Object.keys(groupedLines).sort((a, b) => {
+        const aIdx = CATEGORY_ORDER.indexOf(a);
+        const bIdx = CATEGORY_ORDER.indexOf(b);
+        // If not in list, put at end (before General Conditions)
+        const aOrder = aIdx === -1 ? CATEGORY_ORDER.length - 3 : aIdx;
+        const bOrder = bIdx === -1 ? CATEGORY_ORDER.length - 3 : bIdx;
+        return aOrder - bOrder;
+      });
 
-        return `
-          <tr class="${rowClass}">
-            <td class="cost-code">${line.costCode}</td>
-            <td>${line.description || '-'}</td>
-            <td class="amount">${formatMoneyDecimal(budgeted)}</td>
-            <td class="amount">${formatMoneyDecimal(committed)}</td>
-            <td class="amount highlight-current">${formatMoneyDecimal(billed)}</td>
-            <td class="amount">${formatMoneyDecimal(paid)}</td>
-            <td class="percent">${percentComplete.toFixed(1)}%</td>
-            <td class="amount">${formatMoneyDecimal(remaining)}</td>
-            <td class="amount ${varianceClass}">${formatMoneyDecimal(variance)}</td>
+      // Render grouped table
+      let html = '';
+      sortedCategories.forEach(category => {
+        const catLines = groupedLines[category];
+        const isCollapsed = collapsedGroups.has(category);
+
+        // Calculate category totals
+        const catTotals = catLines.reduce((acc, line) => ({
+          budgeted: acc.budgeted + (line.budgeted || 0),
+          committed: acc.committed + (line.committed || 0),
+          billed: acc.billed + (line.billed || 0),
+          paid: acc.paid + (line.paid || 0)
+        }), { budgeted: 0, committed: 0, billed: 0, paid: 0 });
+
+        const catPercent = catTotals.budgeted > 0 ? (catTotals.billed / catTotals.budgeted) * 100 : 0;
+        const catVariance = catTotals.budgeted - catTotals.billed;
+        const catHealthClass = catPercent > 100 ? 'budget-over' : (catPercent >= 80 ? 'budget-warning' : '');
+
+        // Category header row - escape quotes for onclick
+        const escapedCategory = category.replace(/'/g, "\\'");
+        html += `
+          <tr class="category-header ${catHealthClass}" onclick="toggleGroup('${escapedCategory}')">
+            <td colspan="2">
+              <span class="category-toggle">${isCollapsed ? '▶' : '▼'}</span>
+              <strong>${category}</strong>
+              <span class="category-count">(${catLines.length})</span>
+            </td>
+            <td class="amount">${formatMoneyDecimal(catTotals.budgeted)}</td>
+            <td class="amount">${formatMoneyDecimal(catTotals.committed)}</td>
+            <td class="amount">${formatMoneyDecimal(catTotals.billed)}</td>
+            <td class="amount">${formatMoneyDecimal(catTotals.paid)}</td>
+            <td class="percent">${catPercent.toFixed(1)}%</td>
+            <td class="amount">${formatMoneyDecimal(catTotals.budgeted - catTotals.billed)}</td>
+            <td class="amount ${catVariance < 0 ? 'over-budget' : ''}">${formatMoneyDecimal(catVariance)}</td>
           </tr>
         `;
-      }).join('');
+
+        // Individual lines (hidden if collapsed)
+        if (!isCollapsed) {
+          catLines.forEach(line => {
+            const budgeted = line.budgeted || 0;
+            const committed = line.committed || 0;
+            const billed = line.billed || 0;
+            const paid = line.paid || 0;
+            const remaining = budgeted - billed;
+            const variance = budgeted - billed;
+            const percentComplete = budgeted > 0 ? (billed / budgeted) * 100 : (billed > 0 ? 100 : 0);
+
+            // Determine health class based on % used
+            let healthClass = '';
+            let healthIndicator = '';
+            if (budgeted > 0) {
+              if (percentComplete > 100) {
+                healthClass = 'budget-over';
+                healthIndicator = '<span class="budget-health-indicator health-over"></span>';
+              } else if (percentComplete >= 80) {
+                healthClass = 'budget-warning';
+                healthIndicator = '<span class="budget-health-indicator health-warning"></span>';
+              } else if (billed > 0) {
+                healthClass = 'budget-ok';
+                healthIndicator = '<span class="budget-health-indicator health-ok"></span>';
+              }
+            } else if (billed > 0) {
+              healthClass = 'budget-over';
+              healthIndicator = '<span class="budget-health-indicator health-over"></span>';
+            }
+
+            const varianceClass = variance < 0 ? 'over-budget' : '';
+
+            html += `
+              <tr class="${healthClass} category-line">
+                <td class="cost-code">${healthIndicator}${line.costCode}</td>
+                <td>${line.description || '-'}</td>
+                <td class="amount">${formatMoneyDecimal(budgeted)}</td>
+                <td class="amount">${formatMoneyDecimal(committed)}</td>
+                <td class="amount highlight-current">${formatMoneyDecimal(billed)}</td>
+                <td class="amount">${formatMoneyDecimal(paid)}</td>
+                <td class="percent">${percentComplete.toFixed(1)}%</td>
+                <td class="amount">${formatMoneyDecimal(remaining)}</td>
+                <td class="amount ${varianceClass}">${formatMoneyDecimal(variance)}</td>
+              </tr>
+            `;
+          });
+        }
+      });
+
+      tbody.innerHTML = html;
 
       // Totals row
       const totals = lines.reduce((acc, line) => ({
@@ -403,46 +679,339 @@
 
     function renderChangeOrders(changeOrders) {
       const tbody = document.getElementById('changeOrdersBody');
+      const tfoot = document.getElementById('changeOrdersFooter');
       const countBadge = document.getElementById('changeOrderCount');
 
-      countBadge.textContent = `${changeOrders.length} change order${changeOrders.length !== 1 ? 's' : ''}`;
+      // Store for editing
+      state.changeOrders = changeOrders;
+
+      countBadge.textContent = `${changeOrders.length} PCCO${changeOrders.length !== 1 ? 's' : ''}`;
 
       if (!changeOrders || changeOrders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No change orders</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No change orders. Click "+ Add Change Order" to create one.</td></tr>';
+        tfoot.innerHTML = '';
         return;
       }
 
       tbody.innerHTML = changeOrders.map(co => {
         const statusClass = {
-          pending: 'pending',
+          draft: 'pending',
+          pending_approval: 'pending',
           approved: 'approved',
           rejected: 'denied'
         }[co.status] || 'pending';
 
-        const reasonLabel = {
-          scope_change: 'Scope Change',
-          price_adjustment: 'Price Adjustment',
-          additional_work: 'Additional Work',
-          error_correction: 'Error Correction'
-        }[co.reason] || co.reason || '-';
+        const baseAmount = parseFloat(co.base_amount) || 0;
+        const gcFeeAmount = parseFloat(co.gc_fee_amount) || 0;
+        const totalAmount = parseFloat(co.amount) || 0;
+        const daysAdded = parseInt(co.days_added) || 0;
+        const billedAmount = parseFloat(co.billed_amount) || 0;
+        const billedPercent = totalAmount > 0 ? (billedAmount / totalAmount * 100) : 0;
 
-        const amountClass = co.amount_change >= 0 ? 'positive' : 'negative';
+        const daysDisplay = daysAdded > 0 ? `+${daysAdded}` : daysAdded.toString();
+        const daysColor = daysAdded > 0 ? 'var(--accent-orange)' : (daysAdded < 0 ? 'var(--accent-green)' : 'var(--text-secondary)');
 
         return `
-          <tr>
-            <td>CO-${co.change_order_number}</td>
-            <td>${co.po?.po_number || '-'}</td>
-            <td>${co.description || '-'}</td>
-            <td>${reasonLabel}</td>
-            <td class="amount ${amountClass}">${co.amount_change >= 0 ? '+' : ''}${formatMoney(co.amount_change)}</td>
-            <td><span class="status-badge status-${statusClass}">${co.status}</span></td>
+          <tr onclick="editChangeOrder('${co.id}')" style="cursor: pointer;">
+            <td><strong>#${co.change_order_number}</strong></td>
+            <td>${co.title || '-'}</td>
+            <td class="amount">${formatMoneyDecimal(baseAmount)}</td>
+            <td class="amount" style="color: var(--text-secondary);">${formatMoneyDecimal(gcFeeAmount)}</td>
+            <td class="amount" style="font-weight: 600;">${formatMoneyDecimal(totalAmount)}</td>
+            <td style="text-align: center; color: ${daysColor}; font-weight: 500;">${daysDisplay}</td>
+            <td class="amount">${formatMoneyDecimal(billedAmount)} <span style="color: var(--text-secondary); font-size: 0.8rem;">(${billedPercent.toFixed(0)}%)</span></td>
+            <td><span class="status-badge status-${statusClass}">${co.status.replace('_', ' ')}</span></td>
+            <td>
+              <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); editChangeOrder('${co.id}')">Edit</button>
+            </td>
           </tr>
         `;
       }).join('');
+
+      // Totals row
+      const totals = changeOrders.reduce((acc, co) => ({
+        base: acc.base + (parseFloat(co.base_amount) || 0),
+        gcFee: acc.gcFee + (parseFloat(co.gc_fee_amount) || 0),
+        total: acc.total + (parseFloat(co.amount) || 0),
+        days: acc.days + (parseInt(co.days_added) || 0),
+        billed: acc.billed + (parseFloat(co.billed_amount) || 0)
+      }), { base: 0, gcFee: 0, total: 0, days: 0, billed: 0 });
+
+      const totalDaysDisplay = totals.days > 0 ? `+${totals.days}` : totals.days.toString();
+
+      tfoot.innerHTML = `
+        <tr class="totals-row">
+          <td colspan="2"><strong>TOTAL (${changeOrders.length} PCCOs)</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.base)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.gcFee)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.total)}</strong></td>
+          <td style="text-align: center;"><strong>${totalDaysDisplay}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.billed)}</strong></td>
+          <td colspan="2"></td>
+        </tr>
+      `;
+    }
+
+    // ============================================================
+    // CHANGE ORDER MANAGEMENT
+    // ============================================================
+
+    function showAddCOModal() {
+      if (!state.currentJob) {
+        showToast('Please select a job first', 'error');
+        return;
+      }
+
+      document.getElementById('coModalTitle').textContent = 'Add Change Order';
+      document.getElementById('coEditId').value = '';
+      document.getElementById('coNumber').value = getNextCONumber();
+      document.getElementById('coAppNumber').value = '';
+      document.getElementById('coTitle').value = '';
+      document.getElementById('coReason').value = 'scope_change';
+      document.getElementById('coBaseAmount').value = '';
+      document.getElementById('coGCFeePercent').value = '20';
+      document.getElementById('coGCFeeAmount').value = '';
+      document.getElementById('coTotalAmount').value = '';
+      document.getElementById('coDaysAdded').value = '0';
+      document.getElementById('coStatus').value = 'draft';
+      document.getElementById('coDeleteBtn').style.display = 'none';
+      document.getElementById('coInvoicesSection').style.display = 'none';
+      document.getElementById('coModal').classList.add('show');
+    }
+
+    function getNextCONumber() {
+      if (!state.changeOrders || state.changeOrders.length === 0) return 1;
+      return Math.max(...state.changeOrders.map(co => co.change_order_number)) + 1;
+    }
+
+    async function editChangeOrder(coId) {
+      const co = state.changeOrders?.find(c => c.id === coId);
+      if (!co) return;
+
+      document.getElementById('coModalTitle').textContent = `Edit PCCO #${co.change_order_number}`;
+      document.getElementById('coEditId').value = co.id;
+      document.getElementById('coNumber').value = co.change_order_number;
+      document.getElementById('coAppNumber').value = co.first_billed_draw_number || '';
+      document.getElementById('coTitle').value = co.title || '';
+      document.getElementById('coReason').value = co.reason || 'scope_change';
+      document.getElementById('coBaseAmount').value = co.base_amount || '';
+      document.getElementById('coGCFeePercent').value = co.gc_fee_percent || 20;
+      document.getElementById('coGCFeeAmount').value = co.gc_fee_amount || '';
+      document.getElementById('coTotalAmount').value = formatMoney(co.amount || 0);
+      document.getElementById('coDaysAdded').value = co.days_added || 0;
+      document.getElementById('coStatus').value = co.status || 'draft';
+      document.getElementById('coDeleteBtn').style.display = 'inline-block';
+      document.getElementById('coInvoicesSection').style.display = 'block';
+
+      // Load linked invoices
+      await loadLinkedInvoices(coId);
+
+      document.getElementById('coModal').classList.add('show');
+    }
+
+    function calculateCOTotal() {
+      const base = parseFloat(document.getElementById('coBaseAmount').value) || 0;
+      const feePercent = parseFloat(document.getElementById('coGCFeePercent').value) || 0;
+      const feeAmount = base * (feePercent / 100);
+      const total = base + feeAmount;
+
+      document.getElementById('coGCFeeAmount').value = feeAmount.toFixed(2);
+      document.getElementById('coTotalAmount').value = formatMoney(total);
+    }
+
+    async function saveChangeOrder() {
+      const coId = document.getElementById('coEditId').value;
+      const jobId = state.currentJob?.id;
+
+      if (!jobId) {
+        showToast('No job selected', 'error');
+        return;
+      }
+
+      const baseAmount = parseFloat(document.getElementById('coBaseAmount').value) || 0;
+      const gcFeePercent = parseFloat(document.getElementById('coGCFeePercent').value) || 0;
+      const gcFeeAmount = parseFloat(document.getElementById('coGCFeeAmount').value) || 0;
+      const daysAddedInput = document.getElementById('coDaysAdded').value;
+
+      const data = {
+        change_order_number: parseInt(document.getElementById('coNumber').value),
+        title: document.getElementById('coTitle').value,
+        description: document.getElementById('coTitle').value,
+        reason: document.getElementById('coReason').value,
+        base_amount: baseAmount,
+        gc_fee_percent: gcFeePercent,
+        gc_fee_amount: gcFeeAmount,
+        amount: baseAmount + gcFeeAmount,
+        days_added: parseInt(daysAddedInput) || 0,
+        status: document.getElementById('coStatus').value,
+        first_billed_draw_number: parseInt(document.getElementById('coAppNumber').value) || null
+      };
+
+      if (!data.title) {
+        showToast('Please enter a description', 'error');
+        return;
+      }
+
+      if (daysAddedInput === '' || daysAddedInput === null || daysAddedInput === undefined) {
+        showToast('Please enter days added (can be 0)', 'error');
+        return;
+      }
+
+      try {
+        let res;
+        if (coId) {
+          // Update existing
+          res = await fetch(`/api/change-orders/${coId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        } else {
+          // Create new
+          res = await fetch(`/api/jobs/${jobId}/change-orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        }
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to save');
+        }
+
+        showToast(coId ? 'Change order updated' : 'Change order created', 'success');
+        closeModal('coModal');
+        loadBudget(jobId);
+      } catch (err) {
+        console.error('Error saving change order:', err);
+        showToast(err.message || 'Failed to save change order', 'error');
+      }
+    }
+
+    async function deleteChangeOrder() {
+      const coId = document.getElementById('coEditId').value;
+      if (!coId) return;
+
+      if (!confirm('Are you sure you want to delete this change order?')) return;
+
+      try {
+        const res = await fetch(`/api/change-orders/${coId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete');
+
+        showToast('Change order deleted', 'success');
+        closeModal('coModal');
+        loadBudget(state.currentJob.id);
+      } catch (err) {
+        console.error('Error deleting change order:', err);
+        showToast('Failed to delete change order', 'error');
+      }
+    }
+
+    // ============================================================
+    // INVOICE LINKING
+    // ============================================================
+
+    async function loadLinkedInvoices(coId) {
+      try {
+        const res = await fetch(`/api/change-orders/${coId}/invoices`);
+        const invoices = await res.json();
+
+        const container = document.getElementById('coLinkedInvoices');
+        if (!invoices || invoices.length === 0) {
+          container.innerHTML = '<div class="empty-state" style="padding: 0.5rem;">No invoices linked to this change order</div>';
+          return;
+        }
+
+        container.innerHTML = invoices.map(link => {
+          const inv = link.invoice;
+          return `
+            <div class="linked-invoice-item">
+              <div class="linked-invoice-info">
+                <span class="invoice-number">${inv?.invoice_number || 'Unknown'}</span>
+                <span class="invoice-vendor">${inv?.vendor?.name || '-'}</span>
+                <span class="invoice-amount">${formatMoney(link.amount || inv?.amount)}</span>
+              </div>
+              <button class="btn btn-sm btn-danger" onclick="unlinkInvoice('${coId}', '${link.invoice_id}')">Unlink</button>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Error loading linked invoices:', err);
+      }
+    }
+
+    async function showLinkInvoiceModal() {
+      const jobId = state.currentJob?.id;
+      if (!jobId) return;
+
+      // Load invoices for this job
+      try {
+        const res = await fetch(`/api/invoices?job_id=${jobId}`);
+        const invoices = await res.json();
+
+        const select = document.getElementById('linkInvoiceSelect');
+        select.innerHTML = '<option value="">Select an invoice...</option>';
+        invoices.forEach(inv => {
+          select.innerHTML += `<option value="${inv.id}" data-amount="${inv.amount}">${inv.invoice_number} - ${inv.vendor?.name || 'Unknown'} - ${formatMoney(inv.amount)}</option>`;
+        });
+
+        document.getElementById('linkInvoiceAmount').value = '';
+        document.getElementById('linkInvoiceModal').classList.add('show');
+      } catch (err) {
+        console.error('Error loading invoices:', err);
+        showToast('Failed to load invoices', 'error');
+      }
+    }
+
+    async function linkInvoice() {
+      const coId = document.getElementById('coEditId').value;
+      const invoiceId = document.getElementById('linkInvoiceSelect').value;
+      const amount = document.getElementById('linkInvoiceAmount').value || null;
+
+      if (!coId || !invoiceId) {
+        showToast('Please select an invoice', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/change-orders/${coId}/link-invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoice_id: invoiceId, amount: amount ? parseFloat(amount) : null })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to link');
+        }
+
+        showToast('Invoice linked to change order', 'success');
+        closeModal('linkInvoiceModal');
+        await loadLinkedInvoices(coId);
+      } catch (err) {
+        console.error('Error linking invoice:', err);
+        showToast(err.message || 'Failed to link invoice', 'error');
+      }
+    }
+
+    async function unlinkInvoice(coId, invoiceId) {
+      if (!confirm('Unlink this invoice from the change order?')) return;
+
+      try {
+        const res = await fetch(`/api/change-orders/${coId}/unlink-invoice/${invoiceId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to unlink');
+
+        showToast('Invoice unlinked', 'success');
+        await loadLinkedInvoices(coId);
+      } catch (err) {
+        console.error('Error unlinking invoice:', err);
+        showToast('Failed to unlink invoice', 'error');
+      }
     }
 
     function closeBudgetModal() {
-      document.getElementById('budgetModal').style.display = 'none';
+      document.getElementById('budgetModal').classList.remove('show');
     }
 
     // Import functionality
@@ -450,7 +1019,7 @@
       document.getElementById('importFile').value = '';
       document.getElementById('importPreview').style.display = 'none';
       document.getElementById('importBtn').disabled = true;
-      document.getElementById('importModal').style.display = 'flex';
+      document.getElementById('importModal').classList.add('show');
     }
 
     let parsedBudgetData = null;
@@ -583,7 +1152,7 @@
     }
 
     function closeModal(modalId) {
-      document.getElementById(modalId).style.display = 'none';
+      document.getElementById(modalId).classList.remove('show');
     }
 
     function formatMoney(amount) {
@@ -591,8 +1160,8 @@
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       }).format(num);
     }
 

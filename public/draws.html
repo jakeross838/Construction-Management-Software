@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Draws</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260109v">
+  <link rel="stylesheet" href="css/styles.css?v=20260112a">
 </head>
 <body>
   <div class="app">
@@ -57,6 +57,15 @@
           <span class="lock-indicator" id="lockIndicator" style="display: none;" title="This draw is locked">🔒</span>
         </div>
         <div class="modal-header-actions">
+          <button class="btn btn-primary" id="editDrawBtn" onclick="toggleEditMode()" style="display: none;">
+            Edit Draw
+          </button>
+          <button class="btn btn-success" id="saveDrawBtn" onclick="saveDrawEdits()" style="display: none;">
+            Save Changes
+          </button>
+          <button class="btn btn-secondary" id="cancelEditBtn" onclick="cancelEditMode()" style="display: none;">
+            Cancel
+          </button>
           <button class="btn btn-secondary" onclick="exportExcel()" title="Export Excel">
             Export Excel
           </button>
@@ -71,6 +80,35 @@
       </div>
 
       <div class="modal-body draw-modal-body draw-single-page">
+        <!-- Status Workflow -->
+        <section class="draw-section">
+          <div class="status-workflow" id="statusWorkflow">
+            <div class="workflow-step" id="workflowDraft">
+              <div class="workflow-icon">
+                <span class="workflow-dot"></span>
+              </div>
+              <div class="workflow-label">Draft</div>
+              <div class="workflow-date" id="workflowDraftDate">-</div>
+            </div>
+            <div class="workflow-connector" id="workflowConnector1"></div>
+            <div class="workflow-step" id="workflowSubmitted">
+              <div class="workflow-icon">
+                <span class="workflow-dot"></span>
+              </div>
+              <div class="workflow-label">Submitted</div>
+              <div class="workflow-date" id="workflowSubmittedDate">-</div>
+            </div>
+            <div class="workflow-connector" id="workflowConnector2"></div>
+            <div class="workflow-step" id="workflowFunded">
+              <div class="workflow-icon">
+                <span class="workflow-dot"></span>
+              </div>
+              <div class="workflow-label">Funded</div>
+              <div class="workflow-date" id="workflowFundedDate">-</div>
+            </div>
+          </div>
+        </section>
+
         <!-- Summary Header -->
         <section class="draw-section draw-summary-section">
           <div class="draw-summary-grid">
@@ -78,13 +116,15 @@
               <div class="summary-label">Job</div>
               <div class="summary-value" id="summaryJob">-</div>
             </div>
-            <div class="summary-card">
+            <div class="summary-card editable-card">
               <div class="summary-label">Application #</div>
               <div class="summary-value" id="summaryAppNum">-</div>
+              <input type="number" class="edit-input" id="editAppNum" style="display: none;" min="1">
             </div>
-            <div class="summary-card">
+            <div class="summary-card editable-card">
               <div class="summary-label">Period To</div>
               <div class="summary-value" id="summaryPeriod">-</div>
+              <input type="date" class="edit-input" id="editPeriodTo" style="display: none;">
             </div>
             <div class="summary-card">
               <div class="summary-label">Invoice Count</div>
@@ -103,6 +143,16 @@
               <div class="summary-value" id="summaryFundedAmount">$0</div>
               <div class="funding-note" id="summaryFundingNote"></div>
             </div>
+          </div>
+          <!-- Notes Section (shown in edit mode) -->
+          <div class="draw-notes-section" id="drawNotesSection" style="display: none;">
+            <label class="summary-label">Notes</label>
+            <textarea class="edit-input" id="editNotes" rows="3" placeholder="Add notes about this draw..."></textarea>
+          </div>
+          <!-- Notes Display (shown in view mode) -->
+          <div class="draw-notes-display" id="drawNotesDisplay" style="display: none;">
+            <label class="summary-label">Notes</label>
+            <div class="summary-value" id="summaryNotes">-</div>
           </div>
         </section>
 
@@ -144,15 +194,23 @@
 
               <table class="g702-table">
                 <tbody>
-                  <tr>
+                  <tr class="g702-editable-row">
                     <td class="g702-line-num">1.</td>
                     <td>ORIGINAL CONTRACT SUM</td>
-                    <td class="g702-amount" id="g702Line1">$0.00</td>
+                    <td class="g702-amount">
+                      <span id="g702Line1">$0.00</span>
+                      <input type="text" class="g702-edit-input" id="editG702Line1" style="display: none;" placeholder="0.00">
+                      <span class="g702-override-badge" id="g702Line1Badge" style="display: none;">Override</span>
+                    </td>
                   </tr>
-                  <tr>
+                  <tr class="g702-editable-row">
                     <td class="g702-line-num">2.</td>
                     <td>Net change by Change Orders</td>
-                    <td class="g702-amount" id="g702Line2">$0.00</td>
+                    <td class="g702-amount">
+                      <span id="g702Line2">$0.00</span>
+                      <input type="text" class="g702-edit-input" id="editG702Line2" style="display: none;" placeholder="0.00">
+                      <span class="g702-override-badge" id="g702Line2Badge" style="display: none;">Override</span>
+                    </td>
                   </tr>
                   <tr>
                     <td class="g702-line-num">3.</td>
@@ -185,36 +243,7 @@
           </div>
         </section>
 
-        <!-- PCCO (Potential Change Orders) Section -->
-        <section class="draw-section">
-          <div class="section-header">
-            <h3>PCCO - Change Orders</h3>
-            <span class="section-badge" id="pccoCount">0 Change Orders</span>
-          </div>
-          <div class="pcco-container">
-            <table class="pcco-table">
-              <thead>
-                <tr>
-                  <th>CO #</th>
-                  <th>Description</th>
-                  <th>Reason</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody id="pccoBody">
-                <tr>
-                  <td colspan="6" class="empty-state">No change orders for this project</td>
-                </tr>
-              </tbody>
-              <tfoot id="pccoFooter">
-              </tfoot>
-            </table>
-          </div>
-        </section>
-
-        <!-- G703 Section -->
+        <\!-- G703 Section -->
         <section class="draw-section">
           <div class="section-header">
             <h3>G703 - Schedule of Values</h3>
@@ -260,6 +289,7 @@
                   <th>#</th>
                   <th>Change Order</th>
                   <th>CO Amount</th>
+                  <th>Days</th>
                   <th>Previous<br>Billings</th>
                   <th>This<br>Application</th>
                   <th>Total<br>Billed</th>
@@ -270,7 +300,7 @@
               </thead>
               <tbody id="coBillingBody">
                 <tr>
-                  <td colspan="9" class="empty-state">No change order billings in this draw</td>
+                  <td colspan="10" class="empty-state">No change order billings in this draw</td>
                 </tr>
               </tbody>
               <tfoot id="coBillingFooter">
@@ -304,32 +334,6 @@
               </tbody>
               <tfoot id="invoicesFooter">
               </tfoot>
-            </table>
-          </div>
-        </section>
-
-        <!-- Attachments Section -->
-        <section class="draw-section">
-          <div class="section-header">
-            <h3>Attachments</h3>
-            <button class="btn btn-primary btn-sm" id="addAttachmentBtn" onclick="showAddAttachmentModal()">+ Add Attachment</button>
-          </div>
-          <div class="attachments-container">
-            <table class="attachments-table">
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Vendor</th>
-                  <th>File</th>
-                  <th>Uploaded</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="attachmentsBody">
-                <tr>
-                  <td colspan="5" class="empty-state">No attachments yet</td>
-                </tr>
-              </tbody>
             </table>
           </div>
         </section>
@@ -431,50 +435,6 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('fundDrawModal')">Cancel</button>
         <button class="btn btn-success" id="confirmFundBtn" onclick="confirmFundDraw()">Confirm Funding</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Add Attachment Modal -->
-  <div id="addAttachmentModal" class="modal">
-    <div class="modal-content modal-sm">
-      <div class="modal-header">
-        <h2>Add Attachment</h2>
-        <button class="close-btn" onclick="closeModal('addAttachmentModal')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>Attachment Type *</label>
-          <select id="attachmentType" class="form-control">
-            <option value="lien_release">Lien Release</option>
-            <option value="affidavit">Affidavit</option>
-            <option value="insurance_cert">Insurance Certificate</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Vendor (optional)</label>
-          <select id="attachmentVendor" class="form-control">
-            <option value="">-- No specific vendor --</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>File URL *</label>
-          <input type="text" id="attachmentUrl" class="form-control" placeholder="https://...">
-          <div class="field-hint">Enter the URL of the uploaded file</div>
-        </div>
-        <div class="form-group">
-          <label>File Name *</label>
-          <input type="text" id="attachmentFileName" class="form-control" placeholder="lien_release.pdf">
-        </div>
-        <div class="form-group">
-          <label>Notes (optional)</label>
-          <textarea id="attachmentNotes" class="form-control" rows="2" placeholder="Any notes about this attachment..."></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('addAttachmentModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveAttachment()">Add Attachment</button>
       </div>
     </div>
   </div>
@@ -663,16 +623,153 @@
         window.currentDraw = currentDraw;
 
         renderDrawModal(currentDraw);
-        document.getElementById('drawModal').style.display = 'flex';
+        document.getElementById('drawModal').classList.add('show');
       } catch (err) {
         console.error('Error opening draw:', err);
         showToast('Failed to load draw', 'error');
       }
     }
 
+    let isEditMode = false;
+
+    function updateStatusWorkflow(draw) {
+      const draftStep = document.getElementById('workflowDraft');
+      const submittedStep = document.getElementById('workflowSubmitted');
+      const fundedStep = document.getElementById('workflowFunded');
+      const connector1 = document.getElementById('workflowConnector1');
+      const connector2 = document.getElementById('workflowConnector2');
+
+      // Reset all
+      [draftStep, submittedStep, fundedStep].forEach(step => {
+        step.classList.remove('completed', 'current');
+      });
+      [connector1, connector2].forEach(conn => {
+        conn.classList.remove('completed');
+      });
+
+      // Set dates
+      document.getElementById('workflowDraftDate').textContent = draw.created_at ? formatDate(draw.created_at) : '-';
+      document.getElementById('workflowSubmittedDate').textContent = draw.submitted_at ? formatDate(draw.submitted_at) : '-';
+      document.getElementById('workflowFundedDate').textContent = draw.funded_at ? formatDate(draw.funded_at) : '-';
+
+      // Set states based on current status
+      if (draw.status === 'draft') {
+        draftStep.classList.add('current');
+      } else if (draw.status === 'submitted') {
+        draftStep.classList.add('completed');
+        connector1.classList.add('completed');
+        submittedStep.classList.add('current');
+      } else if (draw.status === 'funded') {
+        draftStep.classList.add('completed');
+        connector1.classList.add('completed');
+        submittedStep.classList.add('completed');
+        connector2.classList.add('completed');
+        fundedStep.classList.add('current');
+      }
+    }
+
     function closeDrawModal() {
-      document.getElementById('drawModal').style.display = 'none';
+      document.getElementById('drawModal').classList.remove('show');
       currentDraw = null;
+      isEditMode = false;
+    }
+
+    function toggleEditMode() {
+      isEditMode = true;
+
+      // Show edit inputs, hide display values
+      document.getElementById('summaryAppNum').style.display = 'none';
+      document.getElementById('summaryPeriod').style.display = 'none';
+      document.getElementById('editAppNum').style.display = 'block';
+      document.getElementById('editPeriodTo').style.display = 'block';
+
+      // Populate edit inputs with current values
+      document.getElementById('editAppNum').value = currentDraw.draw_number;
+      document.getElementById('editPeriodTo').value = currentDraw.period_end ? currentDraw.period_end.split('T')[0] : '';
+      document.getElementById('editNotes').value = currentDraw.notes || '';
+
+      // Show notes edit section
+      document.getElementById('drawNotesSection').style.display = 'block';
+      document.getElementById('drawNotesDisplay').style.display = 'none';
+
+      // Show G702 edit inputs
+      document.getElementById('editG702Line1').style.display = 'inline-block';
+      document.getElementById('editG702Line2').style.display = 'inline-block';
+
+      // Populate G702 edit values (use override if set, otherwise calculated value)
+      const contractSum = currentDraw.g702_original_contract_override ?? currentDraw.job?.contract_amount ?? 0;
+      const changeOrders = currentDraw.g702_change_orders_override ?? currentDraw.changeOrderTotal ?? 0;
+      document.getElementById('editG702Line1').value = parseFloat(contractSum).toFixed(2);
+      document.getElementById('editG702Line2').value = parseFloat(changeOrders).toFixed(2);
+
+      // Toggle buttons
+      document.getElementById('editDrawBtn').style.display = 'none';
+      document.getElementById('saveDrawBtn').style.display = 'inline-block';
+      document.getElementById('cancelEditBtn').style.display = 'inline-block';
+    }
+
+    function cancelEditMode() {
+      isEditMode = false;
+
+      // Hide edit inputs, show display values
+      document.getElementById('summaryAppNum').style.display = 'block';
+      document.getElementById('summaryPeriod').style.display = 'block';
+      document.getElementById('editAppNum').style.display = 'none';
+      document.getElementById('editPeriodTo').style.display = 'none';
+
+      // Hide notes edit, show display if has notes
+      document.getElementById('drawNotesSection').style.display = 'none';
+      if (currentDraw.notes) {
+        document.getElementById('drawNotesDisplay').style.display = 'block';
+      }
+
+      // Hide G702 edit inputs
+      document.getElementById('editG702Line1').style.display = 'none';
+      document.getElementById('editG702Line2').style.display = 'none';
+
+      // Toggle buttons
+      document.getElementById('editDrawBtn').style.display = 'inline-block';
+      document.getElementById('saveDrawBtn').style.display = 'none';
+      document.getElementById('cancelEditBtn').style.display = 'none';
+    }
+
+    async function saveDrawEdits() {
+      // Parse G702 values (remove commas if present)
+      const g702Line1 = parseFloat(document.getElementById('editG702Line1').value.replace(/,/g, '')) || 0;
+      const g702Line2 = parseFloat(document.getElementById('editG702Line2').value.replace(/,/g, '')) || 0;
+
+      const updates = {
+        draw_number: parseInt(document.getElementById('editAppNum').value),
+        period_end: document.getElementById('editPeriodTo').value,
+        notes: document.getElementById('editNotes').value || null,
+        g702_overrides: {
+          original_contract_sum: g702Line1,
+          net_change_orders: g702Line2
+        }
+      };
+
+      try {
+        const res = await fetch(`/api/draws/${currentDraw.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates)
+        });
+
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.message || 'Failed to save');
+        }
+
+        showToast('Draw updated successfully', 'success');
+
+        // Reload the draw
+        await openDraw(currentDraw.id);
+        cancelEditMode();
+        loadDraws();
+      } catch (err) {
+        console.error('Error saving draw:', err);
+        showToast(err.message || 'Failed to save draw', 'error');
+      }
     }
 
     function renderDrawModal(draw) {
@@ -685,6 +782,9 @@
       const statusLabel = { draft: 'Draft', submitted: 'Submitted', funded: 'Funded' }[draw.status] || draw.status;
       statusBadge.className = `status-badge status-${statusClass}`;
       statusBadge.textContent = statusLabel;
+
+      // Update status workflow
+      updateStatusWorkflow(draw);
 
       // Summary section
       document.getElementById('summaryJob').textContent = draw.job?.name || '-';
@@ -730,13 +830,21 @@
       document.getElementById('g702Project').textContent = draw.job?.name || '-';
       document.getElementById('g702PeriodTo').textContent = draw.period_end ? formatDate(draw.period_end) : '-';
 
-      const contractSum = parseFloat(draw.job?.contract_amount) || 0;
-      const changeOrders = draw.changeOrderTotal || 0;
+      // G702 values - use overrides if set, otherwise use calculated values
+      const hasContractOverride = draw.g702_original_contract_override !== null && draw.g702_original_contract_override !== undefined;
+      const hasChangeOrderOverride = draw.g702_change_orders_override !== null && draw.g702_change_orders_override !== undefined;
+
+      const contractSum = hasContractOverride ? parseFloat(draw.g702_original_contract_override) : (parseFloat(draw.job?.contract_amount) || 0);
+      const changeOrders = hasChangeOrderOverride ? parseFloat(draw.g702_change_orders_override) : (draw.changeOrderTotal || 0);
       const contractSumToDate = contractSum + changeOrders;
       const totalCompleted = draw.g702?.grandTotal || 0;
       const previousCertificates = draw.g702?.lessPreviousCertificates || 0;
       const currentPaymentDue = draw.g702?.currentPaymentDue || 0;
       const balanceToFinish = contractSumToDate - totalCompleted;
+
+      // Store for edit mode
+      draw.g702_original_contract_override = hasContractOverride ? draw.g702_original_contract_override : null;
+      draw.g702_change_orders_override = hasChangeOrderOverride ? draw.g702_change_orders_override : null;
 
       document.getElementById('g702Line1').textContent = formatMoneyDecimal(contractSum);
       document.getElementById('g702Line2').textContent = formatMoneyDecimal(changeOrders);
@@ -746,8 +854,9 @@
       document.getElementById('g702Line6').textContent = formatMoneyDecimal(currentPaymentDue);
       document.getElementById('g702Line7').textContent = formatMoneyDecimal(balanceToFinish);
 
-      // PCCO section
-      renderPCCOTable(draw.changeOrders || []);
+      // Show override badges
+      document.getElementById('g702Line1Badge').style.display = hasContractOverride ? 'inline-block' : 'none';
+      document.getElementById('g702Line2Badge').style.display = hasChangeOrderOverride ? 'inline-block' : 'none';
 
       // G703 section
       renderG703Table(draw.scheduleOfValues || []);
@@ -757,9 +866,6 @@
 
       // Invoices section
       renderInvoicesTable(draw.invoices || [], draw.status);
-
-      // Attachments section
-      renderAttachmentsTable(draw.attachments || [], draw.status);
 
       // Activity log section
       renderActivityLog(draw.activity || []);
@@ -774,90 +880,45 @@
       const fundBtn = document.getElementById('fundDrawBtn');
       const unsubmitBtn = document.getElementById('unsubmitDrawBtn');
       const addCOBillingBtn = document.getElementById('addCOBillingBtn');
-      const addAttachmentBtn = document.getElementById('addAttachmentBtn');
       const isFunded = ['funded', 'partially_funded', 'overfunded'].includes(draw.status);
+
+      // Edit button - only for draft status
+      const editDrawBtn = document.getElementById('editDrawBtn');
+      editDrawBtn.style.display = draw.status === 'draft' ? 'inline-block' : 'none';
+
+      // Reset edit mode buttons
+      document.getElementById('saveDrawBtn').style.display = 'none';
+      document.getElementById('cancelEditBtn').style.display = 'none';
+
+      // Notes display
+      const notesDisplay = document.getElementById('drawNotesDisplay');
+      const notesSection = document.getElementById('drawNotesSection');
+      const summaryNotes = document.getElementById('summaryNotes');
+      notesSection.style.display = 'none'; // Always hidden initially (shown in edit mode)
+      if (draw.notes) {
+        notesDisplay.style.display = 'block';
+        summaryNotes.textContent = draw.notes;
+      } else {
+        notesDisplay.style.display = 'none';
+      }
 
       if (draw.status === 'draft') {
         submitBtn.style.display = 'inline-block';
         fundBtn.style.display = 'none';
         unsubmitBtn.style.display = 'none';
         addCOBillingBtn.style.display = 'inline-block';
-        addAttachmentBtn.style.display = 'inline-block';
       } else if (draw.status === 'submitted') {
         submitBtn.style.display = 'none';
         fundBtn.style.display = 'inline-block';
         unsubmitBtn.style.display = 'inline-block';
         addCOBillingBtn.style.display = 'none';
-        addAttachmentBtn.style.display = 'inline-block'; // Can still add attachments when submitted
       } else {
         // Funded draws - fully immutable
         submitBtn.style.display = 'none';
         fundBtn.style.display = 'none';
         unsubmitBtn.style.display = 'none';
         addCOBillingBtn.style.display = 'none';
-        addAttachmentBtn.style.display = 'none';
       }
-    }
-
-    function renderPCCOTable(changeOrders) {
-      const tbody = document.getElementById('pccoBody');
-      const tfoot = document.getElementById('pccoFooter');
-      const countBadge = document.getElementById('pccoCount');
-
-      countBadge.textContent = `${changeOrders.length} Change Order${changeOrders.length !== 1 ? 's' : ''}`;
-
-      if (!changeOrders || changeOrders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No change orders for this project</td></tr>';
-        tfoot.innerHTML = '';
-        return;
-      }
-
-      tbody.innerHTML = changeOrders.map(co => {
-        const statusClass = {
-          draft: 'pending',
-          pending_approval: 'pending-approval',
-          approved: 'approved',
-          rejected: 'denied'
-        }[co.status] || 'pending';
-
-        const reasonLabel = {
-          scope_change: 'Scope Change',
-          owner_request: 'Owner Request',
-          unforeseen_conditions: 'Unforeseen Conditions',
-          design_change: 'Design Change',
-          other: 'Other'
-        }[co.reason] || co.reason || '-';
-
-        const amount = co.amount !== undefined ? co.amount : co.amount_change;
-        const desc = co.title || co.description || '-';
-        const clientApproved = co.client_approved_at || co.client_approval_bypassed;
-
-        return `
-          <tr>
-            <td>CO-${co.change_order_number}</td>
-            <td>${desc}</td>
-            <td>${reasonLabel}</td>
-            <td class="amount ${amount < 0 ? 'negative' : ''}">${formatMoneyDecimal(amount)}</td>
-            <td>
-              <span class="status-badge status-${statusClass}">${co.status}</span>
-              ${co.status === 'approved' && clientApproved ? '<span class="client-approved-badge">Client OK</span>' : ''}
-            </td>
-            <td>${co.created_at ? formatDate(co.created_at) : '-'}</td>
-          </tr>
-        `;
-      }).join('');
-
-      const totalChange = changeOrders
-        .filter(co => co.status === 'approved')
-        .reduce((sum, co) => sum + parseFloat(co.amount || co.amount_change || 0), 0);
-
-      tfoot.innerHTML = `
-        <tr class="totals-row">
-          <td colspan="3"><strong>Total Approved Change Orders</strong></td>
-          <td class="amount ${totalChange < 0 ? 'negative' : ''}"><strong>${formatMoneyDecimal(totalChange)}</strong></td>
-          <td colspan="2"></td>
-        </tr>
-      `;
     }
 
     function renderG703Table(scheduleOfValues) {
@@ -923,7 +984,7 @@
       const section = document.getElementById('coBillingSection');
 
       if (!coScheduleOfValues || coScheduleOfValues.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No change order billings in this draw</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No change order billings in this draw</td></tr>';
         tfoot.innerHTML = '';
         return;
       }
@@ -932,11 +993,15 @@
 
       tbody.innerHTML = coScheduleOfValues.map((item, idx) => {
         const coAmount = parseFloat(item.coAmount) || 0;
+        const daysAdded = parseInt(item.daysAdded) || 0;
         const previous = parseFloat(item.previousBilled) || 0;
         const current = parseFloat(item.thisPeriod) || 0;
         const total = parseFloat(item.totalBilled) || 0;
         const balance = coAmount - total;
         const percent = coAmount > 0 ? (total / coAmount) * 100 : 0;
+
+        const daysDisplay = daysAdded > 0 ? `+${daysAdded}` : daysAdded.toString();
+        const daysColor = daysAdded > 0 ? 'var(--accent-orange)' : (daysAdded < 0 ? 'var(--accent-green)' : 'var(--text-secondary)');
 
         return `
           <tr>
@@ -946,6 +1011,7 @@
               <br><span class="text-muted">${item.title || ''}</span>
             </td>
             <td class="amount">${formatMoneyDecimal(coAmount)}</td>
+            <td style="text-align: center; color: ${daysColor}; font-weight: 500;">${daysDisplay}</td>
             <td class="amount">${formatMoneyDecimal(previous)}</td>
             <td class="amount highlight-current">${formatMoneyDecimal(current)}</td>
             <td class="amount">${formatMoneyDecimal(total)}</td>
@@ -965,19 +1031,22 @@
       // Totals row
       const totals = coScheduleOfValues.reduce((acc, item) => ({
         coAmount: acc.coAmount + (parseFloat(item.coAmount) || 0),
+        days: acc.days + (parseInt(item.daysAdded) || 0),
         previous: acc.previous + (parseFloat(item.previousBilled) || 0),
         current: acc.current + (parseFloat(item.thisPeriod) || 0),
         total: acc.total + (parseFloat(item.totalBilled) || 0)
-      }), { coAmount: 0, previous: 0, current: 0, total: 0 });
+      }), { coAmount: 0, days: 0, previous: 0, current: 0, total: 0 });
 
       const overallPercent = totals.coAmount > 0 ? (totals.total / totals.coAmount) * 100 : 0;
       const totalBalance = totals.coAmount - totals.total;
+      const totalDaysDisplay = totals.days > 0 ? `+${totals.days}` : totals.days.toString();
 
       tfoot.innerHTML = `
         <tr class="totals-row">
           <td></td>
           <td><strong>CO TOTALS</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.coAmount)}</strong></td>
+          <td style="text-align: center;"><strong>${totalDaysDisplay}</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.previous)}</strong></td>
           <td class="amount highlight-current"><strong>${formatMoneyDecimal(totals.current)}</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.total)}</strong></td>
@@ -1044,36 +1113,6 @@
       `;
     }
 
-    function renderAttachmentsTable(attachments, drawStatus) {
-      const tbody = document.getElementById('attachmentsBody');
-      const canModify = drawStatus === 'draft' || drawStatus === 'submitted';
-
-      const typeLabels = {
-        lien_release: 'Lien Release',
-        affidavit: 'Affidavit',
-        insurance_cert: 'Insurance Cert',
-        other: 'Other'
-      };
-
-      if (!attachments || attachments.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No attachments yet</td></tr>';
-        return;
-      }
-
-      tbody.innerHTML = attachments.map(att => `
-        <tr>
-          <td><span class="type-badge type-${att.attachment_type}">${typeLabels[att.attachment_type] || att.attachment_type}</span></td>
-          <td>${att.vendor?.name || '-'}</td>
-          <td><a href="${att.file_url}" target="_blank">${att.file_name}</a></td>
-          <td>${att.uploaded_at ? formatDate(att.uploaded_at) : '-'}</td>
-          <td>
-            <a href="${att.file_url}" target="_blank" class="btn btn-sm btn-secondary">View</a>
-            ${canModify ? `<button class="btn btn-sm btn-danger" onclick="deleteAttachment('${att.id}')">Delete</button>` : ''}
-          </td>
-        </tr>
-      `).join('');
-    }
-
     function renderActivityLog(activities) {
       const container = document.getElementById('activityContainer');
 
@@ -1083,9 +1122,7 @@
         invoice_removed: 'Invoice removed',
         submitted: 'Draw submitted',
         unsubmitted: 'Draw unsubmitted',
-        funded: 'Draw funded',
-        attachment_added: 'Attachment added',
-        attachment_removed: 'Attachment removed'
+        funded: 'Draw funded'
       };
 
       if (!activities || activities.length === 0) {
@@ -1157,100 +1194,6 @@
       } catch (err) {
         console.error('Error unsubmitting draw:', err);
         showToast(err.message || 'Failed to unsubmit draw', 'error');
-      }
-    }
-
-    // ============================================================
-    // ATTACHMENT FUNCTIONALITY
-    // ============================================================
-
-    async function showAddAttachmentModal() {
-      if (!currentDraw) return;
-
-      // Load vendors for the dropdown
-      const vendorSelect = document.getElementById('attachmentVendor');
-      vendorSelect.innerHTML = '<option value="">-- No specific vendor --</option>';
-
-      try {
-        const res = await fetch('/api/vendors');
-        if (res.ok) {
-          const vendors = await res.json();
-          vendors.forEach(v => {
-            vendorSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
-          });
-        }
-      } catch (err) {
-        console.error('Error loading vendors:', err);
-      }
-
-      // Clear form
-      document.getElementById('attachmentType').value = 'lien_release';
-      document.getElementById('attachmentUrl').value = '';
-      document.getElementById('attachmentFileName').value = '';
-      document.getElementById('attachmentNotes').value = '';
-
-      openModal('addAttachmentModal');
-    }
-
-    async function saveAttachment() {
-      if (!currentDraw) return;
-
-      const fileUrl = document.getElementById('attachmentUrl').value.trim();
-      const fileName = document.getElementById('attachmentFileName').value.trim();
-
-      if (!fileUrl || !fileName) {
-        showToast('File URL and File Name are required', 'error');
-        return;
-      }
-
-      const data = {
-        file_url: fileUrl,
-        file_name: fileName,
-        attachment_type: document.getElementById('attachmentType').value,
-        vendor_id: document.getElementById('attachmentVendor').value || null,
-        notes: document.getElementById('attachmentNotes').value.trim() || null
-      };
-
-      try {
-        const res = await fetch(`/api/draws/${currentDraw.id}/attachments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Failed to add attachment');
-        }
-
-        showToast('Attachment added', 'success');
-        closeModal('addAttachmentModal');
-        openDraw(currentDraw.id); // Refresh
-      } catch (err) {
-        console.error('Error adding attachment:', err);
-        showToast(err.message || 'Failed to add attachment', 'error');
-      }
-    }
-
-    async function deleteAttachment(attachmentId) {
-      if (!currentDraw) return;
-      if (!confirm('Delete this attachment?')) return;
-
-      try {
-        const res = await fetch(`/api/draws/${currentDraw.id}/attachments/${attachmentId}`, {
-          method: 'DELETE'
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Failed to delete attachment');
-        }
-
-        showToast('Attachment deleted', 'success');
-        openDraw(currentDraw.id); // Refresh
-      } catch (err) {
-        console.error('Error deleting attachment:', err);
-        showToast(err.message || 'Failed to delete attachment', 'error');
       }
     }
 
@@ -1442,7 +1385,7 @@
           `;
         }).join('');
 
-        document.getElementById('addCOBillingModal').style.display = 'flex';
+        document.getElementById('addCOBillingModal').classList.add('show');
       } catch (err) {
         console.error('Error loading available COs:', err);
         showToast('Failed to load change orders', 'error');
@@ -1552,7 +1495,7 @@
       });
 
       document.getElementById('newDrawPeriodEnd').value = new Date().toISOString().split('T')[0];
-      document.getElementById('createDrawModal').style.display = 'flex';
+      document.getElementById('createDrawModal').classList.add('show');
     }
 
     async function createDraw() {
@@ -1584,11 +1527,11 @@
     }
 
     function openModal(modalId) {
-      document.getElementById(modalId).style.display = 'flex';
+      document.getElementById(modalId).classList.add('show');
     }
 
     function closeModal(modalId) {
-      document.getElementById(modalId).style.display = 'none';
+      document.getElementById(modalId).classList.remove('show');
     }
 
     function formatMoney(amount) {
@@ -1596,8 +1539,8 @@
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       }).format(num);
     }
 
@@ -1627,3 +1570,9 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+

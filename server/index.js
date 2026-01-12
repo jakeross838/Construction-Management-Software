@@ -2241,6 +2241,123 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
   }
 });
 
+// Mark invoice as paid to vendor
+app.patch('/api/invoices/:id/pay', async (req, res) => {
+  try {
+    const invoiceId = req.params.id;
+    const { payment_method, payment_reference, payment_date, payment_amount } = req.body;
+
+    // Validate required fields
+    if (!payment_method) {
+      return res.status(400).json({ error: 'Payment method is required' });
+    }
+
+    const validMethods = ['check', 'ach', 'wire', 'credit_card', 'cash', 'other'];
+    if (!validMethods.includes(payment_method)) {
+      return res.status(400).json({ error: 'Invalid payment method' });
+    }
+
+    // Get current invoice
+    const { data: invoice, error: getError } = await supabase
+      .from('v2_invoices')
+      .select('id, status, amount, paid_to_vendor')
+      .eq('id', invoiceId)
+      .single();
+
+    if (getError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    if (invoice.paid_to_vendor) {
+      return res.status(400).json({ error: 'Invoice has already been marked as paid' });
+    }
+
+    // Determine payment amount (default to invoice amount if not specified)
+    const paidAmount = payment_amount !== undefined ? parseFloat(payment_amount) : parseFloat(invoice.amount || 0);
+
+    // Update invoice with payment info
+    const { data: updated, error: updateError } = await supabase
+      .from('v2_invoices')
+      .update({
+        paid_to_vendor: true,
+        paid_to_vendor_date: payment_date || new Date().toISOString().split('T')[0],
+        paid_to_vendor_amount: paidAmount,
+        paid_to_vendor_ref: payment_reference || null
+      })
+      .eq('id', invoiceId)
+      .select(`
+        *,
+        vendor:v2_vendors(*),
+        job:v2_jobs(id, name)
+      `)
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Log activity
+    await logActivity(invoiceId, 'paid_to_vendor', 'System', {
+      payment_method,
+      payment_reference,
+      payment_amount: paidAmount,
+      payment_date: payment_date || new Date().toISOString().split('T')[0]
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Error marking invoice as paid:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unmark invoice as paid to vendor
+app.patch('/api/invoices/:id/unpay', async (req, res) => {
+  try {
+    const invoiceId = req.params.id;
+
+    // Get current invoice
+    const { data: invoice, error: getError } = await supabase
+      .from('v2_invoices')
+      .select('id, paid_to_vendor')
+      .eq('id', invoiceId)
+      .single();
+
+    if (getError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    if (!invoice.paid_to_vendor) {
+      return res.status(400).json({ error: 'Invoice is not marked as paid' });
+    }
+
+    // Clear payment info
+    const { data: updated, error: updateError } = await supabase
+      .from('v2_invoices')
+      .update({
+        paid_to_vendor: false,
+        paid_to_vendor_date: null,
+        paid_to_vendor_amount: null,
+        paid_to_vendor_ref: null
+      })
+      .eq('id', invoiceId)
+      .select(`
+        *,
+        vendor:v2_vendors(*),
+        job:v2_jobs(id, name)
+      `)
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Log activity
+    await logActivity(invoiceId, 'unpaid', 'System', {});
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Error unmarking invoice as paid:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Allocate invoice to cost codes
 app.post('/api/invoices/:id/allocate', async (req, res) => {
   try {
@@ -2450,8 +2567,15 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       budgetMap[bl.cost_code_id] = {
         budgeted: parseFloat(bl.budgeted_amount) || 0,
         costCode: bl.cost_code?.code || '',
-        description: bl.cost_code?.name || ''
+        description: bl.cost_code?.name || '',
+        category: bl.cost_code?.category || 'Uncategorized'
       };
+    });
+
+    // Build cost code lookup for category info
+    const costCodeLookup = {};
+    (allCostCodes || []).forEach(cc => {
+      costCodeLookup[cc.id] = cc;
     });
 
     // Combine all cost codes that have any activity
@@ -2465,13 +2589,16 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
     allCostCodeIds.forEach(ccId => {
       const budget = budgetMap[ccId] || {};
       const actuals = actualsByCostCode[ccId] || { billed: 0, paid: 0 };
-      const costCode = budget.costCode || actuals.costCode?.code || '';
-      const description = budget.description || actuals.costCode?.name || '';
+      const costCodeInfo = costCodeLookup[ccId] || {};
+      const costCode = budget.costCode || costCodeInfo.code || '';
+      const description = budget.description || costCodeInfo.name || '';
+      const category = budget.category || costCodeInfo.category || 'Uncategorized';
 
       lines.push({
         costCodeId: ccId,
         costCode,
         description,
+        category,
         budgeted: budget.budgeted || 0,
         committed: committedByCostCode[ccId] || 0,
         billed: actuals.billed,
@@ -2493,8 +2620,8 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
     totals.remaining = totals.budgeted - totals.billed;
     totals.percentComplete = totals.budgeted > 0 ? (totals.billed / totals.budgeted) * 100 : 0;
 
-    // Get change orders for this job (via POs)
-    const { data: changeOrders } = await supabase
+    // Get PO change orders for this job
+    const { data: poChangeOrders } = await supabase
       .from('v2_change_orders')
       .select(`
         id, change_order_number, description, reason, amount_change, status, approved_at, created_at,
@@ -2504,19 +2631,32 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
-    // Calculate change order totals (only approved ones affect contract)
-    const approvedCOs = (changeOrders || []).filter(co => co.status === 'approved');
-    const changeOrderTotal = approvedCOs.reduce((sum, co) => sum + (parseFloat(co.amount_change) || 0), 0);
+    // Get job-level change orders (PCCOs - Prime Contract Change Orders)
+    const { data: jobChangeOrders } = await supabase
+      .from('v2_job_change_orders')
+      .select('*')
+      .eq('job_id', jobId)
+      .order('change_order_number');
 
-    // Adjusted contract = original budget + approved change orders
-    totals.changeOrderTotal = changeOrderTotal;
-    totals.adjustedContract = totals.budgeted + changeOrderTotal;
+    // Calculate PO change order totals (only approved ones affect subcontract costs)
+    const approvedPOCOs = (poChangeOrders || []).filter(co => co.status === 'approved');
+    const poChangeOrderTotal = approvedPOCOs.reduce((sum, co) => sum + (parseFloat(co.amount_change) || 0), 0);
+
+    // Calculate job change order totals (PCCOs - affect contract with owner)
+    const approvedPCCOs = (jobChangeOrders || []).filter(co => co.status === 'approved');
+    const pccoTotal = approvedPCCOs.reduce((sum, co) => sum + (parseFloat(co.amount) || 0), 0);
+
+    // Totals
+    totals.poChangeOrderTotal = poChangeOrderTotal;  // Changes to subcontract costs
+    totals.changeOrderTotal = pccoTotal;             // Changes to owner contract (PCCO)
+    totals.adjustedContract = (parseFloat(job?.contract_amount) || totals.budgeted) + pccoTotal;
 
     res.json({
       job,
       lines,
       totals,
-      changeOrders: changeOrders || []
+      changeOrders: poChangeOrders || [],
+      jobChangeOrders: jobChangeOrders || []
     });
   } catch (err) {
     console.error('Budget summary error:', err);
@@ -2715,7 +2855,29 @@ app.get('/api/jobs/:id/draws', async (req, res) => {
       .order('draw_number', { ascending: false });
 
     if (error) throw error;
-    res.json(data);
+
+    // Get CO billings for all draws
+    const drawIds = data.map(d => d.id);
+    const { data: coBillings } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('draw_id, amount')
+      .in('draw_id', drawIds);
+
+    // Calculate total amount for each draw (invoices + CO billings)
+    const drawsWithTotals = data.map(draw => {
+      const invoiceTotal = draw.invoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
+      const coTotal = (coBillings || [])
+        .filter(b => b.draw_id === draw.id)
+        .reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+      return {
+        ...draw,
+        total_amount: invoiceTotal + coTotal,
+        invoice_total: invoiceTotal,
+        co_total: coTotal
+      };
+    });
+
+    res.json(drawsWithTotals);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2926,18 +3088,29 @@ app.get('/api/draws/:id', async (req, res) => {
     const coBilledThisPeriod = (thisDrawCOBillings || []).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
     const coBilledPreviously = previousCOBillings.reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
 
-    const coScheduleOfValues = (jobChangeOrders || []).map((co, idx) => {
+    // Only include COs that have billings on THIS draw (not previous draws)
+    const cosWithBillings = (jobChangeOrders || []).filter(co => {
+      const hasThisPeriodBilling = (thisDrawCOBillings || []).some(b => b.change_order_id === co.id);
+      return hasThisPeriodBilling;
+    });
+
+    const coScheduleOfValues = cosWithBillings.map((co, idx) => {
       const prevBillings = previousCOBillings.filter(b => b.change_order_id === co.id).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
       const thisPeriodBilling = (thisDrawCOBillings || []).filter(b => b.change_order_id === co.id).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
       const totalBilled = prevBillings + thisPeriodBilling;
       const coAmount = parseFloat(co.amount || 0);
       return {
         itemNumber: idx + 1,
+        changeOrderId: co.id,
         changeOrderNumber: co.change_order_number,
         title: co.title,
         scheduledValue: coAmount,
+        coAmount: coAmount,
+        daysAdded: parseInt(co.days_added) || 0,
         previousBillings: prevBillings,
+        previousBilled: prevBillings,
         thisPeriodBilling: thisPeriodBilling,
+        thisPeriod: thisPeriodBilling,
         totalBilled: totalBilled,
         percentComplete: coAmount > 0 ? Math.min((totalBilled / coAmount) * 100, 100) : 0,
         balance: coAmount - totalBilled,
@@ -3028,6 +3201,34 @@ app.post('/api/jobs/:id/draws', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update draw (header fields and G702 overrides)
+app.patch('/api/draws/:id', async (req, res) => {
+  try {
+    const drawId = req.params.id;
+    const { draw_number, period_end, notes, g702_overrides } = req.body;
+    const { data: currentDraw, error: fetchError } = await supabase
+      .from('v2_draws').select('status').eq('id', drawId).single();
+    if (fetchError) throw fetchError;
+    if (currentDraw.status !== 'draft') {
+      return res.status(400).json({ error: 'Can only edit draft draws' });
+    }
+    const updateData = { updated_at: new Date().toISOString() };
+    if (draw_number !== undefined) updateData.draw_number = draw_number;
+    if (period_end !== undefined) updateData.period_end = period_end;
+    if (notes !== undefined) updateData.notes = notes;
+    if (g702_overrides) {
+      if (g702_overrides.original_contract_sum !== undefined) updateData.g702_original_contract_override = g702_overrides.original_contract_sum;
+      if (g702_overrides.net_change_orders !== undefined) updateData.g702_change_orders_override = g702_overrides.net_change_orders;
+    }
+    const { data, error } = await supabase.from('v2_draws').update(updateData).eq('id', drawId).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('Error updating draw:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -3775,33 +3976,60 @@ app.get('/api/change-orders/:id', async (req, res) => {
 app.post('/api/jobs/:jobId/change-orders', async (req, res) => {
   try {
     const { jobId } = req.params;
-    const { title, description, reason, amount, created_by } = req.body;
+    const {
+      change_order_number, title, description, reason, amount,
+      base_amount, gc_fee_percent, gc_fee_amount,
+      status, first_billed_draw_number, days_added, created_by
+    } = req.body;
 
-    if (!title || amount === undefined) {
-      return res.status(400).json({ error: 'Title and amount are required' });
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
     }
 
-    const { data: nextNum } = await supabase.rpc('get_next_co_number', { p_job_id: jobId });
-    const coNumber = nextNum || 1;
+    if (days_added === undefined || days_added === null || days_added === '') {
+      return res.status(400).json({ error: 'Days added is required (can be 0)' });
+    }
+
+    // Get next CO number if not provided
+    let coNumber = change_order_number;
+    if (!coNumber) {
+      const { data: maxCO } = await supabase
+        .from('v2_job_change_orders')
+        .select('change_order_number')
+        .eq('job_id', jobId)
+        .order('change_order_number', { ascending: false })
+        .limit(1)
+        .single();
+      coNumber = (maxCO?.change_order_number || 0) + 1;
+    }
+
+    const insertData = {
+      job_id: jobId,
+      change_order_number: coNumber,
+      title,
+      description: description || title,
+      reason: reason || 'scope_change',
+      amount: parseFloat(amount) || 0,
+      days_added: parseInt(days_added) || 0,
+      status: status || 'draft',
+      created_by
+    };
+
+    // Add optional fields
+    if (base_amount !== undefined) insertData.base_amount = parseFloat(base_amount);
+    if (gc_fee_percent !== undefined) insertData.gc_fee_percent = parseFloat(gc_fee_percent);
+    if (gc_fee_amount !== undefined) insertData.gc_fee_amount = parseFloat(gc_fee_amount);
+    if (first_billed_draw_number) insertData.first_billed_draw_number = first_billed_draw_number;
 
     const { data: co, error } = await supabase
       .from('v2_job_change_orders')
-      .insert({
-        job_id: jobId,
-        change_order_number: coNumber,
-        title,
-        description,
-        reason: reason || 'scope_change',
-        amount: parseFloat(amount),
-        status: 'draft',
-        created_by
-      })
+      .insert(insertData)
       .select()
       .single();
 
     if (error) throw error;
 
-    await logCOActivity(co.id, 'created', created_by, { amount: parseFloat(amount) });
+    await logCOActivity(co.id, 'created', created_by, { amount: insertData.amount });
 
     res.status(201).json(co);
   } catch (err) {
@@ -3810,26 +4038,42 @@ app.post('/api/jobs/:jobId/change-orders', async (req, res) => {
   }
 });
 
-// Update change order (draft only)
+// Update change order
 app.patch('/api/change-orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, reason, amount, updated_by } = req.body;
+    const {
+      change_order_number, title, description, reason, amount,
+      base_amount, gc_fee_percent, gc_fee_amount,
+      status, first_billed_draw_number, days_added, updated_by
+    } = req.body;
 
     const { data: existing } = await supabase
       .from('v2_job_change_orders')
-      .select('status')
+      .select('status, billed_amount')
       .eq('id', id)
       .single();
 
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
-    if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only edit draft change orders' });
+
+    // Only prevent editing if there are billings (actual usage)
+    const hasBillings = parseFloat(existing.billed_amount || 0) > 0;
+    if (hasBillings && amount !== undefined && parseFloat(amount) < parseFloat(existing.billed_amount)) {
+      return res.status(400).json({ error: 'Cannot reduce amount below billed amount' });
+    }
 
     const updates = { updated_at: new Date().toISOString() };
+    if (change_order_number !== undefined) updates.change_order_number = change_order_number;
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
     if (reason !== undefined) updates.reason = reason;
     if (amount !== undefined) updates.amount = parseFloat(amount);
+    if (base_amount !== undefined) updates.base_amount = parseFloat(base_amount);
+    if (gc_fee_percent !== undefined) updates.gc_fee_percent = parseFloat(gc_fee_percent);
+    if (gc_fee_amount !== undefined) updates.gc_fee_amount = parseFloat(gc_fee_amount);
+    if (days_added !== undefined) updates.days_added = parseInt(days_added);
+    if (status !== undefined) updates.status = status;
+    if (first_billed_draw_number !== undefined) updates.first_billed_draw_number = first_billed_draw_number;
 
     const { data: co, error } = await supabase
       .from('v2_job_change_orders')
@@ -3999,6 +4243,101 @@ app.post('/api/change-orders/:id/reject', async (req, res) => {
     res.json(co);
   } catch (err) {
     console.error('Error rejecting change order:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// CHANGE ORDER INVOICE LINKING
+// ============================================================
+
+// Get invoices linked to a change order
+app.get('/api/change-orders/:id/invoices', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: links, error } = await supabase
+      .from('v2_change_order_invoices')
+      .select(`
+        id, amount, notes, created_at, invoice_id,
+        invoice:v2_invoices(id, invoice_number, amount, invoice_date, vendor:v2_vendors(id, name))
+      `)
+      .eq('change_order_id', id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(links || []);
+  } catch (err) {
+    console.error('Error fetching CO invoices:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Link invoice to change order
+app.post('/api/change-orders/:id/link-invoice', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { invoice_id, amount, notes } = req.body;
+
+    if (!invoice_id) {
+      return res.status(400).json({ error: 'invoice_id is required' });
+    }
+
+    // Check if already linked
+    const { data: existing } = await supabase
+      .from('v2_change_order_invoices')
+      .select('id')
+      .eq('change_order_id', id)
+      .eq('invoice_id', invoice_id)
+      .single();
+
+    if (existing) {
+      return res.status(400).json({ error: 'Invoice already linked to this change order' });
+    }
+
+    const { data: link, error } = await supabase
+      .from('v2_change_order_invoices')
+      .insert({
+        change_order_id: id,
+        invoice_id,
+        amount: amount ? parseFloat(amount) : null,
+        notes
+      })
+      .select(`
+        id, amount, notes, created_at, invoice_id,
+        invoice:v2_invoices(id, invoice_number, amount, vendor:v2_vendors(id, name))
+      `)
+      .single();
+
+    if (error) throw error;
+
+    await logCOActivity(id, 'invoice_linked', 'System', { invoice_id, amount });
+
+    res.status(201).json(link);
+  } catch (err) {
+    console.error('Error linking invoice to CO:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unlink invoice from change order
+app.delete('/api/change-orders/:id/unlink-invoice/:invoiceId', async (req, res) => {
+  try {
+    const { id, invoiceId } = req.params;
+
+    const { error } = await supabase
+      .from('v2_change_order_invoices')
+      .delete()
+      .eq('change_order_id', id)
+      .eq('invoice_id', invoiceId);
+
+    if (error) throw error;
+
+    await logCOActivity(id, 'invoice_unlinked', 'System', { invoice_id: invoiceId });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error unlinking invoice from CO:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -4664,30 +5003,27 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
       const previous = previousByCode[codeId] || 0;
       const thisPeriod = thisPeriodByCode[codeId] || 0;
       const total = previous + thisPeriod;
-      return { scheduled, previous, thisPeriod, total, balance: scheduled - total, retainage: total * 0.10 };
+      return { scheduled, previous, thisPeriod, total, balance: scheduled - total };
     });
 
     const totals = g703Data.reduce((acc, item) => ({
       scheduled: acc.scheduled + item.scheduled,
       previous: acc.previous + item.previous,
       thisPeriod: acc.thisPeriod + item.thisPeriod,
-      total: acc.total + item.total,
-      retainage: acc.retainage + item.retainage
-    }), { scheduled: 0, previous: 0, thisPeriod: 0, total: 0, retainage: 0 });
+      total: acc.total + item.total
+    }), { scheduled: 0, previous: 0, thisPeriod: 0, total: 0 });
 
-    const earnedLessRetainage = totals.total - totals.retainage;
-    const previousCertificates = totals.previous - (totals.previous * 0.10);
-    const currentPaymentDue = totals.thisPeriod - (totals.thisPeriod * 0.10);
+    const previousCertificates = totals.previous;
+    const currentPaymentDue = totals.thisPeriod;
+    const balanceToFinish = contractSumToDate - totals.total;
 
     g702.addRow(['1.', 'ORIGINAL CONTRACT SUM', formatCurrency(contractSum)]);
     g702.addRow(['2.', 'Net change by Change Orders', formatCurrency(changeOrders)]);
     g702.addRow(['3.', 'CONTRACT SUM TO DATE (Line 1 + 2)', formatCurrency(contractSumToDate)]);
     g702.addRow(['4.', 'TOTAL COMPLETED & STORED TO DATE', formatCurrency(totals.total)]);
-    g702.addRow(['5.', 'RETAINAGE (10%)', formatCurrency(totals.retainage)]);
-    g702.addRow(['6.', 'TOTAL EARNED LESS RETAINAGE', formatCurrency(earnedLessRetainage)]);
-    g702.addRow(['7.', 'LESS PREVIOUS CERTIFICATES FOR PAYMENT', formatCurrency(previousCertificates)]);
-    g702.addRow(['8.', 'CURRENT PAYMENT DUE', formatCurrency(currentPaymentDue)]);
-    g702.addRow(['9.', 'BALANCE TO FINISH, INCLUDING RETAINAGE', formatCurrency(contractSumToDate - earnedLessRetainage)]);
+    g702.addRow(['5.', 'LESS PREVIOUS CERTIFICATES FOR PAYMENT', formatCurrency(previousCertificates)]);
+    g702.addRow(['6.', 'CURRENT PAYMENT DUE', formatCurrency(currentPaymentDue)]);
+    g702.addRow(['7.', 'BALANCE TO FINISH', formatCurrency(balanceToFinish)]);
 
     // Style G702
     g702.getRow(1).font = { bold: true, size: 14 };
@@ -4705,12 +5041,11 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
       { header: 'Materials', width: 12 },
       { header: 'Total', width: 15 },
       { header: '%', width: 8 },
-      { header: 'Balance', width: 15 },
-      { header: 'Retainage', width: 12 }
+      { header: 'Balance', width: 15 }
     ];
 
     // Add header row
-    g703.addRow(['A', 'B', 'C', 'D (Previous)', 'D (This Period)', 'E', 'F', 'G', 'H', 'I']);
+    g703.addRow(['A', 'B', 'C', 'D (Previous)', 'D (This Period)', 'E', 'F', 'G', 'H']);
     g703.getRow(1).font = { bold: true };
     g703.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
 
@@ -4724,7 +5059,6 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
       const total = previous + thisPeriod + materials;
       const percent = scheduled > 0 ? (total / scheduled) : 0;
       const balance = scheduled - total;
-      const retainage = total * 0.10;
 
       if (scheduled > 0 || thisPeriod > 0) {
         g703.addRow([
@@ -4736,8 +5070,7 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
           materials,
           total,
           percent,
-          balance,
-          retainage
+          balance
         ]);
       }
     });
@@ -4747,14 +5080,13 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
       '', 'GRAND TOTAL',
       totals.scheduled, totals.previous, totals.thisPeriod, 0, totals.total,
       totals.scheduled > 0 ? totals.total / totals.scheduled : 0,
-      totals.scheduled - totals.total,
-      totals.retainage
+      totals.scheduled - totals.total
     ]);
     totalsRow.font = { bold: true };
     totalsRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
 
     // Format currency columns
-    [3, 4, 5, 6, 7, 9, 10].forEach(col => {
+    [3, 4, 5, 6, 7, 9].forEach(col => {
       g703.getColumn(col).numFmt = '$#,##0.00';
     });
     g703.getColumn(8).numFmt = '0.0%';
@@ -4862,75 +5194,324 @@ function formatCurrency(amount) {
   return parseFloat(amount) || 0;
 }
 
+// Helper to format money for PDF (with $ and commas)
+function formatMoneyPDF(amount) {
+  const num = parseFloat(amount) || 0;
+  return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // Export Draw as PDF (G702/G703 + Invoice PDFs)
 app.get('/api/draws/:id/export/pdf', async (req, res) => {
   try {
     const drawId = req.params.id;
 
-    // Get draw info
+    // Get draw info with job details
     const { data: draw, error: drawError } = await supabase
       .from('v2_draws')
-      .select(`*, job:v2_jobs(id, name, client_name)`)
+      .select(`*, job:v2_jobs(id, name, client_name, address, contract_amount)`)
       .eq('id', drawId)
       .single();
 
     if (drawError) throw drawError;
     if (!draw) return res.status(404).json({ error: 'Draw not found' });
 
-    // Get invoices with stamped PDFs
+    const jobId = draw.job_id;
+
+    // Get invoices with allocations and stamped PDFs
     const { data: drawInvoices } = await supabase
       .from('v2_draw_invoices')
-      .select(`invoice:v2_invoices(id, invoice_number, pdf_stamped_url, vendor:v2_vendors(name))`)
+      .select(`invoice:v2_invoices(id, invoice_number, amount, pdf_stamped_url, vendor:v2_vendors(name), allocations:v2_invoice_allocations(cost_code_id, amount))`)
       .eq('draw_id', drawId);
 
     const invoices = drawInvoices?.map(di => di.invoice).filter(Boolean) || [];
 
+    // Get budget lines for G703
+    const { data: budgetLines } = await supabase
+      .from('v2_budget_lines')
+      .select(`*, cost_code:v2_cost_codes(id, code, name)`)
+      .eq('job_id', jobId)
+      .order('cost_code(code)');
+
+    // Get all draws for this job to calculate previous billings
+    const { data: allDraws } = await supabase
+      .from('v2_draws')
+      .select(`id, draw_number, total_amount, status`)
+      .eq('job_id', jobId)
+      .order('draw_number');
+
+    // Get all invoice allocations for previous draws
+    const previousDrawIds = allDraws?.filter(d => d.draw_number < draw.draw_number).map(d => d.id) || [];
+    let previousAllocations = [];
+    if (previousDrawIds.length > 0) {
+      const { data: prevDrawInvoices } = await supabase
+        .from('v2_draw_invoices')
+        .select(`invoice:v2_invoices(allocations:v2_invoice_allocations(cost_code_id, amount))`)
+        .in('draw_id', previousDrawIds);
+      previousAllocations = prevDrawInvoices?.flatMap(di => di.invoice?.allocations || []) || [];
+    }
+
+    // Get job change orders (PCCOs) for net change calculation
+    const { data: jobChangeOrders } = await supabase
+      .from('v2_job_change_orders')
+      .select('amount, status')
+      .eq('job_id', jobId)
+      .eq('status', 'approved');
+
+    // Calculate G702 values
+    const contractAmount = parseFloat(draw.job?.contract_amount) || 0;
+    const netChangeOrders = jobChangeOrders?.reduce((sum, co) => sum + (parseFloat(co.amount) || 0), 0) || 0;
+    const contractSumToDate = contractAmount + netChangeOrders;
+
+    // Use override values if set
+    const originalContractSum = draw.g702_original_contract_override != null
+      ? parseFloat(draw.g702_original_contract_override)
+      : contractAmount;
+    const changeOrdersAmount = draw.g702_change_orders_override != null
+      ? parseFloat(draw.g702_change_orders_override)
+      : netChangeOrders;
+
+    // Calculate previous completed amounts
+    const previousCompleted = previousDrawIds.length > 0
+      ? allDraws.filter(d => d.draw_number < draw.draw_number).reduce((sum, d) => sum + (parseFloat(d.total_amount) || 0), 0)
+      : 0;
+
+    const thisDrawAmount = parseFloat(draw.total_amount) || 0;
+    const totalCompletedToDate = previousCompleted + thisDrawAmount;
+    const lessPreviousCertificates = previousCompleted;
+    const currentPaymentDue = thisDrawAmount;
+    const balanceToFinish = (originalContractSum + changeOrdersAmount) - totalCompletedToDate;
+
+    // Build G703 data by cost code
+    const g703Data = [];
+    const costCodeMap = new Map();
+
+    // Sum up allocations by cost code for current draw
+    const currentAllocations = invoices.flatMap(inv => inv.allocations || []);
+    currentAllocations.forEach(alloc => {
+      const existing = costCodeMap.get(alloc.cost_code_id) || { current: 0 };
+      existing.current += parseFloat(alloc.amount) || 0;
+      costCodeMap.set(alloc.cost_code_id, existing);
+    });
+
+    // Sum up previous allocations by cost code
+    previousAllocations.forEach(alloc => {
+      const existing = costCodeMap.get(alloc.cost_code_id) || { current: 0 };
+      existing.previous = (existing.previous || 0) + (parseFloat(alloc.amount) || 0);
+      costCodeMap.set(alloc.cost_code_id, existing);
+    });
+
+    // Build G703 rows from budget lines (only include rows with budget or billings)
+    let itemNum = 1;
+    budgetLines?.forEach(bl => {
+      const ccId = bl.cost_code_id;
+      const allocData = costCodeMap.get(ccId) || { current: 0, previous: 0 };
+      const scheduledValue = parseFloat(bl.budgeted_amount) || 0;
+      const previousBillings = allocData.previous || 0;
+      const currentBillings = allocData.current || 0;
+      const totalBilled = previousBillings + currentBillings;
+
+      // Skip rows with no budget and no billings
+      if (scheduledValue === 0 && totalBilled === 0) return;
+
+      const percentComplete = scheduledValue > 0 ? (totalBilled / scheduledValue) * 100 : 0;
+      const balance = scheduledValue - totalBilled;
+
+      g703Data.push({
+        itemNum: itemNum++,
+        costCode: bl.cost_code?.code || '',
+        description: bl.cost_code?.name || '',
+        scheduledValue,
+        previousBillings,
+        currentBillings,
+        materialsStored: 0,
+        totalBilled,
+        percentComplete,
+        balance
+      });
+    });
+
     // Create merged PDF
     const mergedPdf = await PDFDocument.create();
 
-    // Add a cover page
-    const coverPage = mergedPdf.addPage([612, 792]); // Letter size
-    const { width, height } = coverPage.getSize();
+    // ============ G702 PAGE (Portrait) ============
+    const g702Page = mergedPdf.addPage([612, 792]); // Letter size portrait
+    const g702Height = g702Page.getHeight();
+    let y = g702Height - 40;
 
-    coverPage.drawText('PAY APPLICATION', {
-      x: 50, y: height - 80, size: 24
-    });
-    coverPage.drawText(`Draw #${draw.draw_number}`, {
-      x: 50, y: height - 120, size: 18
-    });
-    coverPage.drawText(`Job: ${draw.job?.name || '-'}`, {
-      x: 50, y: height - 160, size: 14
-    });
-    coverPage.drawText(`Owner: ${draw.job?.client_name || '-'}`, {
-      x: 50, y: height - 185, size: 14
-    });
-    coverPage.drawText(`Period End: ${draw.period_end || '-'}`, {
-      x: 50, y: height - 210, size: 14
-    });
-    coverPage.drawText(`Total Amount: $${parseFloat(draw.total_amount || 0).toLocaleString()}`, {
-      x: 50, y: height - 235, size: 14
+    // Header
+    g702Page.drawText('AIA DOCUMENT G702 - APPLICATION AND CERTIFICATE FOR PAYMENT', { x: 50, y, size: 11 });
+    y -= 25;
+
+    g702Page.drawText('TO OWNER:', { x: 50, y, size: 9 });
+    g702Page.drawText(draw.job?.client_name || '-', { x: 120, y, size: 9 });
+    y -= 15;
+
+    g702Page.drawText('PROJECT:', { x: 50, y, size: 9 });
+    g702Page.drawText(draw.job?.name || '-', { x: 120, y, size: 9 });
+    y -= 15;
+
+    g702Page.drawText('ADDRESS:', { x: 50, y, size: 9 });
+    g702Page.drawText(draw.job?.address || '-', { x: 120, y, size: 9 });
+
+    // Right side header
+    g702Page.drawText('APPLICATION NO:', { x: 380, y: g702Height - 65, size: 9 });
+    g702Page.drawText(String(draw.draw_number), { x: 480, y: g702Height - 65, size: 9 });
+    g702Page.drawText('PERIOD TO:', { x: 380, y: g702Height - 80, size: 9 });
+    g702Page.drawText(draw.period_end || '-', { x: 480, y: g702Height - 80, size: 9 });
+
+    y -= 30;
+    g702Page.drawText('FROM CONTRACTOR:', { x: 50, y, size: 9 });
+    g702Page.drawText('Ross Built Custom Homes', { x: 160, y, size: 9 });
+
+    // G702 Line Items Table
+    y -= 40;
+    const tableStartY = y;
+    const lineHeight = 22;
+
+    const g702Lines = [
+      { num: '1.', label: 'ORIGINAL CONTRACT SUM', value: formatMoneyPDF(originalContractSum) },
+      { num: '2.', label: 'Net change by Change Orders', value: formatMoneyPDF(changeOrdersAmount) },
+      { num: '3.', label: 'CONTRACT SUM TO DATE (Line 1 + 2)', value: formatMoneyPDF(originalContractSum + changeOrdersAmount) },
+      { num: '4.', label: 'TOTAL COMPLETED & STORED TO DATE (Column G on G703)', value: formatMoneyPDF(totalCompletedToDate) },
+      { num: '5.', label: 'LESS PREVIOUS CERTIFICATES FOR PAYMENT', value: formatMoneyPDF(lessPreviousCertificates) },
+      { num: '6.', label: 'CURRENT PAYMENT DUE', value: formatMoneyPDF(currentPaymentDue) },
+      { num: '7.', label: 'BALANCE TO FINISH (Line 3 less Line 4)', value: formatMoneyPDF(balanceToFinish) },
+    ];
+
+    g702Lines.forEach((line, idx) => {
+      const lineY = tableStartY - (idx * lineHeight);
+      g702Page.drawText(line.num, { x: 50, y: lineY, size: 10 });
+      g702Page.drawText(line.label, { x: 75, y: lineY, size: 10 });
+      g702Page.drawText(line.value, { x: 480, y: lineY, size: 10 });
     });
 
-    coverPage.drawText('ATTACHED INVOICES:', {
-      x: 50, y: height - 290, size: 14
-    });
+    // Notes section if present
+    if (draw.notes) {
+      y = tableStartY - (g702Lines.length * lineHeight) - 30;
+      g702Page.drawText('NOTES:', { x: 50, y, size: 9 });
+      y -= 15;
+      // Truncate long notes
+      const notesText = draw.notes.length > 200 ? draw.notes.substring(0, 200) + '...' : draw.notes;
+      g702Page.drawText(notesText, { x: 50, y, size: 9 });
+    }
 
-    let yPos = height - 320;
-    invoices.forEach((inv, idx) => {
-      coverPage.drawText(`${idx + 1}. ${inv.vendor?.name || 'Unknown'} - ${inv.invoice_number || 'N/A'}`, {
-        x: 70, y: yPos, size: 12
+    // Footer
+    g702Page.drawText('Generated by Ross Built CMS', { x: 50, y: 50, size: 8 });
+    g702Page.drawText(new Date().toLocaleDateString(), { x: 50, y: 38, size: 8 });
+
+    // ============ G703 PAGES (Landscape, multi-page support) ============
+    const colX = [30, 55, 130, 220, 300, 380, 460, 540, 610, 680];
+    const headers = ['#', 'Code', 'Description', 'Scheduled', 'Previous', 'This Period', 'Materials', 'Total', '%', 'Balance'];
+    const rowHeight = 14;
+    const g703Width = 792;
+    const g703Height = 612;
+    let grandTotals = { scheduled: 0, previous: 0, current: 0, materials: 0, total: 0, balance: 0 };
+
+    // Helper function to create a new G703 page with headers
+    function createG703Page(pageNum) {
+      const page = mergedPdf.addPage([792, 612]); // Letter size landscape
+      // Header
+      page.drawText('AIA DOCUMENT G703 - CONTINUATION SHEET (SCHEDULE OF VALUES)', { x: 50, y: g703Height - 30, size: 11 });
+      page.drawText(`Application #${draw.draw_number}`, { x: 50, y: g703Height - 45, size: 9 });
+      page.drawText(`Period To: ${draw.period_end || '-'}`, { x: 200, y: g703Height - 45, size: 9 });
+      page.drawText(`Project: ${draw.job?.name || '-'}`, { x: 400, y: g703Height - 45, size: 9 });
+      if (pageNum > 1) {
+        page.drawText(`(Page ${pageNum})`, { x: 700, y: g703Height - 30, size: 9 });
+      }
+      // Table headers
+      const headerY = g703Height - 70;
+      headers.forEach((h, i) => {
+        page.drawText(h, { x: colX[i], y: headerY, size: 8 });
       });
-      yPos -= 20;
+      // Line under headers
+      page.drawLine({
+        start: { x: 25, y: headerY - 5 },
+        end: { x: g703Width - 25, y: headerY - 5 },
+        thickness: 0.5
+      });
+      return { page, rowY: headerY - 20 };
+    }
+
+    // Create first G703 page
+    let g703PageNum = 1;
+    let { page: currentG703Page, rowY } = createG703Page(g703PageNum);
+
+    // Render all rows with pagination
+    g703Data.forEach((row, idx) => {
+      // Check if we need a new page
+      if (rowY < 60) {
+        // Add footer to current page
+        currentG703Page.drawText('Generated by Ross Built CMS', { x: 50, y: 25, size: 8 });
+        currentG703Page.drawText('(continued)', { x: g703Width - 100, y: 25, size: 8 });
+        // Create new page
+        g703PageNum++;
+        const newPage = createG703Page(g703PageNum);
+        currentG703Page = newPage.page;
+        rowY = newPage.rowY;
+      }
+
+      currentG703Page.drawText(String(row.itemNum), { x: colX[0], y: rowY, size: 7 });
+      currentG703Page.drawText(row.costCode.substring(0, 8), { x: colX[1], y: rowY, size: 7 });
+      currentG703Page.drawText(row.description.substring(0, 15), { x: colX[2], y: rowY, size: 7 });
+      currentG703Page.drawText(formatMoneyPDF(row.scheduledValue).substring(0, 12), { x: colX[3], y: rowY, size: 7 });
+      currentG703Page.drawText(formatMoneyPDF(row.previousBillings).substring(0, 12), { x: colX[4], y: rowY, size: 7 });
+      currentG703Page.drawText(formatMoneyPDF(row.currentBillings).substring(0, 12), { x: colX[5], y: rowY, size: 7 });
+      currentG703Page.drawText(formatMoneyPDF(row.materialsStored).substring(0, 10), { x: colX[6], y: rowY, size: 7 });
+      currentG703Page.drawText(formatMoneyPDF(row.totalBilled).substring(0, 12), { x: colX[7], y: rowY, size: 7 });
+      currentG703Page.drawText(row.percentComplete.toFixed(0) + '%', { x: colX[8], y: rowY, size: 7 });
+      currentG703Page.drawText(formatMoneyPDF(row.balance).substring(0, 12), { x: colX[9], y: rowY, size: 7 });
+
+      grandTotals.scheduled += row.scheduledValue;
+      grandTotals.previous += row.previousBillings;
+      grandTotals.current += row.currentBillings;
+      grandTotals.total += row.totalBilled;
+      grandTotals.balance += row.balance;
+
+      rowY -= rowHeight;
     });
 
-    coverPage.drawText('Generated by Ross Built CMS', {
-      x: 50, y: 50, size: 10
-    });
-    coverPage.drawText(new Date().toLocaleDateString(), {
-      x: 50, y: 35, size: 10
+    // Grand totals row on last page
+    rowY -= 5;
+    currentG703Page.drawLine({
+      start: { x: 25, y: rowY + 10 },
+      end: { x: g703Width - 25, y: rowY + 10 },
+      thickness: 0.5
     });
 
-    // Fetch and append each invoice PDF
+    currentG703Page.drawText('GRAND TOTAL', { x: colX[2], y: rowY, size: 8 });
+    currentG703Page.drawText(formatMoneyPDF(grandTotals.scheduled).substring(0, 12), { x: colX[3], y: rowY, size: 7 });
+    currentG703Page.drawText(formatMoneyPDF(grandTotals.previous).substring(0, 12), { x: colX[4], y: rowY, size: 7 });
+    currentG703Page.drawText(formatMoneyPDF(grandTotals.current).substring(0, 12), { x: colX[5], y: rowY, size: 7 });
+    currentG703Page.drawText(formatMoneyPDF(grandTotals.total).substring(0, 12), { x: colX[7], y: rowY, size: 7 });
+    currentG703Page.drawText(formatMoneyPDF(grandTotals.balance).substring(0, 12), { x: colX[9], y: rowY, size: 7 });
+
+    // Footer on last page
+    currentG703Page.drawText('Generated by Ross Built CMS', { x: 50, y: 25, size: 8 });
+    currentG703Page.drawText(new Date().toLocaleDateString(), { x: g703Width - 100, y: 25, size: 8 });
+
+    // ============ INVOICE COVER PAGE ============
+    if (invoices.length > 0) {
+      const invoiceCoverPage = mergedPdf.addPage([612, 792]);
+      const icHeight = invoiceCoverPage.getHeight();
+
+      invoiceCoverPage.drawText('ATTACHED INVOICES', { x: 50, y: icHeight - 60, size: 18 });
+      invoiceCoverPage.drawText(`Draw #${draw.draw_number} - ${draw.job?.name || ''}`, { x: 50, y: icHeight - 85, size: 12 });
+
+      let listY = icHeight - 130;
+      invoices.forEach((inv, idx) => {
+        if (listY < 80) return;
+        const amount = parseFloat(inv.amount) || 0;
+        invoiceCoverPage.drawText(
+          `${idx + 1}. ${inv.vendor?.name || 'Unknown'} - Invoice #${inv.invoice_number || 'N/A'} - ${formatMoneyPDF(amount)}`,
+          { x: 60, y: listY, size: 10 }
+        );
+        listY -= 20;
+      });
+
+      invoiceCoverPage.drawText('Generated by Ross Built CMS', { x: 50, y: 40, size: 8 });
+    }
+
+    // ============ APPEND INVOICE PDFs ============
     for (const inv of invoices) {
       if (inv.pdf_stamped_url) {
         try {
@@ -4951,7 +5532,7 @@ app.get('/api/draws/:id/export/pdf', async (req, res) => {
     const pdfBytes = await mergedPdf.save();
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=Draw_${draw.draw_number}_${draw.job?.name?.replace(/\s+/g, '_') || 'Job'}_PayApp.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=Draw_${draw.draw_number}_${draw.job?.name?.replace(/\s+/g, '_') || 'Job'}_G702_G703.pdf`);
     res.send(Buffer.from(pdfBytes));
   } catch (err) {
     console.error('Error exporting PDF:', err);
@@ -5095,7 +5676,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
 
   // Build update object
   const updateFields = {};
-  const editableFields = ['invoice_number', 'invoice_date', 'due_date', 'amount', 'job_id', 'vendor_id', 'po_id', 'notes', 'status', 'paid_to_vendor', 'paid_to_vendor_date', 'paid_to_vendor_ref'];
+  const editableFields = ['invoice_number', 'invoice_date', 'due_date', 'amount', 'job_id', 'vendor_id', 'po_id', 'notes', 'status', 'paid_to_vendor', 'paid_to_vendor_date', 'paid_to_vendor_ref', 'needs_review', 'review_flags'];
   for (const field of editableFields) {
     if (updates.hasOwnProperty(field)) {
       updateFields[field] = updates[field];
