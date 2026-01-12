@@ -1053,9 +1053,9 @@ app.post('/api/purchase-orders/:id/void', asyncHandler(async (req, res) => {
     .update({
       status: 'cancelled',
       status_detail: 'voided',
-      voided_at: new Date().toISOString(),
-      voided_by: voided_by || 'system',
-      voided_reason: reason
+      closed_at: new Date().toISOString(),
+      closed_by: voided_by || 'system',
+      closed_reason: reason
     })
     .eq('id', id)
     .select()

@@ -611,6 +611,7 @@ class POModals {
           break;
         case 'sent':
           left += `<button class="btn btn-danger-outline" onclick="window.poModals.voidPO()">Void</button>`;
+          right += `<button class="btn btn-danger" onclick="window.poModals.rejectPO()">Reject</button>`;
           right += `<button class="btn btn-success" onclick="window.poModals.approvePO()">Approve</button>`;
           break;
         case 'approved':
