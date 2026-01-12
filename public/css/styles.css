@@ -62,12 +62,18 @@
   /* Semantic status */
   --success: #22c55e;
   --warning: #f59e0b;
+  --accent-blue: #3b82f6;
+  --accent-green: #22c55e;
+  --accent-orange: #f59e0b;
+  --accent-red: #ef4444;
 
   /* Refined spacing - Smaller radius for cleaner look */
   --radius: 6px;
   --radius-sm: 4px;
+  --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
+  --radius-full: 9999px;
   --shadow: 0 4px 12px rgba(0,0,0,0.15);
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.2);
@@ -8574,91 +8580,8 @@ textarea.form-control {
    BUDGET PAGE STYLES
    ============================================================ */
 
-/* Budget Modal - Same as Draw Modal */
-#budgetModal.modal-fullscreen-dark {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  z-index: 1000;
-  justify-content: center;
-  align-items: center;
-  padding: 2rem;
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-
-#budgetModal.modal-fullscreen-dark.show {
-  display: flex;
-}
-
-#budgetModal .modal-content {
-  width: 95vw;
-  max-width: 1400px;
-  height: 95vh;
-  max-height: 95vh;
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--shadow-lg);
-  opacity: 1 !important;
-  transform: scale(1) !important;
-}
-
-#budgetModal .modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-card-elevated);
-  flex-shrink: 0;
-}
-
-#budgetModal .modal-title-group {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-#budgetModal .modal-title-group h2,
-#budgetModal .modal-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-#budgetModal .modal-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-#budgetModal .modal-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.5rem;
-  background: var(--bg-primary);
-}
-
-#budgetModal .modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.5rem;
-  border-top: 1px solid var(--border);
-  background: var(--bg-card-elevated);
-  flex-shrink: 0;
-}
-
-#budgetModal .draw-section {
+/* Budget Page Inline Styles */
+#budgetDetail .draw-section {
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   padding: 1.5rem;
@@ -8666,26 +8589,50 @@ textarea.form-control {
   border: 1px solid var(--border);
 }
 
-#budgetModal .section-header {
+#budgetDetail .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
 }
 
-#budgetModal .section-header h3 {
+#budgetDetail .section-header h3 {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-#budgetModal .section-subtitle {
+.budget-page-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.budget-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.budget-title-row h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.budget-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#budgetDetail .section-subtitle {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
 
-#budgetModal .section-badge {
+#budgetDetail .section-badge {
   font-size: 0.8rem;
   color: var(--text-secondary);
   background: var(--bg-hover);
@@ -8693,17 +8640,17 @@ textarea.form-control {
   border-radius: var(--radius-full);
 }
 
-#budgetModal .draw-summary-section {
+#budgetDetail .draw-summary-section {
   background: var(--bg-card);
 }
 
-#budgetModal .draw-summary-grid {
+#budgetDetail .draw-summary-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
 }
 
-#budgetModal .summary-card {
+#budgetDetail .summary-card {
   background: var(--bg-card-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -8711,12 +8658,12 @@ textarea.form-control {
   text-align: center;
 }
 
-#budgetModal .summary-card.highlight {
+#budgetDetail .summary-card.highlight {
   background: rgba(88, 166, 255, 0.1);
   border-color: var(--accent-blue);
 }
 
-#budgetModal .summary-label {
+#budgetDetail .summary-label {
   font-size: 0.75rem;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -8724,28 +8671,28 @@ textarea.form-control {
   margin-bottom: 0.5rem;
 }
 
-#budgetModal .summary-value {
+#budgetDetail .summary-value {
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-#budgetModal .g703-container {
+#budgetDetail .g703-container {
   background: var(--bg-card-elevated);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
 
-#budgetModal .g703-table-wrapper {
+#budgetDetail .g703-table-wrapper {
   overflow-x: auto;
 }
 
-#budgetModal .g703-table {
+#budgetDetail .g703-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-#budgetModal .g703-table th {
+#budgetDetail .g703-table th {
   background: var(--bg-hover);
   padding: 0.75rem 1rem;
   text-align: left;
@@ -8758,41 +8705,41 @@ textarea.form-control {
   white-space: nowrap;
 }
 
-#budgetModal .g703-table td {
+#budgetDetail .g703-table td {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
   color: var(--text-primary);
 }
 
-#budgetModal .g703-table tr:hover {
+#budgetDetail .g703-table tr:hover {
   background: var(--bg-hover);
 }
 
-#budgetModal .g703-table .amount {
+#budgetDetail .g703-table .amount {
   text-align: right;
   font-family: 'SF Mono', 'Monaco', monospace;
   font-size: 0.85rem;
 }
 
-#budgetModal .g703-table .percent {
+#budgetDetail .g703-table .percent {
   text-align: center;
 }
 
-#budgetModal .g703-table .over-budget {
+#budgetDetail .g703-table .over-budget {
   color: var(--danger);
 }
 
-#budgetModal .g703-table .totals-row {
+#budgetDetail .g703-table .totals-row {
   background: var(--bg-hover);
   font-weight: 600;
 }
 
-#budgetModal .g703-table .totals-row td {
+#budgetDetail .g703-table .totals-row td {
   border-bottom: none;
 }
 
-#budgetModal .invoices-table {
+#budgetDetail .invoices-table {
   width: 100%;
   border-collapse: collapse;
   background: var(--bg-card-elevated);
@@ -8800,7 +8747,7 @@ textarea.form-control {
   overflow: hidden;
 }
 
-#budgetModal .invoices-table th {
+#budgetDetail .invoices-table th {
   background: var(--bg-hover);
   padding: 0.75rem 1rem;
   text-align: left;
@@ -8812,27 +8759,27 @@ textarea.form-control {
   border-bottom: 1px solid var(--border);
 }
 
-#budgetModal .invoices-table td {
+#budgetDetail .invoices-table td {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
   color: var(--text-primary);
 }
 
-#budgetModal .invoices-table .amount {
+#budgetDetail .invoices-table .amount {
   text-align: right;
   font-family: 'SF Mono', 'Monaco', monospace;
 }
 
-#budgetModal .invoices-table .amount.positive {
+#budgetDetail .invoices-table .amount.positive {
   color: var(--accent-green);
 }
 
-#budgetModal .invoices-table .amount.negative {
+#budgetDetail .invoices-table .amount.negative {
   color: var(--danger);
 }
 
-#budgetModal .invoices-table .empty-state {
+#budgetDetail .invoices-table .empty-state {
   text-align: center;
   color: var(--text-muted);
   padding: 2rem;

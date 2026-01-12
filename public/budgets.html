@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Budgets</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260112b">
+  <link rel="stylesheet" href="css/styles.css?v=20260112d">
 </head>
 <body>
   <div class="app">
@@ -41,24 +41,20 @@
       <div id="budgetContent">
         <div class="empty-state">Select a job from the sidebar to view budget</div>
       </div>
-    </main>
-  </div>
 
-  <!-- Budget Detail Modal -->
-  <div id="budgetModal" class="modal modal-fullscreen-dark">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <h2 id="budgetModalTitle">Budget</h2>
+      <!-- Budget Detail (shown when job selected) -->
+      <div id="budgetDetail" style="display: none;">
+        <!-- Budget Header -->
+        <div class="budget-page-header">
+          <div class="budget-title-row">
+            <h2 id="budgetPageTitle">Budget</h2>
+            <div class="budget-actions">
+              <button class="btn btn-secondary" onclick="exportBudgetExcel()">Export Excel</button>
+              <button class="btn btn-secondary" onclick="window.print()">Print</button>
+            </div>
+          </div>
         </div>
-        <div class="modal-header-actions">
-          <button class="btn btn-secondary" onclick="exportBudgetExcel()">Export Excel</button>
-          <button class="btn btn-secondary" onclick="window.print()">Print</button>
-          <button class="close-btn" onclick="closeBudgetModal()">&times;</button>
-        </div>
-      </div>
 
-      <div class="modal-body draw-modal-body draw-single-page">
         <!-- Summary Section -->
         <section class="draw-section draw-summary-section">
           <div class="draw-summary-grid">
@@ -166,11 +162,7 @@
           </div>
         </section>
       </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeBudgetModal()">Close</button>
-      </div>
-    </div>
+    </main>
   </div>
 
   <!-- Change Order Modal -->
@@ -345,8 +337,12 @@
           if (jobId) {
             loadBudget(jobId);
           } else {
-            // "All Jobs" selected - show selection prompt
+            // "All Jobs" selected - show selection prompt, hide budget detail
+            document.getElementById('budgetContent').style.display = 'block';
             document.getElementById('budgetContent').innerHTML = '<div class="empty-state">Select a job from the sidebar to view budget</div>';
+            document.getElementById('budgetDetail').style.display = 'none';
+            state.currentJob = null;
+            state.budgetData = null;
           }
         });
       }
@@ -377,8 +373,9 @@
         const job = state.jobs.find(j => j.id === jobId);
         state.currentJob = job;
 
-        // Show loading in content area
-        document.getElementById('budgetContent').innerHTML = '<div class="loading">Loading budget...</div>';
+        // Hide empty state, show budget detail
+        document.getElementById('budgetContent').style.display = 'none';
+        document.getElementById('budgetDetail').style.display = 'block';
 
         // Fetch budget data
         const res = await fetch(`/api/jobs/${jobId}/budget-summary`);
@@ -386,64 +383,20 @@
 
         state.budgetData = await res.json();
 
-        // Show the modal with budget data
-        renderBudgetModal();
-        document.getElementById('budgetModal').classList.add('show');
-
-        // Update content area with summary
-        renderBudgetSummaryCard();
+        // Render budget inline
+        renderBudget();
       } catch (err) {
         console.error('Error loading budget:', err);
         showToast('Failed to load budget', 'error');
       }
     }
 
-    function renderBudgetSummaryCard() {
-      const data = state.budgetData;
-      const job = state.currentJob;
-      const totalContract = data.totals.adjustedContract || data.totals.budgeted;
-      const remaining = totalContract - data.totals.billed;
-      const percentComplete = totalContract > 0 ? (data.totals.billed / totalContract) * 100 : 0;
-
-      document.getElementById('budgetContent').innerHTML = `
-        <div class="budget-summary-card" onclick="document.getElementById('budgetModal').classList.add('show')">
-          <div class="budget-card-header">
-            <h3>${job.name}</h3>
-            <span class="btn btn-sm btn-primary">View Details</span>
-          </div>
-          <div class="budget-card-stats">
-            <div class="stat">
-              <span class="stat-label">Total Contract</span>
-              <span class="stat-value">${formatMoney(totalContract)}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">Billed</span>
-              <span class="stat-value">${formatMoney(data.totals.billed)}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">Remaining</span>
-              <span class="stat-value">${formatMoney(remaining)}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">% Complete</span>
-              <span class="stat-value">${percentComplete.toFixed(1)}%</span>
-            </div>
-          </div>
-          <div class="budget-progress">
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: ${Math.min(percentComplete, 100)}%"></div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    function renderBudgetModal() {
+    function renderBudget() {
       const data = state.budgetData;
       const job = state.currentJob;
 
       // Header
-      document.getElementById('budgetModalTitle').textContent = `Budget - ${job.name}`;
+      document.getElementById('budgetPageTitle').textContent = `Budget - ${job.name}`;
 
       // Summary cards
       document.getElementById('summaryBudget').textContent = formatMoney(data.totals.budgeted);
@@ -1009,10 +962,6 @@
         console.error('Error unlinking invoice:', err);
         showToast('Failed to unlink invoice', 'error');
       }
-    }
-
-    function closeBudgetModal() {
-      document.getElementById('budgetModal').classList.remove('show');
     }
 
     // Import functionality
