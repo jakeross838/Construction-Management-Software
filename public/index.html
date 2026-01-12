@@ -5,31 +5,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Invoice Approval</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260112a">
+  <link rel="stylesheet" href="css/styles.css?v=20260112b">
 </head>
 <body>
   <div class="app">
     <!-- Header -->
     <header class="header">
-      <div class="header-left">
-        <h1>Invoice Approval</h1>
-        <nav class="header-nav">
-          <a href="index.html" class="nav-link active">Invoices</a>
-          <a href="pos.html" class="nav-link">Purchase Orders</a>
-          <a href="draws.html" class="nav-link">Draws</a>
-          <a href="budgets.html" class="nav-link">Budgets</a>
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav">
+          <a href="index.html" class="main-nav-link active">Financial</a>
+          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
+          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+        </nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="showUploadInvoiceModal()">+ Upload Invoice</button>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav">
+          <a href="index.html" class="sub-nav-link active">Invoices</a>
+          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
+          <a href="draws.html" class="sub-nav-link">Draws</a>
+          <a href="budgets.html" class="sub-nav-link">Budgets</a>
         </nav>
       </div>
-      <button class="btn btn-primary" onclick="showUploadInvoiceModal()">+ Upload Invoice</button>
     </header>
 
     <!-- Main Content -->
     <main class="main">
       <!-- Filters -->
       <div class="table-toolbar">
-        <select id="jobFilter" class="job-filter">
-          <option value="">All Jobs</option>
-        </select>
+        <div class="search-box">
+          <input type="text" id="invoiceSearchInput" placeholder="Search invoices..." class="form-control search-input">
+          <button class="search-clear-btn" id="invoiceSearchClear" style="display: none;" onclick="clearInvoiceSearch()">&times;</button>
+        </div>
       </div>
 
       <!-- Invoice List -->
@@ -302,9 +315,10 @@
   <script src="js/searchable-picker.js?v=20260108"></script>
   <script src="js/realtime.js?v=20260107"></script>
   <script src="js/modals.js?v=20260109s"></script>
+  <script src="js/sidebar.js?v=20260112"></script>
 
   <!-- Main app -->
-  <script src="js/app.js?v=20260109d"></script>
+  <script src="js/app.js?v=20260112"></script>
 
   <!-- Initialize connection status indicator -->
   <script>

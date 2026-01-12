@@ -3205,6 +3205,187 @@ app.post('/api/jobs/:id/draws', async (req, res) => {
   }
 });
 
+// Get approved invoices that haven't been added to a draw yet
+app.get('/api/jobs/:id/approved-unbilled-invoices', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+
+    // Get all approved invoices for this job that are NOT in a draw
+    const { data: invoices, error: invError } = await supabase
+      .from('v2_invoices')
+      .select(`
+        id, invoice_number, invoice_date, amount, status, vendor_id, job_id,
+        vendor:v2_vendors(id, name),
+        job:v2_jobs(id, name),
+        allocations:v2_invoice_allocations(id, amount, cost_code_id)
+      `)
+      .eq('job_id', jobId)
+      .eq('status', 'approved')
+      .is('deleted_at', null)
+      .order('invoice_date', { ascending: false });
+
+    if (invError) throw invError;
+
+    // Calculate the total
+    const totalAmount = (invoices || []).reduce((sum, inv) => {
+      const allocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      return sum + (allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0));
+    }, 0);
+
+    // Check if there's an existing draft draw for this job
+    const { data: draftDraw, error: drawError } = await supabase
+      .from('v2_draws')
+      .select('id, draw_number, total_amount')
+      .eq('job_id', jobId)
+      .eq('status', 'draft')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (drawError) throw drawError;
+
+    res.json({
+      invoices: invoices || [],
+      invoice_count: (invoices || []).length,
+      total_amount: totalAmount,
+      existing_draft: draftDraw || null
+    });
+  } catch (err) {
+    console.error('Error fetching approved unbilled invoices:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auto-generate draw from approved invoices
+app.post('/api/jobs/:id/auto-generate-draw', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+    const { invoice_ids, use_existing_draft } = req.body;
+
+    if (!invoice_ids || !Array.isArray(invoice_ids) || invoice_ids.length === 0) {
+      return res.status(400).json({ error: 'No invoices selected' });
+    }
+
+    let draw;
+
+    // Check for existing draft draw if requested
+    if (use_existing_draft) {
+      const { data: draftDraw, error: draftError } = await supabase
+        .from('v2_draws')
+        .select('*')
+        .eq('job_id', jobId)
+        .eq('status', 'draft')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (draftError) throw draftError;
+      draw = draftDraw;
+    }
+
+    // Create new draw if no existing draft
+    if (!draw) {
+      const { data: existing } = await supabase
+        .from('v2_draws')
+        .select('draw_number')
+        .eq('job_id', jobId)
+        .order('draw_number', { ascending: false })
+        .limit(1);
+
+      const nextNumber = existing && existing.length > 0 ? existing[0].draw_number + 1 : 1;
+
+      const { data: newDraw, error: createError } = await supabase
+        .from('v2_draws')
+        .insert({
+          job_id: jobId,
+          draw_number: nextNumber,
+          period_end: new Date().toISOString().split('T')[0],
+          status: 'draft'
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+      draw = newDraw;
+    }
+
+    // Add invoices to draw
+    let addedCount = 0;
+    let totalAmount = 0;
+
+    for (const invoiceId of invoice_ids) {
+      // Check if invoice exists and is approved
+      const { data: invoice, error: invError } = await supabase
+        .from('v2_invoices')
+        .select('id, status, amount, allocations:v2_invoice_allocations(amount)')
+        .eq('id', invoiceId)
+        .single();
+
+      if (invError || !invoice) continue;
+      if (invoice.status !== 'approved') continue;
+
+      // Check if already in draw
+      const { data: existing } = await supabase
+        .from('v2_draw_invoices')
+        .select('id')
+        .eq('draw_id', draw.id)
+        .eq('invoice_id', invoiceId)
+        .maybeSingle();
+
+      if (existing) continue;
+
+      // Add to draw
+      const { error: linkError } = await supabase
+        .from('v2_draw_invoices')
+        .insert({ draw_id: draw.id, invoice_id: invoiceId });
+
+      if (linkError) {
+        console.error('Error linking invoice to draw:', linkError);
+        continue;
+      }
+
+      // Update invoice status to in_draw
+      const { error: statusError } = await supabase
+        .from('v2_invoices')
+        .update({ status: 'in_draw' })
+        .eq('id', invoiceId);
+
+      if (statusError) {
+        console.error('Error updating invoice status:', statusError);
+      }
+
+      // Calculate amount (use allocation sum if available)
+      const allocationSum = (invoice.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      totalAmount += allocationSum > 0 ? allocationSum : parseFloat(invoice.amount || 0);
+      addedCount++;
+    }
+
+    // Update draw total
+    const { error: updateError } = await supabase
+      .from('v2_draws')
+      .update({
+        total_amount: totalAmount,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', draw.id);
+
+    if (updateError) {
+      console.error('Error updating draw total:', updateError);
+    }
+
+    res.json({
+      draw_id: draw.id,
+      draw_number: draw.draw_number,
+      invoice_count: addedCount,
+      total_amount: totalAmount,
+      created_new: !use_existing_draft || !draw.id
+    });
+  } catch (err) {
+    console.error('Error auto-generating draw:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Update draw (header fields and G702 overrides)
 app.patch('/api/draws/:id', async (req, res) => {
   try {

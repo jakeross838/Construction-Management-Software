@@ -5,22 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Draws</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260112a">
+  <link rel="stylesheet" href="css/styles.css?v=20260112b">
 </head>
 <body>
   <div class="app">
     <!-- Header -->
     <header class="header">
-      <div class="header-left">
-        <h1>Draws</h1>
-        <nav class="header-nav">
-          <a href="index.html" class="nav-link">Invoices</a>
-          <a href="pos.html" class="nav-link">Purchase Orders</a>
-          <a href="draws.html" class="nav-link">Draws</a>
-          <a href="budgets.html" class="nav-link">Budgets</a>
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav">
+          <a href="index.html" class="main-nav-link active">Financial</a>
+          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
+          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+        </nav>
+        <div class="header-actions">
+          <button class="btn btn-secondary" onclick="showAutoGenerateModal()">Auto-Generate</button>
+          <button class="btn btn-primary" onclick="showCreateDrawModal()">+ New Draw</button>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav">
+          <a href="index.html" class="sub-nav-link">Invoices</a>
+          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
+          <a href="draws.html" class="sub-nav-link active">Draws</a>
+          <a href="budgets.html" class="sub-nav-link">Budgets</a>
         </nav>
       </div>
-      <button class="btn btn-primary" onclick="showCreateDrawModal()">+ New Draw</button>
     </header>
 
     <!-- Main Content -->
@@ -34,9 +47,10 @@
             <option value="submitted">Submitted</option>
             <option value="funded">Funded</option>
           </select>
-          <select id="jobFilter" class="form-control filter-select">
-            <option value="">All Jobs</option>
-          </select>
+        </div>
+        <div class="search-box">
+          <input type="text" id="drawSearchInput" placeholder="Search draws..." class="form-control search-input">
+          <button class="search-clear-btn" id="drawSearchClear" style="display: none;" onclick="clearDrawSearch()">&times;</button>
         </div>
       </div>
 
@@ -460,10 +474,55 @@
     </div>
   </div>
 
+  <!-- Auto-Generate Draw Modal -->
+  <div id="autoGenerateModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Auto-Generate Draw</h2>
+        <button class="close-btn" onclick="closeModal('autoGenerateModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Select Job *</label>
+          <select id="autoGenerateJob" class="form-control" onchange="loadApprovedInvoices()">
+            <option value="">Select a job...</option>
+          </select>
+        </div>
+        <div id="autoGeneratePreview" class="auto-generate-preview" style="display: none;">
+          <div class="auto-generate-summary">
+            <div class="summary-row">
+              <span class="label">Approved Invoices Ready:</span>
+              <span class="value" id="agInvoiceCount">0</span>
+            </div>
+            <div class="summary-row">
+              <span class="label">Total Amount:</span>
+              <span class="value" id="agTotalAmount">$0.00</span>
+            </div>
+            <div class="summary-row existing-draft" id="agExistingDraft" style="display: none;">
+              <span class="label">Existing Draft Draw:</span>
+              <span class="value" id="agDraftInfo">-</span>
+            </div>
+          </div>
+          <div class="invoice-preview-list" id="agInvoiceList">
+            <!-- Invoice list populated dynamically -->
+          </div>
+        </div>
+        <div id="autoGenerateEmpty" class="empty-state" style="display: none;">
+          No approved invoices ready for this job.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('autoGenerateModal')">Cancel</button>
+        <button class="btn btn-primary" id="autoGenerateBtn" onclick="executeAutoGenerate()" disabled>Generate Draw</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
   <script src="js/toasts.js"></script>
+  <script src="js/sidebar.js?v=20260112"></script>
   <script>
     // ============================================================
     // DRAWS PAGE - Single Page Layout
@@ -473,30 +532,55 @@
       draws: [],
       jobs: [],
       currentFilter: 'all',
-      currentJobFilter: ''
+      currentJobFilter: '',
+      searchQuery: ''
     };
 
     document.addEventListener('DOMContentLoaded', () => {
       loadJobs();
       loadDraws();
       setupFilters();
+      setupDrawSearch();
+
+      // Sidebar integration - listen for job selection changes
+      if (window.JobSidebar) {
+        window.JobSidebar.onJobChange((jobId) => {
+          state.currentJobFilter = jobId;
+          renderDrawList();
+        });
+      }
     });
+
+    function setupDrawSearch() {
+      const input = document.getElementById('drawSearchInput');
+      const clearBtn = document.getElementById('drawSearchClear');
+      let debounceTimer;
+
+      if (!input) return;
+
+      input.addEventListener('input', (e) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          state.searchQuery = e.target.value;
+          clearBtn.style.display = state.searchQuery ? 'block' : 'none';
+          renderDrawList();
+        }, 300);
+      });
+    }
+
+    function clearDrawSearch() {
+      const input = document.getElementById('drawSearchInput');
+      const clearBtn = document.getElementById('drawSearchClear');
+      if (input) input.value = '';
+      state.searchQuery = '';
+      clearBtn.style.display = 'none';
+      renderDrawList();
+    }
 
     async function loadJobs() {
       try {
         const res = await fetch('/api/jobs');
         state.jobs = await res.json();
-
-        const select = document.getElementById('jobFilter');
-        select.innerHTML = '<option value="">All Jobs</option>';
-        state.jobs.forEach(job => {
-          select.innerHTML += `<option value="${job.id}">${job.name}</option>`;
-        });
-
-        select.addEventListener('change', (e) => {
-          state.currentJobFilter = e.target.value;
-          renderDrawList();
-        });
       } catch (err) {
         console.error('Failed to load jobs:', err);
       }
@@ -544,6 +628,17 @@
 
       if (state.currentJobFilter) {
         filtered = filtered.filter(d => d.job_id === state.currentJobFilter);
+      }
+
+      // Search filter
+      if (state.searchQuery) {
+        const q = state.searchQuery.toLowerCase();
+        filtered = filtered.filter(d =>
+          (d.draw_number?.toString() || '').includes(q) ||
+          (d.job?.name || '').toLowerCase().includes(q) ||
+          (d.status || '').toLowerCase().includes(q) ||
+          (d.total_amount?.toString() || '').includes(q)
+        );
       }
 
       if (filtered.length === 0) {
@@ -1496,6 +1591,153 @@
 
       document.getElementById('newDrawPeriodEnd').value = new Date().toISOString().split('T')[0];
       document.getElementById('createDrawModal').classList.add('show');
+    }
+
+    // ============================================================
+    // AUTO-GENERATE DRAW
+    // ============================================================
+
+    let autoGenerateData = null;
+
+    function showAutoGenerateModal() {
+      const select = document.getElementById('autoGenerateJob');
+      select.innerHTML = '<option value="">Select a job...</option>';
+      state.jobs.forEach(job => {
+        select.innerHTML += `<option value="${job.id}">${job.name}</option>`;
+      });
+
+      // Pre-select job if one is currently filtered
+      if (state.currentJobFilter) {
+        select.value = state.currentJobFilter;
+        loadApprovedInvoices();
+      } else {
+        // Reset preview
+        document.getElementById('autoGeneratePreview').style.display = 'none';
+        document.getElementById('autoGenerateEmpty').style.display = 'none';
+        document.getElementById('autoGenerateBtn').disabled = true;
+        autoGenerateData = null;
+      }
+
+      document.getElementById('autoGenerateModal').classList.add('show');
+    }
+
+    async function loadApprovedInvoices() {
+      const jobId = document.getElementById('autoGenerateJob').value;
+      const preview = document.getElementById('autoGeneratePreview');
+      const emptyMsg = document.getElementById('autoGenerateEmpty');
+      const genBtn = document.getElementById('autoGenerateBtn');
+
+      if (!jobId) {
+        preview.style.display = 'none';
+        emptyMsg.style.display = 'none';
+        genBtn.disabled = true;
+        autoGenerateData = null;
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/approved-unbilled-invoices`);
+        if (!res.ok) throw new Error('Failed to fetch invoices');
+
+        autoGenerateData = await res.json();
+        autoGenerateData.jobId = jobId;
+
+        if (autoGenerateData.invoice_count === 0) {
+          preview.style.display = 'none';
+          emptyMsg.style.display = 'block';
+          genBtn.disabled = true;
+          return;
+        }
+
+        // Show preview
+        emptyMsg.style.display = 'none';
+        preview.style.display = 'block';
+        genBtn.disabled = false;
+
+        document.getElementById('agInvoiceCount').textContent = autoGenerateData.invoice_count;
+        document.getElementById('agTotalAmount').textContent = formatMoney(autoGenerateData.total_amount);
+
+        // Show existing draft info if applicable
+        const draftRow = document.getElementById('agExistingDraft');
+        if (autoGenerateData.existing_draft) {
+          draftRow.style.display = 'flex';
+          document.getElementById('agDraftInfo').textContent =
+            `Draw #${autoGenerateData.existing_draft.draw_number} (${formatMoney(autoGenerateData.existing_draft.total_amount || 0)})`;
+          genBtn.textContent = 'Add to Existing Draft';
+        } else {
+          draftRow.style.display = 'none';
+          genBtn.textContent = 'Create New Draw';
+        }
+
+        // Render invoice list
+        const listContainer = document.getElementById('agInvoiceList');
+        listContainer.innerHTML = autoGenerateData.invoices.map(inv => {
+          const allocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+          const amount = allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0);
+          return `
+            <div class="invoice-preview-item">
+              <div class="inv-info">
+                <span class="inv-vendor">${inv.vendor?.name || 'Unknown'}</span>
+                <span class="inv-number">#${inv.invoice_number || 'N/A'}</span>
+              </div>
+              <span class="inv-amount">${formatMoney(amount)}</span>
+            </div>
+          `;
+        }).join('');
+
+      } catch (err) {
+        console.error('Error loading approved invoices:', err);
+        showToast('Failed to load invoices', 'error');
+        preview.style.display = 'none';
+        emptyMsg.style.display = 'none';
+        genBtn.disabled = true;
+      }
+    }
+
+    async function executeAutoGenerate() {
+      if (!autoGenerateData || autoGenerateData.invoice_count === 0) {
+        showToast('No invoices to add to draw', 'error');
+        return;
+      }
+
+      const genBtn = document.getElementById('autoGenerateBtn');
+      genBtn.disabled = true;
+      genBtn.textContent = 'Processing...';
+
+      try {
+        const res = await fetch(`/api/jobs/${autoGenerateData.jobId}/auto-generate-draw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            invoice_ids: autoGenerateData.invoices.map(inv => inv.id),
+            use_existing_draft: !!autoGenerateData.existing_draft
+          })
+        });
+
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.error || 'Failed to generate draw');
+        }
+
+        const result = await res.json();
+
+        showToast(
+          `Draw #${result.draw_number} ${result.created_new ? 'created' : 'updated'} with ${result.invoice_count} invoice${result.invoice_count !== 1 ? 's' : ''}`,
+          'success'
+        );
+
+        closeModal('autoGenerateModal');
+        loadDraws();
+
+        // Open the new/updated draw
+        openDraw(result.draw_id);
+
+      } catch (err) {
+        console.error('Error generating draw:', err);
+        showToast(err.message || 'Failed to generate draw', 'error');
+        genBtn.disabled = false;
+        genBtn.textContent = autoGenerateData.existing_draft ? 'Add to Existing Draft' : 'Create New Draw';
+      }
     }
 
     async function createDraw() {

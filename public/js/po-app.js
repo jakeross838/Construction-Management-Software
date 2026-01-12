@@ -25,6 +25,14 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPurchaseOrders();
   setupFilterButtons();
   setupSearchInput();
+
+  // Sidebar integration - listen for job selection changes
+  if (window.JobSidebar) {
+    window.JobSidebar.onJobChange((jobId) => {
+      state.currentJobFilter = jobId;
+      renderPOList();
+    });
+  }
 });
 
 // ============================================================
@@ -35,17 +43,6 @@ async function loadJobs() {
   try {
     const res = await fetch('/api/jobs');
     state.jobs = await res.json();
-
-    const select = document.getElementById('jobFilter');
-    select.innerHTML = '<option value="">All Jobs</option>';
-    state.jobs.forEach(job => {
-      select.innerHTML += `<option value="${job.id}">${job.name}</option>`;
-    });
-
-    select.addEventListener('change', (e) => {
-      state.currentJobFilter = e.target.value;
-      renderPOList();
-    });
   } catch (err) {
     console.error('Failed to load jobs:', err);
   }

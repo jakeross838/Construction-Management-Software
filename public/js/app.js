@@ -9,7 +9,8 @@ let state = {
   costCodes: [],
   currentInvoiceId: null,
   currentJobFilter: '',
-  currentStatusFilter: 'approval' // Default to needs approval
+  currentStatusFilter: 'approval', // Default to needs approval
+  searchQuery: ''
 };
 
 // ============================================================
@@ -23,8 +24,17 @@ document.addEventListener('DOMContentLoaded', () => {
   loadInvoices();
   setupFilterButtons();
   setupFileUpload();
+  setupInvoiceSearch();
 
   document.getElementById('uploadInvoiceDate').value = new Date().toISOString().split('T')[0];
+
+  // Sidebar integration - listen for job selection changes
+  if (window.JobSidebar) {
+    window.JobSidebar.onJobChange((jobId) => {
+      state.currentJobFilter = jobId;
+      renderInvoiceList();
+    });
+  }
 });
 
 // ============================================================
@@ -35,17 +45,6 @@ async function loadJobs() {
   try {
     const res = await fetch('/api/jobs');
     state.jobs = await res.json();
-
-    const select = document.getElementById('jobFilter');
-    select.innerHTML = '<option value="">All Jobs</option>';
-    state.jobs.forEach(job => {
-      select.innerHTML += `<option value="${job.id}">${job.name}</option>`;
-    });
-
-    select.addEventListener('change', (e) => {
-      state.currentJobFilter = e.target.value;
-      renderInvoiceList();
-    });
 
     // Initialize upload modal job picker
     const uploadJobContainer = document.getElementById('upload-job-picker-container');
@@ -152,6 +151,19 @@ function renderInvoiceList() {
   // Job filter
   if (state.currentJobFilter) {
     filtered = filtered.filter(inv => inv.job_id === state.currentJobFilter);
+  }
+
+  // Search filter
+  if (state.searchQuery) {
+    const q = state.searchQuery.toLowerCase();
+    filtered = filtered.filter(inv =>
+      (inv.invoice_number || '').toLowerCase().includes(q) ||
+      (inv.vendor?.name || '').toLowerCase().includes(q) ||
+      (inv.job?.name || '').toLowerCase().includes(q) ||
+      (inv.po?.po_number || '').toLowerCase().includes(q) ||
+      (inv.amount?.toString() || '').includes(q) ||
+      (inv.notes || '').toLowerCase().includes(q)
+    );
   }
 
   if (filtered.length === 0) {
@@ -279,6 +291,32 @@ function renderInvoiceCard(inv) {
 // ============================================================
 // FILTERS
 // ============================================================
+
+function setupInvoiceSearch() {
+  const input = document.getElementById('invoiceSearchInput');
+  const clearBtn = document.getElementById('invoiceSearchClear');
+  let debounceTimer;
+
+  if (!input) return;
+
+  input.addEventListener('input', (e) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      state.searchQuery = e.target.value;
+      clearBtn.style.display = state.searchQuery ? 'block' : 'none';
+      renderInvoiceList();
+    }, 300);
+  });
+}
+
+function clearInvoiceSearch() {
+  const input = document.getElementById('invoiceSearchInput');
+  const clearBtn = document.getElementById('invoiceSearchClear');
+  if (input) input.value = '';
+  state.searchQuery = '';
+  clearBtn.style.display = 'none';
+  renderInvoiceList();
+}
 
 function setupFilterButtons() {
   document.querySelectorAll('.filter-btn').forEach(btn => {
