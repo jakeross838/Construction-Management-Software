@@ -562,6 +562,22 @@ body {
   color: var(--needs-approval);
 }
 
+.billing-badge {
+  background: var(--bg-hover);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: 'SF Mono', Monaco, monospace;
+  border: 1px solid var(--border);
+}
+
+.billing-badge.partial {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--in-draw);
+  color: var(--in-draw);
+  font-weight: 500;
+}
+
 .payment-badge {
   background: var(--bg-hover);
   padding: 0.15rem 0.5rem;

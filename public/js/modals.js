@@ -1761,9 +1761,22 @@ const Modals = {
         throw new Error(err.error || 'Failed to add to draw');
       }
 
-      window.toasts?.success(`Added to Draw #${draw.draw_number}`, {
-        action: { label: 'View Draws', href: 'draws.html' }
-      });
+      const result = await addRes.json();
+
+      // Check if this was a partial billing
+      if (result.partial_billed > 0 && result.partial_invoices?.length > 0) {
+        const partial = result.partial_invoices[0];
+        const remaining = window.Validation?.formatCurrency(partial.remaining) || `$${partial.remaining.toFixed(2)}`;
+        window.toasts?.info(`Partial amount added to Draw #${draw.draw_number}. ${remaining} remaining to bill.`, {
+          action: { label: 'View Draws', href: 'draws.html' },
+          duration: 6000
+        });
+      } else {
+        window.toasts?.success(`Added to Draw #${draw.draw_number}`, {
+          action: { label: 'View Draws', href: 'draws.html' }
+        });
+      }
+
       this.closeActiveModal();
       if (typeof loadInvoices === 'function') loadInvoices();
     } catch (err) {

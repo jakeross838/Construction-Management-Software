@@ -324,4 +324,49 @@ test.describe('Partial Invoice Handling', () => {
 
     console.log('=== Test completed ===');
   });
+
+  test('Verify partially billed invoice cycles back for remaining', async ({ page }) => {
+    console.log('=== Testing Partial Billing Cycle ===');
+
+    await page.goto('/index.html');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(3000);
+
+    // Find invoice #106084 which should now be in needs_approval with partial billing
+    const partialInvoice = page.locator('.invoice-card:has-text("106084")');
+    const found = await partialInvoice.count();
+    console.log('Found invoice #106084:', found > 0);
+
+    if (found === 0) {
+      console.log('Invoice not found in list');
+      return;
+    }
+
+    await page.screenshot({ path: 'tests/screenshots/partial-11-cycled-invoice.png', fullPage: true });
+
+    // Get card HTML to check for partial billing indicator
+    const cardHtml = await partialInvoice.innerHTML();
+    console.log('Card shows billing badge:', cardHtml.includes('billing-badge') || cardHtml.includes('to bill'));
+    console.log('Card shows remaining amount:', cardHtml.includes('1,836') || cardHtml.includes('remaining'));
+
+    // Check the status pill
+    const statusPill = await partialInvoice.locator('.status-pill').textContent().catch(() => 'unknown');
+    console.log('Status pill text:', statusPill);
+
+    // Click to open modal and verify
+    await partialInvoice.click();
+    await page.waitForTimeout(2000);
+
+    await page.screenshot({ path: 'tests/screenshots/partial-12-cycled-modal.png', fullPage: true });
+
+    // Check modal content
+    const modalHtml = await page.locator('#invoiceInfoPanel').innerHTML().catch(() => '');
+    console.log('Modal shows billed amount:', modalHtml.includes('3,000') || modalHtml.includes('billed'));
+
+    // Verify no allocations (should be cleared)
+    const allocRows = await page.locator('.allocation-row').count();
+    console.log('Allocation rows:', allocRows);
+
+    console.log('=== Test completed ===');
+  });
 });

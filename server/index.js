@@ -3985,17 +3985,42 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
 
     if (linkError) throw linkError;
 
-    // Get invoices with their stamped PDFs and allocations
+    // Get invoices with their stamped PDFs, allocations, and current billed amount
     const { data: invoices } = await supabase
       .from('v2_invoices')
       .select(`
-        id, amount, pdf_stamped_url,
-        allocations:v2_invoice_allocations(amount, po_line_item_id)
+        id, amount, pdf_stamped_url, billed_amount,
+        allocations:v2_invoice_allocations(id, amount, cost_code_id, notes, po_line_item_id)
       `)
       .in('id', invoice_ids);
 
-    // Stamp each invoice with "IN DRAW"
+    // Track which invoices are partial vs fully billed
+    const partialInvoices = [];
+    const fullyBilledInvoices = [];
+
+    // Process each invoice
     for (const inv of invoices) {
+      const invoiceAmount = parseFloat(inv.amount || 0);
+      const previouslyBilled = parseFloat(inv.billed_amount || 0);
+      const currentAllocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      const newBilledTotal = previouslyBilled + currentAllocationSum;
+      const isFullyBilled = newBilledTotal >= invoiceAmount - 0.01;
+
+      // Copy allocations to draw_allocations before potentially clearing them
+      for (const alloc of (inv.allocations || [])) {
+        await supabase
+          .from('v2_draw_allocations')
+          .upsert({
+            draw_id: drawId,
+            invoice_id: inv.id,
+            cost_code_id: alloc.cost_code_id,
+            amount: alloc.amount,
+            notes: alloc.notes,
+            created_by: 'System'
+          }, { onConflict: 'draw_id,invoice_id,cost_code_id' });
+      }
+
+      // Stamp PDF with "IN DRAW"
       if (inv.pdf_stamped_url) {
         try {
           const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
@@ -4009,29 +4034,70 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
           console.error('IN DRAW stamp failed for invoice:', inv.id, stampErr.message);
         }
       }
-      await logActivity(inv.id, 'added_to_draw', 'System', { draw_number: draw?.draw_number });
+
+      // Update invoice billed_amount
+      const updateData = {
+        billed_amount: newBilledTotal
+      };
+
+      if (isFullyBilled) {
+        // Fully billed - status becomes in_draw
+        updateData.status = 'in_draw';
+        updateData.fully_billed_at = new Date().toISOString();
+        fullyBilledInvoices.push(inv.id);
+
+        await logActivity(inv.id, 'added_to_draw', 'System', {
+          draw_number: draw?.draw_number,
+          billed_amount: currentAllocationSum,
+          fully_billed: true
+        });
+      } else {
+        // Partially billed - cycle back to needs_approval for remaining
+        updateData.status = 'needs_approval';
+        partialInvoices.push({
+          id: inv.id,
+          billed: currentAllocationSum,
+          remaining: invoiceAmount - newBilledTotal,
+          allocationIds: (inv.allocations || []).map(a => a.id)
+        });
+
+        await logActivity(inv.id, 'partial_billed', 'System', {
+          draw_number: draw?.draw_number,
+          billed_amount: currentAllocationSum,
+          remaining_amount: invoiceAmount - newBilledTotal,
+          total_billed: newBilledTotal
+        });
+      }
+
+      await supabase
+        .from('v2_invoices')
+        .update(updateData)
+        .eq('id', inv.id);
     }
 
-    const { error: updateError } = await supabase
-      .from('v2_invoices')
-      .update({ status: 'in_draw' })
-      .in('id', invoice_ids);
+    // For partial invoices, clear the allocations so they can be re-allocated for remaining
+    for (const partial of partialInvoices) {
+      if (partial.allocationIds.length > 0) {
+        await supabase
+          .from('v2_invoice_allocations')
+          .delete()
+          .in('id', partial.allocationIds);
+      }
+    }
 
-    if (updateError) throw updateError;
+    // Update draw total
+    await updateDrawTotal(drawId);
 
-    // Calculate total using allocation sums (for partial approvals) or invoice amount as fallback
-    const total = invoices.reduce((sum, inv) => {
-      const allocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
-      // Use allocation sum if available, otherwise fall back to invoice amount
-      return sum + (allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0));
-    }, 0);
-
-    await supabase
-      .from('v2_draws')
-      .update({ total_amount: total })
-      .eq('id', drawId);
-
-    res.json({ success: true, total });
+    res.json({
+      success: true,
+      fully_billed: fullyBilledInvoices.length,
+      partial_billed: partialInvoices.length,
+      partial_invoices: partialInvoices.map(p => ({
+        id: p.id,
+        billed: p.billed,
+        remaining: p.remaining
+      }))
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
