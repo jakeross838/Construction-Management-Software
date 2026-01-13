@@ -22,5 +22,9 @@ Thumbs.db
 *.jpg
 test-*.png
 
+# But allow brand assets
+!assets/
+!assets/*.png
+
 # Auto Claude data directory
 .auto-claude/

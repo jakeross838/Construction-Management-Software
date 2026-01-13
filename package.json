@@ -16,7 +16,9 @@
     "test:budget": "npx playwright test tests/budget-projected.spec.js",
     "test:sidebar": "npx playwright test tests/sidebar-navigation.spec.js",
     "test:ui": "npx playwright test --ui",
-    "test:report": "npx playwright show-report"
+    "test:report": "npx playwright show-report",
+    "restamp": "node server/restamp-invoices.js",
+    "restamp:dry": "node server/restamp-invoices.js --dry-run"
   },
   "author": "Ross Built Custom Homes",
   "license": "UNLICENSED",
