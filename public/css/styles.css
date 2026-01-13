@@ -8730,6 +8730,29 @@ textarea.form-control {
   color: var(--danger);
 }
 
+#budgetDetail .g703-table .under-budget {
+  color: var(--success);
+}
+
+/* Projected cost styling */
+#budgetDetail .summary-card.over-budget {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--danger);
+}
+
+#budgetDetail .summary-card.over-budget .summary-value {
+  color: var(--danger);
+}
+
+#budgetDetail .summary-card.under-budget {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: var(--success);
+}
+
+#budgetDetail .summary-card.under-budget .summary-value {
+  color: var(--success);
+}
+
 #budgetDetail .g703-table .totals-row {
   background: var(--bg-hover);
   font-weight: 600;

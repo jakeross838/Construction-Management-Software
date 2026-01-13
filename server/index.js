@@ -2605,6 +2605,10 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
         return;
       }
 
+      // Projected cost = MAX(budget, committed, billed)
+      // If committed or billed exceeds budget, we project to go over
+      const projected = Math.max(budgeted, committed, billed);
+
       lines.push({
         costCodeId: ccId,
         costCode,
@@ -2613,7 +2617,8 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
         budgeted,
         committed,
         billed,
-        paid
+        paid,
+        projected
       });
     });
 
@@ -2625,8 +2630,9 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       budgeted: acc.budgeted + line.budgeted,
       committed: acc.committed + line.committed,
       billed: acc.billed + line.billed,
-      paid: acc.paid + line.paid
-    }), { budgeted: 0, committed: 0, billed: 0, paid: 0 });
+      paid: acc.paid + line.paid,
+      projected: acc.projected + line.projected
+    }), { budgeted: 0, committed: 0, billed: 0, paid: 0, projected: 0 });
 
     totals.remaining = totals.budgeted - totals.billed;
     totals.percentComplete = totals.budgeted > 0 ? (totals.billed / totals.budgeted) * 100 : 0;
@@ -2661,6 +2667,9 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
     totals.poChangeOrderTotal = poChangeOrderTotal;  // Changes to subcontract costs
     totals.changeOrderTotal = pccoTotal;             // Changes to owner contract (PCCO)
     totals.adjustedContract = (parseFloat(job?.contract_amount) || totals.budgeted) + pccoTotal;
+
+    // Projected variance: positive = under budget, negative = over budget
+    totals.projectedVariance = totals.budgeted - totals.projected;
 
     res.json({
       job,

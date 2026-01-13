@@ -11,7 +11,12 @@
     "migrate": "node server/migrate.js",
     "migrate:status": "node server/migrate.js --status",
     "migrate:force": "node server/migrate.js --force",
-    "db:start": "node server/migrate.js && node server/index.js"
+    "db:start": "node server/migrate.js && node server/index.js",
+    "test": "npx playwright test",
+    "test:budget": "npx playwright test tests/budget-projected.spec.js",
+    "test:sidebar": "npx playwright test tests/sidebar-navigation.spec.js",
+    "test:ui": "npx playwright test --ui",
+    "test:report": "npx playwright show-report"
   },
   "author": "Ross Built Custom Homes",
   "license": "UNLICENSED",

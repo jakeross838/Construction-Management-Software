@@ -66,9 +66,17 @@
               <div class="summary-label">Change Orders</div>
               <div class="summary-value" id="summaryChangeOrders">$0</div>
             </div>
-            <div class="summary-card highlight">
-              <div class="summary-label">Total Contract</div>
+            <div class="summary-card">
+              <div class="summary-label">Revised Budget</div>
               <div class="summary-value" id="summaryTotalContract">$0</div>
+            </div>
+            <div class="summary-card highlight" id="projectedCard">
+              <div class="summary-label">Projected Final</div>
+              <div class="summary-value" id="summaryProjected">$0</div>
+            </div>
+            <div class="summary-card" id="projectedVarianceCard">
+              <div class="summary-label">Projected Variance</div>
+              <div class="summary-value" id="summaryProjectedVariance">$0</div>
             </div>
             <div class="summary-card">
               <div class="summary-label">Billed to Date</div>
@@ -77,10 +85,6 @@
             <div class="summary-card">
               <div class="summary-label">Paid to Date</div>
               <div class="summary-value" id="summaryPaid">$0</div>
-            </div>
-            <div class="summary-card" id="varianceCard">
-              <div class="summary-label">Remaining</div>
-              <div class="summary-value" id="summaryRemaining">$0</div>
             </div>
             <div class="summary-card" id="overBudgetCard">
               <div class="summary-label">Over Budget</div>
@@ -110,8 +114,8 @@
                     <th>Committed</th>
                     <th>Billed</th>
                     <th>Paid</th>
+                    <th>Projected</th>
                     <th>%</th>
-                    <th>Remaining</th>
                     <th>Variance</th>
                   </tr>
                 </thead>
@@ -521,21 +525,39 @@
       document.getElementById('budgetPageTitle').textContent = `Budget - ${job?.name || 'Unknown Job'}`;
 
       // Summary cards
-      document.getElementById('summaryBudget').textContent = formatMoney(data.totals.budgeted);
-      document.getElementById('summaryChangeOrders').textContent = formatMoney(data.totals.changeOrderTotal || 0);
-      document.getElementById('summaryTotalContract').textContent = formatMoney(data.totals.adjustedContract || data.totals.budgeted);
+      const budget = data.totals.budgeted;
+      const changeOrders = data.totals.changeOrderTotal || 0;
+      const revisedBudget = budget + changeOrders;
+      const projected = data.totals.projected || budget;
+      const projectedVariance = revisedBudget - projected;
+
+      document.getElementById('summaryBudget').textContent = formatMoney(budget);
+      document.getElementById('summaryChangeOrders').textContent = formatMoney(changeOrders);
+      document.getElementById('summaryTotalContract').textContent = formatMoney(revisedBudget);
+      document.getElementById('summaryProjected').textContent = formatMoney(projected);
       document.getElementById('summaryBilled').textContent = formatMoney(data.totals.billed);
       document.getElementById('summaryPaid').textContent = formatMoney(data.totals.paid);
 
-      const remaining = (data.totals.adjustedContract || data.totals.budgeted) - data.totals.billed;
-      document.getElementById('summaryRemaining').textContent = formatMoney(remaining);
-      document.getElementById('varianceCard').className = `summary-card ${remaining < 0 ? 'over-budget' : ''}`;
+      // Projected variance: positive = under budget (good), negative = over budget (bad)
+      document.getElementById('summaryProjectedVariance').textContent = formatMoney(projectedVariance);
+      const varianceCard = document.getElementById('projectedVarianceCard');
+      if (projectedVariance < 0) {
+        varianceCard.className = 'summary-card over-budget';
+      } else if (projectedVariance > 0) {
+        varianceCard.className = 'summary-card under-budget';
+      } else {
+        varianceCard.className = 'summary-card';
+      }
 
-      // Count over-budget items
+      // Highlight projected card if over budget
+      const projectedCard = document.getElementById('projectedCard');
+      projectedCard.className = projectedVariance < 0 ? 'summary-card highlight over-budget' : 'summary-card highlight';
+
+      // Count over-budget items (where projected exceeds budget)
       const overBudgetCount = (data.lines || []).filter(line => {
         const budgeted = line.budgeted || 0;
-        const billed = line.billed || 0;
-        return budgeted > 0 && billed > budgeted;
+        const lineProjected = line.projected || 0;
+        return budgeted > 0 && lineProjected > budgeted;
       }).length;
       document.getElementById('summaryOverBudget').textContent = `${overBudgetCount} item${overBudgetCount !== 1 ? 's' : ''}`;
       document.getElementById('overBudgetCard').className = `summary-card ${overBudgetCount > 0 ? 'over-budget' : ''}`;
@@ -650,12 +672,13 @@
           budgeted: acc.budgeted + (line.budgeted || 0),
           committed: acc.committed + (line.committed || 0),
           billed: acc.billed + (line.billed || 0),
-          paid: acc.paid + (line.paid || 0)
-        }), { budgeted: 0, committed: 0, billed: 0, paid: 0 });
+          paid: acc.paid + (line.paid || 0),
+          projected: acc.projected + (line.projected || line.budgeted || 0)
+        }), { budgeted: 0, committed: 0, billed: 0, paid: 0, projected: 0 });
 
         const catPercent = catTotals.budgeted > 0 ? (catTotals.billed / catTotals.budgeted) * 100 : 0;
-        const catVariance = catTotals.budgeted - catTotals.billed;
-        const catHealthClass = catPercent > 100 ? 'budget-over' : (catPercent >= 80 ? 'budget-warning' : '');
+        const catVariance = catTotals.budgeted - catTotals.projected;
+        const catHealthClass = catTotals.projected > catTotals.budgeted ? 'budget-over' : (catPercent >= 80 ? 'budget-warning' : '');
 
         // Category header row - escape quotes for onclick
         const escapedCategory = category.replace(/'/g, "\\'");
@@ -670,8 +693,8 @@
             <td class="amount">${formatMoneyDecimal(catTotals.committed)}</td>
             <td class="amount">${formatMoneyDecimal(catTotals.billed)}</td>
             <td class="amount">${formatMoneyDecimal(catTotals.paid)}</td>
+            <td class="amount">${formatMoneyDecimal(catTotals.projected)}</td>
             <td class="percent">${catPercent.toFixed(1)}%</td>
-            <td class="amount">${formatMoneyDecimal(catTotals.budgeted - catTotals.billed)}</td>
             <td class="amount ${catVariance < 0 ? 'over-budget' : ''}">${formatMoneyDecimal(catVariance)}</td>
           </tr>
         `;
@@ -683,30 +706,26 @@
             const committed = line.committed || 0;
             const billed = line.billed || 0;
             const paid = line.paid || 0;
-            const remaining = budgeted - billed;
-            const variance = budgeted - billed;
+            const projected = line.projected || budgeted;
+            const variance = budgeted - projected;
             const percentComplete = budgeted > 0 ? (billed / budgeted) * 100 : (billed > 0 ? 100 : 0);
 
-            // Determine health class based on % used
+            // Determine health class based on projected vs budget
             let healthClass = '';
             let healthIndicator = '';
-            if (budgeted > 0) {
-              if (percentComplete > 100) {
-                healthClass = 'budget-over';
-                healthIndicator = '<span class="budget-health-indicator health-over"></span>';
-              } else if (percentComplete >= 80) {
-                healthClass = 'budget-warning';
-                healthIndicator = '<span class="budget-health-indicator health-warning"></span>';
-              } else if (billed > 0) {
-                healthClass = 'budget-ok';
-                healthIndicator = '<span class="budget-health-indicator health-ok"></span>';
-              }
-            } else if (billed > 0) {
+            if (projected > budgeted) {
               healthClass = 'budget-over';
               healthIndicator = '<span class="budget-health-indicator health-over"></span>';
+            } else if (budgeted > 0 && percentComplete >= 80) {
+              healthClass = 'budget-warning';
+              healthIndicator = '<span class="budget-health-indicator health-warning"></span>';
+            } else if (billed > 0) {
+              healthClass = 'budget-ok';
+              healthIndicator = '<span class="budget-health-indicator health-ok"></span>';
             }
 
             const varianceClass = variance < 0 ? 'over-budget' : '';
+            const projectedClass = projected > budgeted ? 'over-budget' : '';
 
             html += `
               <tr class="${healthClass} category-line clickable-row" onclick="showCostCodeDetail('${line.costCodeId}')" title="Click to view details">
@@ -714,10 +733,10 @@
                 <td>${line.description || '-'}</td>
                 <td class="amount">${formatMoneyDecimal(budgeted)}</td>
                 <td class="amount">${formatMoneyDecimal(committed)}</td>
-                <td class="amount highlight-current">${formatMoneyDecimal(billed)}</td>
+                <td class="amount">${formatMoneyDecimal(billed)}</td>
                 <td class="amount">${formatMoneyDecimal(paid)}</td>
+                <td class="amount ${projectedClass}">${formatMoneyDecimal(projected)}</td>
                 <td class="percent">${percentComplete.toFixed(1)}%</td>
-                <td class="amount">${formatMoneyDecimal(remaining)}</td>
                 <td class="amount ${varianceClass}">${formatMoneyDecimal(variance)}</td>
               </tr>
             `;
@@ -732,11 +751,11 @@
         budgeted: acc.budgeted + (line.budgeted || 0),
         committed: acc.committed + (line.committed || 0),
         billed: acc.billed + (line.billed || 0),
-        paid: acc.paid + (line.paid || 0)
-      }), { budgeted: 0, committed: 0, billed: 0, paid: 0 });
+        paid: acc.paid + (line.paid || 0),
+        projected: acc.projected + (line.projected || line.budgeted || 0)
+      }), { budgeted: 0, committed: 0, billed: 0, paid: 0, projected: 0 });
 
-      const totalRemaining = totals.budgeted - totals.billed;
-      const totalVariance = totals.budgeted - totals.billed;
+      const totalVariance = totals.budgeted - totals.projected;
       const overallPercent = totals.budgeted > 0 ? (totals.billed / totals.budgeted) * 100 : 0;
 
       tfoot.innerHTML = `
@@ -744,10 +763,10 @@
           <td colspan="2"><strong>TOTAL</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.budgeted)}</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.committed)}</strong></td>
-          <td class="amount highlight-current"><strong>${formatMoneyDecimal(totals.billed)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totals.billed)}</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.paid)}</strong></td>
+          <td class="amount ${totals.projected > totals.budgeted ? 'over-budget' : ''}"><strong>${formatMoneyDecimal(totals.projected)}</strong></td>
           <td class="percent"><strong>${overallPercent.toFixed(1)}%</strong></td>
-          <td class="amount"><strong>${formatMoneyDecimal(totalRemaining)}</strong></td>
           <td class="amount ${totalVariance < 0 ? 'over-budget' : ''}"><strong>${formatMoneyDecimal(totalVariance)}</strong></td>
         </tr>
       `;
