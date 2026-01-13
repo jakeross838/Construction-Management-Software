@@ -518,6 +518,37 @@
     </div>
   </div>
 
+  <!-- Invoice PDF Viewer Modal -->
+  <div id="pdfViewerModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 1200px; height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h2 id="pdfViewerTitle">Invoice</h2>
+          <p id="pdfViewerSubtitle" class="modal-subtitle" style="margin: 0; color: var(--text-secondary);"></p>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <span id="pdfInvoiceStatus" class="status-badge"></span>
+          <button class="btn btn-secondary" onclick="openInvoiceInNewTab()" title="Open in new tab">Open Full Page</button>
+          <button class="close-btn" onclick="closeModal('pdfViewerModal')">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body" style="flex: 1; padding: 0; overflow: hidden;">
+        <div id="pdfViewerLoading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary);">
+          <span class="loading">Loading PDF...</span>
+        </div>
+        <iframe id="pdfViewerFrame" style="width: 100%; height: 100%; border: none; display: none;"></iframe>
+        <div id="pdfViewerError" style="display: none; padding: 2rem; text-align: center; color: var(--text-secondary);">
+          <p>Unable to load PDF</p>
+          <button class="btn btn-primary" onclick="openInvoiceInNewTab()">Open Invoice Page</button>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top: 1px solid var(--border); padding: 0.75rem 1.5rem;">
+        <div id="pdfInvoiceInfo" style="display: flex; gap: 2rem; font-size: 0.9rem; color: var(--text-secondary);"></div>
+        <button class="btn btn-secondary" onclick="closeModal('pdfViewerModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
@@ -533,7 +564,9 @@
       jobs: [],
       currentFilter: 'all',
       currentJobFilter: '',
-      searchQuery: ''
+      searchQuery: '',
+      currentViewingInvoice: null,
+      currentDrawInvoices: []
     };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1169,25 +1202,26 @@
         return allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0);
       }
 
-      tbody.innerHTML = invoices.map(inv => {
+      // Store invoices for PDF viewer access
+      state.currentDrawInvoices = invoices;
+
+      tbody.innerHTML = invoices.map((inv, idx) => {
         // Get cost codes from allocations
         const costCodes = inv.allocations?.map(a => a.cost_code?.code).filter(Boolean).join(', ') || '-';
         const billableAmount = getBillableAmount(inv);
         const isPartial = billableAmount < parseFloat(inv.amount || 0);
+        const hasValidPdf = inv.pdf_stamped_url || inv.pdf_url;
 
         return `
-          <tr>
+          <tr class="${hasValidPdf ? 'clickable-row' : ''}" ${hasValidPdf ? `onclick="showInvoicePdf(state.currentDrawInvoices[${idx}])"` : ''} ${hasValidPdf ? 'title="Click to view PDF"' : ''}>
             <td>${inv.vendor?.name || 'Unknown'}</td>
-            <td>${inv.invoice_number || '-'}${isPartial ? ' <span class="partial-badge">Partial</span>' : ''}</td>
+            <td><strong>${inv.invoice_number || '-'}</strong>${isPartial ? ' <span class="partial-badge">Partial</span>' : ''}</td>
             <td>${inv.invoice_date ? formatDate(inv.invoice_date) : '-'}</td>
             <td class="cost-codes">${costCodes}</td>
             <td class="amount">${formatMoney(billableAmount)}${isPartial ? `<br><small class="text-muted">of ${formatMoney(inv.amount)}</small>` : ''}</td>
             <td>
               ${isDraft ? `
-                <button class="btn btn-sm btn-danger" onclick="removeInvoice('${inv.id}')">Remove</button>
-              ` : ''}
-              ${inv.pdf_stamped_url ? `
-                <a href="${inv.pdf_stamped_url}" target="_blank" class="btn btn-sm btn-secondary">PDF</a>
+                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); removeInvoice('${inv.id}')">Remove</button>
               ` : ''}
             </td>
           </tr>
@@ -1800,6 +1834,83 @@
       if (!dateStr) return '';
       const date = new Date(dateStr);
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // ============================================================
+    // PDF VIEWER
+    // ============================================================
+
+    async function showInvoicePdf(invoice) {
+      if (!invoice) return;
+
+      // Store current invoice for "Open in new tab" button
+      state.currentViewingInvoice = invoice;
+
+      // Show loading state
+      document.getElementById('pdfViewerLoading').style.display = 'flex';
+      document.getElementById('pdfViewerFrame').style.display = 'none';
+      document.getElementById('pdfViewerError').style.display = 'none';
+
+      // Update header
+      document.getElementById('pdfViewerTitle').textContent = `Invoice ${invoice.invoice_number || ''}`;
+      document.getElementById('pdfViewerSubtitle').textContent = invoice.vendor?.name || 'Unknown Vendor';
+
+      // Update status badge
+      const statusClasses = {
+        received: 'pending',
+        needs_approval: 'pending',
+        approved: 'approved',
+        in_draw: 'in-progress',
+        paid: 'approved',
+        denied: 'denied'
+      };
+      const statusBadge = document.getElementById('pdfInvoiceStatus');
+      statusBadge.className = `status-badge status-${statusClasses[invoice.status] || 'pending'}`;
+      statusBadge.textContent = (invoice.status || '').replace('_', ' ');
+
+      // Update footer info
+      const allocSum = (invoice.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+      document.getElementById('pdfInvoiceInfo').innerHTML = `
+        <span><strong>Date:</strong> ${formatDate(invoice.invoice_date)}</span>
+        <span><strong>Total:</strong> ${formatMoney(invoice.amount)}</span>
+        <span><strong>Allocated:</strong> ${formatMoney(allocSum || invoice.amount)}</span>
+      `;
+
+      // Show modal
+      document.getElementById('pdfViewerModal').classList.add('show');
+
+      // Load PDF
+      const pdfUrl = invoice.pdf_stamped_url || invoice.pdf_url;
+      if (pdfUrl) {
+        const iframe = document.getElementById('pdfViewerFrame');
+        iframe.onload = () => {
+          document.getElementById('pdfViewerLoading').style.display = 'none';
+          iframe.style.display = 'block';
+        };
+        iframe.onerror = () => {
+          document.getElementById('pdfViewerLoading').style.display = 'none';
+          document.getElementById('pdfViewerError').style.display = 'block';
+        };
+        iframe.src = pdfUrl;
+
+        // Fallback timeout
+        setTimeout(() => {
+          if (document.getElementById('pdfViewerLoading').style.display !== 'none') {
+            document.getElementById('pdfViewerLoading').style.display = 'none';
+            iframe.style.display = 'block';
+          }
+        }, 2000);
+      } else {
+        document.getElementById('pdfViewerLoading').style.display = 'none';
+        document.getElementById('pdfViewerError').style.display = 'block';
+      }
+    }
+
+    function openInvoiceInNewTab() {
+      const invoice = state.currentViewingInvoice;
+      if (invoice) {
+        window.open(`index.html?invoice=${invoice.id}`, '_blank');
+      }
     }
 
     function showToast(message, type = 'info') {

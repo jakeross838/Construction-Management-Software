@@ -46,21 +46,6 @@ function formatMoney(amount) {
 }
 
 /**
- * Get the visual dimensions of a page (accounting for rotation)
- * Returns { width, height, rotation } where width/height are the visual dimensions
- */
-function getVisualDimensions(page) {
-  const rotation = page.getRotation().angle;
-  const { width, height } = page.getSize();
-
-  // For 90 or 270 degree rotations, swap visual width/height
-  if (rotation === 90 || rotation === 270) {
-    return { width: height, height: width, rotation };
-  }
-  return { width, height, rotation };
-}
-
-/**
  * Add an approval stamp to a PDF - Clean watermark style
  * @param {Buffer} pdfBuffer - Original PDF as buffer
  * @param {Object} stampData - Data to include in stamp
@@ -72,8 +57,6 @@ async function stampApproval(pdfBuffer, stampData) {
     date,
     approvedBy,
     jobName,
-    vendorName,
-    invoiceNumber,
     costCodes = [],
     amount,
     poNumber,
@@ -88,8 +71,7 @@ async function stampApproval(pdfBuffer, stampData) {
   const pages = pdfDoc.getPages();
   const firstPage = pages[0];
 
-  // Get visual dimensions (handles rotation)
-  const { width: pageWidth, height: pageHeight, rotation } = getVisualDimensions(firstPage);
+  const rotation = firstPage.getRotation().angle;
   const { width: rawWidth, height: rawHeight } = firstPage.getSize();
 
   // Embed fonts
@@ -115,73 +97,21 @@ async function stampApproval(pdfBuffer, stampData) {
     (allocatedAmount > 0 && allocatedAmount < (invoiceAmount - prevBilled) - 0.01);
   const remainingAmount = invoiceAmount - prevBilled - allocatedAmount;
 
-  // Stamp configuration
-  const margin = 15;
-  const logoSize = 100; // Logo watermark size - larger and more visible
-  const lineHeight = 11;
-  const smallLineHeight = 9;
-
-  // === DRAW WATERMARK LOGO ===
-  // Position in visual top-right corner (accounting for page rotation)
-  if (logoImage) {
-    // Scale logo to desired size
-    const scaleFactor = logoSize / Math.max(logoImage.width, logoImage.height);
-    const logoW = logoImage.width * scaleFactor;
-    const logoH = logoImage.height * scaleFactor;
-
-    // PDF coordinates: Y=0 is bottom, Y increases upward
-    // But pages can be rotated, so we need to position based on visual orientation
-    let logoX, logoY;
-
-    console.log(`Page: ${rawWidth}x${rawHeight}, rotation: ${rotation}°`);
-
-    if (rotation === 90) {
-      // 90° CW: raw bottom→visual top, raw right→visual right
-      // Visual top-right = raw (right, bottom)
-      logoX = rawWidth - logoW - margin;
-      logoY = margin;
-    } else if (rotation === 270) {
-      // 270° CW: raw right edge becomes visual top
-      // Visual top-right = raw (right, bottom)
-      logoX = rawWidth - logoW - margin;
-      logoY = margin;
-    } else if (rotation === 180) {
-      // 180°: raw bottom-left = visual top-right
-      logoX = margin;
-      logoY = margin;
-    } else {
-      // No rotation (0°): visual top-right = raw top-right
-      logoX = rawWidth - logoW - margin;
-      logoY = rawHeight - logoH - margin;
-    }
-
-    console.log(`Drawing logo at (${logoX}, ${logoY}), size ${logoW}x${logoH}`);
-
-    firstPage.drawImage(logoImage, {
-      x: logoX,
-      y: logoY,
-      width: logoW,
-      height: logoH,
-      opacity: 0.25
-    });
-  }
-
-  // === DRAW APPROVAL TEXT ===
-  // Build text lines for stamp
+  // === BUILD TEXT LINES ===
   const lines = [];
 
-  // Status line
+  // Status line - bold
   const displayStatus = isPartial ? 'APPROVED (PARTIAL)' : status;
   const statusColor = isPartial ? WARNING_COLOR : SUCCESS_COLOR;
   lines.push({ text: displayStatus, bold: true, size: 14, color: statusColor });
 
   // Date and approver
-  if (date) lines.push({ text: date, size: 9, color: TEXT_LIGHT });
-  if (approvedBy) lines.push({ text: `by ${approvedBy}`, size: 9, color: TEXT_LIGHT });
+  if (date) lines.push({ text: date, size: 9, color: TEXT_DARK });
+  if (approvedBy) lines.push({ text: `by ${approvedBy}`, size: 9, color: TEXT_DARK });
 
   lines.push({ text: '', size: 4 }); // Spacer
 
-  // Amount
+  // Amount - prominent
   if (amount) {
     lines.push({ text: formatMoney(amount), bold: true, size: 16, color: TEXT_DARK });
   }
@@ -191,149 +121,222 @@ async function stampApproval(pdfBuffer, stampData) {
     lines.push({ text: `(${formatMoney(remainingAmount)} remaining)`, size: 8, color: WARNING_COLOR });
   }
 
-  lines.push({ text: '', size: 6 }); // Spacer
+  lines.push({ text: '', size: 4 }); // Spacer
 
-  // Job
+  // Job - clear and readable
   if (jobName) {
-    const truncJob = jobName.length > 30 ? jobName.substring(0, 27) + '...' : jobName;
-    lines.push({ text: truncJob, size: 9, color: TEXT_DARK });
+    const truncJob = jobName.length > 25 ? jobName.substring(0, 22) + '...' : jobName;
+    lines.push({ text: truncJob, size: 10, color: TEXT_DARK, bold: true });
   }
 
-  // Cost codes (compact)
+  // Cost codes
   if (costCodes.length > 0) {
-    lines.push({ text: '', size: 4 }); // Spacer
-    costCodes.slice(0, 4).forEach(cc => {
-      const truncName = cc.name && cc.name.length > 20 ? cc.name.substring(0, 17) + '...' : (cc.name || '');
+    lines.push({ text: '', size: 2 }); // Spacer
+    costCodes.slice(0, 3).forEach(cc => {
+      const truncName = cc.name && cc.name.length > 15 ? cc.name.substring(0, 12) + '...' : (cc.name || '');
       lines.push({
-        text: `${cc.code} ${truncName}  ${formatMoney(cc.amount)}`,
+        text: `${cc.code} ${truncName} ${formatMoney(cc.amount)}`,
         size: 8,
-        color: TEXT_LIGHT
+        color: TEXT_DARK
       });
     });
-    if (costCodes.length > 4) {
-      lines.push({ text: `+${costCodes.length - 4} more...`, size: 7, color: TEXT_LIGHT });
+    if (costCodes.length > 3) {
+      lines.push({ text: `+${costCodes.length - 3} more...`, size: 7, color: TEXT_DARK });
     }
   }
 
-  // PO info (compact)
+  // PO info - show PO number and balance
   if (poNumber) {
     lines.push({ text: '', size: 4 }); // Spacer
-    lines.push({ text: `PO: ${poNumber}`, size: 9, color: BRAND_COLOR, bold: true });
-    if (poTotal && poBilledToDate !== undefined) {
-      const billedWithThis = poBilledToDate + (amount || 0);
+    lines.push({ text: `PO: ${poNumber}`, size: 10, color: BRAND_COLOR, bold: true });
+    if (poTotal) {
+      const billedWithThis = (poBilledToDate || 0) + (amount || 0);
       const remaining = poTotal - billedWithThis;
       const pct = Math.round((billedWithThis / poTotal) * 100);
       lines.push({
-        text: `${formatMoney(billedWithThis)} of ${formatMoney(poTotal)} (${pct}%)`,
+        text: `Billed: ${formatMoney(billedWithThis)} of ${formatMoney(poTotal)} (${pct}%)`,
         size: 8,
-        color: TEXT_LIGHT
+        color: TEXT_DARK
       });
       if (remaining > 0) {
-        lines.push({ text: `${formatMoney(remaining)} remaining`, size: 8, color: TEXT_LIGHT });
+        lines.push({
+          text: `Remaining: ${formatMoney(remaining)}`,
+          size: 8,
+          color: WARNING_COLOR,
+          bold: true
+        });
       }
     }
   }
 
-  // Calculate stamp position and draw text
-  // Always position below the logo, right-aligned
-  const textStartX = rawWidth - margin - 10;
-  let textY;
+  // === STAMP CONFIGURATION (no logo, clean text-only) ===
+  const containerWidth = 220; // Fixed width container (wide enough for all text)
+  const containerPadding = 12;
+  const edgeMargin = 20; // Margin from page edges
+  const bgOpacity = 0.92; // White background opacity
 
-  if (rotation === 0) {
-    textY = rawHeight - logoSize - margin - 15;
+  // Calculate total text height
+  let totalTextHeight = 0;
+  lines.forEach(line => {
+    totalTextHeight += (line.text === '') ? line.size : (line.size + 3);
+  });
+  const containerHeight = containerPadding * 2 + totalTextHeight;
 
-    // Draw each line right-aligned
+  // === DRAW STAMP BASED ON ROTATION ===
+  if (rotation === 270) {
+    // 270° ROTATED PAGE (raw 792x612, displays as 612x792 portrait)
+    // After 270° rotation: raw Y becomes visual X, raw X becomes visual Y (inverted)
+    // Visual top-right = high raw X, LOW raw Y (near 0)
+
+    // Position: visual top-right corner with margin
+    const visualMargin = 30;
+    const boxX = rawWidth - visualMargin - containerHeight; // high raw X = visual top
+    const boxY = visualMargin; // low raw Y = visual right
+    const boxW = containerHeight; // visual height
+    const boxH = containerWidth; // visual width
+
+    // Draw white background
+    firstPage.drawRectangle({
+      x: boxX,
+      y: boxY,
+      width: boxW,
+      height: boxH,
+      color: rgb(1, 1, 1),
+      opacity: bgOpacity,
+      borderColor: rgb(0.85, 0.85, 0.85),
+      borderWidth: 1
+    });
+
+    // Text positioning - centered in box
+    // With degrees(-90), text extends in -Y direction (toward visual right edge)
+    // So to center: y = boxCenter + textWidth/2
+    let textX = boxX + boxW - containerPadding;
+    const boxCenterY = boxY + boxH / 2;
+
+    lines.forEach(line => {
+      if (line.text === '') {
+        textX -= line.size;
+        return;
+      }
+      const textW = (line.bold ? boldFont : font).widthOfTextAtSize(line.text, line.size);
+      // With -90° rotation, text extends in -Y direction, so add textW/2 to center
+      firstPage.drawText(line.text, {
+        x: textX,
+        y: boxCenterY + textW / 2,
+        size: line.size,
+        font: line.bold ? boldFont : font,
+        color: line.color || TEXT_DARK,
+        rotate: degrees(-90)
+      });
+      textX -= line.size + 3;
+    });
+
+  } else if (rotation === 90) {
+    // 90° ROTATED PAGE
+    const containerRawX = edgeMargin;
+    const containerRawY = rawHeight - edgeMargin - containerWidth;
+
+    firstPage.drawRectangle({
+      x: containerRawX,
+      y: containerRawY,
+      width: containerHeight,
+      height: containerWidth,
+      color: rgb(1, 1, 1),
+      opacity: bgOpacity,
+      borderColor: rgb(0.85, 0.85, 0.85),
+      borderWidth: 1
+    });
+
+    let textX = containerRawX + containerPadding;
+    const textCenterY = containerRawY + containerWidth / 2;
+
+    lines.forEach(line => {
+      if (line.text === '') {
+        textX += line.size;
+        return;
+      }
+      const textW = (line.bold ? boldFont : font).widthOfTextAtSize(line.text, line.size);
+      firstPage.drawText(line.text, {
+        x: textX,
+        y: textCenterY + textW / 2,
+        size: line.size,
+        font: line.bold ? boldFont : font,
+        color: line.color || TEXT_DARK,
+        rotate: degrees(-90)
+      });
+      textX += line.size + 3;
+    });
+
+  } else if (rotation === 180) {
+    // 180° ROTATED PAGE
+    const containerRawX = edgeMargin;
+    const containerRawY = edgeMargin;
+
+    firstPage.drawRectangle({
+      x: containerRawX,
+      y: containerRawY,
+      width: containerWidth,
+      height: containerHeight,
+      color: rgb(1, 1, 1),
+      opacity: bgOpacity,
+      borderColor: rgb(0.85, 0.85, 0.85),
+      borderWidth: 1
+    });
+
+    const textCenterX = containerRawX + containerWidth / 2;
+    let textY = containerRawY + containerPadding;
+
+    lines.forEach(line => {
+      if (line.text === '') {
+        textY += line.size;
+        return;
+      }
+      const textW = (line.bold ? boldFont : font).widthOfTextAtSize(line.text, line.size);
+      firstPage.drawText(line.text, {
+        x: textCenterX + textW / 2,
+        y: textY,
+        size: line.size,
+        font: line.bold ? boldFont : font,
+        color: line.color || TEXT_DARK,
+        rotate: degrees(180)
+      });
+      textY += line.size + 3;
+    });
+
+  } else {
+    // NO ROTATION (0°) - standard orientation
+    const containerX = rawWidth - edgeMargin - containerWidth;
+    const containerY = rawHeight - edgeMargin - containerHeight;
+
+    firstPage.drawRectangle({
+      x: containerX,
+      y: containerY,
+      width: containerWidth,
+      height: containerHeight,
+      color: rgb(1, 1, 1),
+      opacity: bgOpacity,
+      borderColor: rgb(0.85, 0.85, 0.85),
+      borderWidth: 1
+    });
+
+    const textCenterX = containerX + containerWidth / 2;
+    let textY = containerY + containerHeight - containerPadding;
+
     lines.forEach(line => {
       if (line.text === '') {
         textY -= line.size;
         return;
       }
-      const textWidth = (line.bold ? boldFont : font).widthOfTextAtSize(line.text, line.size);
+      const textW = (line.bold ? boldFont : font).widthOfTextAtSize(line.text, line.size);
       firstPage.drawText(line.text, {
-        x: textStartX - textWidth,
+        x: textCenterX - textW / 2,
         y: textY,
         size: line.size,
         font: line.bold ? boldFont : font,
         color: line.color || TEXT_DARK
       });
-      textY -= line.size + 2;
+      textY -= line.size + 3;
     });
-  } else {
-    // For rotated pages, draw text in a way that it appears upright to the viewer
-    // We'll use a different approach: draw at raw coordinates with counter-rotation
-
-    let startX, startY;
-    let textRotation;
-
-    if (rotation === 90) {
-      // Visual top-right is raw bottom-right
-      startX = rawWidth - margin - logoSize - 25;
-      startY = margin + 10;
-      textRotation = -90;
-
-      let offsetY = 0;
-      lines.forEach(line => {
-        if (line.text === '') {
-          offsetY += line.size;
-          return;
-        }
-        firstPage.drawText(line.text, {
-          x: startX,
-          y: startY + offsetY,
-          size: line.size,
-          font: line.bold ? boldFont : font,
-          color: line.color || TEXT_DARK,
-          rotate: degrees(textRotation)
-        });
-        offsetY += line.size + 2;
-      });
-    } else if (rotation === 270) {
-      // Visual top-right is raw top-left
-      startX = margin + logoSize + 25;
-      startY = rawHeight - margin - 10;
-      textRotation = 90;
-
-      let offsetY = 0;
-      lines.forEach(line => {
-        if (line.text === '') {
-          offsetY += line.size;
-          return;
-        }
-        const textWidth = (line.bold ? boldFont : font).widthOfTextAtSize(line.text, line.size);
-        firstPage.drawText(line.text, {
-          x: startX,
-          y: startY - offsetY - textWidth,
-          size: line.size,
-          font: line.bold ? boldFont : font,
-          color: line.color || TEXT_DARK,
-          rotate: degrees(textRotation)
-        });
-        offsetY += line.size + 2;
-      });
-    } else if (rotation === 180) {
-      // Visual top-right is raw bottom-left
-      startX = margin + 10;
-      startY = margin + logoSize + 25;
-      textRotation = 180;
-
-      let offsetY = 0;
-      lines.forEach(line => {
-        if (line.text === '') {
-          offsetY += line.size;
-          return;
-        }
-        const textWidth = (line.bold ? boldFont : font).widthOfTextAtSize(line.text, line.size);
-        firstPage.drawText(line.text, {
-          x: startX + textWidth,
-          y: startY + offsetY,
-          size: line.size,
-          font: line.bold ? boldFont : font,
-          color: line.color || TEXT_DARK,
-          rotate: degrees(textRotation)
-        });
-        offsetY += line.size + 2;
-      });
-    }
   }
 
   // Save and return
@@ -421,7 +424,7 @@ async function stampPaid(pdfBuffer, paidDate) {
         y: logoY,
         width: logoDims.width,
         height: logoDims.height,
-        opacity: 0.08 // Very subtle
+        opacity: 0.08
       });
     } catch (err) {
       console.warn('Could not embed logo for PAID stamp:', err.message);
@@ -432,11 +435,9 @@ async function stampPaid(pdfBuffer, paidDate) {
   const text = 'PAID';
   const textSize = 60;
 
-  // Calculate center position
   let x = rawWidth / 2 - 80;
   let y = rawHeight / 2;
 
-  // Adjust rotation for page orientation
   let textAngle = -30;
   if (rotation === 90) textAngle = 60;
   else if (rotation === 270) textAngle = -120;
@@ -452,20 +453,14 @@ async function stampPaid(pdfBuffer, paidDate) {
     rotate: degrees(textAngle)
   });
 
-  // Add paid date at bottom
-  if (paidDate) {
-    const dateText = `Paid: ${paidDate}`;
-    const dateSize = 9;
-
-    if (rotation === 0) {
-      firstPage.drawText(dateText, {
-        x: 20,
-        y: 20,
-        size: dateSize,
-        font: boldFont,
-        color: TEXT_LIGHT
-      });
-    }
+  if (paidDate && rotation === 0) {
+    firstPage.drawText(`Paid: ${paidDate}`, {
+      x: 20,
+      y: 20,
+      size: 9,
+      font: boldFont,
+      color: TEXT_LIGHT
+    });
   }
 
   const stampedPdfBytes = await pdfDoc.save();
@@ -494,7 +489,6 @@ async function stampPartiallyPaid(pdfBuffer, paymentData) {
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Draw "PARTIAL" as subtle diagonal watermark
   if (rotation === 0) {
     firstPage.drawText('PARTIAL', {
       x: rawWidth / 2 - 100,
@@ -505,10 +499,7 @@ async function stampPartiallyPaid(pdfBuffer, paymentData) {
       opacity: 0.12,
       rotate: degrees(-30)
     });
-  }
 
-  // Add payment info at bottom left - clean text only
-  if (rotation === 0) {
     const lines = [
       { text: `Draw #${drawNumber || 'N/A'}`, bold: true },
       { text: `This Payment: ${formatMoney(amountPaidThisDraw)}` },
@@ -554,7 +545,6 @@ async function stampPartiallyBilled(pdfBuffer, billingData) {
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Add billing info at bottom left - clean text only
   if (rotation === 0) {
     const lines = [
       { text: `Billed - Draw #${drawNumber}`, bold: true, color: BRAND_COLOR },
