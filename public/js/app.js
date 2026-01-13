@@ -95,7 +95,12 @@ async function loadCostCodes() {
 async function loadInvoices() {
   try {
     const res = await fetch('/api/invoices');
-    state.invoices = await res.json();
+    const invoices = await res.json();
+    // Transform draw_invoices to draw for easier access
+    state.invoices = invoices.map(inv => ({
+      ...inv,
+      draw: inv.draw_invoices?.[0]?.draw || null
+    }));
     renderInvoiceList();
 
     // Check for openInvoice query parameter (from PO modal linking)
@@ -185,8 +190,31 @@ function renderInvoiceList() {
 
     let html = '';
 
+    // Handle "received" status invoices
+    if (groups.received.length > 0) {
+      // Split into matched (has job_id) and unmatched (no job_id)
+      const unmatchedInvoices = groups.received.filter(inv => !inv.job_id);
+      const matchedInvoices = groups.received.filter(inv => inv.job_id);
+
+      // Unassigned: Invoices with no job (only in All Jobs view)
+      if (!state.currentJobFilter && unmatchedInvoices.length > 0) {
+        html += `<div class="invoice-group-header unassigned-header">
+          <span>Unassigned</span>
+        </div>`;
+        html += unmatchedInvoices.map(inv => renderInvoiceCard(inv)).join('');
+      }
+
+      // Needs Review: AI-matched invoices needing verification (shows in both views)
+      if (matchedInvoices.length > 0) {
+        html += `<div class="invoice-group-header needs-review-header">
+          <span>Needs Review</span>
+        </div>`;
+        html += matchedInvoices.map(inv => renderInvoiceCard(inv)).join('');
+      }
+    }
+
     if (groups.needs_approval.length > 0) {
-      html += '<div class="invoice-group-header">Needs Approval</div>';
+      html += '<div class="invoice-group-header">Ready for Approval</div>';
       html += groups.needs_approval.map(inv => renderInvoiceCard(inv)).join('');
     }
 
@@ -195,13 +223,8 @@ function renderInvoiceList() {
       html += groups.denied.map(inv => renderInvoiceCard(inv)).join('');
     }
 
-    if (groups.received.length > 0) {
-      html += '<div class="invoice-group-header">Needs Processing</div>';
-      html += groups.received.map(inv => renderInvoiceCard(inv)).join('');
-    }
-
     if (groups.approved.length > 0) {
-      html += '<div class="invoice-group-header">Approved - Ready for Draw</div>';
+      html += `<div class="invoice-group-header approved-header"><span>Approved - Ready for Draw</span></div>`;
       html += groups.approved.map(inv => renderInvoiceCard(inv)).join('');
     }
 
@@ -213,6 +236,14 @@ function renderInvoiceList() {
 }
 
 function renderInvoiceCard(inv) {
+    // Draw badge for invoices in a draw
+    let drawBadge = '';
+    if (inv.status === 'in_draw' && inv.draw) {
+      drawBadge = `<span class="draw-badge" title="In Draw #${inv.draw.draw_number}">Draw #${inv.draw.draw_number}</span>`;
+    } else if (inv.status === 'in_draw') {
+      drawBadge = `<span class="draw-badge">In Draw</span>`;
+    }
+
     // Build PO info - show linked PO or "No PO" warning
     let poInfo = '';
     if (inv.po) {
@@ -277,12 +308,13 @@ function renderInvoiceCard(inv) {
           <span>${formatDate(inv.invoice_date)}</span>
           ${poInfo}
           ${allocationInfo}
+          ${drawBadge}
           ${paidToVendorBadge}
         </div>
       </div>
       <div class="invoice-amount">${formatMoney(displayAmount)}${amountSubtext}</div>
       <div class="invoice-status">
-        <span class="status-pill ${inv.status}">${formatStatus(inv.status)}</span>
+        <span class="status-pill ${inv.status}">${formatStatus(inv.status, inv)}</span>
       </div>
     </div>
     `;
@@ -484,7 +516,7 @@ function renderInvoiceModal(invoice, activity, approvalContext = {}) {
       </div>
       <div class="detail-row">
         <span class="detail-label">Status</span>
-        <span class="status-pill ${invoice.status}">${formatStatus(invoice.status)}</span>
+        <span class="status-pill ${invoice.status}">${formatStatus(invoice.status, invoice)}</span>
       </div>
     </div>
 
@@ -1034,10 +1066,17 @@ function formatDateTime(dateStr) {
   });
 }
 
-function formatStatus(status) {
+function formatStatus(status, invoice = null) {
+  // For 'received' status, label depends on whether invoice has a job
+  if (status === 'received') {
+    if (invoice && invoice.job_id) {
+      return 'Review';  // AI-matched, needs review
+    }
+    return 'Unassigned';  // No job assigned
+  }
+
   const labels = {
-    received: 'Needs Processing',
-    needs_approval: 'Needs Approval',
+    needs_approval: 'Ready',
     approved: 'Approved',
     in_draw: 'In Draw',
     paid: 'Paid'

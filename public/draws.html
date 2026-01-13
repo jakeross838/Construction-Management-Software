@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Draws</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260112b">
+  <link rel="stylesheet" href="css/styles.css?v=20260113b">
 </head>
 <body>
   <div class="app">
@@ -22,8 +22,7 @@
           <span class="main-nav-link disabled" title="Coming soon">Reports</span>
         </nav>
         <div class="header-actions">
-          <button class="btn btn-secondary" onclick="showAutoGenerateModal()">Auto-Generate</button>
-          <button class="btn btn-primary" onclick="showCreateDrawModal()">+ New Draw</button>
+          <button class="btn btn-primary" onclick="showAutoGenerateModal()">Auto-Generate Draw</button>
         </div>
       </div>
       <div class="header-sub">
@@ -372,32 +371,6 @@
     </div>
   </div>
 
-  <!-- Create Draw Modal -->
-  <div id="createDrawModal" class="modal">
-    <div class="modal-content modal-sm">
-      <div class="modal-header">
-        <h2>Create New Draw</h2>
-        <button class="close-btn" onclick="closeModal('createDrawModal')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>Job *</label>
-          <select id="newDrawJob" class="form-control" required>
-            <option value="">Select a job...</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Period End Date</label>
-          <input type="date" id="newDrawPeriodEnd" class="form-control">
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('createDrawModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="createDraw()">Create Draw</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Add CO Billing Modal -->
   <div id="addCOBillingModal" class="modal">
     <div class="modal-content modal-md">
@@ -449,6 +422,31 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('fundDrawModal')">Cancel</button>
         <button class="btn btn-success" id="confirmFundBtn" onclick="confirmFundDraw()">Confirm Funding</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Submit Draw Modal -->
+  <div id="submitDrawModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Submit Draw</h2>
+        <button class="close-btn" onclick="closeModal('submitDrawModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Submitting will lock this draw from further changes.</p>
+        <div class="form-group">
+          <label>Period End Date *</label>
+          <input type="date" id="submitPeriodEnd" class="form-control" required>
+          <div class="field-hint">The billing period end date for this pay application</div>
+        </div>
+        <div id="submitDrawSummary" class="submit-summary">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('submitDrawModal')">Cancel</button>
+        <button class="btn btn-warning" onclick="confirmSubmitDraw()">Submit Draw</button>
       </div>
     </div>
   </div>
@@ -528,7 +526,6 @@
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
           <span id="pdfInvoiceStatus" class="status-badge"></span>
-          <button class="btn btn-secondary" onclick="openInvoiceInNewTab()" title="Open in new tab">Open Full Page</button>
           <button class="close-btn" onclick="closeModal('pdfViewerModal')">&times;</button>
         </div>
       </div>
@@ -1326,16 +1323,57 @@
       }
     }
 
-    async function submitDraw() {
+    function submitDraw() {
       if (!currentDraw) return;
 
-      if (!confirm('Submit this draw? It will be locked from further changes.')) return;
+      // Pre-fill period end date (existing value or today)
+      const periodEndInput = document.getElementById('submitPeriodEnd');
+      periodEndInput.value = currentDraw.period_end || new Date().toISOString().split('T')[0];
+
+      // Show summary
+      const invoiceCount = currentDraw.invoices?.length || 0;
+      const totalAmount = parseFloat(currentDraw.total_amount || 0);
+      document.getElementById('submitDrawSummary').innerHTML = `
+        <div class="summary-stats">
+          <div class="stat">
+            <span class="stat-value">${invoiceCount}</span>
+            <span class="stat-label">Invoice${invoiceCount !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">${formatMoney(totalAmount)}</span>
+            <span class="stat-label">Total Amount</span>
+          </div>
+        </div>
+      `;
+
+      openModal('submitDrawModal');
+    }
+
+    async function confirmSubmitDraw() {
+      if (!currentDraw) return;
+
+      const periodEnd = document.getElementById('submitPeriodEnd').value;
+      if (!periodEnd) {
+        showToast('Please enter a period end date', 'error');
+        return;
+      }
 
       try {
+        // Update period end first if changed
+        if (periodEnd !== currentDraw.period_end) {
+          await fetch(`/api/draws/${currentDraw.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ period_end: periodEnd })
+          });
+        }
+
+        // Submit the draw
         const res = await fetch(`/api/draws/${currentDraw.id}/submit`, { method: 'PATCH' });
         if (!res.ok) throw new Error('Failed to submit draw');
 
         showToast('Draw submitted successfully', 'success');
+        closeModal('submitDrawModal');
         closeDrawModal();
         loadDraws();
       } catch (err) {
@@ -1616,17 +1654,6 @@
       window.open(`/api/draws/${currentDraw.id}/export/pdf`, '_blank');
     }
 
-    function showCreateDrawModal() {
-      const select = document.getElementById('newDrawJob');
-      select.innerHTML = '<option value="">Select a job...</option>';
-      state.jobs.forEach(job => {
-        select.innerHTML += `<option value="${job.id}">${job.name}</option>`;
-      });
-
-      document.getElementById('newDrawPeriodEnd').value = new Date().toISOString().split('T')[0];
-      document.getElementById('createDrawModal').classList.add('show');
-    }
-
     // ============================================================
     // AUTO-GENERATE DRAW
     // ============================================================
@@ -1771,34 +1798,6 @@
         showToast(err.message || 'Failed to generate draw', 'error');
         genBtn.disabled = false;
         genBtn.textContent = autoGenerateData.existing_draft ? 'Add to Existing Draft' : 'Create New Draw';
-      }
-    }
-
-    async function createDraw() {
-      const jobId = document.getElementById('newDrawJob').value;
-      const periodEnd = document.getElementById('newDrawPeriodEnd').value;
-
-      if (!jobId) {
-        showToast('Please select a job', 'error');
-        return;
-      }
-
-      try {
-        const res = await fetch(`/api/jobs/${jobId}/draws`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ period_end: periodEnd })
-        });
-        if (!res.ok) throw new Error('Failed to create draw');
-
-        const newDraw = await res.json();
-        showToast('Draw created successfully', 'success');
-        closeModal('createDrawModal');
-        loadDraws();
-        openDraw(newDraw.id);
-      } catch (err) {
-        console.error('Error creating draw:', err);
-        showToast('Failed to create draw', 'error');
       }
     }
 

@@ -20,6 +20,7 @@ const pdfParse = require('pdf-parse');
 const Anthropic = require('@anthropic-ai/sdk');
 const { supabase } = require('../config');
 const standards = require('./standards');
+const aiLearning = require('./ai-learning');
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -436,6 +437,37 @@ async function findMatchingJob(jobData) {
     return { job: null, confidence: 0, possibleMatches: [], reason: 'no_reference' };
   }
 
+  // LEARNING: Check learned mappings first before fuzzy matching
+  const learnedMatch = await aiLearning.findBestLearnedMapping('job', searchStrings);
+  if (learnedMatch && learnedMatch.confidence >= 0.85) {
+    // High confidence learned match - use it directly
+    const { data: learnedJob } = await supabase
+      .from('v2_jobs')
+      .select('id, name, address, client_name, status')
+      .eq('id', learnedMatch.matched_id)
+      .single();
+
+    if (learnedJob) {
+      console.log(`[AI Learning] Used learned job mapping: "${searchStrings[0]}" → "${learnedJob.name}" (${Math.round(learnedMatch.confidence * 100)}%, used ${learnedMatch.times_used}x)`);
+      return {
+        job: {
+          id: learnedJob.id,
+          name: learnedJob.name,
+          address: learnedJob.address,
+          client_name: learnedJob.client_name
+        },
+        confidence: learnedMatch.confidence,
+        possibleMatches: [{
+          id: learnedJob.id,
+          name: learnedJob.name,
+          confidence: learnedMatch.confidence,
+          matchType: 'learned_mapping'
+        }],
+        matchType: 'learned_mapping'
+      };
+    }
+  }
+
   const { data: jobs, error } = await supabase
     .from('v2_jobs')
     .select('id, name, address, client_name, status');
@@ -766,6 +798,21 @@ function fuzzyMatchScore(search, target) {
 async function findOrCreateVendor(vendorData) {
   if (!vendorData?.companyName) {
     return { vendor: null, confidence: 0, isNew: false };
+  }
+
+  // LEARNING: Check learned mappings first
+  const learnedMatch = await aiLearning.findLearnedMapping('vendor', vendorData.companyName);
+  if (learnedMatch && learnedMatch.confidence >= 0.85) {
+    const { data: learnedVendor } = await supabase
+      .from('v2_vendors')
+      .select('id, name, email, phone')
+      .eq('id', learnedMatch.matched_id)
+      .single();
+
+    if (learnedVendor) {
+      console.log(`[AI Learning] Used learned vendor mapping: "${vendorData.companyName}" → "${learnedVendor.name}" (${Math.round(learnedMatch.confidence * 100)}%)`);
+      return { vendor: learnedVendor, confidence: learnedMatch.confidence, isNew: false, matchType: 'learned_mapping' };
+    }
   }
 
   // Try to find existing vendor

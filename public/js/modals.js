@@ -1734,7 +1734,8 @@ const Modals = {
   },
 
   /**
-   * Add invoice to draw
+   * Add invoice to draw - simplified flow
+   * Auto-creates draft draw if none exists for the job
    */
   async addToDraw() {
     if (!this.currentInvoice?.job_id) {
@@ -1742,92 +1743,14 @@ const Modals = {
       return;
     }
 
-    // Fetch available draws for this job
     try {
-      const res = await fetch(`/api/jobs/${this.currentInvoice.job_id}/draws`);
-      const draws = await res.json();
-      const draftDraws = draws.filter(d => d.status === 'draft');
-
-      this.showDrawPickerModal(draftDraws);
-    } catch (err) {
-      console.error('Error fetching draws:', err);
-      window.toasts?.error('Failed to load draws');
-    }
-  },
-
-  showDrawPickerModal(draftDraws) {
-    const drawOptions = draftDraws.map(d =>
-      `<option value="${d.id}">Draw #${d.draw_number} - ${d.period_end || 'No date'} (${d.invoices?.length || 0} invoices)</option>`
-    ).join('');
-
-    const modal = `
-      <div class="draw-picker-overlay" id="draw-picker-overlay">
-        <div class="draw-picker-content">
-          <h3>Add to Draw</h3>
-          <p>Select a draw or create a new one for invoice #${this.currentInvoice?.invoice_number || 'N/A'}</p>
-
-          <div class="form-group">
-            <label>Select Draw</label>
-            <select id="drawPickerSelect">
-              <option value="">-- Select existing draw --</option>
-              ${drawOptions}
-              <option value="new">+ Create New Draw</option>
-            </select>
-          </div>
-
-          <div id="newDrawFields" class="form-group" style="display: none;">
-            <label>Period End Date</label>
-            <input type="date" id="newDrawPeriodEnd" value="${new Date().toISOString().split('T')[0]}">
-          </div>
-
-          <div class="draw-picker-actions">
-            <button onclick="Modals.closeDrawPicker()" class="btn btn-secondary">Cancel</button>
-            <button onclick="Modals.confirmAddToDraw()" class="btn btn-primary">Add to Draw</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    document.body.insertAdjacentHTML('beforeend', modal);
-
-    // Toggle new draw fields
-    document.getElementById('drawPickerSelect').addEventListener('change', (e) => {
-      document.getElementById('newDrawFields').style.display = e.target.value === 'new' ? 'block' : 'none';
-    });
-  },
-
-  closeDrawPicker() {
-    const overlay = document.getElementById('draw-picker-overlay');
-    if (overlay) overlay.remove();
-  },
-
-  async confirmAddToDraw() {
-    const select = document.getElementById('drawPickerSelect');
-    const selectedValue = select?.value;
-
-    if (!selectedValue) {
-      window.toasts?.error('Please select a draw');
-      return;
-    }
-
-    try {
-      let drawId = selectedValue;
-
-      // Create new draw if selected
-      if (selectedValue === 'new') {
-        const periodEnd = document.getElementById('newDrawPeriodEnd')?.value;
-        const res = await fetch(`/api/jobs/${this.currentInvoice.job_id}/draws`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ period_end: periodEnd })
-        });
-        if (!res.ok) throw new Error('Failed to create draw');
-        const newDraw = await res.json();
-        drawId = newDraw.id;
-      }
+      // Get or create draft draw for this job (one-click flow)
+      const drawRes = await fetch(`/api/jobs/${this.currentInvoice.job_id}/current-draw?create=true`);
+      if (!drawRes.ok) throw new Error('Failed to get/create draft draw');
+      const draw = await drawRes.json();
 
       // Add invoice to draw
-      const addRes = await fetch(`/api/draws/${drawId}/add-invoices`, {
+      const addRes = await fetch(`/api/draws/${draw.id}/add-invoices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoice_ids: [this.currentInvoice.id] })
@@ -1838,8 +1761,9 @@ const Modals = {
         throw new Error(err.error || 'Failed to add to draw');
       }
 
-      this.closeDrawPicker();
-      window.toasts?.success('Invoice added to draw');
+      window.toasts?.success(`Added to Draw #${draw.draw_number}`, {
+        action: { label: 'View Draws', href: 'draws.html' }
+      });
       this.closeActiveModal();
       if (typeof loadInvoices === 'function') loadInvoices();
     } catch (err) {

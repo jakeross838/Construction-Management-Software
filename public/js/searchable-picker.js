@@ -17,7 +17,7 @@ window.SearchablePicker = {
    * @param {Object} options - Configuration
    */
   init(container, options = {}) {
-    const { type, value, onChange, disabled, placeholder, jobId } = options;
+    const { type, value, onChange, disabled, placeholder, jobId, items } = options;
 
     container.innerHTML = `
       <div class="search-picker ${disabled ? 'disabled' : ''}" data-type="${type}">
@@ -37,6 +37,7 @@ window.SearchablePicker = {
     picker._type = type;
     picker._onChange = onChange;
     picker._jobId = jobId; // For PO filtering
+    picker._customItems = items; // For custom type with provided items
 
     // Set initial value
     if (value) {
@@ -70,12 +71,28 @@ window.SearchablePicker = {
   /**
    * Load data based on type
    */
-  async loadData(type, jobId = null) {
+  async loadData(type, jobId = null, customItems = null) {
+    // For custom type, return the provided items
+    if (type === 'custom' && customItems) {
+      return customItems;
+    }
+
     // For POs, don't cache as it depends on jobId
     if (type === 'pos') {
       if (!jobId) return [];
       const response = await fetch(`/api/jobs/${jobId}/purchase-orders`);
       return response.ok ? await response.json() : [];
+    }
+
+    // For cost codes
+    if (type === 'costCodes') {
+      if (this.cache.costCodes) return this.cache.costCodes;
+      const response = await fetch('/api/cost-codes');
+      if (response.ok) {
+        this.cache.costCodes = await response.json();
+        return this.cache.costCodes;
+      }
+      return [];
     }
 
     if (this.cache[type]) return this.cache[type];
@@ -114,7 +131,7 @@ window.SearchablePicker = {
     }
 
     const type = picker._type;
-    const data = await this.loadData(type, picker._jobId);
+    const data = await this.loadData(type, picker._jobId, picker._customItems);
     const item = data.find(d => d.id === id);
 
     if (item) {
@@ -137,8 +154,12 @@ window.SearchablePicker = {
         return item.name;
       case 'pos':
         return item.po_number + (item.vendor_name ? ` - ${item.vendor_name}` : '');
+      case 'costCodes':
+        return `${item.code} - ${item.name}`;
+      case 'custom':
+        return item.label || item.name || item.id;
       default:
-        return item.name || item.id;
+        return item.label || item.name || item.id;
     }
   },
 
@@ -265,7 +286,7 @@ window.SearchablePicker = {
     const type = picker._type;
     picker._selectedIndex = -1;
 
-    const data = await this.loadData(type, picker._jobId);
+    const data = await this.loadData(type, picker._jobId, picker._customItems);
 
     // Filter
     const q = query.toLowerCase().trim();
