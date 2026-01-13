@@ -116,46 +116,53 @@ async function stampApproval(pdfBuffer, stampData) {
   const remainingAmount = invoiceAmount - prevBilled - allocatedAmount;
 
   // Stamp configuration
-  const margin = 20;
-  const logoSize = 80; // Logo watermark size
+  const margin = 15;
+  const logoSize = 100; // Logo watermark size - larger and more visible
   const lineHeight = 11;
   const smallLineHeight = 9;
 
   // === DRAW WATERMARK LOGO ===
-  // Position in top-right corner, semi-transparent
+  // Position in visual top-right corner (accounting for page rotation)
   if (logoImage) {
-    const logoDims = logoImage.scale(logoSize / logoImage.width);
+    // Scale logo to desired size
+    const scaleFactor = logoSize / Math.max(logoImage.width, logoImage.height);
+    const logoW = logoImage.width * scaleFactor;
+    const logoH = logoImage.height * scaleFactor;
 
-    // Calculate position based on rotation
+    // PDF coordinates: Y=0 is bottom, Y increases upward
+    // But pages can be rotated, so we need to position based on visual orientation
     let logoX, logoY;
-    let logoRotation = 0;
 
-    if (rotation === 0) {
-      logoX = rawWidth - logoSize - margin;
-      logoY = rawHeight - logoSize - margin;
-    } else if (rotation === 90) {
-      // Page is rotated 90 CW, visual top-right is at raw bottom-right
-      logoX = rawWidth - margin - logoSize;
+    console.log(`Page: ${rawWidth}x${rawHeight}, rotation: ${rotation}°`);
+
+    if (rotation === 90) {
+      // 90° CW: raw bottom→visual top, raw right→visual right
+      // Visual top-right = raw (right, bottom)
+      logoX = rawWidth - logoW - margin;
       logoY = margin;
-      logoRotation = -90;
     } else if (rotation === 270) {
-      // Page is rotated 270 CW, visual top-right is at raw top-left
-      logoX = margin;
-      logoY = rawHeight - margin - logoSize;
-      logoRotation = 90;
+      // 270° CW: raw right edge becomes visual top
+      // Visual top-right = raw (right, bottom)
+      logoX = rawWidth - logoW - margin;
+      logoY = margin;
     } else if (rotation === 180) {
+      // 180°: raw bottom-left = visual top-right
       logoX = margin;
       logoY = margin;
-      logoRotation = 180;
+    } else {
+      // No rotation (0°): visual top-right = raw top-right
+      logoX = rawWidth - logoW - margin;
+      logoY = rawHeight - logoH - margin;
     }
+
+    console.log(`Drawing logo at (${logoX}, ${logoY}), size ${logoW}x${logoH}`);
 
     firstPage.drawImage(logoImage, {
       x: logoX,
       y: logoY,
-      width: logoDims.width,
-      height: logoDims.height,
-      opacity: 0.12, // Very subtle watermark
-      rotate: logoRotation !== 0 ? degrees(logoRotation) : undefined
+      width: logoW,
+      height: logoH,
+      opacity: 0.25
     });
   }
 
@@ -233,7 +240,7 @@ async function stampApproval(pdfBuffer, stampData) {
   let textY;
 
   if (rotation === 0) {
-    textY = rawHeight - logoSize - margin - 25;
+    textY = rawHeight - logoSize - margin - 15;
 
     // Draw each line right-aligned
     lines.forEach(line => {
