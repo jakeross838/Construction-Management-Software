@@ -9061,6 +9061,20 @@ textarea.form-control {
   padding-left: 2rem;
 }
 
+/* Clickable rows */
+.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.clickable-row:hover {
+  background-color: var(--bg-card-elevated) !important;
+}
+
+.budget-table .clickable-row:hover td {
+  background-color: var(--bg-card-elevated);
+}
+
 /* Collapse/Expand All Buttons */
 .division-controls {
   display: flex;

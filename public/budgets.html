@@ -310,6 +310,123 @@
     </div>
   </div>
 
+  <!-- Cost Code Detail Modal -->
+  <div id="costCodeDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 900px; max-height: 85vh;">
+      <div class="modal-header">
+        <div>
+          <h2 id="ccDetailTitle">Cost Code Details</h2>
+          <p id="ccDetailSubtitle" class="modal-subtitle" style="margin: 0; color: var(--text-secondary);"></p>
+        </div>
+        <button class="close-btn" onclick="closeModal('costCodeDetailModal')">&times;</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto;">
+        <!-- Summary Cards -->
+        <div class="cc-detail-summary" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+          <div class="summary-card">
+            <div class="summary-label">Budget</div>
+            <div class="summary-value" id="ccBudget">$0</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-label">Committed</div>
+            <div class="summary-value" id="ccCommitted">$0</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-label">Billed</div>
+            <div class="summary-value" id="ccBilled">$0</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-label">Paid</div>
+            <div class="summary-value" id="ccPaid">$0</div>
+          </div>
+          <div class="summary-card" id="ccRemainingCard">
+            <div class="summary-label">Remaining</div>
+            <div class="summary-value" id="ccRemaining">$0</div>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs" style="margin-bottom: 1rem;">
+          <button class="tab active" data-tab="cc-invoices" onclick="switchCCTab('cc-invoices')">Invoices</button>
+          <button class="tab" data-tab="cc-pos" onclick="switchCCTab('cc-pos')">Purchase Orders</button>
+        </div>
+
+        <!-- Invoices Tab -->
+        <div id="tab-cc-invoices" class="tab-content active">
+          <table class="invoices-table">
+            <thead>
+              <tr>
+                <th>Invoice #</th>
+                <th>Vendor</th>
+                <th>Date</th>
+                <th>Allocated</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="ccInvoicesBody">
+              <tr><td colspan="5" class="empty-state">No invoices</td></tr>
+            </tbody>
+            <tfoot id="ccInvoicesFooter"></tfoot>
+          </table>
+        </div>
+
+        <!-- Purchase Orders Tab -->
+        <div id="tab-cc-pos" class="tab-content" style="display: none;">
+          <table class="invoices-table">
+            <thead>
+              <tr>
+                <th>PO #</th>
+                <th>Vendor</th>
+                <th>Line Item</th>
+                <th>Amount</th>
+                <th>Invoiced</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="ccPOsBody">
+              <tr><td colspan="6" class="empty-state">No purchase orders</td></tr>
+            </tbody>
+            <tfoot id="ccPOsFooter"></tfoot>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('costCodeDetailModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invoice PDF Viewer Modal -->
+  <div id="pdfViewerModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 1200px; height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h2 id="pdfViewerTitle">Invoice</h2>
+          <p id="pdfViewerSubtitle" class="modal-subtitle" style="margin: 0; color: var(--text-secondary);"></p>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <span id="pdfInvoiceStatus" class="status-badge"></span>
+          <button class="btn btn-secondary" onclick="openInvoiceInNewTab()" title="Open in new tab">Open Full Page</button>
+          <button class="close-btn" onclick="closeModal('pdfViewerModal')">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body" style="flex: 1; padding: 0; overflow: hidden;">
+        <div id="pdfViewerLoading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary);">
+          <span class="loading">Loading PDF...</span>
+        </div>
+        <iframe id="pdfViewerFrame" style="width: 100%; height: 100%; border: none; display: none;"></iframe>
+        <div id="pdfViewerError" style="display: none; padding: 2rem; text-align: center; color: var(--text-secondary);">
+          <p>Unable to load PDF</p>
+          <button class="btn btn-primary" onclick="openInvoiceInNewTab()">Open Invoice Page</button>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top: 1px solid var(--border); padding: 0.75rem 1.5rem;">
+        <div id="pdfInvoiceInfo" style="display: flex; gap: 2rem; font-size: 0.9rem; color: var(--text-secondary);"></div>
+        <button class="btn btn-secondary" onclick="closeModal('pdfViewerModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
@@ -327,9 +444,11 @@
       budgetData: null
     };
 
-    document.addEventListener('DOMContentLoaded', () => {
-      loadJobs();
+    document.addEventListener('DOMContentLoaded', async () => {
       setupEventListeners();
+
+      // Load jobs first, then setup sidebar listener
+      await loadJobs();
 
       // Sidebar integration - listen for job selection changes
       if (window.JobSidebar) {
@@ -370,12 +489,10 @@
 
     async function loadBudget(jobId) {
       try {
-        const job = state.jobs.find(j => j.id === jobId);
-        state.currentJob = job;
-
-        // Hide empty state, show budget detail
+        // Show loading state
         document.getElementById('budgetContent').style.display = 'none';
         document.getElementById('budgetDetail').style.display = 'block';
+        document.getElementById('budgetBody').innerHTML = '<tr><td colspan="9" class="loading">Loading budget...</td></tr>';
 
         // Fetch budget data
         const res = await fetch(`/api/jobs/${jobId}/budget-summary`);
@@ -383,11 +500,16 @@
 
         state.budgetData = await res.json();
 
+        // Get job from response or state
+        state.currentJob = state.budgetData.job || state.jobs.find(j => j.id === jobId);
+
         // Render budget inline
         renderBudget();
       } catch (err) {
         console.error('Error loading budget:', err);
         showToast('Failed to load budget', 'error');
+        // Show error state
+        document.getElementById('budgetBody').innerHTML = '<tr><td colspan="9" class="empty-state">Failed to load budget. Please try again.</td></tr>';
       }
     }
 
@@ -396,7 +518,7 @@
       const job = state.currentJob;
 
       // Header
-      document.getElementById('budgetPageTitle').textContent = `Budget - ${job.name}`;
+      document.getElementById('budgetPageTitle').textContent = `Budget - ${job?.name || 'Unknown Job'}`;
 
       // Summary cards
       document.getElementById('summaryBudget').textContent = formatMoney(data.totals.budgeted);
@@ -587,7 +709,7 @@
             const varianceClass = variance < 0 ? 'over-budget' : '';
 
             html += `
-              <tr class="${healthClass} category-line">
+              <tr class="${healthClass} category-line clickable-row" onclick="showCostCodeDetail('${line.costCodeId}')" title="Click to view details">
                 <td class="cost-code">${healthIndicator}${line.costCode}</td>
                 <td>${line.description || '-'}</td>
                 <td class="amount">${formatMoneyDecimal(budgeted)}</td>
@@ -1129,6 +1251,246 @@
       if (!dateStr) return '';
       const date = new Date(dateStr);
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // ============================================================
+    // COST CODE DETAIL MODAL
+    // ============================================================
+
+    async function showCostCodeDetail(costCodeId) {
+      if (!state.currentJob || !costCodeId) return;
+
+      try {
+        const res = await fetch(`/api/jobs/${state.currentJob.id}/cost-code/${costCodeId}/details`);
+        if (!res.ok) throw new Error('Failed to fetch details');
+
+        const data = await res.json();
+
+        // Update header
+        document.getElementById('ccDetailTitle').textContent = `${data.costCode.code} - ${data.costCode.name}`;
+        document.getElementById('ccDetailSubtitle').textContent = data.costCode.category;
+
+        // Update summary cards
+        document.getElementById('ccBudget').textContent = formatMoney(data.budget.budgeted);
+        document.getElementById('ccCommitted').textContent = formatMoney(data.budget.committed);
+        document.getElementById('ccBilled').textContent = formatMoney(data.budget.billed);
+        document.getElementById('ccPaid').textContent = formatMoney(data.budget.paid);
+        document.getElementById('ccRemaining').textContent = formatMoney(data.budget.remaining);
+
+        // Highlight remaining if over budget
+        const remainingCard = document.getElementById('ccRemainingCard');
+        remainingCard.className = data.budget.remaining < 0 ? 'summary-card over-budget' : 'summary-card';
+
+        // Render invoices table
+        renderCCInvoices(data.invoices);
+
+        // Render POs table
+        renderCCPurchaseOrders(data.purchaseOrders);
+
+        // Reset to invoices tab
+        switchCCTab('cc-invoices');
+
+        // Show modal
+        document.getElementById('costCodeDetailModal').classList.add('show');
+
+      } catch (err) {
+        console.error('Error loading cost code details:', err);
+        showToast('Failed to load cost code details', 'error');
+      }
+    }
+
+    function renderCCInvoices(invoices) {
+      const tbody = document.getElementById('ccInvoicesBody');
+      const tfoot = document.getElementById('ccInvoicesFooter');
+
+      // Store invoices for PDF viewer access
+      state.currentInvoices = invoices;
+
+      if (!invoices || invoices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No invoices coded to this cost code</td></tr>';
+        tfoot.innerHTML = '';
+        return;
+      }
+
+      const statusClasses = {
+        received: 'pending',
+        needs_approval: 'pending',
+        approved: 'approved',
+        in_draw: 'in-progress',
+        paid: 'approved',
+        denied: 'denied'
+      };
+
+      tbody.innerHTML = invoices.map((inv, idx) => `
+        <tr class="clickable-row" onclick="showInvoicePdf(${idx})">
+          <td><strong>${inv.invoiceNumber || '-'}</strong></td>
+          <td>${inv.vendorName}</td>
+          <td>${formatDate(inv.invoiceDate)}</td>
+          <td class="amount">${formatMoney(inv.allocatedAmount)}</td>
+          <td><span class="status-badge status-${statusClasses[inv.status] || 'pending'}">${inv.status.replace('_', ' ')}</span></td>
+        </tr>
+      `).join('');
+
+      // Calculate totals
+      const total = invoices.reduce((sum, inv) => sum + inv.allocatedAmount, 0);
+      tfoot.innerHTML = `
+        <tr class="totals-row">
+          <td colspan="3"><strong>Total (${invoices.length} invoice${invoices.length !== 1 ? 's' : ''})</strong></td>
+          <td class="amount"><strong>${formatMoney(total)}</strong></td>
+          <td></td>
+        </tr>
+      `;
+    }
+
+    function renderCCPurchaseOrders(pos) {
+      const tbody = document.getElementById('ccPOsBody');
+      const tfoot = document.getElementById('ccPOsFooter');
+
+      if (!pos || pos.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No purchase orders for this cost code</td></tr>';
+        tfoot.innerHTML = '';
+        return;
+      }
+
+      const statusClasses = {
+        draft: 'pending',
+        pending: 'pending',
+        sent: 'in-progress',
+        approved: 'approved',
+        active: 'approved',
+        closed: 'approved',
+        cancelled: 'denied'
+      };
+
+      let html = '';
+      pos.forEach(po => {
+        po.lineItems.forEach((li, idx) => {
+          const isFirst = idx === 0;
+          html += `
+            <tr class="clickable-row" onclick="window.location.href='pos.html?po=${po.id}'">
+              ${isFirst ? `<td rowspan="${po.lineItems.length}"><strong>${po.poNumber}</strong></td>` : ''}
+              ${isFirst ? `<td rowspan="${po.lineItems.length}">${po.vendorName}</td>` : ''}
+              <td>${li.description || '-'}</td>
+              <td class="amount">${formatMoney(li.amount)}</td>
+              <td class="amount">${formatMoney(li.invoicedAmount)}</td>
+              ${isFirst ? `<td rowspan="${po.lineItems.length}"><span class="status-badge status-${statusClasses[po.statusDetail] || 'pending'}">${po.statusDetail || po.status}</span></td>` : ''}
+            </tr>
+          `;
+        });
+      });
+
+      tbody.innerHTML = html;
+
+      // Calculate totals
+      const totalAmount = pos.reduce((sum, po) => sum + po.costCodeAmount, 0);
+      const totalInvoiced = pos.reduce((sum, po) => sum + po.costCodeInvoiced, 0);
+      tfoot.innerHTML = `
+        <tr class="totals-row">
+          <td colspan="3"><strong>Total (${pos.length} PO${pos.length !== 1 ? 's' : ''})</strong></td>
+          <td class="amount"><strong>${formatMoney(totalAmount)}</strong></td>
+          <td class="amount"><strong>${formatMoney(totalInvoiced)}</strong></td>
+          <td></td>
+        </tr>
+      `;
+    }
+
+    function switchCCTab(tabId) {
+      // Update tab buttons
+      document.querySelectorAll('#costCodeDetailModal .tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === tabId);
+      });
+
+      // Update tab content
+      document.getElementById('tab-cc-invoices').style.display = tabId === 'cc-invoices' ? 'block' : 'none';
+      document.getElementById('tab-cc-pos').style.display = tabId === 'cc-pos' ? 'block' : 'none';
+    }
+
+    // ============================================================
+    // PDF VIEWER
+    // ============================================================
+
+    async function showInvoicePdf(invoiceIndex) {
+      const invoice = state.currentInvoices?.[invoiceIndex];
+      if (!invoice) return;
+
+      // Store current invoice for "Open in new tab" button
+      state.currentViewingInvoice = invoice;
+
+      // Show loading state
+      document.getElementById('pdfViewerLoading').style.display = 'flex';
+      document.getElementById('pdfViewerFrame').style.display = 'none';
+      document.getElementById('pdfViewerError').style.display = 'none';
+
+      // Update header
+      document.getElementById('pdfViewerTitle').textContent = `Invoice ${invoice.invoiceNumber || ''}`;
+      document.getElementById('pdfViewerSubtitle').textContent = invoice.vendorName;
+
+      // Update status badge
+      const statusClasses = {
+        received: 'pending',
+        needs_approval: 'pending',
+        approved: 'approved',
+        in_draw: 'in-progress',
+        paid: 'approved',
+        denied: 'denied'
+      };
+      const statusBadge = document.getElementById('pdfInvoiceStatus');
+      statusBadge.className = `status-badge status-${statusClasses[invoice.status] || 'pending'}`;
+      statusBadge.textContent = invoice.status.replace('_', ' ');
+
+      // Update footer info
+      document.getElementById('pdfInvoiceInfo').innerHTML = `
+        <span><strong>Date:</strong> ${formatDate(invoice.invoiceDate)}</span>
+        <span><strong>Total:</strong> ${formatMoney(invoice.totalAmount)}</span>
+        <span><strong>Allocated:</strong> ${formatMoney(invoice.allocatedAmount)}</span>
+      `;
+
+      // Show modal
+      document.getElementById('pdfViewerModal').classList.add('show');
+
+      // Fetch invoice details to get PDF URL
+      try {
+        const res = await fetch(`/api/invoices/${invoice.id}`);
+        if (!res.ok) throw new Error('Failed to fetch invoice');
+
+        const invoiceData = await res.json();
+        const pdfUrl = invoiceData.pdf_stamped_url || invoiceData.pdf_url;
+
+        if (pdfUrl) {
+          const iframe = document.getElementById('pdfViewerFrame');
+          iframe.onload = () => {
+            document.getElementById('pdfViewerLoading').style.display = 'none';
+            iframe.style.display = 'block';
+          };
+          iframe.onerror = () => {
+            document.getElementById('pdfViewerLoading').style.display = 'none';
+            document.getElementById('pdfViewerError').style.display = 'block';
+          };
+          iframe.src = pdfUrl;
+
+          // Fallback timeout in case onload doesn't fire (some PDF viewers)
+          setTimeout(() => {
+            if (document.getElementById('pdfViewerLoading').style.display !== 'none') {
+              document.getElementById('pdfViewerLoading').style.display = 'none';
+              iframe.style.display = 'block';
+            }
+          }, 2000);
+        } else {
+          document.getElementById('pdfViewerLoading').style.display = 'none';
+          document.getElementById('pdfViewerError').style.display = 'block';
+        }
+      } catch (err) {
+        console.error('Error loading invoice PDF:', err);
+        document.getElementById('pdfViewerLoading').style.display = 'none';
+        document.getElementById('pdfViewerError').style.display = 'block';
+      }
+    }
+
+    function openInvoiceInNewTab() {
+      const invoice = state.currentViewingInvoice;
+      if (invoice) {
+        window.open(`index.html?invoice=${invoice.id}`, '_blank');
+      }
     }
 
     function showToast(message, type = 'info') {

@@ -2584,7 +2584,8 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
     Object.keys(actualsByCostCode).forEach(id => allCostCodeIds.add(id));
     Object.keys(committedByCostCode).forEach(id => allCostCodeIds.add(id));
 
-    // Build result lines
+    // Build result lines (filter out lines with no activity unless they have budget)
+    const hideEmpty = req.query.hideEmpty !== 'false'; // Default to hiding empty lines
     const lines = [];
     allCostCodeIds.forEach(ccId => {
       const budget = budgetMap[ccId] || {};
@@ -2594,15 +2595,25 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       const description = budget.description || costCodeInfo.name || '';
       const category = budget.category || costCodeInfo.category || 'Uncategorized';
 
+      const budgeted = budget.budgeted || 0;
+      const committed = committedByCostCode[ccId] || 0;
+      const billed = actuals.billed;
+      const paid = actuals.paid;
+
+      // Skip empty lines unless hideEmpty is disabled
+      if (hideEmpty && budgeted === 0 && committed === 0 && billed === 0 && paid === 0) {
+        return;
+      }
+
       lines.push({
         costCodeId: ccId,
         costCode,
         description,
         category,
-        budgeted: budget.budgeted || 0,
-        committed: committedByCostCode[ccId] || 0,
-        billed: actuals.billed,
-        paid: actuals.paid
+        budgeted,
+        committed,
+        billed,
+        paid
       });
     });
 
@@ -2660,6 +2671,167 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
     });
   } catch (err) {
     console.error('Budget summary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get cost code details (invoices, POs) for a specific job and cost code
+app.get('/api/jobs/:jobId/cost-code/:costCodeId/details', async (req, res) => {
+  try {
+    const { jobId, costCodeId } = req.params;
+
+    // Get cost code info
+    const { data: costCode, error: ccError } = await supabase
+      .from('v2_cost_codes')
+      .select('*')
+      .eq('id', costCodeId)
+      .single();
+
+    if (ccError) throw ccError;
+
+    // Get budget line for this job/cost code
+    const { data: budgetLine } = await supabase
+      .from('v2_budget_lines')
+      .select('*')
+      .eq('job_id', jobId)
+      .eq('cost_code_id', costCodeId)
+      .single();
+
+    // Get invoices with allocations to this cost code for this job
+    const { data: allocations, error: allocError } = await supabase
+      .from('v2_invoice_allocations')
+      .select(`
+        id,
+        amount,
+        notes,
+        invoice:v2_invoices!inner(
+          id,
+          invoice_number,
+          invoice_date,
+          amount,
+          status,
+          po_id,
+          vendor:v2_vendors(id, name)
+        )
+      `)
+      .eq('job_id', jobId)
+      .eq('cost_code_id', costCodeId);
+
+    if (allocError) throw allocError;
+
+    // Get POs with line items for this cost code
+    const { data: poLineItems, error: poError } = await supabase
+      .from('v2_po_line_items')
+      .select(`
+        id,
+        description,
+        amount,
+        invoiced_amount,
+        po:v2_purchase_orders!inner(
+          id,
+          po_number,
+          description,
+          total_amount,
+          status,
+          status_detail,
+          approval_status,
+          vendor:v2_vendors(id, name)
+        )
+      `)
+      .eq('po.job_id', jobId)
+      .eq('cost_code_id', costCodeId);
+
+    if (poError) throw poError;
+
+    // Calculate totals
+    let totalBilled = 0;
+    let totalPaid = 0;
+    const invoices = [];
+
+    (allocations || []).forEach(a => {
+      if (['approved', 'in_draw', 'paid'].includes(a.invoice.status)) {
+        totalBilled += parseFloat(a.amount) || 0;
+      }
+      if (a.invoice.status === 'paid') {
+        totalPaid += parseFloat(a.amount) || 0;
+      }
+      invoices.push({
+        id: a.invoice.id,
+        invoiceNumber: a.invoice.invoice_number,
+        invoiceDate: a.invoice.invoice_date,
+        vendorName: a.invoice.vendor?.name || 'Unknown',
+        totalAmount: parseFloat(a.invoice.amount) || 0,
+        allocatedAmount: parseFloat(a.amount) || 0,
+        status: a.invoice.status,
+        poId: a.invoice.po_id,
+        notes: a.notes
+      });
+    });
+
+    // Build PO list
+    let totalCommitted = 0;
+    const pos = [];
+    const seenPoIds = new Set();
+
+    (poLineItems || []).forEach(pl => {
+      const po = pl.po;
+      // Only count sent/approved POs as committed
+      if (['sent', 'approved'].includes(po.status_detail) || po.approval_status === 'approved') {
+        totalCommitted += parseFloat(pl.amount) || 0;
+      }
+
+      if (!seenPoIds.has(po.id)) {
+        seenPoIds.add(po.id);
+        pos.push({
+          id: po.id,
+          poNumber: po.po_number,
+          vendorName: po.vendor?.name || 'Unknown',
+          description: po.description,
+          totalAmount: parseFloat(po.total_amount) || 0,
+          status: po.status,
+          statusDetail: po.status_detail,
+          lineItems: []
+        });
+      }
+
+      // Add line item to PO
+      const poEntry = pos.find(p => p.id === po.id);
+      if (poEntry) {
+        poEntry.lineItems.push({
+          id: pl.id,
+          description: pl.description,
+          amount: parseFloat(pl.amount) || 0,
+          invoicedAmount: parseFloat(pl.invoiced_amount) || 0
+        });
+      }
+    });
+
+    // Calculate line item totals for each PO (just for this cost code)
+    pos.forEach(po => {
+      po.costCodeAmount = po.lineItems.reduce((sum, li) => sum + li.amount, 0);
+      po.costCodeInvoiced = po.lineItems.reduce((sum, li) => sum + li.invoicedAmount, 0);
+    });
+
+    res.json({
+      costCode: {
+        id: costCode.id,
+        code: costCode.code,
+        name: costCode.name,
+        category: costCode.category
+      },
+      budget: {
+        budgeted: parseFloat(budgetLine?.budgeted_amount) || 0,
+        committed: totalCommitted,
+        billed: totalBilled,
+        paid: totalPaid,
+        remaining: (parseFloat(budgetLine?.budgeted_amount) || 0) - totalBilled
+      },
+      invoices,
+      purchaseOrders: pos
+    });
+
+  } catch (err) {
+    console.error('Cost code details error:', err);
     res.status(500).json({ error: err.message });
   }
 });

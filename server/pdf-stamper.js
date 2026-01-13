@@ -3,7 +3,7 @@
  * Adds approval stamps to invoice PDFs
  */
 
-const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const { PDFDocument, rgb, StandardFonts, degrees } = require('pdf-lib');
 
 // Helper function to format currency
 function formatCurrency(amount) {
@@ -48,8 +48,15 @@ async function stampApproval(pdfBuffer, stampData) {
   const pages = pdfDoc.getPages();
   const firstPage = pages[0];
 
-  // Get page dimensions
-  const { width, height } = firstPage.getSize();
+  // Get page dimensions and handle rotation
+  const rotation = firstPage.getRotation().angle;
+  let { width, height } = firstPage.getSize();
+
+  // If page is rotated 90 or 270 degrees, swap width and height for positioning
+  const isRotated = rotation === 90 || rotation === 270;
+  if (isRotated) {
+    [width, height] = [height, width];
+  }
 
   // Embed fonts
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -75,8 +82,40 @@ async function stampApproval(pdfBuffer, stampData) {
   const lineHeight = 13;
   const sectionGap = 4;
   const padding = 12;
-  const x = width - stampWidth - 15;  // 15px from right edge
-  const startY = height - 15;         // 15px from top
+  const margin = 15;
+
+  // Get original page dimensions (before considering rotation)
+  const origSize = firstPage.getSize();
+  const origWidth = origSize.width;
+  const origHeight = origSize.height;
+
+  // Calculate stamp position based on rotation
+  // We want the stamp to appear in the visual top-right corner
+  let x, startY;
+  let textRotation = 0;  // Rotation to apply to text to make it readable
+
+  if (rotation === 90) {
+    // Page rotated 90° CW: visual top-right is at page coordinates (right, bottom)
+    // Stamp needs to be rotated -90° to appear upright
+    x = origWidth - margin;
+    startY = margin + stampWidth + padding;
+    textRotation = -90;
+  } else if (rotation === 270) {
+    // Page rotated 270° CW (or 90° CCW): visual top-right is at page coordinates (left, top)
+    x = margin + stampWidth + padding * 2;
+    startY = origHeight - margin;
+    textRotation = 90;
+  } else if (rotation === 180) {
+    // Page rotated 180°: visual top-right is at page coordinates (left, bottom)
+    x = margin;
+    startY = margin;
+    textRotation = 180;
+  } else {
+    // No rotation or 0°
+    x = origWidth - stampWidth - margin;
+    startY = origHeight - margin;
+    textRotation = 0;
+  }
 
   // Build stamp content as sections
   const sections = [];
@@ -201,47 +240,96 @@ async function stampApproval(pdfBuffer, stampData) {
   });
   const stampHeight = (totalLines * lineHeight) + (padding * 2) + (sections.length - 1) * sectionGap;
 
-  // Draw stamp background
+  // Draw stamp background - semi-transparent so text underneath shows through
+  const bgOpacity = 0.82;  // More transparent to see content underneath
+  const borderColor = isPartial ? rgb(0.8, 0.5, 0.1) : rgb(0.2, 0.55, 0.2);
+  const headerBgColor = isPartial ? rgb(1, 0.95, 0.85) : rgb(0.9, 0.96, 0.9);
+
+  // For rotated pages, we need to swap dimensions for the background
+  const bgWidth = (rotation === 90 || rotation === 270) ? stampHeight : stampWidth + (padding * 2);
+  const bgHeight = (rotation === 90 || rotation === 270) ? stampWidth + (padding * 2) : stampHeight;
+
+  // Calculate background position
+  let bgX, bgY;
+  if (rotation === 90) {
+    bgX = origWidth - margin - bgWidth;
+    bgY = margin;
+  } else if (rotation === 270) {
+    bgX = margin;
+    bgY = origHeight - margin - bgHeight;
+  } else {
+    bgX = x - padding;
+    bgY = startY - stampHeight;
+  }
+
+  // Draw main background
   firstPage.drawRectangle({
-    x: x - padding,
-    y: startY - stampHeight,
-    width: stampWidth + (padding * 2),
-    height: stampHeight,
+    x: bgX,
+    y: bgY,
+    width: bgWidth,
+    height: bgHeight,
     color: rgb(1, 1, 1),
-    opacity: 0.95,
-    borderColor: rgb(0.2, 0.6, 0.2),
-    borderWidth: 2
+    opacity: bgOpacity,
+    borderColor: borderColor,
+    borderWidth: 1.5
   });
 
-  // Draw a subtle header bar
-  firstPage.drawRectangle({
-    x: x - padding,
-    y: startY - 28,
-    width: stampWidth + (padding * 2),
-    height: 28,
-    color: rgb(0.9, 0.95, 0.9),
-    opacity: 1
-  });
+  // Draw header bar (only for non-rotated pages for simplicity)
+  if (rotation === 0) {
+    firstPage.drawRectangle({
+      x: x - padding,
+      y: startY - 28,
+      width: stampWidth + (padding * 2),
+      height: 28,
+      color: headerBgColor,
+      opacity: bgOpacity
+    });
+  }
 
   // Draw stamp text
   let currentY = startY - padding - lineHeight + 2;
 
+  // Build rotation option for text
+  const rotateOption = textRotation !== 0 ? degrees(textRotation) : undefined;
+
+  // Track line number for positioning rotated text
+  let lineNum = 0;
+
   sections.forEach((section, sectionIndex) => {
     section.lines.forEach(line => {
-      const textX = line.indent ? x + 20 : x;
+      let textX, textY;
+      const indentOffset = line.indent ? 20 : 0;
+
+      if (rotation === 90) {
+        // For 90° rotation, text goes vertically along the right edge
+        textX = origWidth - margin - padding - (lineNum * lineHeight);
+        textY = margin + padding + indentOffset;
+      } else if (rotation === 270) {
+        // For 270° rotation, text goes vertically along the left edge
+        textX = margin + padding + (lineNum * lineHeight) + lineHeight;
+        textY = origHeight - margin - padding - indentOffset;
+      } else {
+        textX = x + indentOffset;
+        textY = currentY;
+      }
+
       firstPage.drawText(line.text, {
         x: textX,
-        y: currentY,
+        y: textY,
         size: line.size || 10,
         font: line.bold ? boldFont : font,
-        color: line.color || rgb(0.15, 0.15, 0.15)
+        color: line.color || rgb(0.15, 0.15, 0.15),
+        rotate: rotateOption
       });
+
       currentY -= lineHeight;
+      lineNum++;
     });
 
     // Add gap between sections
     if (sectionIndex < sections.length - 1) {
       currentY -= sectionGap;
+      lineNum += 0.5;
     }
   });
 
