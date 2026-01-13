@@ -32,6 +32,7 @@
           <a href="draws.html" class="sub-nav-link active">Draws</a>
           <a href="budgets.html" class="sub-nav-link">Budgets</a>
           <a href="reconciliation.html" class="sub-nav-link">Reconciliation</a>
+          <a href="lien-releases.html" class="sub-nav-link">Lien Releases</a>
         </nav>
       </div>
     </header>
@@ -352,6 +353,17 @@
           </div>
         </section>
 
+        <!-- Lien Releases Section -->
+        <section class="draw-section draw-lien-releases-section">
+          <div class="section-header">
+            <h3>Lien Releases</h3>
+            <button class="btn btn-sm btn-secondary" onclick="showAttachLienReleaseModal()">+ Attach Release</button>
+          </div>
+          <div class="lien-release-mini-list" id="drawLienReleasesContainer">
+            <div class="empty-state">No lien releases attached</div>
+          </div>
+        </section>
+
         <!-- Activity Log Section -->
         <section class="draw-section">
           <div class="section-header">
@@ -543,6 +555,26 @@
       <div class="modal-footer" style="border-top: 1px solid var(--border); padding: 0.75rem 1.5rem;">
         <div id="pdfInvoiceInfo" style="display: flex; gap: 2rem; font-size: 0.9rem; color: var(--text-secondary);"></div>
         <button class="btn btn-secondary" onclick="closeModal('pdfViewerModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attach Lien Release Modal -->
+  <div id="attachLienReleaseModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Attach Lien Release</h2>
+        <button class="close-btn" onclick="closeModal('attachLienReleaseModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">Select lien releases to attach to this draw.</p>
+        <div id="availableLienReleasesList" class="lien-release-picker-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('attachLienReleaseModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmAttachLienReleases()">Attach Selected</button>
       </div>
     </div>
   </div>
@@ -1004,6 +1036,9 @@
 
       // Invoices section
       renderInvoicesTable(draw.invoices || [], draw.status);
+
+      // Lien releases section
+      loadDrawLienReleases(draw.id, draw.status);
 
       // Activity log section
       renderActivityLog(draw.activity || []);
@@ -1930,6 +1965,148 @@
         Toast.show(message, type);
       } else {
         console.log(`[${type}] ${message}`);
+      }
+    }
+
+    // ============================================================
+    // LIEN RELEASES SECTION
+    // ============================================================
+
+    let drawLienReleases = [];
+
+    async function loadDrawLienReleases(drawId, drawStatus) {
+      const container = document.getElementById('drawLienReleasesContainer');
+      try {
+        const res = await fetch(`/api/draws/${drawId}/lien-releases`);
+        drawLienReleases = await res.json();
+        renderDrawLienReleases(drawLienReleases, drawStatus);
+      } catch (err) {
+        console.error('Failed to load lien releases:', err);
+        container.innerHTML = '<div class="error-state">Failed to load lien releases</div>';
+      }
+    }
+
+    function renderDrawLienReleases(releases, drawStatus) {
+      const container = document.getElementById('drawLienReleasesContainer');
+
+      if (!releases || releases.length === 0) {
+        container.innerHTML = '<div class="empty-state">No lien releases attached to this draw</div>';
+        return;
+      }
+
+      container.innerHTML = releases.map(lr => `
+        <div class="lien-release-mini-item">
+          <div class="lien-release-mini-info">
+            <span class="lien-release-mini-vendor">${lr.vendor?.name || 'Unknown Vendor'}</span>
+            <span class="lien-release-mini-meta">
+              ${formatLienReleaseType(lr.release_type)}
+              ${lr.amount ? ' - ' + formatMoney(lr.amount) : ''}
+              ${lr.through_date ? ' - Through ' + formatDate(lr.through_date) : ''}
+            </span>
+          </div>
+          <div class="lien-release-mini-actions">
+            ${lr.pdf_url ? `<a href="${lr.pdf_url}" target="_blank" class="btn btn-sm btn-secondary">View PDF</a>` : ''}
+            ${drawStatus === 'draft' ? `<button class="btn btn-sm btn-danger" onclick="detachLienRelease('${lr.id}')">Remove</button>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function formatLienReleaseType(type) {
+      const labels = {
+        'conditional_progress': 'Conditional Progress',
+        'unconditional_progress': 'Unconditional Progress',
+        'conditional_final': 'Conditional Final',
+        'unconditional_final': 'Unconditional Final'
+      };
+      return labels[type] || type;
+    }
+
+    async function showAttachLienReleaseModal() {
+      if (!currentDraw) return;
+
+      const container = document.getElementById('availableLienReleasesList');
+      container.innerHTML = '<div class="loading">Loading available lien releases...</div>';
+      openModal('attachLienReleaseModal');
+
+      try {
+        // Get lien releases for this job that are not attached to any draw
+        const params = new URLSearchParams();
+        if (currentDraw.job_id) params.append('job_id', currentDraw.job_id);
+
+        const res = await fetch(`/api/lien-releases?${params.toString()}`);
+        const releases = await res.json();
+
+        // Filter out those already attached to a draw
+        const available = releases.filter(lr => !lr.draw_id);
+
+        if (available.length === 0) {
+          container.innerHTML = '<div class="empty-state">No available lien releases for this job. Upload releases on the Lien Releases page first.</div>';
+          return;
+        }
+
+        container.innerHTML = available.map(lr => `
+          <label class="lien-release-picker-item">
+            <input type="checkbox" value="${lr.id}" class="lien-release-checkbox">
+            <div class="lien-release-picker-info">
+              <span class="vendor">${lr.vendor?.name || 'Unknown Vendor'}</span>
+              <span class="meta">
+                ${formatLienReleaseType(lr.release_type)}
+                ${lr.amount ? ' - ' + formatMoney(lr.amount) : ''}
+                ${lr.through_date ? ' - Through ' + formatDate(lr.through_date) : ''}
+              </span>
+            </div>
+          </label>
+        `).join('');
+
+      } catch (err) {
+        console.error('Error loading lien releases:', err);
+        container.innerHTML = '<div class="error-state">Failed to load lien releases</div>';
+      }
+    }
+
+    async function confirmAttachLienReleases() {
+      const checkboxes = document.querySelectorAll('.lien-release-checkbox:checked');
+      const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+
+      if (selectedIds.length === 0) {
+        showToast('Please select at least one lien release', 'error');
+        return;
+      }
+
+      try {
+        for (const id of selectedIds) {
+          await fetch(`/api/lien-releases/${id}/attach-to-draw`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ draw_id: currentDraw.id, attached_by: 'User' })
+          });
+        }
+
+        showToast(`${selectedIds.length} lien release(s) attached`, 'success');
+        closeModal('attachLienReleaseModal');
+        loadDrawLienReleases(currentDraw.id, currentDraw.status);
+      } catch (err) {
+        console.error('Error attaching lien releases:', err);
+        showToast('Failed to attach lien releases', 'error');
+      }
+    }
+
+    async function detachLienRelease(lienReleaseId) {
+      if (!confirm('Remove this lien release from the draw?')) return;
+
+      try {
+        await fetch(`/api/lien-releases/${lienReleaseId}/detach-from-draw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ detached_by: 'User' })
+        });
+
+        showToast('Lien release removed from draw', 'success');
+        loadDrawLienReleases(currentDraw.id, currentDraw.status);
+      } catch (err) {
+        console.error('Error detaching lien release:', err);
+        showToast('Failed to remove lien release', 'error');
       }
     }
   </script>

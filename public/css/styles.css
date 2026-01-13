@@ -12467,3 +12467,358 @@ textarea.form-control {
 .budget-table tr.highlight-flash {
   animation: highlightFlash 2s ease-out forwards;
 }
+
+/* ============================================================
+   LIEN RELEASES PAGE
+   ============================================================ */
+
+/* List header and rows */
+.lien-release-list-header {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1.5fr 1fr 1fr;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card-elevated);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.lien-release-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1.5fr 1fr 1fr;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  align-items: center;
+}
+
+.lien-release-row:hover {
+  background: var(--bg-card-elevated);
+}
+
+.lien-release-row:last-child {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.lien-release-row .vendor-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.lien-release-row .release-type {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.lien-release-row .amount {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.lien-release-row .through-date,
+.lien-release-row .job-name {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+/* Detail modal layout */
+.lien-release-modal-body {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.lien-release-detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  height: calc(100vh - 140px);
+}
+
+.pdf-viewer-section {
+  background: #1a1a1a;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.pdf-viewer-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.no-pdf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+}
+
+.detail-form-section {
+  overflow-y: auto;
+  padding: 1.5rem;
+  background: var(--bg-primary);
+}
+
+.detail-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+}
+
+.detail-card h3 {
+  margin: 0 0 1rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.detail-row label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.detail-row .form-control {
+  font-size: 0.9rem;
+}
+
+/* Review flags card */
+.review-flags-card {
+  background: rgba(210, 153, 34, 0.1);
+  border-color: var(--accent-orange);
+}
+
+.review-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.flag-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: rgba(210, 153, 34, 0.2);
+  border: 1px solid var(--accent-orange);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  color: var(--accent-orange);
+}
+
+/* Activity log */
+.activity-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: var(--bg-card-elevated);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.activity-action {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.activity-by {
+  color: var(--text-secondary);
+}
+
+.activity-time {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+/* Modal footer with left/right sections */
+.modal-footer .footer-left {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modal-footer .footer-right {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+/* Lien releases in draw modal */
+.draw-lien-releases-section {
+  margin-top: 1.5rem;
+}
+
+.draw-lien-releases-section h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.lien-release-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lien-release-mini-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card-elevated);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.lien-release-mini-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lien-release-mini-vendor {
+  font-weight: 500;
+}
+
+.lien-release-mini-meta {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.lien-release-mini-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upload-zone:hover,
+.upload-zone.dragover {
+  border-color: var(--accent-blue);
+  background: rgba(88, 166, 255, 0.05);
+}
+
+.upload-content .upload-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.upload-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.upload-progress {
+  text-align: center;
+  padding: 2rem;
+}
+
+.upload-progress .progress-bar {
+  height: 4px;
+  background: var(--bg-card-elevated);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.upload-progress .progress-fill {
+  height: 100%;
+  background: var(--accent-blue);
+  width: 60%;
+  animation: progressPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes progressPulse {
+  0%, 100% { width: 30%; opacity: 1; }
+  50% { width: 70%; opacity: 0.7; }
+}
+
+.upload-status {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Lien release picker in attach modal */
+.lien-release-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.lien-release-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card-elevated);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.lien-release-picker-item:hover {
+  background: var(--bg-card);
+}
+
+.lien-release-picker-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-blue);
+}
+
+.lien-release-picker-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lien-release-picker-info .vendor {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.lien-release-picker-info .meta {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}

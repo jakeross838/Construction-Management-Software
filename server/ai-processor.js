@@ -1193,13 +1193,301 @@ async function processInvoice(pdfBuffer, originalFilename) {
 }
 
 // ============================================================
+// LIEN RELEASE PROCESSING
+// ============================================================
+
+const LIEN_RELEASE_SCHEMA = `{
+  "documentType": "lien_release",
+  "releaseType": "string: conditional_progress, unconditional_progress, conditional_final, unconditional_final",
+  "vendor": {
+    "companyName": "string, the company releasing the lien (subcontractor/supplier)",
+    "address": "string or null"
+  },
+  "job": {
+    "reference": "string or null, project/job name, client name, or address",
+    "address": "string or null, property address",
+    "owner": "string or null, property owner name"
+  },
+  "customer": "string or null, who the release is made to (usually Ross Built)",
+  "amount": "number or null, the payment amount being released",
+  "throughDate": "string or null, YYYY-MM-DD format - date through which work/payment is covered",
+  "releaseDate": "string or null, YYYY-MM-DD format - date the release was signed",
+  "signer": {
+    "name": "string or null, name of person signing",
+    "title": "string or null, title/position of signer"
+  },
+  "notary": {
+    "name": "string or null, notary public name",
+    "county": "string or null, county of notarization",
+    "expiration": "string or null, YYYY-MM-DD format - notary commission expiration"
+  },
+  "extractionConfidence": {
+    "vendor": "number 0-1",
+    "releaseType": "number 0-1",
+    "amount": "number 0-1",
+    "job": "number 0-1",
+    "dates": "number 0-1"
+  }
+}`;
+
+/**
+ * Extract lien release data using Claude AI
+ */
+async function extractLienReleaseData(pdfText, filename) {
+  const prompt = `Analyze this lien release/waiver document and extract ALL information.
+
+FILE: ${filename}
+
+DOCUMENT CONTENTS:
+${pdfText}
+
+OUTPUT SCHEMA:
+${LIEN_RELEASE_SCHEMA}
+
+CRITICAL IDENTIFICATION RULES:
+1. Determine the release TYPE from the document title:
+   - "CONDITIONAL" means payment has NOT yet been received
+   - "UNCONDITIONAL" means payment HAS been received
+   - "PROGRESS" or "PARTIAL" means ongoing work (not final)
+   - "FINAL" means last/completion payment
+
+2. The VENDOR is the company releasing/waiving their lien rights (the subcontractor/supplier)
+3. Look for "Claimant", "Contractor", "Maker" - this is usually the vendor
+4. Ross Built is typically the "Customer" or "Maker" being released TO
+
+5. For AMOUNT:
+   - Look for payment amount, often handwritten or typed
+   - May appear after "sum of" or "amount of"
+   - Watch for "$" followed by numbers
+
+6. For THROUGH DATE:
+   - Look for "through" date, "furnished through", "work performed through"
+   - This is the date work/materials are covered up to
+
+7. For JOB/PROPERTY:
+   - Look for property address
+   - Owner name
+   - Job name/reference
+   - "Job location", "Property", "Project"
+
+FLORIDA STATUTE REFERENCE:
+These often reference Florida Statute § 713.20 for lien waivers.
+
+Return ONLY valid JSON, no markdown.`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: `You are an expert construction document processor for Ross Built Custom Homes in Florida.
+You specialize in analyzing lien release/waiver documents.
+
+LIEN RELEASE TYPES:
+- Conditional Progress: Payment not yet received, covers ongoing work
+- Unconditional Progress: Payment received, covers ongoing work
+- Conditional Final: Payment not yet received, final completion
+- Unconditional Final: Payment received, final completion
+
+The vendor/claimant is the subcontractor GIVING UP lien rights.
+Ross Built is typically the party being released (the customer/owner's contractor).
+
+Return ONLY valid JSON, no markdown code blocks.`,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    let jsonStr = response.content[0].text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+
+    const data = JSON.parse(jsonStr);
+
+    // Normalize the extracted data
+    if (data.vendor?.companyName) {
+      data.vendor.companyName = standards.toTitleCase(data.vendor.companyName);
+    }
+    if (data.throughDate) {
+      data.throughDate = standards.normalizeDate(data.throughDate);
+    }
+    if (data.releaseDate) {
+      data.releaseDate = standards.normalizeDate(data.releaseDate);
+    }
+    if (data.notary?.expiration) {
+      data.notary.expiration = standards.normalizeDate(data.notary.expiration);
+    }
+    if (data.job?.address) {
+      data.job.address = standards.normalizeAddress(data.job.address);
+    }
+
+    // Validate release type
+    const validTypes = ['conditional_progress', 'unconditional_progress', 'conditional_final', 'unconditional_final'];
+    if (!validTypes.includes(data.releaseType)) {
+      // Try to infer from keywords
+      const text = pdfText.toLowerCase();
+      const hasConditional = text.includes('conditional');
+      const hasUnconditional = text.includes('unconditional');
+      const hasFinal = text.includes('final');
+
+      if (hasUnconditional) {
+        data.releaseType = hasFinal ? 'unconditional_final' : 'unconditional_progress';
+      } else {
+        data.releaseType = hasFinal ? 'conditional_final' : 'conditional_progress';
+      }
+    }
+
+    return data;
+  } catch (err) {
+    throw new Error(`AI lien release extraction failed: ${err.message}`);
+  }
+}
+
+/**
+ * Process a lien release PDF with AI
+ *
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @param {string} originalFilename - Original filename
+ * @returns {Promise<object>} - Processing results with confidence scores
+ */
+async function processLienRelease(pdfBuffer, originalFilename) {
+  const results = {
+    success: false,
+    ai_processed: true,
+    extracted: null,
+    ai_extracted_data: null,
+    ai_confidence: {},
+    matchedJob: null,
+    vendor: null,
+    needs_review: false,
+    review_flags: [],
+    messages: []
+  };
+
+  try {
+    // 1. Extract text from PDF
+    const pdfText = await extractTextFromPDF(pdfBuffer);
+    if (!pdfText || pdfText.length < 30) {
+      results.messages.push('Could not extract text from PDF - may be scanned/image');
+      results.review_flags.push('low_text_quality');
+    }
+
+    // Store raw text for audit
+    results.ai_extracted_data = { raw_text: pdfText?.substring(0, 5000) || '' };
+
+    // 2. AI extraction
+    results.messages.push('Extracting lien release data with AI...');
+    const extracted = await extractLienReleaseData(pdfText || '', originalFilename);
+    results.extracted = extracted;
+    results.ai_extracted_data = {
+      ...results.ai_extracted_data,
+      parsed_vendor_name: extracted.vendor?.companyName,
+      parsed_release_type: extracted.releaseType,
+      parsed_amount: extracted.amount,
+      parsed_through_date: extracted.throughDate,
+      parsed_job: extracted.job
+    };
+
+    // 3. Set AI confidence scores
+    const aiConf = extracted.extractionConfidence || {};
+    results.ai_confidence = {
+      vendor: aiConf.vendor || 0.5,
+      releaseType: aiConf.releaseType || 0.7,
+      amount: aiConf.amount || 0.5,
+      job: aiConf.job || 0.5,
+      dates: aiConf.dates || 0.5,
+      overall: 0
+    };
+
+    // Calculate overall confidence
+    const confValues = Object.values(results.ai_confidence).filter(v => typeof v === 'number');
+    results.ai_confidence.overall = confValues.reduce((a, b) => a + b, 0) / confValues.length;
+
+    results.messages.push(`Extracted: ${extracted.releaseType} from ${extracted.vendor?.companyName || 'Unknown vendor'}`);
+
+    // 4. Match job if we have job data
+    const jobData = extracted.job;
+    const hasJobReference = jobData && (jobData.reference || jobData.address || jobData.owner);
+
+    if (hasJobReference) {
+      const jobMatch = await findMatchingJob(jobData);
+      results.ai_confidence.job = jobMatch.confidence;
+
+      const searchDesc = jobData.reference || jobData.owner || jobData.address || 'unknown';
+      results.messages.push(`Job reference found: "${searchDesc}"`);
+
+      if (jobMatch.confidence >= CONFIDENCE_THRESHOLDS.HIGH) {
+        results.matchedJob = jobMatch.job;
+        results.messages.push(`Matched to job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}% confidence)`);
+      } else if (jobMatch.confidence >= CONFIDENCE_THRESHOLDS.MEDIUM) {
+        results.matchedJob = jobMatch.job;
+        results.needs_review = true;
+        results.review_flags.push('verify_job');
+        results.messages.push(`Matched to job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}% confidence - needs verification)`);
+      } else if (jobMatch.confidence > 0) {
+        results.matchedJob = null;
+        results.needs_review = true;
+        results.review_flags.push('select_job');
+        results.messages.push(`Low confidence job match - manual selection required`);
+      } else {
+        results.needs_review = true;
+        results.review_flags.push('no_job_match');
+        results.messages.push(`No matching job found for: ${searchDesc}`);
+      }
+    } else {
+      results.needs_review = true;
+      results.review_flags.push('missing_job_reference');
+      results.messages.push('No job reference found on lien release');
+    }
+
+    // 5. Find or create vendor
+    if (extracted.vendor?.companyName) {
+      const vendorResult = await findOrCreateVendor(extracted.vendor);
+      if (vendorResult.vendor) {
+        results.vendor = vendorResult.vendor;
+        results.ai_confidence.vendor = Math.max(results.ai_confidence.vendor, vendorResult.confidence);
+        results.messages.push(vendorResult.isNew
+          ? `Created new vendor: ${vendorResult.vendor.name}`
+          : `Matched vendor: ${vendorResult.vendor.name} (${Math.round(vendorResult.confidence * 100)}%)`);
+      }
+    }
+
+    // 6. Check for missing/low confidence fields
+    if (results.ai_confidence.amount < CONFIDENCE_THRESHOLDS.MEDIUM) {
+      results.review_flags.push('verify_amount');
+    }
+    if (results.ai_confidence.vendor < CONFIDENCE_THRESHOLDS.MEDIUM) {
+      results.review_flags.push('verify_vendor');
+    }
+    if (!extracted.throughDate) {
+      results.review_flags.push('missing_through_date');
+    }
+
+    // Set needs_review if we have any review flags
+    if (results.review_flags.length > 0) {
+      results.needs_review = true;
+    }
+
+    results.success = true;
+    results.messages.push('Lien release processing complete');
+
+  } catch (err) {
+    results.success = false;
+    results.messages.push(`Processing error: ${err.message}`);
+    console.error('Lien release processing error:', err);
+  }
+
+  return results;
+}
+
+// ============================================================
 // EXPORTS
 // ============================================================
 
 module.exports = {
   processInvoice,
+  processLienRelease,
   extractTextFromPDF,
   extractInvoiceData,
+  extractLienReleaseData,
   findMatchingJob,
   findOrCreateVendor,
   findOrCreatePO,

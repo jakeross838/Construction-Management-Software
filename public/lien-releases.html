@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Lien Releases</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260113">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav">
+          <a href="index.html" class="main-nav-link active">Financial</a>
+          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
+          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+        </nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="showUploadModal()">+ Upload Release</button>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav">
+          <a href="index.html" class="sub-nav-link">Invoices</a>
+          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
+          <a href="draws.html" class="sub-nav-link">Draws</a>
+          <a href="budgets.html" class="sub-nav-link">Budgets</a>
+          <a href="reconciliation.html" class="sub-nav-link">Reconciliation</a>
+          <a href="lien-releases.html" class="sub-nav-link active">Lien Releases</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Filters -->
+      <div class="table-toolbar">
+        <div class="filter-controls">
+          <select id="statusFilter" class="form-control filter-select">
+            <option value="">All Status</option>
+            <option value="received">Received</option>
+            <option value="verified">Verified</option>
+            <option value="attached">Attached to Draw</option>
+          </select>
+          <select id="releaseTypeFilter" class="form-control filter-select">
+            <option value="">All Types</option>
+            <option value="conditional_progress">Conditional Progress</option>
+            <option value="unconditional_progress">Unconditional Progress</option>
+            <option value="conditional_final">Conditional Final</option>
+            <option value="unconditional_final">Unconditional Final</option>
+          </select>
+          <select id="vendorFilter" class="form-control filter-select">
+            <option value="">All Vendors</option>
+          </select>
+        </div>
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="Search vendor, job..." class="form-control search-input">
+        </div>
+      </div>
+
+      <!-- Lien Release List -->
+      <div class="lien-release-list" id="lienReleaseList">
+        <div class="loading">Loading lien releases...</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Upload Modal -->
+  <div id="uploadModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Upload Lien Release</h2>
+        <button class="close-btn" onclick="closeUploadModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="fileInput" accept=".pdf" style="display:none">
+          <div class="upload-content">
+            <div class="upload-icon">📄</div>
+            <p>Drop PDF here or click to browse</p>
+            <p class="upload-hint">AI will extract vendor, amount, dates automatically</p>
+          </div>
+        </div>
+        <div id="uploadProgress" class="upload-progress" style="display:none">
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+          <p class="upload-status">Processing...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lien Release Detail Modal -->
+  <div id="detailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <h2 id="detailModalTitle">Lien Release</h2>
+          <span id="detailStatusBadge" class="status-badge"></span>
+        </div>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body lien-release-modal-body" id="detailModalBody">
+        <div class="loading">Loading...</div>
+      </div>
+      <div class="modal-footer" id="detailModalFooter">
+        <!-- Action buttons populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Attach to Draw Modal -->
+  <div id="attachDrawModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Attach to Draw</h2>
+        <button class="close-btn" onclick="closeAttachDrawModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Select Draw</label>
+          <select id="drawSelect" class="form-control">
+            <option value="">Select a draw...</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAttachDrawModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmAttachToDraw()">Attach</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <div id="confirmDialog" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2 id="confirmTitle">Confirm</h2>
+        <button class="close-btn" onclick="closeConfirmModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+        <button class="btn btn-primary" id="confirmBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="js/toasts.js?v=20260107"></script>
+  <script src="js/searchable-picker.js?v=20260107"></script>
+  <script src="js/sidebar.js?v=20260112"></script>
+  <script>
+// ============================================================
+// LIEN RELEASES PAGE
+// ============================================================
+
+let state = {
+  lienReleases: [],
+  vendors: [],
+  jobs: [],
+  draws: [],
+  currentStatusFilter: '',
+  currentTypeFilter: '',
+  currentVendorFilter: '',
+  searchQuery: '',
+  currentLienRelease: null
+};
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await Promise.all([
+    loadVendors(),
+    loadJobs(),
+    loadDraws(),
+    loadLienReleases()
+  ]);
+  setupFilters();
+  setupUploadZone();
+
+  // Check for openLienRelease query parameter (deep linking)
+  const urlParams = new URLSearchParams(window.location.search);
+  const openId = urlParams.get('openLienRelease');
+  if (openId) {
+    window.history.replaceState({}, '', window.location.pathname);
+    setTimeout(() => openLienRelease(openId), 300);
+  }
+
+  // Sidebar integration
+  if (window.JobSidebar) {
+    window.JobSidebar.onJobChange((jobId) => {
+      state.currentJobFilter = jobId;
+      renderList();
+    });
+  }
+});
+
+// ============================================================
+// DATA LOADING
+// ============================================================
+
+async function loadLienReleases() {
+  try {
+    const res = await fetch('/api/lien-releases');
+    state.lienReleases = await res.json();
+    renderList();
+  } catch (err) {
+    console.error('Failed to load lien releases:', err);
+    document.getElementById('lienReleaseList').innerHTML =
+      '<div class="error-state">Failed to load lien releases</div>';
+  }
+}
+
+async function loadVendors() {
+  try {
+    const res = await fetch('/api/vendors');
+    state.vendors = await res.json();
+    const select = document.getElementById('vendorFilter');
+    select.innerHTML = '<option value="">All Vendors</option>';
+    state.vendors.forEach(v => {
+      select.innerHTML += `<option value="${v.id}">${v.name}</option>`;
+    });
+  } catch (err) {
+    console.error('Failed to load vendors:', err);
+  }
+}
+
+async function loadJobs() {
+  try {
+    const res = await fetch('/api/jobs');
+    state.jobs = await res.json();
+  } catch (err) {
+    console.error('Failed to load jobs:', err);
+  }
+}
+
+async function loadDraws() {
+  try {
+    const res = await fetch('/api/draws');
+    state.draws = await res.json();
+  } catch (err) {
+    console.error('Failed to load draws:', err);
+  }
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+
+function renderList() {
+  const container = document.getElementById('lienReleaseList');
+  let filtered = state.lienReleases;
+
+  // Apply filters
+  if (state.currentStatusFilter) {
+    filtered = filtered.filter(lr => lr.status === state.currentStatusFilter);
+  }
+  if (state.currentTypeFilter) {
+    filtered = filtered.filter(lr => lr.release_type === state.currentTypeFilter);
+  }
+  if (state.currentVendorFilter) {
+    filtered = filtered.filter(lr => lr.vendor_id === state.currentVendorFilter);
+  }
+  if (state.currentJobFilter) {
+    filtered = filtered.filter(lr => lr.job_id === state.currentJobFilter);
+  }
+  if (state.searchQuery) {
+    const q = state.searchQuery.toLowerCase();
+    filtered = filtered.filter(lr =>
+      (lr.vendor?.name || '').toLowerCase().includes(q) ||
+      (lr.job?.name || '').toLowerCase().includes(q) ||
+      (lr.signer_name || '').toLowerCase().includes(q)
+    );
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state">No lien releases found</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="lien-release-list-header">
+      <div>Vendor</div>
+      <div>Type</div>
+      <div>Amount</div>
+      <div>Through Date</div>
+      <div>Job</div>
+      <div>Status</div>
+      <div>Draw</div>
+    </div>
+    ${filtered.map(lr => renderRow(lr)).join('')}
+  `;
+}
+
+function renderRow(lr) {
+  const vendor = lr.vendor || state.vendors.find(v => v.id === lr.vendor_id);
+  const job = lr.job || state.jobs.find(j => j.id === lr.job_id);
+
+  const typeLabel = formatReleaseType(lr.release_type);
+  const statusLabel = formatStatus(lr.status);
+  const statusClass = getStatusClass(lr.status);
+
+  return `
+    <div class="lien-release-row" onclick="openLienRelease('${lr.id}')">
+      <div class="vendor-name">${vendor?.name || 'Unknown Vendor'}</div>
+      <div class="release-type">${typeLabel}</div>
+      <div class="amount">${lr.amount ? formatMoney(lr.amount) : '-'}</div>
+      <div class="through-date">${lr.through_date ? formatDate(lr.through_date) : '-'}</div>
+      <div class="job-name">${job?.name || 'Unassigned'}</div>
+      <div><span class="status-badge status-${statusClass}">${statusLabel}</span></div>
+      <div>${lr.draw ? `Draw #${lr.draw.draw_number}` : '-'}</div>
+    </div>
+  `;
+}
+
+function formatReleaseType(type) {
+  const labels = {
+    'conditional_progress': 'Conditional Progress',
+    'unconditional_progress': 'Unconditional Progress',
+    'conditional_final': 'Conditional Final',
+    'unconditional_final': 'Unconditional Final'
+  };
+  return labels[type] || type;
+}
+
+function formatStatus(status) {
+  const labels = {
+    'received': 'Received',
+    'verified': 'Verified',
+    'attached': 'Attached'
+  };
+  return labels[status] || status;
+}
+
+function getStatusClass(status) {
+  const classes = {
+    'received': 'pending',
+    'verified': 'approved',
+    'attached': 'in-draw'
+  };
+  return classes[status] || 'pending';
+}
+
+function formatMoney(amount) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(amount || 0);
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ============================================================
+// FILTERS
+// ============================================================
+
+function setupFilters() {
+  document.getElementById('statusFilter').addEventListener('change', e => {
+    state.currentStatusFilter = e.target.value;
+    renderList();
+  });
+  document.getElementById('releaseTypeFilter').addEventListener('change', e => {
+    state.currentTypeFilter = e.target.value;
+    renderList();
+  });
+  document.getElementById('vendorFilter').addEventListener('change', e => {
+    state.currentVendorFilter = e.target.value;
+    renderList();
+  });
+
+  let debounce;
+  document.getElementById('searchInput').addEventListener('input', e => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.searchQuery = e.target.value;
+      renderList();
+    }, 300);
+  });
+}
+
+// ============================================================
+// UPLOAD
+// ============================================================
+
+function showUploadModal() {
+  document.getElementById('uploadModal').style.display = 'flex';
+  document.getElementById('uploadProgress').style.display = 'none';
+  document.getElementById('uploadZone').style.display = 'block';
+}
+
+function closeUploadModal() {
+  document.getElementById('uploadModal').style.display = 'none';
+}
+
+function setupUploadZone() {
+  const zone = document.getElementById('uploadZone');
+  const input = document.getElementById('fileInput');
+
+  zone.addEventListener('click', () => input.click());
+
+  zone.addEventListener('dragover', e => {
+    e.preventDefault();
+    zone.classList.add('dragover');
+  });
+
+  zone.addEventListener('dragleave', () => {
+    zone.classList.remove('dragover');
+  });
+
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type === 'application/pdf') {
+      uploadFile(file);
+    } else {
+      showToast('Please upload a PDF file', 'error');
+    }
+  });
+
+  input.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) uploadFile(file);
+  });
+}
+
+async function uploadFile(file) {
+  const zone = document.getElementById('uploadZone');
+  const progress = document.getElementById('uploadProgress');
+
+  zone.style.display = 'none';
+  progress.style.display = 'block';
+  progress.querySelector('.upload-status').textContent = 'Processing with AI...';
+
+  const formData = new FormData();
+  formData.append('pdf', file);
+  formData.append('uploaded_by', 'User');
+
+  try {
+    const res = await fetch('/api/lien-releases/process', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await res.json();
+
+    if (res.ok && result.success) {
+      showToast('Lien release uploaded and processed', 'success');
+      closeUploadModal();
+      await loadLienReleases();
+      openLienRelease(result.lien_release.id);
+    } else {
+      throw new Error(result.error || 'Processing failed');
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+    zone.style.display = 'block';
+    progress.style.display = 'none';
+  }
+}
+
+// ============================================================
+// DETAIL MODAL
+// ============================================================
+
+async function openLienRelease(id) {
+  const modal = document.getElementById('detailModal');
+  const body = document.getElementById('detailModalBody');
+  const footer = document.getElementById('detailModalFooter');
+
+  modal.style.display = 'flex';
+  body.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const res = await fetch(`/api/lien-releases/${id}`);
+    const lr = await res.json();
+    state.currentLienRelease = lr;
+
+    const vendor = lr.vendor || state.vendors.find(v => v.id === lr.vendor_id);
+    const job = lr.job || state.jobs.find(j => j.id === lr.job_id);
+
+    document.getElementById('detailModalTitle').textContent =
+      `${formatReleaseType(lr.release_type)} - ${vendor?.name || 'Unknown Vendor'}`;
+    document.getElementById('detailStatusBadge').className =
+      `status-badge status-${getStatusClass(lr.status)}`;
+    document.getElementById('detailStatusBadge').textContent = formatStatus(lr.status);
+
+    body.innerHTML = `
+      <div class="lien-release-detail-layout">
+        <div class="pdf-viewer-section">
+          ${lr.pdf_url
+            ? `<iframe src="${lr.pdf_url}" class="pdf-viewer-iframe"></iframe>`
+            : '<div class="no-pdf">No PDF available</div>'}
+        </div>
+        <div class="detail-form-section">
+          <div class="detail-card">
+            <h3>Release Details</h3>
+            <div class="detail-grid">
+              <div class="detail-row">
+                <label>Type</label>
+                <select id="editReleaseType" class="form-control">
+                  <option value="conditional_progress" ${lr.release_type === 'conditional_progress' ? 'selected' : ''}>Conditional Progress</option>
+                  <option value="unconditional_progress" ${lr.release_type === 'unconditional_progress' ? 'selected' : ''}>Unconditional Progress</option>
+                  <option value="conditional_final" ${lr.release_type === 'conditional_final' ? 'selected' : ''}>Conditional Final</option>
+                  <option value="unconditional_final" ${lr.release_type === 'unconditional_final' ? 'selected' : ''}>Unconditional Final</option>
+                </select>
+              </div>
+              <div class="detail-row">
+                <label>Amount</label>
+                <input type="number" id="editAmount" class="form-control" value="${lr.amount || ''}" step="0.01">
+              </div>
+              <div class="detail-row">
+                <label>Through Date</label>
+                <input type="date" id="editThroughDate" class="form-control" value="${lr.through_date || ''}">
+              </div>
+              <div class="detail-row">
+                <label>Release Date</label>
+                <input type="date" id="editReleaseDate" class="form-control" value="${lr.release_date || ''}">
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-card">
+            <h3>Vendor & Job</h3>
+            <div class="detail-grid">
+              <div class="detail-row">
+                <label>Vendor</label>
+                <select id="editVendor" class="form-control">
+                  <option value="">Select Vendor...</option>
+                  ${state.vendors.map(v => `<option value="${v.id}" ${v.id === lr.vendor_id ? 'selected' : ''}>${v.name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="detail-row">
+                <label>Job</label>
+                <select id="editJob" class="form-control">
+                  <option value="">Select Job...</option>
+                  ${state.jobs.map(j => `<option value="${j.id}" ${j.id === lr.job_id ? 'selected' : ''}>${j.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-card">
+            <h3>Signer & Notary</h3>
+            <div class="detail-grid">
+              <div class="detail-row">
+                <label>Signer Name</label>
+                <input type="text" id="editSignerName" class="form-control" value="${lr.signer_name || ''}">
+              </div>
+              <div class="detail-row">
+                <label>Signer Title</label>
+                <input type="text" id="editSignerTitle" class="form-control" value="${lr.signer_title || ''}">
+              </div>
+              <div class="detail-row">
+                <label>Notary Name</label>
+                <input type="text" id="editNotaryName" class="form-control" value="${lr.notary_name || ''}">
+              </div>
+              <div class="detail-row">
+                <label>Notary County</label>
+                <input type="text" id="editNotaryCounty" class="form-control" value="${lr.notary_county || ''}">
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-card">
+            <h3>Notes</h3>
+            <textarea id="editNotes" class="form-control" rows="3">${lr.notes || ''}</textarea>
+          </div>
+
+          ${lr.needs_review ? `
+          <div class="detail-card review-flags-card">
+            <h3>Review Flags</h3>
+            <div class="review-flags">
+              ${(lr.review_flags || []).map(f => `<span class="flag-badge">${f}</span>`).join('')}
+            </div>
+          </div>
+          ` : ''}
+
+          ${lr.activity && lr.activity.length > 0 ? `
+          <div class="detail-card">
+            <h3>Activity</h3>
+            <div class="activity-log">
+              ${lr.activity.map(a => `
+                <div class="activity-item">
+                  <span class="activity-action">${a.action}</span>
+                  <span class="activity-by">${a.performed_by || 'System'}</span>
+                  <span class="activity-time">${formatDate(a.created_at)}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    // Footer buttons
+    footer.innerHTML = `
+      <div class="footer-left">
+        <button class="btn btn-danger" onclick="deleteLienRelease('${lr.id}')">Delete</button>
+      </div>
+      <div class="footer-right">
+        ${lr.status !== 'attached' ? `
+        <button class="btn btn-secondary" onclick="showAttachDrawModal('${lr.id}')">Attach to Draw</button>
+        ` : `
+        <button class="btn btn-secondary" onclick="detachFromDraw('${lr.id}')">Detach from Draw</button>
+        `}
+        ${lr.status === 'received' ? `
+        <button class="btn btn-success" onclick="verifyLienRelease('${lr.id}')">Mark Verified</button>
+        ` : ''}
+        <button class="btn btn-primary" onclick="saveLienRelease('${lr.id}')">Save Changes</button>
+      </div>
+    `;
+
+  } catch (err) {
+    console.error('Error loading lien release:', err);
+    body.innerHTML = '<div class="error-state">Failed to load lien release</div>';
+  }
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').style.display = 'none';
+  state.currentLienRelease = null;
+}
+
+async function saveLienRelease(id) {
+  const updates = {
+    release_type: document.getElementById('editReleaseType').value,
+    amount: parseFloat(document.getElementById('editAmount').value) || null,
+    through_date: document.getElementById('editThroughDate').value || null,
+    release_date: document.getElementById('editReleaseDate').value || null,
+    vendor_id: document.getElementById('editVendor').value || null,
+    job_id: document.getElementById('editJob').value || null,
+    signer_name: document.getElementById('editSignerName').value || null,
+    signer_title: document.getElementById('editSignerTitle').value || null,
+    notary_name: document.getElementById('editNotaryName').value || null,
+    notary_county: document.getElementById('editNotaryCounty').value || null,
+    notes: document.getElementById('editNotes').value || null,
+    updated_by: 'User'
+  };
+
+  try {
+    const res = await fetch(`/api/lien-releases/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+
+    if (!res.ok) throw new Error('Failed to save');
+
+    showToast('Lien release updated', 'success');
+    await loadLienReleases();
+    openLienRelease(id);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function verifyLienRelease(id) {
+  try {
+    const res = await fetch(`/api/lien-releases/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'verified', updated_by: 'User' })
+    });
+
+    if (!res.ok) throw new Error('Failed to verify');
+
+    showToast('Lien release marked as verified', 'success');
+    await loadLienReleases();
+    openLienRelease(id);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function deleteLienRelease(id) {
+  if (!confirm('Are you sure you want to delete this lien release?')) return;
+
+  try {
+    const res = await fetch(`/api/lien-releases/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleted_by: 'User' })
+    });
+
+    if (!res.ok) throw new Error('Failed to delete');
+
+    showToast('Lien release deleted', 'success');
+    closeDetailModal();
+    await loadLienReleases();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// ATTACH TO DRAW
+// ============================================================
+
+let pendingAttachId = null;
+
+function showAttachDrawModal(lienReleaseId) {
+  pendingAttachId = lienReleaseId;
+  const lr = state.currentLienRelease;
+
+  // Filter draws by job if lien release has a job
+  let availableDraws = state.draws.filter(d => d.status === 'draft' || d.status === 'pending');
+  if (lr?.job_id) {
+    availableDraws = availableDraws.filter(d => d.job_id === lr.job_id);
+  }
+
+  const select = document.getElementById('drawSelect');
+  select.innerHTML = '<option value="">Select a draw...</option>';
+  availableDraws.forEach(d => {
+    const job = state.jobs.find(j => j.id === d.job_id);
+    select.innerHTML += `<option value="${d.id}">Draw #${d.draw_number} - ${job?.name || 'Unknown Job'}</option>`;
+  });
+
+  document.getElementById('attachDrawModal').style.display = 'flex';
+}
+
+function closeAttachDrawModal() {
+  document.getElementById('attachDrawModal').style.display = 'none';
+  pendingAttachId = null;
+}
+
+async function confirmAttachToDraw() {
+  const drawId = document.getElementById('drawSelect').value;
+  if (!drawId) {
+    showToast('Please select a draw', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/lien-releases/${pendingAttachId}/attach-to-draw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draw_id: drawId, attached_by: 'User' })
+    });
+
+    if (!res.ok) throw new Error('Failed to attach');
+
+    showToast('Lien release attached to draw', 'success');
+    closeAttachDrawModal();
+    await loadLienReleases();
+    openLienRelease(pendingAttachId);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function detachFromDraw(id) {
+  if (!confirm('Detach this lien release from its draw?')) return;
+
+  try {
+    const res = await fetch(`/api/lien-releases/${id}/detach-from-draw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ detached_by: 'User' })
+    });
+
+    if (!res.ok) throw new Error('Failed to detach');
+
+    showToast('Lien release detached from draw', 'success');
+    await loadLienReleases();
+    openLienRelease(id);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// CONFIRM MODAL (utility)
+// ============================================================
+
+function closeConfirmModal() {
+  document.getElementById('confirmDialog').style.display = 'none';
+}
+  </script>
+</body>
+</html>
