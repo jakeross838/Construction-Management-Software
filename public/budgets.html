@@ -31,6 +31,7 @@
           <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
           <a href="draws.html" class="sub-nav-link">Draws</a>
           <a href="budgets.html" class="sub-nav-link active">Budgets</a>
+          <a href="reconciliation.html" class="sub-nav-link">Reconciliation</a>
         </nav>
       </div>
     </header>
@@ -445,7 +446,8 @@
     let state = {
       jobs: [],
       currentJob: null,
-      budgetData: null
+      budgetData: null,
+      pendingHighlightCostCode: null
     };
 
     document.addEventListener('DOMContentLoaded', async () => {
@@ -453,6 +455,15 @@
 
       // Load jobs first, then setup sidebar listener
       await loadJobs();
+
+      // Check for costCode query parameter (deep linking from reconciliation, etc.)
+      const urlParams = new URLSearchParams(window.location.search);
+      const costCodeParam = urlParams.get('costCode');
+      if (costCodeParam) {
+        state.pendingHighlightCostCode = costCodeParam;
+        // Clear the URL param
+        window.history.replaceState({}, '', window.location.pathname);
+      }
 
       // Sidebar integration - listen for job selection changes
       if (window.JobSidebar) {
@@ -728,7 +739,7 @@
             const projectedClass = projected > budgeted ? 'over-budget' : '';
 
             html += `
-              <tr class="${healthClass} category-line clickable-row" onclick="showCostCodeDetail('${line.costCodeId}')" title="Click to view details">
+              <tr class="${healthClass} category-line clickable-row" data-cost-code="${line.costCode}" data-cost-code-id="${line.costCodeId}" onclick="showCostCodeDetail('${line.costCodeId}')" title="Click to view details">
                 <td class="cost-code">${healthIndicator}${line.costCode}</td>
                 <td>${line.description || '-'}</td>
                 <td class="amount">${formatMoneyDecimal(budgeted)}</td>
@@ -770,6 +781,22 @@
           <td class="amount ${totalVariance < 0 ? 'over-budget' : ''}"><strong>${formatMoneyDecimal(totalVariance)}</strong></td>
         </tr>
       `;
+
+      // Handle pending cost code highlight from deep link
+      if (state.pendingHighlightCostCode) {
+        setTimeout(() => highlightCostCode(state.pendingHighlightCostCode), 100);
+        state.pendingHighlightCostCode = null;
+      }
+    }
+
+    // Highlight and scroll to a specific cost code row
+    function highlightCostCode(costCode) {
+      const row = document.querySelector(`tr[data-cost-code="${costCode}"]`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.classList.add('highlight-flash');
+        setTimeout(() => row.classList.remove('highlight-flash'), 2000);
+      }
     }
 
     function renderChangeOrders(changeOrders) {

@@ -18,13 +18,27 @@ let state = {
 // INITIALIZATION
 // ============================================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   loadJobs();
   loadVendors();
   loadCostCodes();
-  loadPurchaseOrders();
+  await loadPurchaseOrders();
   setupFilterButtons();
   setupSearchInput();
+
+  // Check for openPO query parameter (deep linking from reconciliation, etc.)
+  const urlParams = new URLSearchParams(window.location.search);
+  const openPOId = urlParams.get('openPO');
+  if (openPOId) {
+    // Clear the URL param
+    window.history.replaceState({}, '', window.location.pathname);
+    // Open the PO modal after a short delay to let data load
+    setTimeout(() => {
+      if (window.poModals) {
+        window.poModals.showPODetail(openPOId);
+      }
+    }, 300);
+  }
 
   // Sidebar integration - listen for job selection changes
   if (window.JobSidebar) {

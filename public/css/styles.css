@@ -12449,3 +12449,21 @@ textarea.form-control {
   border-top: 1px solid var(--border);
   background: var(--bg-card-elevated);
 }
+
+/* ============================================================
+   DEEP LINK HIGHLIGHT ANIMATION
+   ============================================================ */
+
+@keyframes highlightFlash {
+  0% { background-color: rgba(88, 166, 255, 0.5); }
+  100% { background-color: transparent; }
+}
+
+.highlight-flash {
+  animation: highlightFlash 2s ease-out forwards;
+}
+
+/* Budget table specific highlight */
+.budget-table tr.highlight-flash {
+  animation: highlightFlash 2s ease-out forwards;
+}

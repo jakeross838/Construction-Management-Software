@@ -56,6 +56,13 @@ const {
 } = require('./undo');
 
 const {
+  reconcileJob,
+  reconcileAll,
+  getExternalSyncStatus,
+  recordExternalSync
+} = require('./reconciliation');
+
+const {
   sseHandler,
   broadcast,
   broadcastInvoiceUpdate,
@@ -7936,6 +7943,397 @@ const cleanupPID = () => {
 process.on('exit', cleanupPID);
 process.on('SIGINT', () => { cleanupPID(); process.exit(0); });
 process.on('SIGTERM', () => { cleanupPID(); process.exit(0); });
+
+// ==========================================
+// RECONCILIATION API
+// ==========================================
+
+// Run reconciliation for a specific job
+app.get('/api/jobs/:id/reconcile', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+  const startTime = Date.now();
+
+  const results = await reconcileJob(supabase, jobId);
+  results.duration_ms = Date.now() - startTime;
+
+  // Log the reconciliation run
+  await supabase.from('v2_reconciliation_log').insert({
+    job_id: jobId,
+    total_checks: results.summary.total_checks,
+    passed: results.summary.passed,
+    failed: results.summary.failed,
+    warnings: results.summary.warnings,
+    results: results.checks,
+    errors: results.errors,
+    run_by: req.query.performed_by || 'System',
+    duration_ms: results.duration_ms
+  });
+
+  // Update job's last reconciled timestamp
+  if (results.summary.failed === 0) {
+    await supabase.from('v2_jobs')
+      .update({ last_reconciled_at: new Date().toISOString() })
+      .eq('id', jobId);
+  }
+
+  res.json(results);
+}));
+
+// Run reconciliation for all active jobs
+app.get('/api/reconcile/all', asyncHandler(async (req, res) => {
+  const startTime = Date.now();
+  const results = await reconcileAll(supabase);
+  results.duration_ms = Date.now() - startTime;
+
+  // Log the reconciliation run
+  await supabase.from('v2_reconciliation_log').insert({
+    job_id: null,
+    total_checks: results.results.reduce((sum, r) => sum + r.summary.total_checks, 0),
+    passed: results.results.reduce((sum, r) => sum + r.summary.passed, 0),
+    failed: results.summary.total_errors,
+    warnings: results.summary.total_warnings,
+    results: results.results,
+    run_by: req.query.performed_by || 'System',
+    duration_ms: results.duration_ms
+  });
+
+  res.json(results);
+}));
+
+// Get reconciliation history
+app.get('/api/reconcile/history', asyncHandler(async (req, res) => {
+  const { job_id, limit = 20, unresolved_only } = req.query;
+
+  let query = supabase
+    .from('v2_reconciliation_log')
+    .select('*')
+    .order('run_at', { ascending: false })
+    .limit(parseInt(limit));
+
+  if (job_id) {
+    query = query.eq('job_id', job_id);
+  }
+
+  if (unresolved_only === 'true') {
+    query = query.gt('failed', 0).is('resolved_at', null);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data);
+}));
+
+// Mark reconciliation issues as resolved
+app.post('/api/reconcile/:id/resolve', asyncHandler(async (req, res) => {
+  const { resolved_by, notes } = req.body;
+
+  const { data, error } = await supabase
+    .from('v2_reconciliation_log')
+    .update({
+      resolved_at: new Date().toISOString(),
+      resolved_by,
+      resolution_notes: notes
+    })
+    .eq('id', req.params.id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.json(data);
+}));
+
+// Get external sync status for an entity
+app.get('/api/sync/:entity_type/:entity_id', asyncHandler(async (req, res) => {
+  const { entity_type, entity_id } = req.params;
+  const syncs = await getExternalSyncStatus(supabase, entity_type, entity_id);
+  res.json(syncs);
+}));
+
+// Record external sync (e.g., after QuickBooks export)
+app.post('/api/sync', asyncHandler(async (req, res) => {
+  const { entity_type, entity_id, system, external_id, status, details, synced_by } = req.body;
+
+  const result = await recordExternalSync(supabase, {
+    entityType: entity_type,
+    entityId: entity_id,
+    system,
+    externalId: external_id,
+    status: status || 'synced',
+    details,
+    syncedBy: synced_by || 'System'
+  });
+
+  if (result.error) throw result.error;
+  res.json({ success: true, sync: result.data });
+}));
+
+// Get entities pending sync for a system
+app.get('/api/sync/:system/pending', asyncHandler(async (req, res) => {
+  const { system } = req.params;
+  const { entity_type } = req.query;
+
+  // Get invoices not yet synced to this system
+  let query = supabase
+    .from('v2_invoices')
+    .select(`
+      id, invoice_number, amount, status, vendor:v2_vendors(name), job:v2_jobs(name),
+      syncs:v2_external_sync(status, synced_at)
+    `)
+    .in('status', ['approved', 'in_draw', 'paid'])
+    .is('deleted_at', null);
+
+  const { data: invoices, error } = await query;
+  if (error) throw error;
+
+  // Filter to those not synced or failed
+  const pending = (invoices || []).filter(inv => {
+    const sync = (inv.syncs || []).find(s => s.system === system);
+    return !sync || sync.status === 'failed' || sync.status === 'pending';
+  });
+
+  res.json({
+    system,
+    pending_count: pending.length,
+    invoices: pending
+  });
+}));
+
+// Create financial snapshot
+app.post('/api/jobs/:id/snapshot', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+  const { snapshot_type = 'manual', reference_type, reference_id, created_by = 'System' } = req.body;
+
+  // Call the database function to create snapshot
+  const { data, error } = await supabase.rpc('create_financial_snapshot', {
+    p_job_id: jobId,
+    p_snapshot_type: snapshot_type,
+    p_reference_type: reference_type,
+    p_reference_id: reference_id,
+    p_created_by: created_by
+  });
+
+  if (error) throw error;
+  res.json({ success: true, snapshot_id: data });
+}));
+
+// Get financial snapshots for a job
+app.get('/api/jobs/:id/snapshots', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+  const { limit = 10 } = req.query;
+
+  const { data, error } = await supabase
+    .from('v2_financial_snapshots')
+    .select('id, snapshot_type, reference_type, reference_id, total_contract, total_billed, total_paid, retainage_held, created_at, created_by, notes')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false })
+    .limit(parseInt(limit));
+
+  if (error) throw error;
+  res.json(data);
+}));
+
+// =====================================================
+// QUICK FIX ENDPOINTS (Reconciliation Fixes)
+// =====================================================
+
+// Sync invoice billed_amount from actual draw history
+app.post('/api/invoices/:id/sync-billed', asyncHandler(async (req, res) => {
+  const invoiceId = req.params.id;
+
+  // Get invoice info
+  const { data: invoice, error: invError } = await supabase
+    .from('v2_invoices')
+    .select('id, invoice_number, amount, billed_amount')
+    .eq('id', invoiceId)
+    .single();
+
+  if (invError) throw invError;
+  if (!invoice) {
+    return res.status(404).json({ error: 'Invoice not found' });
+  }
+
+  // Get all draw_invoices for this invoice (these are the actual billings)
+  const { data: drawInvoices, error: diError } = await supabase
+    .from('v2_draw_invoices')
+    .select(`
+      draw_id,
+      draw:v2_draws(id, status)
+    `)
+    .eq('invoice_id', invoiceId);
+
+  if (diError) throw diError;
+
+  // Get allocations that were part of each billing
+  // For simplicity, we'll calculate from current allocations marked as billed
+  // In a more complex system, we'd track historical allocation snapshots
+  const { data: allocations, error: allocError } = await supabase
+    .from('v2_invoice_allocations')
+    .select('amount')
+    .eq('invoice_id', invoiceId);
+
+  if (allocError) throw allocError;
+
+  // Calculate billed amount
+  // If invoice is in a draw (or was), the billed amount = sum of allocations at time of draw
+  // For now, use allocation sum if invoice has been in draws
+  let calculatedBilled = 0;
+
+  if (drawInvoices && drawInvoices.length > 0) {
+    // Invoice has been in draws - calculate from allocations
+    const allocationSum = (allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    calculatedBilled = allocationSum > 0 ? allocationSum : parseFloat(invoice.amount || 0);
+  }
+
+  // Update the invoice
+  const { data: updated, error: updateError } = await supabase
+    .from('v2_invoices')
+    .update({ billed_amount: calculatedBilled })
+    .eq('id', invoiceId)
+    .select()
+    .single();
+
+  if (updateError) throw updateError;
+
+  res.json({
+    success: true,
+    invoice_id: invoiceId,
+    invoice_number: invoice.invoice_number,
+    previous_billed: parseFloat(invoice.billed_amount || 0),
+    new_billed: calculatedBilled,
+    draw_count: drawInvoices?.length || 0
+  });
+}));
+
+// Sync all budget line totals from actual allocations
+app.post('/api/budgets/sync-totals', asyncHandler(async (req, res) => {
+  const { job_id } = req.query;
+
+  // Get all budget lines (optionally filtered by job)
+  let budgetQuery = supabase
+    .from('v2_budget_lines')
+    .select('id, job_id, cost_code_id, billed_amount');
+
+  if (job_id) {
+    budgetQuery = budgetQuery.eq('job_id', job_id);
+  }
+
+  const { data: budgetLines, error: blError } = await budgetQuery;
+  if (blError) throw blError;
+
+  const updates = [];
+  const results = [];
+
+  for (const bl of budgetLines || []) {
+    // Get sum of allocations for this job + cost_code
+    const { data: allocations, error: allocError } = await supabase
+      .from('v2_invoice_allocations')
+      .select('amount')
+      .eq('job_id', bl.job_id)
+      .eq('cost_code_id', bl.cost_code_id);
+
+    if (allocError) {
+      console.error(`Error getting allocations for budget line ${bl.id}:`, allocError);
+      continue;
+    }
+
+    const calculatedBilled = (allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const previousBilled = parseFloat(bl.billed_amount || 0);
+
+    // Only update if different
+    if (Math.abs(calculatedBilled - previousBilled) > 0.01) {
+      updates.push({
+        id: bl.id,
+        billed_amount: calculatedBilled
+      });
+
+      results.push({
+        budget_line_id: bl.id,
+        previous: previousBilled,
+        calculated: calculatedBilled,
+        difference: calculatedBilled - previousBilled
+      });
+    }
+  }
+
+  // Batch update
+  for (const update of updates) {
+    await supabase
+      .from('v2_budget_lines')
+      .update({ billed_amount: update.billed_amount })
+      .eq('id', update.id);
+  }
+
+  res.json({
+    success: true,
+    total_budget_lines: budgetLines?.length || 0,
+    updated_count: updates.length,
+    updates: results
+  });
+}));
+
+// Sync all invoices' billed_amount (bulk fix)
+app.post('/api/invoices/sync-all-billed', asyncHandler(async (req, res) => {
+  const { job_id } = req.query;
+
+  // Get all invoices that have been in draws
+  let invoiceQuery = supabase
+    .from('v2_invoices')
+    .select(`
+      id, invoice_number, amount, billed_amount,
+      draw_invoices:v2_draw_invoices(draw_id),
+      allocations:v2_invoice_allocations(amount)
+    `)
+    .is('deleted_at', null);
+
+  if (job_id) {
+    invoiceQuery = invoiceQuery.eq('job_id', job_id);
+  }
+
+  const { data: invoices, error } = await invoiceQuery;
+  if (error) throw error;
+
+  const updates = [];
+  const results = [];
+
+  for (const inv of invoices || []) {
+    // Only process invoices that have been in draws
+    if (!inv.draw_invoices || inv.draw_invoices.length === 0) continue;
+
+    const allocationSum = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const calculatedBilled = allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0);
+    const previousBilled = parseFloat(inv.billed_amount || 0);
+
+    if (Math.abs(calculatedBilled - previousBilled) > 0.01) {
+      updates.push({
+        id: inv.id,
+        billed_amount: calculatedBilled
+      });
+
+      results.push({
+        invoice_id: inv.id,
+        invoice_number: inv.invoice_number,
+        previous: previousBilled,
+        calculated: calculatedBilled
+      });
+    }
+  }
+
+  // Batch update
+  for (const update of updates) {
+    await supabase
+      .from('v2_invoices')
+      .update({ billed_amount: update.billed_amount })
+      .eq('id', update.id);
+  }
+
+  res.json({
+    success: true,
+    total_invoices: invoices?.length || 0,
+    updated_count: updates.length,
+    updates: results
+  });
+}));
 
 app.listen(port, () => {
   console.log('');

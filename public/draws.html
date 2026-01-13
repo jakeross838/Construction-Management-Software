@@ -31,6 +31,7 @@
           <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
           <a href="draws.html" class="sub-nav-link active">Draws</a>
           <a href="budgets.html" class="sub-nav-link">Budgets</a>
+          <a href="reconciliation.html" class="sub-nav-link">Reconciliation</a>
         </nav>
       </div>
     </header>
@@ -566,11 +567,23 @@
       currentDrawInvoices: []
     };
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       loadJobs();
-      loadDraws();
+      await loadDraws();
       setupFilters();
       setupDrawSearch();
+
+      // Check for openDraw query parameter (deep linking from reconciliation, etc.)
+      const urlParams = new URLSearchParams(window.location.search);
+      const openDrawId = urlParams.get('openDraw');
+      if (openDrawId) {
+        // Clear the URL parameter without reloading
+        window.history.replaceState({}, '', window.location.pathname);
+        // Open the draw modal after data is loaded
+        setTimeout(() => {
+          openDraw(openDrawId);
+        }, 300);
+      }
 
       // Sidebar integration - listen for job selection changes
       if (window.JobSidebar) {

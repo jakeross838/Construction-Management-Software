@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financial Reconciliation | Ross Built CMS</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    /* Reconciliation Page Specific Styles */
+    .recon-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .recon-header h1 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.5rem;
+      color: var(--text-primary);
+    }
+
+    .recon-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Summary Cards */
+    .recon-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .summary-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .summary-card .count {
+      font-size: 2.5rem;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .summary-card .label {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .summary-card.passed .count { color: var(--accent-green); }
+    .summary-card.warnings .count { color: var(--accent-orange); }
+    .summary-card.errors .count { color: var(--accent-red); }
+    .summary-card.total .count { color: var(--accent-blue); }
+
+    /* Issue Lists */
+    .recon-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-header h2 {
+      font-size: 1.1rem;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-badge {
+      background: var(--bg-tertiary);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .section-badge.error {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--accent-red);
+    }
+
+    .section-badge.warning {
+      background: rgba(210, 153, 34, 0.15);
+      color: var(--accent-orange);
+    }
+
+    /* Issue Items */
+    .issue-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .issue-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 16px;
+      align-items: start;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .issue-item:last-child {
+      border-bottom: none;
+    }
+
+    .issue-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+    }
+
+    .issue-icon.error {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--accent-red);
+    }
+
+    .issue-icon.warning {
+      background: rgba(210, 153, 34, 0.15);
+      color: var(--accent-orange);
+    }
+
+    .issue-content h4 {
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .issue-content p {
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      line-height: 1.4;
+    }
+
+    .issue-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .issue-amount {
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .issue-amount.negative {
+      color: var(--accent-red);
+    }
+
+    .issue-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-resolve {
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-resolve:hover {
+      background: var(--accent-green);
+      border-color: var(--accent-green);
+      color: #000;
+    }
+
+    .btn-view {
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-view:hover {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+
+    /* Empty State */
+    .empty-state {
+      padding: 40px;
+      text-align: center;
+      color: var(--text-secondary);
+    }
+
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    /* History Table */
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .history-table th {
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--bg-tertiary);
+    }
+
+    .history-table td {
+      padding: 12px 16px;
+      font-size: 0.875rem;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .history-table tr:hover td {
+      background: var(--bg-hover);
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    .status-dot.clean { background: var(--accent-green); }
+    .status-dot.warnings { background: var(--accent-orange); }
+    .status-dot.errors { background: var(--accent-red); }
+
+    /* Sync Status */
+    .sync-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      padding: 20px;
+    }
+
+    .sync-card {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .sync-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .sync-card-header h4 {
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+    }
+
+    .sync-status {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .sync-status.connected {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--accent-green);
+    }
+
+    .sync-status.pending {
+      background: rgba(210, 153, 34, 0.15);
+      color: var(--accent-orange);
+    }
+
+    .sync-status.not-configured {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .sync-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .sync-stat {
+      font-size: 0.8125rem;
+    }
+
+    .sync-stat .label {
+      color: var(--text-secondary);
+    }
+
+    .sync-stat .value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* Last Run Info */
+    .last-run {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+    }
+
+    .last-run .time {
+      color: var(--text-primary);
+    }
+
+    /* Loading */
+    .loading-spinner {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 40px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Job Filter */
+    .job-filter {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .job-filter select {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      min-width: 200px;
+    }
+
+    /* Resolve Modal */
+    .resolve-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .resolve-modal.active {
+      display: flex;
+    }
+
+    .resolve-modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 500px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .resolve-modal-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .resolve-modal-header h3 {
+      font-size: 1.125rem;
+      color: var(--text-primary);
+    }
+
+    .resolve-modal-body {
+      padding: 20px;
+    }
+
+    .resolve-modal-body label {
+      display: block;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .resolve-modal-body textarea {
+      width: 100%;
+      min-height: 120px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-primary);
+      padding: 12px;
+      font-family: inherit;
+      font-size: 0.875rem;
+      resize: vertical;
+    }
+
+    .resolve-modal-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    /* Run Button States */
+    .btn-run {
+      min-width: 160px;
+      position: relative;
+    }
+
+    .btn-run.loading {
+      color: transparent;
+      pointer-events: none;
+    }
+
+    .btn-run.loading::after {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      top: 50%;
+      left: 50%;
+      margin-left: -10px;
+      margin-top: -10px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* Clickable History Rows */
+    .history-table tbody tr {
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .history-table tbody tr:hover td {
+      background: var(--bg-hover);
+    }
+
+    /* History Detail Modal */
+    .detail-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .detail-modal.active {
+      display: flex;
+    }
+
+    .detail-modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 800px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .detail-modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .detail-modal-header h3 {
+      font-size: 1.25rem;
+      color: var(--text-primary);
+    }
+
+    .detail-modal-close {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 4px;
+    }
+
+    .detail-modal-close:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .detail-modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    /* Detail Summary Row */
+    .detail-summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .detail-stat {
+      text-align: center;
+      padding: 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+    }
+
+    .detail-stat .value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .detail-stat .label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+    }
+
+    .detail-stat.passed .value { color: var(--accent-green); }
+    .detail-stat.warnings .value { color: var(--accent-orange); }
+    .detail-stat.errors .value { color: var(--accent-red); }
+
+    /* Check Groups */
+    .check-group {
+      margin-bottom: 20px;
+    }
+
+    .check-group-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px 8px 0 0;
+      border: 1px solid var(--border);
+      border-bottom: none;
+    }
+
+    .check-group-header h4 {
+      font-size: 0.875rem;
+      color: var(--text-primary);
+      flex: 1;
+    }
+
+    .check-group-items {
+      border: 1px solid var(--border);
+      border-radius: 0 0 8px 8px;
+    }
+
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .check-item:last-child {
+      border-bottom: none;
+    }
+
+    .check-status-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .check-status-icon.pass {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--accent-green);
+    }
+
+    .check-status-icon.fail {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--accent-red);
+    }
+
+    .check-status-icon.warning {
+      background: rgba(210, 153, 34, 0.15);
+      color: var(--accent-orange);
+    }
+
+    .check-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .check-details h5 {
+      font-size: 0.875rem;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .check-details p {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    /* Quick Fix Suggestion */
+    .quick-fix {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: rgba(88, 166, 255, 0.1);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      border-radius: 6px;
+    }
+
+    .quick-fix-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent-blue);
+      text-transform: uppercase;
+    }
+
+    .quick-fix-text {
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+      line-height: 1.4;
+    }
+
+    .quick-fix-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-fix {
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      background: var(--accent-blue);
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-fix:hover {
+      background: #4a9eff;
+    }
+
+    .btn-fix.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .btn-fix.secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    /* Auto-run indicator */
+    .auto-run-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(63, 185, 80, 0.15);
+      border-radius: 12px;
+      font-size: 0.75rem;
+      color: var(--accent-green);
+      margin-left: 12px;
+    }
+
+    .auto-run-badge .pulse {
+      width: 6px;
+      height: 6px;
+      background: var(--accent-green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav">
+          <a href="index.html" class="main-nav-link active">Financial</a>
+          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
+          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+        </nav>
+        <div class="header-actions">
+          <button id="runBtn" class="btn btn-primary btn-run" onclick="runReconciliation()">Run Reconciliation</button>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav">
+          <a href="index.html" class="sub-nav-link">Invoices</a>
+          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
+          <a href="draws.html" class="sub-nav-link">Draws</a>
+          <a href="budgets.html" class="sub-nav-link">Budgets</a>
+          <a href="reconciliation.html" class="sub-nav-link active">Reconciliation</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Header -->
+      <div class="recon-header">
+        <h1>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+          Financial Reconciliation
+        </h1>
+      </div>
+
+      <!-- Last Run Info -->
+      <div class="last-run" id="lastRunInfo" style="display: none;">
+        Last reconciliation: <span class="time" id="lastRunTime">--</span>
+        <span id="lastRunDuration">(--ms)</span>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="recon-summary" id="summaryCards">
+        <div class="summary-card total">
+          <div class="count" id="totalChecks">--</div>
+          <div class="label">Total Checks</div>
+        </div>
+        <div class="summary-card passed">
+          <div class="count" id="passedChecks">--</div>
+          <div class="label">Passed</div>
+        </div>
+        <div class="summary-card warnings">
+          <div class="count" id="warningChecks">--</div>
+          <div class="label">Warnings</div>
+        </div>
+        <div class="summary-card errors">
+          <div class="count" id="errorChecks">--</div>
+          <div class="label">Errors</div>
+        </div>
+      </div>
+
+      <!-- Errors Section -->
+      <div class="recon-section" id="errorsSection" style="display: none;">
+        <div class="section-header">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            Errors
+            <span class="section-badge error" id="errorCount">0</span>
+          </h2>
+        </div>
+        <div class="issue-list" id="errorsList"></div>
+      </div>
+
+      <!-- Warnings Section -->
+      <div class="recon-section" id="warningsSection" style="display: none;">
+        <div class="section-header">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            Warnings
+            <span class="section-badge warning" id="warningCount">0</span>
+          </h2>
+        </div>
+        <div class="issue-list" id="warningsList"></div>
+      </div>
+
+      <!-- External Sync Status -->
+      <div class="recon-section">
+        <div class="section-header">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 0 1 9-9"/>
+            </svg>
+            External System Sync
+          </h2>
+        </div>
+        <div class="sync-grid">
+          <div class="sync-card">
+            <div class="sync-card-header">
+              <h4>QuickBooks Online</h4>
+              <span class="sync-status not-configured">Not Configured</span>
+            </div>
+            <div class="sync-stats">
+              <div class="sync-stat">
+                <span class="label">Synced: </span>
+                <span class="value">--</span>
+              </div>
+              <div class="sync-stat">
+                <span class="label">Pending: </span>
+                <span class="value">--</span>
+              </div>
+            </div>
+          </div>
+          <div class="sync-card">
+            <div class="sync-card-header">
+              <h4>Bank Feed</h4>
+              <span class="sync-status not-configured">Not Configured</span>
+            </div>
+            <div class="sync-stats">
+              <div class="sync-stat">
+                <span class="label">Matched: </span>
+                <span class="value">--</span>
+              </div>
+              <div class="sync-stat">
+                <span class="label">Unmatched: </span>
+                <span class="value">--</span>
+              </div>
+            </div>
+          </div>
+          <div class="sync-card">
+            <div class="sync-card-header">
+              <h4>Lender Portal</h4>
+              <span class="sync-status not-configured">Not Configured</span>
+            </div>
+            <div class="sync-stats">
+              <div class="sync-stat">
+                <span class="label">Draws Sent: </span>
+                <span class="value">--</span>
+              </div>
+              <div class="sync-stat">
+                <span class="label">Pending: </span>
+                <span class="value">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History Section -->
+      <div class="recon-section">
+        <div class="section-header">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            Reconciliation History
+          </h2>
+        </div>
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Job</th>
+              <th>Run At</th>
+              <th>Checks</th>
+              <th>Duration</th>
+              <th>Resolution</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr>
+              <td colspan="6" class="loading-spinner">
+                <div class="spinner"></div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <!-- Resolve Modal -->
+  <div id="resolveModal" class="resolve-modal">
+    <div class="resolve-modal-content">
+      <div class="resolve-modal-header">
+        <h3>Mark Issues as Resolved</h3>
+      </div>
+      <div class="resolve-modal-body">
+        <label for="resolutionNotes">Resolution Notes</label>
+        <textarea id="resolutionNotes" placeholder="Describe how the issues were resolved..."></textarea>
+      </div>
+      <div class="resolve-modal-footer">
+        <button class="btn btn-secondary" onclick="closeResolveModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitResolution()">Mark Resolved</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- History Detail Modal -->
+  <div id="detailModal" class="detail-modal" onclick="if(event.target === this) closeDetailModal()">
+    <div class="detail-modal-content">
+      <div class="detail-modal-header">
+        <h3 id="detailModalTitle">Reconciliation Details</h3>
+        <button class="detail-modal-close" onclick="closeDetailModal()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="detail-modal-body" id="detailModalBody">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <script src="js/sidebar.js"></script>
+  <script src="js/toasts.js"></script>
+  <script>
+    // State
+    const state = {
+      selectedJobId: '',
+      currentResults: null,
+      jobs: [],
+      history: [],
+      resolvingId: null
+    };
+
+    const API_BASE = 'http://localhost:3001/api';
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Integrate with sidebar
+      if (window.JobSidebar) {
+        window.JobSidebar.onJobChange((jobId, job) => {
+          state.selectedJobId = jobId;
+          state.jobs = window.JobSidebar.getJobs();
+          runReconciliation();
+        });
+      } else {
+        // Fallback if sidebar not loaded
+        await loadJobs();
+        await loadHistory();
+        await runReconciliation();
+      }
+    });
+
+    // Load jobs (fallback if sidebar not available)
+    async function loadJobs() {
+      try {
+        const response = await fetch(`${API_BASE}/jobs`);
+        state.jobs = await response.json();
+      } catch (err) {
+        console.error('Failed to load jobs:', err);
+      }
+    }
+
+    // Run reconciliation
+    async function runReconciliation() {
+      const runBtn = document.getElementById('runBtn');
+
+      try {
+        // Show loading state
+        runBtn?.classList.add('loading');
+
+        let url;
+        if (!state.selectedJobId || state.selectedJobId === '') {
+          url = `${API_BASE}/reconcile/all`;
+        } else {
+          url = `${API_BASE}/jobs/${state.selectedJobId}/reconcile`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        state.currentResults = data;
+        renderResults(data);
+
+        // Refresh history
+        loadHistory();
+
+        // Show success feedback
+        const summary = Array.isArray(data) ? aggregateResults(data).summary : data.summary;
+        if (summary?.failed > 0) {
+          window.toasts?.warning(`Reconciliation complete: ${summary.failed} error(s) found`);
+        } else if (summary?.warnings > 0) {
+          window.toasts?.info(`Reconciliation complete: ${summary.warnings} warning(s)`);
+        } else {
+          window.toasts?.success('Reconciliation complete: All checks passed!');
+        }
+      } catch (err) {
+        console.error('Reconciliation failed:', err);
+        window.toasts?.error('Reconciliation failed. Check console for details.');
+      } finally {
+        // Remove loading state
+        runBtn?.classList.remove('loading');
+      }
+    }
+
+    // Render reconciliation results
+    function renderResults(data) {
+      // Handle array response (all jobs) or single job response
+      const results = Array.isArray(data) ? aggregateResults(data) : data;
+
+      // Update summary cards
+      document.getElementById('totalChecks').textContent = results.summary?.total_checks || 0;
+      document.getElementById('passedChecks').textContent = results.summary?.passed || 0;
+      document.getElementById('warningChecks').textContent = results.summary?.warnings || 0;
+      document.getElementById('errorChecks').textContent = results.summary?.failed || 0;
+
+      // Update last run info
+      if (results.timestamp) {
+        document.getElementById('lastRunInfo').style.display = 'flex';
+        document.getElementById('lastRunTime').textContent = new Date(results.timestamp).toLocaleString();
+        document.getElementById('lastRunDuration').textContent = `(${results.duration_ms || '--'}ms)`;
+      }
+
+      // Render errors
+      const errors = results.errors || [];
+      const errorsSection = document.getElementById('errorsSection');
+      const errorsList = document.getElementById('errorsList');
+
+      if (errors.length > 0) {
+        errorsSection.style.display = 'block';
+        document.getElementById('errorCount').textContent = errors.length;
+        errorsList.innerHTML = errors.map(e => renderIssueItem(e, 'error')).join('');
+      } else {
+        errorsSection.style.display = 'none';
+      }
+
+      // Render warnings
+      const warnings = results.warnings || [];
+      const warningsSection = document.getElementById('warningsSection');
+      const warningsList = document.getElementById('warningsList');
+
+      if (warnings.length > 0) {
+        warningsSection.style.display = 'block';
+        document.getElementById('warningCount').textContent = warnings.length;
+        warningsList.innerHTML = warnings.map(w => renderIssueItem(w, 'warning')).join('');
+      } else {
+        warningsSection.style.display = 'none';
+      }
+    }
+
+    // Aggregate results from multiple jobs
+    function aggregateResults(jobResults) {
+      const aggregated = {
+        timestamp: new Date().toISOString(),
+        errors: [],
+        warnings: [],
+        summary: {
+          total_checks: 0,
+          passed: 0,
+          failed: 0,
+          warnings: 0
+        },
+        duration_ms: 0
+      };
+
+      jobResults.forEach(r => {
+        if (r.errors) aggregated.errors.push(...r.errors);
+        if (r.warnings) aggregated.warnings.push(...r.warnings);
+        if (r.summary) {
+          aggregated.summary.total_checks += r.summary.total_checks || 0;
+          aggregated.summary.passed += r.summary.passed || 0;
+          aggregated.summary.failed += r.summary.failed || 0;
+          aggregated.summary.warnings += r.summary.warnings || 0;
+        }
+        aggregated.duration_ms += r.duration_ms || 0;
+      });
+
+      return aggregated;
+    }
+
+    // Render a single issue item
+    function renderIssueItem(issue, type) {
+      const icon = type === 'error'
+        ? '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+        : '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+      const difference = issue.difference
+        ? `<div class="issue-amount negative">$${formatNumber(Math.abs(issue.difference))} difference</div>`
+        : '';
+
+      return `
+        <div class="issue-item">
+          <div class="issue-icon ${type}">${icon}</div>
+          <div class="issue-content">
+            <h4>${issue.entity_ref || issue.type}</h4>
+            <p>${issue.message}</p>
+          </div>
+          <div class="issue-meta">
+            ${difference}
+            <div class="issue-actions">
+              ${issue.entity_id ? `<button class="btn-view" onclick="viewEntity('${issue.entity}', '${issue.entity_id}', ${issue.cost_code ? `{cost_code:'${issue.cost_code}'}` : 'null'})">View</button>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // View entity (navigate to relevant page with deep linking)
+    function viewEntity(type, id, extraData) {
+      switch (type) {
+        case 'invoice':
+          window.location.href = `index.html?openInvoice=${id}`;
+          break;
+        case 'draw':
+          window.location.href = `draws.html?openDraw=${id}`;
+          break;
+        case 'po':
+          window.location.href = `pos.html?openPO=${id}`;
+          break;
+        case 'budget_line':
+          // Budget lines can include cost_code for filtering
+          if (extraData?.cost_code) {
+            window.location.href = `budgets.html?costCode=${encodeURIComponent(extraData.cost_code)}`;
+          } else {
+            window.location.href = `budgets.html`;
+          }
+          break;
+        default:
+          console.log('Unknown entity type:', type);
+      }
+    }
+
+    // Load reconciliation history
+    async function loadHistory() {
+      try {
+        let url = `${API_BASE}/reconcile/history`;
+        if (state.selectedJobId && state.selectedJobId !== '') {
+          url += `?job_id=${state.selectedJobId}`;
+        }
+
+        const response = await fetch(url);
+        state.history = await response.json();
+        renderHistory();
+      } catch (err) {
+        console.error('Failed to load history:', err);
+      }
+    }
+
+    // Render history table
+    function renderHistory() {
+      const tbody = document.getElementById('historyTableBody');
+
+      if (state.history.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No reconciliation history yet</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = state.history.map((h, idx) => {
+        const statusClass = h.failed > 0 ? 'errors' : (h.warnings > 0 ? 'warnings' : 'clean');
+        const statusText = h.failed > 0 ? 'Errors' : (h.warnings > 0 ? 'Warnings' : 'Clean');
+        const jobName = state.jobs.find(j => j.id === h.job_id)?.name || 'All Jobs';
+        const runDate = new Date(h.run_at).toLocaleString();
+        const resolution = h.resolved_at
+          ? `<span style="color: var(--accent-green)">Resolved ${new Date(h.resolved_at).toLocaleDateString()}</span>`
+          : (h.failed > 0 || h.warnings > 0
+              ? `<button class="btn-resolve" onclick="event.stopPropagation(); openResolveModal('${h.id}')">Resolve</button>`
+              : '--');
+
+        return `
+          <tr onclick="openDetailModal(${idx})" title="Click for details">
+            <td><span class="status-dot ${statusClass}"></span>${statusText}</td>
+            <td>${jobName}</td>
+            <td>${runDate}</td>
+            <td>${h.passed}/${h.total_checks} passed</td>
+            <td>${h.duration_ms}ms</td>
+            <td onclick="event.stopPropagation()">${resolution}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Open resolve modal
+    function openResolveModal(id) {
+      state.resolvingId = id;
+      document.getElementById('resolutionNotes').value = '';
+      document.getElementById('resolveModal').classList.add('active');
+    }
+
+    // Close resolve modal
+    function closeResolveModal() {
+      state.resolvingId = null;
+      document.getElementById('resolveModal').classList.remove('active');
+    }
+
+    // Submit resolution
+    async function submitResolution() {
+      if (!state.resolvingId) return;
+
+      const notes = document.getElementById('resolutionNotes').value;
+
+      try {
+        const response = await fetch(`${API_BASE}/reconcile/${state.resolvingId}/resolve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            resolved_by: 'Current User',
+            resolution_notes: notes
+          })
+        });
+
+        if (response.ok) {
+          window.toasts?.success('Issues marked as resolved');
+          closeResolveModal();
+          loadHistory();
+        } else {
+          throw new Error('Failed to resolve');
+        }
+      } catch (err) {
+        console.error('Failed to resolve:', err);
+        window.toasts?.error('Failed to mark as resolved');
+      }
+    }
+
+    // =====================================================
+    // DETAIL MODAL FUNCTIONS
+    // =====================================================
+
+    // Open detail modal for a history item
+    function openDetailModal(historyIndex) {
+      const historyItem = state.history[historyIndex];
+      if (!historyItem) return;
+
+      const jobName = state.jobs.find(j => j.id === historyItem.job_id)?.name || 'All Jobs';
+      const runDate = new Date(historyItem.run_at).toLocaleString();
+
+      // Set title
+      document.getElementById('detailModalTitle').textContent = `Reconciliation: ${jobName} - ${runDate}`;
+
+      // Build body content
+      const body = document.getElementById('detailModalBody');
+      body.innerHTML = renderDetailContent(historyItem);
+
+      // Show modal
+      document.getElementById('detailModal').classList.add('active');
+    }
+
+    // Close detail modal
+    function closeDetailModal() {
+      document.getElementById('detailModal').classList.remove('active');
+    }
+
+    // Render detail modal content
+    function renderDetailContent(item) {
+      const checks = item.results || [];
+
+      // Group checks by status
+      const passed = checks.filter(c => c.status === 'pass');
+      const warnings = checks.filter(c => c.status === 'warning');
+      const errors = checks.filter(c => c.status === 'fail');
+
+      let html = `
+        <!-- Summary Stats -->
+        <div class="detail-summary">
+          <div class="detail-stat">
+            <div class="value">${item.total_checks}</div>
+            <div class="label">Total Checks</div>
+          </div>
+          <div class="detail-stat passed">
+            <div class="value">${item.passed}</div>
+            <div class="label">Passed</div>
+          </div>
+          <div class="detail-stat warnings">
+            <div class="value">${item.warnings}</div>
+            <div class="label">Warnings</div>
+          </div>
+          <div class="detail-stat errors">
+            <div class="value">${item.failed}</div>
+            <div class="label">Errors</div>
+          </div>
+        </div>
+      `;
+
+      // Render Errors section
+      if (errors.length > 0) {
+        html += `
+          <div class="check-group">
+            <div class="check-group-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-red)" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+              <h4>Errors (${errors.length})</h4>
+            </div>
+            <div class="check-group-items">
+              ${errors.map(c => renderCheckItem(c, 'fail')).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // Render Warnings section
+      if (warnings.length > 0) {
+        html += `
+          <div class="check-group">
+            <div class="check-group-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-orange)" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <h4>Warnings (${warnings.length})</h4>
+            </div>
+            <div class="check-group-items">
+              ${warnings.map(c => renderCheckItem(c, 'warning')).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // Render Passed section (collapsed by default)
+      if (passed.length > 0) {
+        html += `
+          <div class="check-group">
+            <div class="check-group-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              <h4>Passed (${passed.length})</h4>
+            </div>
+            <div class="check-group-items">
+              ${passed.map(c => renderCheckItem(c, 'pass')).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      return html;
+    }
+
+    // Render individual check item with quick fix
+    function renderCheckItem(check, status) {
+      const icon = status === 'pass'
+        ? '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'
+        : status === 'fail'
+        ? '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+        : '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+
+      const quickFix = getQuickFix(check);
+
+      return `
+        <div class="check-item">
+          <div class="check-status-icon ${status}">${icon}</div>
+          <div class="check-details">
+            <h5>${check.entity_ref || check.type}</h5>
+            <p>${check.message}</p>
+            ${quickFix}
+          </div>
+        </div>
+      `;
+    }
+
+    // Get quick fix suggestion for a check
+    function getQuickFix(check) {
+      const fixes = {
+        'DRAW_TOTAL_MISMATCH': {
+          text: 'The draw total stored doesn\'t match the sum of its invoices. This can happen when invoices are added/removed without updating the total.',
+          advice: 'Recalculate the draw total by summing all invoice amounts currently in the draw.',
+          action: check.entity_id ? `<button class="btn-fix" onclick="fixDrawTotal('${check.entity_id}')">Recalculate Total</button>` : ''
+        },
+        'DRAW_INVOICE_STATUS_MISMATCH': {
+          text: 'Some invoices in this draw have unexpected statuses. They may have been cycled back for partial billing or manually changed.',
+          advice: 'Review each invoice to determine if it should still be in the draw or removed.',
+          action: check.entity_id ? `<button class="btn-fix secondary" onclick="viewEntity('draw', '${check.entity_id}')">View Draw</button>` : ''
+        },
+        'INVOICE_BILLED_MISMATCH': {
+          text: 'The invoice\'s billed_amount doesn\'t match its allocations. This tracking was added recently, so older invoices may need updating.',
+          advice: 'Update the invoice\'s billed_amount to match its actual billings through draws.',
+          action: check.entity_id ? `<button class="btn-fix" onclick="fixInvoiceBilled('${check.entity_id}')">Sync Billed Amount</button>` : ''
+        },
+        'BUDGET_BILLED_MISMATCH': {
+          text: 'The budget line\'s billed_amount doesn\'t match actual allocations. Budget tracking may need syncing.',
+          advice: 'Recalculate budget line totals from invoice allocations.',
+          action: `<button class="btn-fix" onclick="syncBudgetTotals()">Sync All Budget Lines</button>`
+        },
+        'PO_OVER_BUDGET': {
+          text: 'Invoices against this PO exceed the PO amount. This may indicate a change order is needed.',
+          advice: 'Review invoices and either reject excess or create a change order to increase the PO.',
+          action: check.entity_id ? `<button class="btn-fix secondary" onclick="viewEntity('po', '${check.entity_id}')">View PO</button>` : ''
+        },
+        'BILLING_OVER_INVOICE': {
+          text: 'Total billings exceed the invoice amount. This is a critical error that should not happen.',
+          advice: 'Investigate invoice allocations and draw history to find the discrepancy.',
+          action: check.entity_id ? `<button class="btn-fix secondary" onclick="viewEntity('invoice', '${check.entity_id}')">View Invoice</button>` : ''
+        }
+      };
+
+      const fix = fixes[check.type];
+      if (!fix && check.status !== 'pass') {
+        // Generic advice for unknown types
+        return `
+          <div class="quick-fix">
+            <div class="quick-fix-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Advice
+            </div>
+            <div class="quick-fix-text">Review the affected entity to understand and resolve the discrepancy.</div>
+            ${check.entity_id ? `<div class="quick-fix-actions"><button class="btn-fix secondary" onclick="viewEntity('${check.entity}', '${check.entity_id}')">View ${check.entity || 'Entity'}</button></div>` : ''}
+          </div>
+        `;
+      }
+
+      if (!fix) return '';
+
+      return `
+        <div class="quick-fix">
+          <div class="quick-fix-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            Quick Fix
+          </div>
+          <div class="quick-fix-text">${fix.text}</div>
+          <div class="quick-fix-text" style="margin-top: 6px; color: var(--accent-blue);"><strong>Suggestion:</strong> ${fix.advice}</div>
+          ${fix.action ? `<div class="quick-fix-actions">${fix.action}</div>` : ''}
+        </div>
+      `;
+    }
+
+    // =====================================================
+    // QUICK FIX ACTIONS
+    // =====================================================
+
+    // Fix draw total by recalculating
+    async function fixDrawTotal(drawId) {
+      try {
+        const response = await fetch(`${API_BASE}/draws/${drawId}/recalculate`, {
+          method: 'POST'
+        });
+        if (response.ok) {
+          window.toasts?.success('Draw total recalculated');
+          closeDetailModal();
+          runReconciliation();
+        } else {
+          throw new Error('Failed to recalculate');
+        }
+      } catch (err) {
+        console.error('Fix failed:', err);
+        window.toasts?.error('Failed to recalculate draw total. The endpoint may not exist yet.');
+      }
+    }
+
+    // Fix invoice billed amount
+    async function fixInvoiceBilled(invoiceId) {
+      try {
+        const response = await fetch(`${API_BASE}/invoices/${invoiceId}/sync-billed`, {
+          method: 'POST'
+        });
+        if (response.ok) {
+          window.toasts?.success('Invoice billed amount synced');
+          closeDetailModal();
+          runReconciliation();
+        } else {
+          throw new Error('Failed to sync');
+        }
+      } catch (err) {
+        console.error('Fix failed:', err);
+        window.toasts?.error('Failed to sync invoice. The endpoint may not exist yet.');
+      }
+    }
+
+    // Sync all budget totals
+    async function syncBudgetTotals() {
+      try {
+        const response = await fetch(`${API_BASE}/budgets/sync-totals`, {
+          method: 'POST'
+        });
+        if (response.ok) {
+          window.toasts?.success('Budget totals synced');
+          closeDetailModal();
+          runReconciliation();
+        } else {
+          throw new Error('Failed to sync');
+        }
+      } catch (err) {
+        console.error('Fix failed:', err);
+        window.toasts?.error('Failed to sync budgets. The endpoint may not exist yet.');
+      }
+    }
+
+    // Format number helper
+    function formatNumber(num) {
+      return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+  </script>
+</body>
+</html>
