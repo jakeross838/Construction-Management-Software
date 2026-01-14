@@ -394,12 +394,14 @@ function addCostCodeLine(costCodeId = '', amount = '', description = '') {
   `;
   container.appendChild(div);
 
-  // Initialize cost code picker using the correct method
+  // Initialize cost code picker using unified SearchablePicker
   // Filter to only show change order cost codes (codes ending in 'C')
-  if (window.CostCodePicker && window.CostCodePicker.init) {
+  if (window.SearchablePicker && window.SearchablePicker.init) {
     const pickerContainer = document.getElementById(`ccPicker-${index}`);
-    window.CostCodePicker.init(pickerContainer, {
+    window.SearchablePicker.init(pickerContainer, {
+      type: 'costCodes',
       value: costCodeId,
+      placeholder: 'Search cost codes...',
       onChange: () => updateCostCodeTotal(),
       filter: (cc) => cc.code && cc.code.endsWith('C')
     });

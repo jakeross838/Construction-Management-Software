@@ -15,9 +15,17 @@ window.SearchablePicker = {
    * Initialize a searchable picker
    * @param {HTMLElement} container - Container element
    * @param {Object} options - Configuration
+   *        - type: 'jobs', 'vendors', 'pos', 'costCodes', 'custom'
+   *        - value: initial selected ID
+   *        - onChange: callback(id) when selection changes
+   *        - disabled: whether picker is disabled
+   *        - placeholder: input placeholder text
+   *        - jobId: for PO filtering by job
+   *        - items: for 'custom' type, array of items
+   *        - filter: function(item) returning true to include in list
    */
   init(container, options = {}) {
-    const { type, value, onChange, disabled, placeholder, jobId, items } = options;
+    const { type, value, onChange, disabled, placeholder, jobId, items, filter } = options;
 
     container.innerHTML = `
       <div class="search-picker ${disabled ? 'disabled' : ''}" data-type="${type}">
@@ -38,6 +46,7 @@ window.SearchablePicker = {
     picker._onChange = onChange;
     picker._jobId = jobId; // For PO filtering
     picker._customItems = items; // For custom type with provided items
+    picker._filter = filter; // Optional filter function
 
     // Set initial value
     if (value) {
@@ -286,9 +295,14 @@ window.SearchablePicker = {
     const type = picker._type;
     picker._selectedIndex = -1;
 
-    const data = await this.loadData(type, picker._jobId, picker._customItems);
+    let data = await this.loadData(type, picker._jobId, picker._customItems);
 
-    // Filter
+    // Apply custom filter if provided
+    if (picker._filter && typeof picker._filter === 'function') {
+      data = data.filter(picker._filter);
+    }
+
+    // Filter by search query
     const q = query.toLowerCase().trim();
     let filtered = q
       ? data.filter(item => {
@@ -297,12 +311,16 @@ window.SearchablePicker = {
         })
       : data;
 
-    // Sort alphabetically
-    filtered.sort((a, b) => {
-      const textA = this.getDisplayText(type, a);
-      const textB = this.getDisplayText(type, b);
-      return textA.localeCompare(textB);
-    });
+    // Sort - cost codes by code number, others alphabetically
+    if (type === 'costCodes') {
+      filtered.sort((a, b) => a.code.localeCompare(b.code));
+    } else {
+      filtered.sort((a, b) => {
+        const textA = this.getDisplayText(type, a);
+        const textB = this.getDisplayText(type, b);
+        return textA.localeCompare(textB);
+      });
+    }
 
     // Build HTML
     let html = '';
@@ -325,12 +343,22 @@ window.SearchablePicker = {
       html = `<div class="search-picker-empty">No results found</div>`;
     } else {
       for (const item of filtered) {
-        const displayText = this.getDisplayText(type, item);
-        html += `
-          <div class="search-picker-item" data-id="${item.id}">
-            ${this.highlightMatch(displayText, q)}
-          </div>
-        `;
+        // Special rendering for cost codes
+        if (type === 'costCodes') {
+          html += `
+            <div class="search-picker-item" data-id="${item.id}">
+              <span class="picker-code">${item.code}</span>
+              <span class="picker-name">${this.highlightMatch(item.name, q)}</span>
+            </div>
+          `;
+        } else {
+          const displayText = this.getDisplayText(type, item);
+          html += `
+            <div class="search-picker-item" data-id="${item.id}">
+              ${this.highlightMatch(displayText, q)}
+            </div>
+          `;
+        }
       }
     }
 

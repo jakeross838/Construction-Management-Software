@@ -257,8 +257,8 @@ test.describe('PO Allocation Integration', () => {
     console.log('=== Test completed ===');
   });
 
-  test('Allocation PO persists after save and reopen', async ({ page }) => {
-    console.log('=== Testing Allocation PO Persistence ===');
+  test('Allocation uses invoice PO by default (hidden funding options)', async ({ page }) => {
+    console.log('=== Testing Default Invoice PO Usage ===');
 
     // Find invoice with PO
     const invoiceCard = page.locator('.invoice-card').filter({ hasText: '971925' }).first();
@@ -277,53 +277,26 @@ test.describe('PO Allocation Integration', () => {
       return;
     }
 
-    // Check if we have a funding source dropdown
+    // Get the invoice PO from the hidden field
+    const invoicePOId = await page.locator('#edit-po').inputValue();
+    console.log('Invoice PO ID:', invoicePOId);
+
+    if (!invoicePOId) {
+      console.log('Invoice has no PO - skipping');
+      return;
+    }
+
+    // Funding source dropdown should be HIDDEN by default when invoice has a PO
     const fundingSourceSelect = page.locator('.funding-source-select').first();
-    const fundingSourceExists = await fundingSourceSelect.count() > 0;
-    if (!fundingSourceExists) {
-      console.log('No funding source dropdown - skipping');
-      return;
-    }
+    const fundingSourceVisible = await fundingSourceSelect.count() > 0;
+    console.log('Funding source dropdown visible (should be false):', fundingSourceVisible);
 
-    // Get the current funding source
-    let currentFundingSource = await fundingSourceSelect.inputValue();
-    console.log('Current funding source:', currentFundingSource);
+    // The "Split funding" button should exist
+    const splitFundingBtn = page.locator('#split-funding-btn');
+    const splitBtnExists = await splitFundingBtn.count() > 0;
+    console.log('Split funding button exists:', splitBtnExists);
 
-    // If currently "base" or no PO selected, switch to PO
-    if (currentFundingSource !== 'po') {
-      await fundingSourceSelect.selectOption('po');
-      await page.waitForTimeout(500);
-      currentFundingSource = 'po';
-    }
-
-    // Get the PO select and record the value
-    const poSelect = page.locator('.po-select').first();
-    const poSelectExists = await poSelect.count() > 0;
-    if (!poSelectExists) {
-      console.log('PO select not found - skipping');
-      return;
-    }
-
-    let selectedPO = await poSelect.inputValue();
-    console.log('Selected PO before save:', selectedPO);
-
-    // If no PO selected, select the first one
-    if (!selectedPO) {
-      const poOptions = await poSelect.locator('option:not([value=""])').count();
-      if (poOptions > 0) {
-        await poSelect.selectOption({ index: 1 });
-        await page.waitForTimeout(300);
-        selectedPO = await poSelect.inputValue();
-        console.log('Selected first PO:', selectedPO);
-      }
-    }
-
-    if (!selectedPO) {
-      console.log('No PO to select - skipping');
-      return;
-    }
-
-    // Click Save button
+    // Click Save button - the allocation should automatically get the invoice PO
     const saveButton = page.locator('button').filter({ hasText: 'Save' }).first();
     const saveExists = await saveButton.count() > 0;
     console.log('Save button exists:', saveExists);
@@ -331,8 +304,6 @@ test.describe('PO Allocation Integration', () => {
     if (saveExists) {
       await saveButton.click();
       console.log('Clicked Save');
-
-      // Wait for save to complete (modal should close or show success)
       await page.waitForTimeout(2000);
     }
 
@@ -341,13 +312,6 @@ test.describe('PO Allocation Integration', () => {
     console.log('Modal closed after save:', modalClosed);
 
     if (!modalClosed) {
-      // Check for error message
-      const errorToast = page.locator('.toast.error');
-      const hasError = await errorToast.count() > 0;
-      if (hasError) {
-        const errorText = await errorToast.textContent();
-        console.log('Save error:', errorText);
-      }
       // Close modal manually
       const closeButton = page.locator('button').filter({ hasText: 'Cancel' }).first();
       if (await closeButton.count() > 0) {
@@ -356,20 +320,26 @@ test.describe('PO Allocation Integration', () => {
       }
     }
 
-    // Wait a bit for the list to refresh
+    // Wait for list to refresh
     await page.waitForTimeout(1000);
 
-    // Reopen the same invoice
+    // Reopen the invoice
     console.log('Reopening invoice...');
     const invoiceCardAgain = page.locator('.invoice-card').filter({ hasText: '971925' }).first();
     await invoiceCardAgain.click();
     await page.waitForTimeout(2000);
 
-    // Check that the PO is still selected
-    const fundingSourceAfter = page.locator('.funding-source-select').first();
-    const fundingSourceAfterExists = await fundingSourceAfter.count() > 0;
+    // Click "Split funding" to show the funding options
+    const splitBtnAfter = page.locator('#split-funding-btn');
+    if (await splitBtnAfter.count() > 0) {
+      await splitBtnAfter.click();
+      await page.waitForTimeout(500);
+      console.log('Clicked Split funding to reveal options');
+    }
 
-    if (fundingSourceAfterExists) {
+    // Now check if funding source is set to PO
+    const fundingSourceAfter = page.locator('.funding-source-select').first();
+    if (await fundingSourceAfter.count() > 0) {
       const fundingSourceValue = await fundingSourceAfter.inputValue();
       console.log('Funding source after reopen:', fundingSourceValue);
 
@@ -377,17 +347,20 @@ test.describe('PO Allocation Integration', () => {
         const poSelectAfter = page.locator('.po-select').first();
         if (await poSelectAfter.count() > 0) {
           const poValueAfter = await poSelectAfter.inputValue();
-          console.log('PO value after reopen:', poValueAfter);
+          console.log('Allocation PO after reopen:', poValueAfter);
+          console.log('Invoice PO:', invoicePOId);
 
-          if (poValueAfter === selectedPO) {
-            console.log('✓ Allocation PO persisted after save!');
+          if (poValueAfter === invoicePOId) {
+            console.log('✓ Allocation correctly uses invoice PO by default!');
           } else {
-            console.log('✗ PO changed after reopen. Expected:', selectedPO, 'Got:', poValueAfter);
+            console.log('✗ PO mismatch. Expected:', invoicePOId, 'Got:', poValueAfter);
           }
         }
       } else {
-        console.log('Funding source changed to:', fundingSourceValue);
+        console.log('Funding source is:', fundingSourceValue);
       }
+    } else {
+      console.log('Funding source dropdown not found after clicking Split');
     }
 
     console.log('=== Test completed ===');

@@ -16,6 +16,7 @@ const Modals = {
   cachedChangeOrders: [],   // All available COs for the job
   isDirty: false,
   isEditMode: false,  // Start in view mode, click Edit to enable editing
+  showFundingOptions: false, // Hide funding source dropdowns by default (invoice PO is used)
 
   /**
    * Initialize modal system
@@ -75,6 +76,7 @@ const Modals = {
       }
       this.currentInvoice = invoice;
       this.isEditMode = false;  // Start in view mode
+      this.showFundingOptions = false;  // Hide funding options by default (use invoice PO)
 
       // Fetch allocations, activity, approval context, and PO line items
       const [allocations, activity, approvalContext] = await Promise.all([
@@ -353,6 +355,11 @@ const Modals = {
                       <h3>Line Items</h3>
                       ${canEdit ? `
                         <div class="section-header-actions" id="line-items-actions">
+                          ${(this.cachedPurchaseOrders?.length > 0 || this.cachedChangeOrders?.length > 0) ? `
+                            <button type="button" class="btn-link-subtle" onclick="Modals.toggleFundingOptions()" id="split-funding-btn" title="Show funding source options for each line">
+                              ${this.showFundingOptions ? '− Hide funding options' : '+ Split funding'}
+                            </button>
+                          ` : ''}
                           <button type="button" class="btn-add-line" onclick="Modals.addAllocation()">
                             + Add Line
                           </button>
@@ -518,6 +525,14 @@ const Modals = {
     const invoicePOId = this.currentInvoice?.po_id || null;
     const invoicePO = invoicePOId ? (this.cachedPurchaseOrders || []).find(po => po.id === invoicePOId) : null;
 
+    // Check if any allocation has explicit non-default funding (needs expanded view)
+    const hasCustomFunding = allocations?.some(a =>
+      (a.po_id && a.po_id !== invoicePOId) || // Different PO than invoice
+      a.change_order_id || // Has CO
+      a._fundingSource === 'co' || // Explicitly set to CO
+      (a._explicitBase && invoicePOId) // Explicitly set to base when invoice has PO
+    );
+
     const buildLineItem = (alloc, index) => {
       // Check if this specific allocation is AI-suggested
       const allocIsAi = alloc.notes?.includes('Auto-suggested') || alloc.notes?.includes('trade type');
@@ -539,10 +554,19 @@ const Modals = {
         fundingSource = alloc._fundingSource;
       } else if (invoicePOId && !alloc._explicitBase) {
         // Default to invoice-level PO if set and user hasn't explicitly chosen base
-        // Use invoicePOId (not invoicePO object) so this works even if PO isn't in cached list
         fundingSource = 'po';
         effectivePoId = invoicePOId;
       }
+
+      // Check if this allocation has custom funding (different from invoice default)
+      const hasCustomFundingThisLine =
+        (alloc.po_id && alloc.po_id !== invoicePOId) ||
+        alloc.change_order_id ||
+        alloc._fundingSource === 'co' ||
+        (alloc._explicitBase && invoicePOId);
+
+      // Show funding options if: expanded mode OR this line has custom funding OR no invoice PO
+      const showFundingOptions = this.showFundingOptions || hasCustomFundingThisLine || !invoicePOId;
 
       // Build PO options (use effectivePoId for selection which may come from invoice-level PO)
       const poOptions = (this.cachedPurchaseOrders || []).map(po => {
@@ -571,7 +595,7 @@ const Modals = {
               <label class="field-label">Cost code / Account <span class="required">*</span> ${aiBadge}</label>
               <div class="cc-picker-container" data-index="${index}" data-readonly="${isReadOnly}"></div>
             </div>
-            ${hasFundingSources ? `
+            ${showFundingOptions && hasFundingSources ? `
             <div class="line-item-field" style="flex: 0 0 140px;">
               <label class="field-label">Funding Source</label>
               <select class="field-input funding-source-select" onchange="Modals.updateFundingSource(${index}, this.value)" ${isReadOnly ? 'disabled' : ''}>
@@ -1428,6 +1452,15 @@ const Modals = {
   },
 
   /**
+   * Toggle visibility of funding source options
+   * By default, allocations use the invoice-level PO. Click "Split funding" to show per-line options.
+   */
+  toggleFundingOptions() {
+    this.showFundingOptions = !this.showFundingOptions;
+    this.refreshAllocationsUI();
+  },
+
+  /**
    * Refresh all balance sections when allocations change
    * Updates: Invoice Balance, PO Balance, Budget Standing
    */
@@ -1525,11 +1558,12 @@ const Modals = {
   },
 
   /**
-   * Find cost code by code string (legacy support)
+   * Find cost code by code string
    */
   findCostCodeByCode(codeStr) {
-    if (window.CostCodePicker?.cache) {
-      return window.CostCodePicker.cache.find(cc => cc.code === codeStr);
+    // Use SearchablePicker's cached cost codes
+    if (window.SearchablePicker?.cache?.costCodes) {
+      return window.SearchablePicker.cache.costCodes.find(cc => cc.code === codeStr);
     }
     return null;
   },
@@ -1614,7 +1648,7 @@ const Modals = {
   },
 
   /**
-   * Initialize cost code pickers
+   * Initialize cost code pickers (uses unified SearchablePicker)
    */
   async initCostCodePickers() {
     const invoice = this.currentInvoice;
@@ -1631,16 +1665,18 @@ const Modals = {
     // Read-only if archived OR (locked status AND not in edit mode)
     const isReadOnly = isArchived || (isLockedStatus && !this.isEditMode);
 
-    // Initialize each picker
+    // Initialize each picker using unified SearchablePicker
     document.querySelectorAll('.cc-picker-container').forEach(container => {
       const index = parseInt(container.dataset.index);
       const allocation = this.currentAllocations[index];
       const currentValue = allocation?.cost_code_id || null;
       const originalValue = currentValue; // Store original to detect changes
 
-      window.CostCodePicker.init(container, {
+      window.SearchablePicker.init(container, {
+        type: 'costCodes',
         value: currentValue,
         disabled: isReadOnly,
+        placeholder: 'Search cost codes...',
         onChange: (codeId) => {
           this.updateAllocation(index, 'cost_code_id', codeId);
           // Mark cost code AI badge as overridden when changed
@@ -1723,6 +1759,17 @@ const Modals = {
       }
     }
 
+    // Apply default funding source: If invoice has a PO and allocation doesn't have explicit funding,
+    // set the allocation's po_id to the invoice's PO (unless user explicitly chose "No PO/CO")
+    const invoicePOId = formData.po_id || this.currentInvoice?.po_id;
+    const allocationsToSave = this.currentAllocations.map(alloc => {
+      // If allocation has no explicit funding source and invoice has a PO, use invoice PO
+      if (!alloc.po_id && !alloc.change_order_id && !alloc._explicitBase && invoicePOId) {
+        return { ...alloc, po_id: invoicePOId };
+      }
+      return alloc;
+    });
+
     // Save to server
     try {
       const loadingToast = window.toasts?.showLoading('Saving invoice...');
@@ -1732,7 +1779,7 @@ const Modals = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          allocations: this.currentAllocations,
+          allocations: allocationsToSave,
           version: this.currentInvoice.version,
           performed_by: window.currentUser || 'unknown'
         })
