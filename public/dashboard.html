@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260114">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav">
+          <!-- Filled by nav-sidebar.js -->
+        </nav>
+        <div class="header-actions">
+          <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav">
+          <!-- Filled by nav-sidebar.js -->
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="app-body">
+      <main class="main">
+        <div class="dashboard-header">
+          <h1>Dashboard</h1>
+          <p class="text-muted">Overview of your construction projects</p>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="dashboard-stats">
+          <div class="stat-card">
+            <div class="stat-card-icon blue">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z"></path><path d="M8 10h8"></path><path d="M8 14h4"></path></svg>
+            </div>
+            <div class="stat-card-content">
+              <span class="stat-card-value" id="pendingInvoices">-</span>
+              <span class="stat-card-label">Invoices Pending Approval</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-card-icon green">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            </div>
+            <div class="stat-card-content">
+              <span class="stat-card-value" id="approvedAmount">-</span>
+              <span class="stat-card-label">Approved This Month</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-card-icon purple">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+            </div>
+            <div class="stat-card-content">
+              <span class="stat-card-value" id="openPOs">-</span>
+              <span class="stat-card-label">Open Purchase Orders</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-card-icon orange">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </div>
+            <div class="stat-card-content">
+              <span class="stat-card-value" id="expiringVendors">-</span>
+              <span class="stat-card-label">Vendors Expiring Soon</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Items -->
+        <div class="dashboard-section">
+          <h2>Action Items</h2>
+          <div class="action-items" id="actionItems">
+            <div class="empty-state">
+              <p>Loading action items...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="dashboard-section">
+          <h2>Recent Activity</h2>
+          <div class="activity-feed" id="activityFeed">
+            <div class="empty-state">
+              <p>Loading recent activity...</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <style>
+    .dashboard-header {
+      margin-bottom: 2rem;
+    }
+
+    .dashboard-header h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .dashboard-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .stat-card-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius);
+      flex-shrink: 0;
+    }
+
+    .stat-card-icon.blue {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent-blue);
+    }
+
+    .stat-card-icon.green {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--accent-green);
+    }
+
+    .stat-card-icon.purple {
+      background: rgba(168, 85, 247, 0.15);
+      color: #a855f7;
+    }
+
+    .stat-card-icon.orange {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-orange);
+    }
+
+    .stat-card-content {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-card-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--foreground);
+    }
+
+    .stat-card-label {
+      font-size: 0.875rem;
+      color: var(--muted-foreground);
+    }
+
+    .dashboard-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .dashboard-section h2 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+
+    .action-items, .activity-feed {
+      min-height: 100px;
+    }
+
+    .action-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem;
+      border-radius: var(--radius);
+      transition: var(--transition);
+    }
+
+    .action-item:hover {
+      background: var(--accent);
+    }
+
+    .action-item-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+    }
+
+    .action-item-content {
+      flex: 1;
+    }
+
+    .action-item-title {
+      font-weight: 500;
+      color: var(--foreground);
+    }
+
+    .action-item-subtitle {
+      font-size: 0.875rem;
+      color: var(--muted-foreground);
+    }
+
+    .activity-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .activity-item:last-child {
+      border-bottom: none;
+    }
+
+    .activity-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      margin-top: 0.5rem;
+      flex-shrink: 0;
+    }
+
+    .activity-content {
+      flex: 1;
+    }
+
+    .activity-text {
+      color: var(--foreground);
+      font-size: 0.875rem;
+    }
+
+    .activity-time {
+      font-size: 0.75rem;
+      color: var(--muted-foreground);
+      margin-top: 0.25rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted-foreground);
+    }
+  </style>
+
+  <script src="js/toasts.js"></script>
+  <script src="js/nav-sidebar.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script>
+    // Load dashboard data
+    async function loadDashboard() {
+      try {
+        // Load stats
+        const [statsRes, posRes, vendorsRes] = await Promise.all([
+          fetch('/api/dashboard/stats'),
+          fetch('/api/purchase-orders/stats'),
+          fetch('/api/vendors/expiring')
+        ]);
+
+        const stats = await statsRes.json();
+        const posStats = await posRes.json();
+        const expiring = await vendorsRes.json();
+
+        // Update stat cards
+        document.getElementById('pendingInvoices').textContent = stats.needs_approval || 0;
+        document.getElementById('approvedAmount').textContent = formatMoney(stats.approved_amount || 0);
+        document.getElementById('openPOs').textContent = posStats.total_count || 0;
+        document.getElementById('expiringVendors').textContent = expiring.length || 0;
+
+        // Load action items
+        loadActionItems(stats, expiring);
+
+        // Load activity
+        loadActivity();
+
+      } catch (err) {
+        console.error('Failed to load dashboard:', err);
+      }
+    }
+
+    function loadActionItems(stats, expiring) {
+      const container = document.getElementById('actionItems');
+      const items = [];
+
+      if (stats.needs_approval > 0) {
+        items.push({
+          icon: '📄',
+          iconBg: 'rgba(59, 130, 246, 0.15)',
+          title: `${stats.needs_approval} invoice${stats.needs_approval > 1 ? 's' : ''} need approval`,
+          subtitle: 'Review and approve pending invoices',
+          href: 'index.html?status=needs_approval'
+        });
+      }
+
+      if (expiring.length > 0) {
+        items.push({
+          icon: '⚠️',
+          iconBg: 'rgba(245, 158, 11, 0.15)',
+          title: `${expiring.length} vendor${expiring.length > 1 ? 's' : ''} with expiring documents`,
+          subtitle: 'Insurance or licenses expiring within 30 days',
+          href: 'vendors.html'
+        });
+      }
+
+      if (items.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>No action items - you\'re all caught up!</p></div>';
+        return;
+      }
+
+      container.innerHTML = items.map(item => `
+        <a href="${item.href}" class="action-item">
+          <div class="action-item-icon" style="background: ${item.iconBg}">${item.icon}</div>
+          <div class="action-item-content">
+            <div class="action-item-title">${item.title}</div>
+            <div class="action-item-subtitle">${item.subtitle}</div>
+          </div>
+        </a>
+      `).join('');
+    }
+
+    async function loadActivity() {
+      const container = document.getElementById('activityFeed');
+
+      try {
+        const res = await fetch('/api/invoices?limit=5');
+        const invoices = await res.json();
+
+        if (!invoices || invoices.length === 0) {
+          container.innerHTML = '<div class="empty-state"><p>No recent activity</p></div>';
+          return;
+        }
+
+        container.innerHTML = invoices.slice(0, 5).map(inv => `
+          <div class="activity-item">
+            <div class="activity-dot"></div>
+            <div class="activity-content">
+              <div class="activity-text">
+                Invoice <strong>#${inv.invoice_number || 'N/A'}</strong> from ${inv.vendor?.name || 'Unknown'} - ${formatMoney(inv.amount)}
+              </div>
+              <div class="activity-time">${formatDate(inv.created_at)}</div>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = '<div class="empty-state"><p>Failed to load activity</p></div>';
+      }
+    }
+
+    function formatMoney(amount) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(amount || 0);
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diff = now - date;
+
+      if (diff < 60000) return 'Just now';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)} min ago`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)} hours ago`;
+      return date.toLocaleDateString();
+    }
+
+    // Load jobs for selector
+    async function loadJobs() {
+      try {
+        const res = await fetch('/api/jobs');
+        const jobs = await res.json();
+        const select = document.getElementById('jobSelector');
+
+        jobs.filter(j => j.status === 'active').forEach(job => {
+          const option = document.createElement('option');
+          option.value = job.id;
+          option.textContent = job.name;
+          select.appendChild(option);
+        });
+      } catch (err) {
+        console.error('Failed to load jobs:', err);
+      }
+    }
+
+    // Initialize
+    loadJobs();
+    loadDashboard();
+  </script>
+</body>
+</html>

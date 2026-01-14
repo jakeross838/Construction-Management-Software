@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Draws</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260113b">
+  <link rel="stylesheet" href="css/styles.css?v=20260114">
 </head>
 <body>
   <div class="app">
@@ -17,9 +17,7 @@
           <span class="brand-name">Ross Built</span>
         </div>
         <nav class="main-nav">
-          <a href="index.html" class="main-nav-link active">Financial</a>
-          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
-          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
           <button class="btn btn-primary" onclick="showAutoGenerateModal()">Auto-Generate Draw</button>
@@ -27,18 +25,14 @@
       </div>
       <div class="header-sub">
         <nav class="sub-nav">
-          <a href="index.html" class="sub-nav-link">Invoices</a>
-          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
-          <a href="draws.html" class="sub-nav-link active">Draws</a>
-          <a href="budgets.html" class="sub-nav-link">Budgets</a>
-          <a href="reconciliation.html" class="sub-nav-link">Reconciliation</a>
-          <a href="lien-releases.html" class="sub-nav-link">Lien Releases</a>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="main">
+    <div class="app-body">
+      <main class="main">
       <!-- Filters -->
       <div class="table-toolbar">
         <div class="filter-controls">
@@ -60,6 +54,7 @@
         <div class="loading">Loading draws...</div>
       </div>
     </main>
+    </div>
   </div>
 
   <!-- Draw Detail Modal (Fullscreen - Single Page Layout) -->
@@ -583,6 +578,7 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <script src="js/toasts.js"></script>
+  <script src="js/nav-sidebar.js"></script>
   <script src="js/sidebar.js?v=20260112"></script>
   <script>
     // ============================================================
@@ -1381,7 +1377,28 @@
       // Show summary
       const invoiceCount = currentDraw.invoices?.length || 0;
       const totalAmount = parseFloat(currentDraw.total_amount || 0);
+
+      // Build lien release warning if coverage is incomplete
+      let lienWarningHtml = '';
+      if (lienReleaseCoverage && !lienReleaseCoverage.is_complete) {
+        const missingVendors = lienReleaseCoverage.missing_vendors || [];
+        lienWarningHtml = `
+          <div class="submit-warning">
+            <div class="warning-header">
+              <span class="warning-icon">⚠</span>
+              <strong>Missing Lien Releases</strong>
+            </div>
+            <p>The following vendors have invoices in this draw but no lien release attached:</p>
+            <ul class="warning-list">
+              ${missingVendors.map(v => `<li>${v.vendor_name} (${formatMoney(v.total_amount)})</li>`).join('')}
+            </ul>
+            <p class="warning-note">You can still submit, but banks typically require lien releases from all vendors.</p>
+          </div>
+        `;
+      }
+
       document.getElementById('submitDrawSummary').innerHTML = `
+        ${lienWarningHtml}
         <div class="summary-stats">
           <div class="stat">
             <span class="stat-value">${invoiceCount}</span>
@@ -1391,6 +1408,12 @@
             <span class="stat-value">${formatMoney(totalAmount)}</span>
             <span class="stat-label">Total Amount</span>
           </div>
+          ${lienReleaseCoverage ? `
+          <div class="stat ${lienReleaseCoverage.is_complete ? 'stat-success' : 'stat-warning'}">
+            <span class="stat-value">${lienReleaseCoverage.coverage_percent}%</span>
+            <span class="stat-label">Lien Coverage</span>
+          </div>
+          ` : ''}
         </div>
       `;
 
@@ -1973,43 +1996,84 @@
     // ============================================================
 
     let drawLienReleases = [];
+    let lienReleaseCoverage = null;
 
     async function loadDrawLienReleases(drawId, drawStatus) {
       const container = document.getElementById('drawLienReleasesContainer');
       try {
-        const res = await fetch(`/api/draws/${drawId}/lien-releases`);
-        drawLienReleases = await res.json();
-        renderDrawLienReleases(drawLienReleases, drawStatus);
+        // Load both releases and coverage in parallel
+        const [releasesRes, coverageRes] = await Promise.all([
+          fetch(`/api/draws/${drawId}/lien-releases`),
+          fetch(`/api/draws/${drawId}/lien-release-coverage`)
+        ]);
+
+        drawLienReleases = await releasesRes.json();
+        lienReleaseCoverage = await coverageRes.json();
+
+        renderDrawLienReleases(drawLienReleases, lienReleaseCoverage, drawStatus);
       } catch (err) {
         console.error('Failed to load lien releases:', err);
         container.innerHTML = '<div class="error-state">Failed to load lien releases</div>';
       }
     }
 
-    function renderDrawLienReleases(releases, drawStatus) {
+    function renderDrawLienReleases(releases, coverage, drawStatus) {
       const container = document.getElementById('drawLienReleasesContainer');
 
-      if (!releases || releases.length === 0) {
-        container.innerHTML = '<div class="empty-state">No lien releases attached to this draw</div>';
-        return;
+      // Build coverage status header
+      let coverageHtml = '';
+      if (coverage && coverage.total_vendors > 0) {
+        const statusClass = coverage.is_complete ? 'coverage-complete' : 'coverage-incomplete';
+        const statusIcon = coverage.is_complete ? '✓' : '⚠';
+
+        coverageHtml = `
+          <div class="lien-release-coverage ${statusClass}">
+            <div class="coverage-header">
+              <span class="coverage-icon">${statusIcon}</span>
+              <span class="coverage-title">Vendor Coverage: ${coverage.coverage_percent}%</span>
+              <span class="coverage-detail">(${coverage.vendors_with_release}/${coverage.total_vendors} vendors)</span>
+            </div>
+            ${!coverage.is_complete ? `
+              <div class="coverage-missing">
+                <strong>Missing lien releases from:</strong>
+                <ul>
+                  ${coverage.missing_vendors.map(v => `
+                    <li>
+                      <span class="vendor-name">${v.vendor_name}</span>
+                      <span class="vendor-meta">${v.invoice_count} invoice(s) - ${formatMoney(v.total_amount)}</span>
+                    </li>
+                  `).join('')}
+                </ul>
+              </div>
+            ` : ''}
+          </div>
+        `;
       }
 
-      container.innerHTML = releases.map(lr => `
-        <div class="lien-release-mini-item">
-          <div class="lien-release-mini-info">
-            <span class="lien-release-mini-vendor">${lr.vendor?.name || 'Unknown Vendor'}</span>
-            <span class="lien-release-mini-meta">
-              ${formatLienReleaseType(lr.release_type)}
-              ${lr.amount ? ' - ' + formatMoney(lr.amount) : ''}
-              ${lr.through_date ? ' - Through ' + formatDate(lr.through_date) : ''}
-            </span>
+      // Build releases list
+      let releasesHtml = '';
+      if (!releases || releases.length === 0) {
+        releasesHtml = '<div class="empty-state">No lien releases attached to this draw</div>';
+      } else {
+        releasesHtml = releases.map(lr => `
+          <div class="lien-release-mini-item">
+            <div class="lien-release-mini-info">
+              <span class="lien-release-mini-vendor">${lr.vendor?.name || 'Unknown Vendor'}</span>
+              <span class="lien-release-mini-meta">
+                ${formatLienReleaseType(lr.release_type)}
+                ${lr.amount ? ' - ' + formatMoney(lr.amount) : ''}
+                ${lr.through_date ? ' - Through ' + formatDate(lr.through_date) : ''}
+              </span>
+            </div>
+            <div class="lien-release-mini-actions">
+              ${lr.pdf_url ? `<a href="${lr.pdf_url}" target="_blank" class="btn btn-sm btn-secondary">View PDF</a>` : ''}
+              ${drawStatus === 'draft' ? `<button class="btn btn-sm btn-danger" onclick="detachLienRelease('${lr.id}')">Remove</button>` : ''}
+            </div>
           </div>
-          <div class="lien-release-mini-actions">
-            ${lr.pdf_url ? `<a href="${lr.pdf_url}" target="_blank" class="btn btn-sm btn-secondary">View PDF</a>` : ''}
-            ${drawStatus === 'draft' ? `<button class="btn btn-sm btn-danger" onclick="detachLienRelease('${lr.id}')">Remove</button>` : ''}
-          </div>
-        </div>
-      `).join('');
+        `).join('');
+      }
+
+      container.innerHTML = coverageHtml + releasesHtml;
     }
 
     function formatLienReleaseType(type) {

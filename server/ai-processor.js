@@ -120,6 +120,43 @@ async function extractTextFromPDF(pdfBuffer) {
   }
 }
 
+/**
+ * Extract data from a scanned PDF using Claude's vision capability
+ * Used when pdf-parse returns empty/minimal text
+ */
+async function extractFromScannedPDF(pdfBuffer, schema, systemPrompt) {
+  const base64PDF = pdfBuffer.toString('base64');
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: base64PDF
+          }
+        },
+        {
+          type: 'text',
+          text: `Please analyze this scanned PDF document and extract all information according to this schema:\n\n${schema}\n\nReturn ONLY valid JSON, no markdown code blocks.`
+        }
+      ]
+    }]
+  });
+
+  let jsonStr = response.content[0].text.trim();
+  if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+  }
+  return JSON.parse(jsonStr);
+}
+
 // ============================================================
 // AI EXTRACTION
 // ============================================================
@@ -815,46 +852,33 @@ async function findOrCreateVendor(vendorData) {
     }
   }
 
-  // Try to find existing vendor
+  // Try to find existing vendor using improved matching from standards.js
   const { data: vendors } = await supabase
     .from('v2_vendors')
     .select('id, name, email, phone');
 
   if (vendors && vendors.length > 0) {
-    let bestMatch = null;
-    let bestConfidence = 0;
+    // Use standards.findBestVendorMatch which handles LLC, Inc, Co removal and better normalization
+    const match = standards.findBestVendorMatch(vendorData.companyName, vendors, 75);
 
-    for (const vendor of vendors) {
-      // Use fuzzy matching
-      const fuzzyScore = fuzzyMatchScore(vendorData.companyName, vendor.name);
-
-      // Also check Soundex for phonetic matching
-      const searchSoundex = soundex(vendorData.companyName);
-      const vendorSoundex = soundex(vendor.name);
-      let soundexBonus = 0;
-      if (searchSoundex && vendorSoundex && searchSoundex === vendorSoundex) {
-        soundexBonus = 0.1;
-      }
-
-      const totalScore = Math.min(fuzzyScore + soundexBonus, 0.99);
-
-      if (totalScore > bestConfidence) {
-        bestConfidence = totalScore;
-        bestMatch = vendor;
-      }
-    }
-
-    // If we found a good match (>75% confidence), use it
-    if (bestMatch && bestConfidence > 0.75) {
-      return { vendor: bestMatch, confidence: bestConfidence, isNew: false };
+    if (match) {
+      console.log(`[Vendor Match] "${vendorData.companyName}" → "${match.vendor.name}" (${match.score}% similarity)`);
+      return {
+        vendor: match.vendor,
+        confidence: match.score / 100,
+        isNew: false,
+        matchType: 'fuzzy_match'
+      };
     }
   }
 
-  // Create new vendor
+  // Create new vendor with canonical name (normalized)
+  const canonicalName = standards.getCanonicalVendorName(vendorData.companyName);
+
   const { data: newVendor, error } = await supabase
     .from('v2_vendors')
     .insert({
-      name: vendorData.companyName,
+      name: canonicalName,
       email: vendorData.email || null,
       phone: vendorData.phone || null
     })
@@ -866,6 +890,7 @@ async function findOrCreateVendor(vendorData) {
     return { vendor: null, confidence: 0, isNew: false, error: error.message };
   }
 
+  console.log(`[Vendor Created] New vendor: "${canonicalName}" (from "${vendorData.companyName}")`);
   return { vendor: newVendor, confidence: 1.0, isNew: true };
 }
 
@@ -1365,17 +1390,69 @@ async function processLienRelease(pdfBuffer, originalFilename) {
   try {
     // 1. Extract text from PDF
     const pdfText = await extractTextFromPDF(pdfBuffer);
-    if (!pdfText || pdfText.length < 30) {
-      results.messages.push('Could not extract text from PDF - may be scanned/image');
-      results.review_flags.push('low_text_quality');
+    const isScannedPDF = !pdfText || pdfText.trim().length < 50;
+
+    if (isScannedPDF) {
+      results.messages.push('Scanned PDF detected - using vision extraction...');
     }
 
     // Store raw text for audit
-    results.ai_extracted_data = { raw_text: pdfText?.substring(0, 5000) || '' };
+    results.ai_extracted_data = { raw_text: pdfText?.substring(0, 5000) || '', scanned: isScannedPDF };
 
-    // 2. AI extraction
+    // 2. AI extraction - use vision for scanned PDFs
     results.messages.push('Extracting lien release data with AI...');
-    const extracted = await extractLienReleaseData(pdfText || '', originalFilename);
+    let extracted;
+
+    if (isScannedPDF) {
+      // Use Claude's vision capability for scanned PDFs
+      const systemPrompt = `You are an expert construction document processor for Ross Built Custom Homes in Florida.
+You specialize in analyzing lien release/waiver documents from scanned images.
+
+LIEN RELEASE TYPES:
+- conditional_progress: Payment not yet received, covers ongoing work
+- unconditional_progress: Payment received, covers ongoing work
+- conditional_final: Payment not yet received, final completion
+- unconditional_final: Payment received, final completion
+
+The vendor/claimant is the subcontractor GIVING UP lien rights.
+Ross Built is typically the party being released (the customer/owner's contractor).
+
+EXTRACTION TIPS FOR SCANNED DOCUMENTS:
+- Look carefully at handwritten text for amounts and dates
+- The header/title usually indicates the release type
+- Vendor name is often in letterhead or at the bottom
+- Job address/owner may be handwritten in blanks
+
+Return ONLY valid JSON, no markdown code blocks.`;
+
+      extracted = await extractFromScannedPDF(pdfBuffer, LIEN_RELEASE_SCHEMA, systemPrompt);
+    } else {
+      extracted = await extractLienReleaseData(pdfText || '', originalFilename);
+    }
+
+    // Normalize the extracted data (for both text and vision extraction)
+    if (extracted.vendor?.companyName) {
+      extracted.vendor.companyName = standards.toTitleCase(extracted.vendor.companyName);
+    }
+    if (extracted.throughDate) {
+      extracted.throughDate = standards.normalizeDate(extracted.throughDate);
+    }
+    if (extracted.releaseDate) {
+      extracted.releaseDate = standards.normalizeDate(extracted.releaseDate);
+    }
+    if (extracted.notary?.expiration) {
+      extracted.notary.expiration = standards.normalizeDate(extracted.notary.expiration);
+    }
+    if (extracted.job?.address) {
+      extracted.job.address = standards.normalizeAddress(extracted.job.address);
+    }
+
+    // Validate release type
+    const validTypes = ['conditional_progress', 'unconditional_progress', 'conditional_final', 'unconditional_final'];
+    if (!validTypes.includes(extracted.releaseType)) {
+      extracted.releaseType = 'conditional_progress'; // Default
+    }
+
     results.extracted = extracted;
     results.ai_extracted_data = {
       ...results.ai_extracted_data,
@@ -1479,12 +1556,521 @@ async function processLienRelease(pdfBuffer, originalFilename) {
 }
 
 // ============================================================
+// MASTER DOCUMENT PROCESSOR
+// ============================================================
+
+/**
+ * Document types that can be processed
+ */
+const DOCUMENT_TYPES = {
+  INVOICE: 'invoice',
+  LIEN_RELEASE: 'lien_release',
+  PURCHASE_ORDER: 'purchase_order',
+  QUOTE: 'quote',
+  CHANGE_ORDER: 'change_order',
+  INSURANCE_CERTIFICATE: 'insurance_certificate',
+  CONTRACT: 'contract',
+  UNKNOWN: 'unknown'
+};
+
+/**
+ * Classify a document using AI
+ * @param {string} pdfText - Extracted text from the PDF
+ * @param {string} filename - Original filename
+ * @returns {Promise<{type: string, confidence: number, reasoning: string}>}
+ */
+async function classifyDocument(pdfText, filename) {
+  const prompt = `Analyze this construction document and determine its type.
+
+FILENAME: ${filename}
+
+DOCUMENT TEXT (first 3000 chars):
+${pdfText.substring(0, 3000)}
+
+DOCUMENT TYPES TO IDENTIFY:
+1. "invoice" - A bill/invoice requesting payment for goods or services
+   - Look for: "Invoice", "Bill To", "Amount Due", "Payment Terms", invoice numbers
+
+2. "lien_release" - A lien waiver/release document
+   - Look for: "Lien Release", "Waiver", "Conditional", "Unconditional", "Florida Statute 713"
+   - Types: Conditional Progress, Unconditional Progress, Conditional Final, Unconditional Final
+
+3. "purchase_order" - A PO authorizing work/purchase
+   - Look for: "Purchase Order", "PO Number", "Authorized", "Scope of Work"
+
+4. "quote" - An estimate or proposal for work
+   - Look for: "Quote", "Estimate", "Proposal", "Bid", pricing for future work
+
+5. "change_order" - A change to existing contract/PO
+   - Look for: "Change Order", "CO #", "Amendment", "Modification", additional/reduced scope
+
+6. "insurance_certificate" - Certificate of insurance/liability
+   - Look for: "Certificate of Insurance", "COI", "Liability", "Workers Comp", "ACORD"
+
+7. "contract" - A formal agreement/contract
+   - Look for: "Agreement", "Contract", "Terms and Conditions", signatures, legal terms
+
+8. "unknown" - Cannot determine document type
+
+Return JSON only:
+{
+  "type": "invoice|lien_release|purchase_order|quote|change_order|insurance_certificate|contract|unknown",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of why this classification",
+  "subtype": "Optional subtype (e.g., 'conditional_progress' for lien releases)"
+}`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    let jsonStr = response.content[0].text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    console.error('Document classification error:', err);
+    return {
+      type: DOCUMENT_TYPES.UNKNOWN,
+      confidence: 0,
+      reasoning: 'Classification failed: ' + err.message
+    };
+  }
+}
+
+/**
+ * Master document processor - classifies and routes documents
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @param {string} originalFilename - Original filename
+ * @param {Object} options - Processing options
+ * @returns {Promise<Object>} - Processing result with document type and extracted data
+ */
+async function processDocument(pdfBuffer, originalFilename, options = {}) {
+  const result = {
+    success: false,
+    documentType: null,
+    classification: null,
+    data: null,
+    messages: [],
+    redirect: null
+  };
+
+  try {
+    // 1. Extract text from PDF
+    result.messages.push('Extracting text from document...');
+    const pdfText = await extractTextFromPDF(pdfBuffer);
+
+    if (!pdfText || pdfText.length < 20) {
+      result.messages.push('Warning: Low text extraction - document may be scanned/image-based');
+    }
+
+    // 2. Classify the document
+    result.messages.push('Classifying document type with AI...');
+    const classification = await classifyDocument(pdfText || '', originalFilename);
+    result.classification = classification;
+    result.documentType = classification.type;
+    result.messages.push(`Identified as: ${classification.type} (${Math.round(classification.confidence * 100)}% confidence)`);
+    result.messages.push(`Reasoning: ${classification.reasoning}`);
+
+    // 3. Route to appropriate processor based on type
+    switch (classification.type) {
+      case DOCUMENT_TYPES.INVOICE:
+        result.messages.push('Processing as invoice...');
+        const invoiceResult = await processInvoice(pdfBuffer, originalFilename, options.uploadedBy);
+        result.data = invoiceResult;
+        result.success = invoiceResult.success;
+        result.redirect = {
+          page: 'index.html',
+          param: 'invoice',
+          id: invoiceResult.invoice?.id
+        };
+        if (invoiceResult.messages) {
+          result.messages.push(...invoiceResult.messages);
+        }
+        break;
+
+      case DOCUMENT_TYPES.LIEN_RELEASE:
+        result.messages.push('Processing as lien release...');
+        const lienResult = await processLienRelease(pdfBuffer, originalFilename);
+        result.data = lienResult;
+        result.success = lienResult.success;
+        // Note: lien release needs to be saved separately - we return the extracted data
+        result.redirect = {
+          page: 'lien-releases.html',
+          action: 'create',
+          data: lienResult
+        };
+        if (lienResult.messages) {
+          result.messages.push(...lienResult.messages);
+        }
+        break;
+
+      case DOCUMENT_TYPES.PURCHASE_ORDER:
+        result.messages.push('Document identified as Purchase Order');
+        result.messages.push('PO import requires manual entry - extracted data provided for reference');
+        result.data = {
+          extracted: await extractPOData(pdfText, originalFilename),
+          pdfText: pdfText?.substring(0, 2000)
+        };
+        result.success = true;
+        result.redirect = {
+          page: 'pos.html',
+          action: 'create'
+        };
+        break;
+
+      case DOCUMENT_TYPES.QUOTE:
+        result.messages.push('Document identified as Quote/Estimate');
+        result.messages.push('Quotes can be converted to POs after review');
+        result.data = {
+          extracted: await extractQuoteData(pdfText, originalFilename),
+          pdfText: pdfText?.substring(0, 2000)
+        };
+        result.success = true;
+        result.redirect = {
+          page: 'pos.html',
+          action: 'create_from_quote'
+        };
+        break;
+
+      case DOCUMENT_TYPES.CHANGE_ORDER:
+        result.messages.push('Document identified as Change Order');
+        result.data = {
+          extracted: await extractChangeOrderData(pdfText, originalFilename),
+          pdfText: pdfText?.substring(0, 2000)
+        };
+        result.success = true;
+        result.redirect = {
+          page: 'pos.html',
+          action: 'change_order'
+        };
+        break;
+
+      case DOCUMENT_TYPES.INSURANCE_CERTIFICATE:
+        result.messages.push('Document identified as Insurance Certificate');
+        result.messages.push('Insurance certificates are stored for vendor compliance');
+        result.data = {
+          extracted: await extractInsuranceData(pdfText, originalFilename),
+          pdfText: pdfText?.substring(0, 2000)
+        };
+        result.success = true;
+        result.redirect = {
+          page: 'vendors.html',
+          action: 'add_insurance'
+        };
+        break;
+
+      case DOCUMENT_TYPES.CONTRACT:
+        result.messages.push('Document identified as Contract');
+        result.data = {
+          pdfText: pdfText?.substring(0, 2000)
+        };
+        result.success = true;
+        break;
+
+      default:
+        result.messages.push('Could not determine document type');
+        result.messages.push('Please manually categorize this document');
+        result.data = {
+          pdfText: pdfText?.substring(0, 2000)
+        };
+        result.success = false;
+    }
+
+    result.messages.push('Document processing complete');
+    return result;
+
+  } catch (err) {
+    console.error('Master document processor error:', err);
+    result.messages.push('Error: ' + err.message);
+    result.success = false;
+    return result;
+  }
+}
+
+/**
+ * Extract PO data from text (basic extraction for PO documents)
+ */
+async function extractPOData(pdfText, filename) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: `Extract purchase order information from this document:
+
+${pdfText?.substring(0, 3000) || 'No text available'}
+
+Return JSON:
+{
+  "poNumber": "PO number if found",
+  "vendor": {"companyName": "vendor name", "contact": "contact person"},
+  "job": {"reference": "job reference/address"},
+  "amount": "total amount as number",
+  "date": "PO date",
+  "description": "scope of work description",
+  "lineItems": [{"description": "item", "amount": 0}]
+}`
+      }]
+    });
+    let jsonStr = response.content[0].text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Extract quote data from text
+ */
+async function extractQuoteData(pdfText, filename) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: `Extract quote/estimate information from this document:
+
+${pdfText?.substring(0, 3000) || 'No text available'}
+
+Return JSON:
+{
+  "quoteNumber": "quote/estimate number",
+  "vendor": {"companyName": "vendor name"},
+  "job": {"reference": "job reference/address"},
+  "amount": "total quoted amount as number",
+  "date": "quote date",
+  "validUntil": "expiration date if specified",
+  "description": "scope of work",
+  "lineItems": [{"description": "item", "amount": 0}]
+}`
+      }]
+    });
+    let jsonStr = response.content[0].text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Extract change order data from text
+ */
+async function extractChangeOrderData(pdfText, filename) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: `Extract change order information from this document:
+
+${pdfText?.substring(0, 3000) || 'No text available'}
+
+Return JSON:
+{
+  "coNumber": "change order number",
+  "poNumber": "related PO number if referenced",
+  "vendor": {"companyName": "vendor name"},
+  "job": {"reference": "job reference/address"},
+  "amount": "change amount (positive for addition, negative for deduction)",
+  "date": "CO date",
+  "reason": "reason for change",
+  "description": "scope change description"
+}`
+      }]
+    });
+    let jsonStr = response.content[0].text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Extract insurance certificate data from text
+ */
+async function extractInsuranceData(pdfText, filename) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: `Extract insurance certificate information from this document:
+
+${pdfText?.substring(0, 3000) || 'No text available'}
+
+Return JSON:
+{
+  "insured": {"companyName": "insured company name"},
+  "insuranceCompany": "insurance provider",
+  "policyNumber": "policy number",
+  "effectiveDate": "policy start date",
+  "expirationDate": "policy end date",
+  "generalLiability": {"limit": "coverage limit amount"},
+  "workersComp": {"limit": "coverage limit amount"},
+  "auto": {"limit": "coverage limit amount"},
+  "umbrella": {"limit": "coverage limit amount"},
+  "certificateHolder": "who is listed as certificate holder"
+}`
+      }]
+    });
+    let jsonStr = response.content[0].text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+// ============================================================
+// PDF SPLITTING FOR COMBINED DOCUMENTS
+// ============================================================
+
+const { PDFDocument } = require('pdf-lib');
+
+/**
+ * Split a multi-page PDF into individual page buffers
+ * @param {Buffer} pdfBuffer - The combined PDF buffer
+ * @returns {Promise<Array<{pageNumber: number, buffer: Buffer}>>}
+ */
+async function splitPDF(pdfBuffer) {
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const pageCount = pdfDoc.getPageCount();
+  const pages = [];
+
+  for (let i = 0; i < pageCount; i++) {
+    // Create a new PDF with just this page
+    const newPdf = await PDFDocument.create();
+    const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
+    newPdf.addPage(copiedPage);
+
+    const pdfBytes = await newPdf.save();
+    pages.push({
+      pageNumber: i + 1,
+      buffer: Buffer.from(pdfBytes)
+    });
+  }
+
+  return pages;
+}
+
+/**
+ * Process a combined PDF document by splitting and processing each page
+ * @param {Buffer} pdfBuffer - The combined PDF buffer
+ * @param {string} originalFilename - Original filename
+ * @param {Object} options - Processing options
+ * @returns {Promise<Object>} - Results for all pages
+ */
+async function processMultiPageDocument(pdfBuffer, originalFilename, options = {}) {
+  const results = {
+    success: true,
+    totalPages: 0,
+    processedPages: [],
+    failedPages: [],
+    summary: {
+      invoices: 0,
+      lienReleases: 0,
+      other: 0
+    },
+    messages: []
+  };
+
+  try {
+    // Split the PDF
+    results.messages.push('Splitting combined PDF...');
+    const pages = await splitPDF(pdfBuffer);
+    results.totalPages = pages.length;
+    results.messages.push(`Found ${pages.length} pages to process`);
+
+    // Process each page
+    for (const page of pages) {
+      try {
+        results.messages.push(`Processing page ${page.pageNumber}...`);
+
+        // Generate filename for this page
+        const pageFilename = originalFilename.replace('.pdf', `_page${page.pageNumber}.pdf`);
+
+        // Process with the master document processor
+        const pageResult = await processDocument(page.buffer, pageFilename, options);
+
+        if (pageResult.success) {
+          results.processedPages.push({
+            pageNumber: page.pageNumber,
+            documentType: pageResult.documentType,
+            classification: pageResult.classification,
+            data: pageResult.data,
+            savedRecord: pageResult.savedRecord,
+            redirect: pageResult.redirect
+          });
+
+          // Update summary
+          if (pageResult.documentType === DOCUMENT_TYPES.INVOICE) {
+            results.summary.invoices++;
+          } else if (pageResult.documentType === DOCUMENT_TYPES.LIEN_RELEASE) {
+            results.summary.lienReleases++;
+          } else {
+            results.summary.other++;
+          }
+
+          results.messages.push(`Page ${page.pageNumber}: ${pageResult.documentType} processed successfully`);
+        } else {
+          results.failedPages.push({
+            pageNumber: page.pageNumber,
+            error: pageResult.messages?.join(', ') || 'Processing failed'
+          });
+          results.messages.push(`Page ${page.pageNumber}: Failed - ${pageResult.messages?.join(', ')}`);
+        }
+      } catch (pageErr) {
+        results.failedPages.push({
+          pageNumber: page.pageNumber,
+          error: pageErr.message
+        });
+        results.messages.push(`Page ${page.pageNumber}: Error - ${pageErr.message}`);
+      }
+    }
+
+    results.success = results.failedPages.length === 0;
+    results.messages.push(`Processing complete: ${results.processedPages.length} succeeded, ${results.failedPages.length} failed`);
+
+  } catch (err) {
+    results.success = false;
+    results.messages.push(`Split error: ${err.message}`);
+  }
+
+  return results;
+}
+
+// ============================================================
 // EXPORTS
 // ============================================================
 
 module.exports = {
   processInvoice,
   processLienRelease,
+  processDocument,
+  processMultiPageDocument,
+  splitPDF,
+  classifyDocument,
   extractTextFromPDF,
   extractInvoiceData,
   extractLienReleaseData,
@@ -1492,5 +2078,6 @@ module.exports = {
   findOrCreateVendor,
   findOrCreatePO,
   checkForDuplicates,
-  CONFIDENCE_THRESHOLDS
+  CONFIDENCE_THRESHOLDS,
+  DOCUMENT_TYPES
 };

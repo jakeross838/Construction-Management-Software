@@ -758,9 +758,7 @@
           <span class="brand-name">Ross Built</span>
         </div>
         <nav class="main-nav">
-          <a href="index.html" class="main-nav-link active">Financial</a>
-          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
-          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
           <button id="runBtn" class="btn btn-primary btn-run" onclick="runReconciliation()">Run Reconciliation</button>
@@ -768,17 +766,13 @@
       </div>
       <div class="header-sub">
         <nav class="sub-nav">
-          <a href="index.html" class="sub-nav-link">Invoices</a>
-          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
-          <a href="draws.html" class="sub-nav-link">Draws</a>
-          <a href="budgets.html" class="sub-nav-link">Budgets</a>
-          <a href="reconciliation.html" class="sub-nav-link active">Reconciliation</a>
-          <a href="lien-releases.html" class="sub-nav-link">Lien Releases</a>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
       </div>
     </header>
 
-    <main class="main">
+    <div class="app-body">
+      <main class="main">
       <!-- Header -->
       <div class="recon-header">
         <h1>
@@ -942,6 +936,7 @@
         </table>
       </div>
     </main>
+    </div>
   </div>
 
   <!-- Resolve Modal -->
@@ -980,6 +975,7 @@
   </div>
 
   <script src="js/sidebar.js"></script>
+  <script src="js/nav-sidebar.js"></script>
   <script src="js/toasts.js"></script>
   <script>
     // State

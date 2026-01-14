@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Invoice Approval</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260113b">
+  <link rel="stylesheet" href="css/styles.css?v=20260114">
 </head>
 <body>
   <div class="app">
@@ -17,28 +17,23 @@
           <span class="brand-name">Ross Built</span>
         </div>
         <nav class="main-nav">
-          <a href="index.html" class="main-nav-link active">Financial</a>
-          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
-          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
-          <button class="btn btn-primary" onclick="showUploadInvoiceModal()">+ Upload Invoice</button>
+          <button class="btn btn-primary" onclick="showUniversalUploadModal()">+ Upload</button>
+          <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
         </div>
       </div>
       <div class="header-sub">
         <nav class="sub-nav">
-          <a href="index.html" class="sub-nav-link active">Invoices</a>
-          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
-          <a href="draws.html" class="sub-nav-link">Draws</a>
-          <a href="budgets.html" class="sub-nav-link">Budgets</a>
-          <a href="reconciliation.html" class="sub-nav-link">Reconciliation</a>
-          <a href="lien-releases.html" class="sub-nav-link">Lien Releases</a>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="main">
+    <div class="app-body">
+      <main class="main">
       <!-- Filters -->
       <div class="table-toolbar">
         <div class="search-box">
@@ -52,6 +47,7 @@
         <div class="loading">Loading invoices...</div>
       </div>
     </main>
+    </div>
   </div>
 
   <!-- Invoice Detail Modal (Split View with PDF) -->
@@ -301,6 +297,69 @@
     </div>
   </div>
 
+  <!-- Universal Document Upload Modal -->
+  <div id="universalUploadModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Upload Document</h2>
+        <button class="close-btn" onclick="closeModal('universalUploadModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="universalUploadForm">
+          <div class="upload-info-banner">
+            <div class="info-icon">AI</div>
+            <div class="info-text">
+              <strong>Smart Document Processing</strong>
+              <p>Our AI will automatically classify your document (Invoice, Lien Release, Quote, PO, etc.) and route it to the correct system.</p>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>PDF Document *</label>
+            <div class="file-drop-zone" id="universalDropZone">
+              <input type="file" id="universalPdfFile" accept="application/pdf" onchange="handleUniversalFileSelect(this)">
+              <div class="drop-zone-content">
+                <div class="drop-icon">PDF</div>
+                <p>Drag & drop a PDF here, or click to browse</p>
+                <span class="file-types">Invoices, Lien Releases, POs, Quotes, Change Orders, Insurance Certs</span>
+              </div>
+            </div>
+            <div id="universalFileName" class="selected-file" style="display: none;"></div>
+          </div>
+
+          <!-- Split Pages Toggle -->
+          <div class="form-group split-toggle" id="splitToggleGroup" style="display: none;">
+            <label class="toggle-label">
+              <input type="checkbox" id="splitPagesToggle" checked>
+              <span class="toggle-text">Split into separate documents</span>
+              <span class="toggle-hint" id="splitToggleHint">This PDF has multiple pages - split to process each as a separate document</span>
+            </label>
+          </div>
+
+          <!-- Processing Status -->
+          <div id="universalProcessingStatus" class="processing-status" style="display: none;">
+            <div class="processing-spinner"></div>
+            <div class="processing-messages" id="processingMessages"></div>
+          </div>
+
+          <!-- Result Preview -->
+          <div id="universalResultPreview" class="result-preview" style="display: none;">
+            <div class="result-header">
+              <span class="result-type-badge" id="resultTypeBadge"></span>
+              <span class="result-confidence" id="resultConfidence"></span>
+            </div>
+            <div class="result-details" id="resultDetails"></div>
+            <div class="result-actions" id="resultActions"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" id="universalUploadFooter">
+        <button class="btn btn-secondary" onclick="closeModal('universalUploadModal')">Cancel</button>
+        <button class="btn btn-primary" id="processDocumentBtn" onclick="processUniversalDocument()" disabled>Process Document</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Container (for edit/job selection modals) -->
   <div id="modal-container"></div>
 
@@ -312,6 +371,7 @@
 
   <!-- Core modules (load before app.js) -->
   <script src="js/toasts.js?v=20260107"></script>
+  <script src="js/nav-sidebar.js"></script>
   <script src="js/validation.js?v=20260108d"></script>
   <script src="js/cost-code-picker.js?v=20260107"></script>
   <script src="js/searchable-picker.js?v=20260108"></script>
@@ -355,6 +415,314 @@
         loadInvoices();
       }
     });
+
+    // ============================================================
+    // Universal Document Upload Functions
+    // ============================================================
+
+    let universalSelectedFile = null;
+    let universalPdfPageCount = 1;
+
+    function showUniversalUploadModal() {
+      // Reset state
+      universalSelectedFile = null;
+      universalPdfPageCount = 1;
+      document.getElementById('universalPdfFile').value = '';
+      document.getElementById('universalFileName').style.display = 'none';
+      document.getElementById('universalProcessingStatus').style.display = 'none';
+      document.getElementById('universalResultPreview').style.display = 'none';
+      document.getElementById('splitToggleGroup').style.display = 'none';
+      document.getElementById('processDocumentBtn').disabled = true;
+      document.getElementById('processDocumentBtn').textContent = 'Process Document';
+
+      // Show modal
+      document.getElementById('universalUploadModal').style.display = 'flex';
+    }
+
+    async function handleUniversalFileSelect(input) {
+      const file = input.files[0];
+      if (file && file.type === 'application/pdf') {
+        universalSelectedFile = file;
+        document.getElementById('universalFileName').textContent = file.name;
+        document.getElementById('universalFileName').style.display = 'block';
+        document.getElementById('processDocumentBtn').disabled = false;
+
+        // Reset any previous results
+        document.getElementById('universalProcessingStatus').style.display = 'none';
+        document.getElementById('universalResultPreview').style.display = 'none';
+
+        // Detect page count using pdf.js or ArrayBuffer parsing
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfData = new Uint8Array(arrayBuffer);
+          // Simple page count detection - look for /Type /Page patterns
+          const text = new TextDecoder('latin1').decode(pdfData);
+          const pageMatches = text.match(/\/Type\s*\/Page[^s]/g);
+          universalPdfPageCount = pageMatches ? pageMatches.length : 1;
+
+          // Show split toggle if multi-page
+          const splitToggle = document.getElementById('splitToggleGroup');
+          if (universalPdfPageCount > 1) {
+            splitToggle.style.display = 'block';
+            document.getElementById('splitToggleHint').textContent =
+              `This PDF has ${universalPdfPageCount} pages - split to process each as a separate document`;
+            document.getElementById('splitPagesToggle').checked = true;
+          } else {
+            splitToggle.style.display = 'none';
+          }
+        } catch (e) {
+          console.log('Could not detect page count:', e);
+          universalPdfPageCount = 1;
+          document.getElementById('splitToggleGroup').style.display = 'none';
+        }
+      }
+    }
+
+    // Setup drag and drop for universal upload
+    document.addEventListener('DOMContentLoaded', () => {
+      const dropZone = document.getElementById('universalDropZone');
+      if (dropZone) {
+        dropZone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => {
+          dropZone.classList.remove('dragover');
+        });
+        dropZone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dropZone.classList.remove('dragover');
+          const file = e.dataTransfer.files[0];
+          if (file && file.type === 'application/pdf') {
+            document.getElementById('universalPdfFile').files = e.dataTransfer.files;
+            handleUniversalFileSelect(document.getElementById('universalPdfFile'));
+          }
+        });
+      }
+    });
+
+    async function processUniversalDocument() {
+      if (!universalSelectedFile) {
+        showToast('Please select a PDF file', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('processDocumentBtn');
+      const statusDiv = document.getElementById('universalProcessingStatus');
+      const messagesDiv = document.getElementById('processingMessages');
+      const resultDiv = document.getElementById('universalResultPreview');
+
+      // Check if we should split pages
+      const shouldSplit = universalPdfPageCount > 1 &&
+        document.getElementById('splitPagesToggle')?.checked;
+
+      // Show processing state
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+      statusDiv.style.display = 'flex';
+      resultDiv.style.display = 'none';
+      messagesDiv.innerHTML = '<div class="message">Uploading document...</div>';
+
+      try {
+        const formData = new FormData();
+        formData.append('pdf', universalSelectedFile);
+        formData.append('uploaded_by', 'Jake Ross');
+
+        // Use different endpoint based on split toggle
+        const endpoint = shouldSplit ? '/api/documents/process-multipage' : '/api/documents/process';
+        messagesDiv.innerHTML += `<div class="message">${shouldSplit ? 'Splitting and processing ' + universalPdfPageCount + ' pages...' : 'Classifying document with AI...'}</div>`;
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Processing failed');
+        }
+
+        // Show results
+        statusDiv.style.display = 'none';
+        resultDiv.style.display = 'block';
+
+        const typeLabels = {
+          invoice: 'Invoice',
+          lien_release: 'Lien Release',
+          purchase_order: 'Purchase Order',
+          quote: 'Quote/Estimate',
+          change_order: 'Change Order',
+          insurance_certificate: 'Insurance Certificate',
+          contract: 'Contract',
+          unknown: 'Unknown'
+        };
+
+        // Handle multi-page result vs single result
+        if (shouldSplit && result.totalPages) {
+          // Multi-page result
+          const typeBadge = document.getElementById('resultTypeBadge');
+          typeBadge.textContent = `${result.totalPages} Documents`;
+          typeBadge.className = 'result-type-badge type-multipage';
+
+          document.getElementById('resultConfidence').textContent =
+            `${result.processedPages?.length || 0} succeeded, ${result.failedPages?.length || 0} failed`;
+
+          // Build details for each processed page
+          const detailsDiv = document.getElementById('resultDetails');
+          let detailsHtml = '<div class="multipage-results">';
+
+          if (result.processedPages?.length > 0) {
+            for (const page of result.processedPages) {
+              const typeLabel = typeLabels[page.documentType] || page.documentType;
+              const vendor = page.data?.extracted?.vendor?.companyName ||
+                             page.data?.vendor?.name || 'Unknown';
+              const amount = page.data?.extracted?.amount ||
+                             page.data?.extracted?.totalAmount ||
+                             page.savedRecord?.amount || '';
+
+              detailsHtml += `
+                <div class="multipage-item">
+                  <span class="page-badge type-${page.documentType}">${typeLabel}</span>
+                  <span class="page-vendor">${vendor}</span>
+                  ${amount ? `<span class="page-amount">$${Number(amount).toLocaleString()}</span>` : ''}
+                </div>
+              `;
+            }
+          }
+
+          if (result.failedPages?.length > 0) {
+            for (const page of result.failedPages) {
+              detailsHtml += `
+                <div class="multipage-item failed">
+                  <span class="page-badge type-unknown">Page ${page.pageNumber}</span>
+                  <span class="page-error">${page.error}</span>
+                </div>
+              `;
+            }
+          }
+
+          detailsHtml += '</div>';
+
+          // Summary
+          detailsHtml += `
+            <div class="multipage-summary">
+              <strong>Summary:</strong>
+              ${result.summary?.lienReleases ? `${result.summary.lienReleases} Lien Releases` : ''}
+              ${result.summary?.invoices ? `${result.summary.invoices} Invoices` : ''}
+              ${result.summary?.other ? `${result.summary.other} Other` : ''}
+            </div>
+          `;
+
+          detailsDiv.innerHTML = detailsHtml;
+
+          // Actions for multipage
+          const actionsDiv = document.getElementById('resultActions');
+          const hasLienReleases = result.summary?.lienReleases > 0;
+          const hasInvoices = result.summary?.invoices > 0;
+
+          let actionsHtml = '';
+          if (hasLienReleases) {
+            actionsHtml += `<button class="btn btn-primary" onclick="navigateToResult('lien-releases.html', '')">View Lien Releases</button>`;
+          }
+          if (hasInvoices) {
+            actionsHtml += `<button class="btn btn-primary" onclick="navigateToResult('index.html', '')">View Invoices</button>`;
+          }
+          actionsHtml += `<button class="btn btn-secondary" onclick="closeModal('universalUploadModal')">Close</button>`;
+          actionsDiv.innerHTML = actionsHtml;
+
+          showToast(`Processed ${result.processedPages?.length || 0} of ${result.totalPages} documents`, 'success');
+
+        } else {
+          // Single document result
+          const typeBadge = document.getElementById('resultTypeBadge');
+          typeBadge.textContent = typeLabels[result.documentType] || result.documentType;
+          typeBadge.className = 'result-type-badge type-' + result.documentType;
+
+          // Confidence
+          const conf = result.classification?.confidence || 0;
+          document.getElementById('resultConfidence').textContent = Math.round(conf * 100) + '% confidence';
+
+          // Details based on document type
+          const detailsDiv = document.getElementById('resultDetails');
+          let detailsHtml = '';
+
+          if (result.documentType === 'invoice') {
+            const data = result.data?.extracted || {};
+            detailsHtml = `
+              <div class="detail-row"><label>Vendor:</label> <span>${data.vendor?.companyName || 'Unknown'}</span></div>
+              <div class="detail-row"><label>Invoice #:</label> <span>${data.invoiceNumber || 'N/A'}</span></div>
+              <div class="detail-row"><label>Amount:</label> <span>$${(data.totalAmount || 0).toLocaleString()}</span></div>
+              <div class="detail-row"><label>Job:</label> <span>${result.data?.matchedJob?.name || 'Not matched'}</span></div>
+            `;
+          } else if (result.documentType === 'lien_release') {
+            const data = result.data?.extracted || {};
+            detailsHtml = `
+              <div class="detail-row"><label>Type:</label> <span>${(data.releaseType || 'unknown').replace(/_/g, ' ')}</span></div>
+              <div class="detail-row"><label>Vendor:</label> <span>${data.vendor?.companyName || 'Unknown'}</span></div>
+              <div class="detail-row"><label>Amount:</label> <span>${data.amount ? '$' + data.amount.toLocaleString() : 'N/A'}</span></div>
+              <div class="detail-row"><label>Through Date:</label> <span>${data.throughDate || 'N/A'}</span></div>
+            `;
+          } else {
+            detailsHtml = `
+              <div class="detail-row"><label>Reasoning:</label> <span>${result.classification?.reasoning || 'N/A'}</span></div>
+              <p class="info-text">This document type requires manual processing.</p>
+            `;
+          }
+          detailsDiv.innerHTML = detailsHtml;
+
+          // Actions
+          const actionsDiv = document.getElementById('resultActions');
+          if (result.redirect?.page) {
+            actionsDiv.innerHTML = `
+              <button class="btn btn-success" onclick="navigateToResult('${result.redirect.page}', '${result.redirect.id || ''}')">
+                View ${typeLabels[result.documentType] || 'Document'}
+              </button>
+            `;
+          } else {
+            actionsDiv.innerHTML = `<button class="btn btn-secondary" onclick="closeModal('universalUploadModal')">Close</button>`;
+          }
+
+          showToast(`${typeLabels[result.documentType]} processed successfully`, 'success');
+
+          // Refresh invoice list if it was an invoice
+          if (result.documentType === 'invoice' && typeof loadInvoices === 'function') {
+            loadInvoices();
+          }
+        }
+
+        // Update button for both cases
+        btn.textContent = 'Upload Another';
+        btn.disabled = false;
+        btn.onclick = () => {
+          universalSelectedFile = null;
+          universalPdfPageCount = 1;
+          document.getElementById('universalPdfFile').value = '';
+          document.getElementById('universalFileName').style.display = 'none';
+          document.getElementById('splitToggleGroup').style.display = 'none';
+          resultDiv.style.display = 'none';
+          btn.textContent = 'Process Document';
+          btn.disabled = true;
+          btn.onclick = processUniversalDocument;
+        };
+
+      } catch (err) {
+        console.error('Document processing error:', err);
+        statusDiv.style.display = 'none';
+        btn.disabled = false;
+        btn.textContent = 'Try Again';
+        showToast(err.message || 'Processing failed', 'error');
+      }
+    }
+
+    function navigateToResult(page, id) {
+      closeModal('universalUploadModal');
+      if (id) {
+        window.location.href = `${page}?highlight=${id}`;
+      } else {
+        window.location.href = page;
+      }
+    }
   </script>
 </body>
 </html>

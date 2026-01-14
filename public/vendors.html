@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Vendors</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260114e">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav">
+          <!-- Filled by nav-sidebar.js -->
+        </nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="showAddVendorModal()">+ Add Vendor</button>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav">
+          <!-- Filled by nav-sidebar.js -->
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="app-body">
+      <main class="main">
+      <!-- Stats Bar -->
+      <div class="vendor-stats-bar" id="vendorStatsBar">
+        <div class="stat-item">
+          <span class="stat-value" id="totalVendors">0</span>
+          <span class="stat-label">Total Vendors</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" id="activeVendors">0</span>
+          <span class="stat-label">Compliant (COI + W-9)</span>
+        </div>
+        <div class="stat-item warning" id="expiringWarning" style="display: none;">
+          <span class="stat-value" id="expiringCount">0</span>
+          <span class="stat-label">Expiring Soon</span>
+          <button class="btn btn-sm btn-warning" onclick="showExpiringModal()">Review</button>
+        </div>
+        <div class="stat-item warning" id="duplicateWarning" style="display: none;">
+          <span class="stat-value" id="duplicateCount">0</span>
+          <span class="stat-label">Potential Duplicates</span>
+          <button class="btn btn-sm btn-warning" onclick="showDuplicatesModal()">Review</button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="table-toolbar">
+        <div class="filter-controls">
+          <select id="tradeFilter" class="form-control filter-select">
+            <option value="">All Trades</option>
+            <option value="plumbing">Plumbing</option>
+            <option value="electrical">Electrical</option>
+            <option value="hvac">HVAC</option>
+            <option value="framing">Framing</option>
+            <option value="roofing">Roofing</option>
+            <option value="drywall">Drywall</option>
+            <option value="painting">Painting</option>
+            <option value="flooring">Flooring</option>
+            <option value="tile">Tile</option>
+            <option value="concrete">Concrete</option>
+            <option value="general">General</option>
+          </select>
+        </div>
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="Search vendors..." class="form-control search-input">
+        </div>
+      </div>
+
+      <!-- Vendor List -->
+      <div class="vendor-list" id="vendorList">
+        <div class="loading">Loading vendors...</div>
+      </div>
+    </main>
+    </div>
+  </div>
+
+  <!-- Add/Edit Vendor Modal -->
+  <div id="vendorModal" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2 id="vendorModalTitle">Add Vendor</h2>
+        <button class="close-btn" onclick="closeVendorModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="vendorId">
+
+        <!-- Tabs -->
+        <div class="form-tabs">
+          <button class="form-tab active" onclick="switchVendorTab('basic')">Basic Info</button>
+          <button class="form-tab" onclick="switchVendorTab('insurance')">Insurance</button>
+          <button class="form-tab" onclick="switchVendorTab('compliance')">Compliance</button>
+        </div>
+
+        <!-- Basic Info Tab -->
+        <div id="vendorTab-basic" class="form-tab-content active">
+          <div class="form-row two-col">
+            <div class="form-group">
+              <label>Company Name *</label>
+              <input type="text" id="vendorName" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Contact Name</label>
+              <input type="text" id="vendorContactName" class="form-control">
+            </div>
+          </div>
+          <div class="form-row two-col">
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="vendorEmail" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>Phone</label>
+              <input type="tel" id="vendorPhone" class="form-control">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Address</label>
+              <input type="text" id="vendorAddress" class="form-control">
+            </div>
+          </div>
+          <div class="form-row two-col">
+            <div class="form-group">
+              <label>Trade</label>
+              <select id="vendorTrade" class="form-control">
+                <option value="">Select trade...</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="electrical">Electrical</option>
+                <option value="hvac">HVAC</option>
+                <option value="framing">Framing</option>
+                <option value="roofing">Roofing</option>
+                <option value="drywall">Drywall</option>
+                <option value="painting">Painting</option>
+                <option value="flooring">Flooring</option>
+                <option value="tile">Tile</option>
+                <option value="concrete">Concrete</option>
+                <option value="masonry">Masonry</option>
+                <option value="landscaping">Landscaping</option>
+                <option value="pool">Pool</option>
+                <option value="cabinets">Cabinets</option>
+                <option value="countertops">Countertops</option>
+                <option value="windows_doors">Windows & Doors</option>
+                <option value="insulation">Insulation</option>
+                <option value="appliances">Appliances</option>
+                <option value="cleaning">Cleaning</option>
+                <option value="general">General Contractor</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Status</label>
+              <select id="vendorStatus" class="form-control">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="pending">Pending Approval</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row two-col">
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="vendorIsPreferred">
+                <span>Preferred Vendor</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Rating</label>
+              <select id="vendorRating" class="form-control">
+                <option value="">Not rated</option>
+                <option value="5">5 - Excellent</option>
+                <option value="4">4 - Good</option>
+                <option value="3">3 - Average</option>
+                <option value="2">2 - Below Average</option>
+                <option value="1">1 - Poor</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea id="vendorNotes" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insurance Tab -->
+        <div id="vendorTab-insurance" class="form-tab-content">
+          <div class="form-section">
+            <h4>General Liability</h4>
+            <div class="form-row three-col">
+              <div class="form-group">
+                <label>Policy Number</label>
+                <input type="text" id="vendorGLPolicy" class="form-control">
+              </div>
+              <div class="form-group">
+                <label>Expiration Date</label>
+                <input type="date" id="vendorGLExpiration" class="form-control">
+              </div>
+              <div class="form-group">
+                <label>Coverage Amount</label>
+                <input type="number" id="vendorGLCoverage" class="form-control" placeholder="1000000">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>Workers Compensation</h4>
+            <div class="form-row two-col">
+              <div class="form-group">
+                <label>Policy Number</label>
+                <input type="text" id="vendorWCPolicy" class="form-control">
+              </div>
+              <div class="form-group">
+                <label>Expiration Date</label>
+                <input type="date" id="vendorWCExpiration" class="form-control">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>Auto Insurance</h4>
+            <div class="form-row two-col">
+              <div class="form-group">
+                <label>Policy Number</label>
+                <input type="text" id="vendorAutoPolicy" class="form-control">
+              </div>
+              <div class="form-group">
+                <label>Expiration Date</label>
+                <input type="date" id="vendorAutoExpiration" class="form-control">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="vendorCOIOnFile">
+                <span>Certificate of Insurance (COI) on file</span>
+              </label>
+              <div class="upload-row" id="coiUploadRow">
+                <input type="file" id="coiFileInput" accept=".pdf" style="display:none" onchange="handleDocUpload('coi', this)">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('coiFileInput').click()">Upload COI</button>
+                <a id="coiViewLink" href="#" target="_blank" class="btn btn-sm btn-link" style="display:none">View COI</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Compliance Tab -->
+        <div id="vendorTab-compliance" class="form-tab-content">
+          <div class="form-section">
+            <h4>Licensing</h4>
+            <div class="form-row three-col">
+              <div class="form-group">
+                <label>License Number</label>
+                <input type="text" id="vendorLicense" class="form-control">
+              </div>
+              <div class="form-group">
+                <label>State</label>
+                <select id="vendorLicenseState" class="form-control">
+                  <option value="">Select state...</option>
+                  <option value="FL">Florida</option>
+                  <option value="GA">Georgia</option>
+                  <option value="AL">Alabama</option>
+                  <option value="SC">South Carolina</option>
+                  <option value="NC">North Carolina</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Expiration Date</label>
+                <input type="date" id="vendorLicenseExpiration" class="form-control">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>Tax Information</h4>
+            <div class="form-row two-col">
+              <div class="form-group">
+                <label>Tax ID / EIN</label>
+                <input type="text" id="vendorTaxId" class="form-control" placeholder="XX-XXXXXXX">
+              </div>
+              <div class="form-group">
+                <label>Payment Terms</label>
+                <select id="vendorPaymentTerms" class="form-control">
+                  <option value="Net 30">Net 30</option>
+                  <option value="Net 15">Net 15</option>
+                  <option value="Net 45">Net 45</option>
+                  <option value="Net 60">Net 60</option>
+                  <option value="Due on Receipt">Due on Receipt</option>
+                  <option value="50/50">50% Down / 50% Completion</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row two-col">
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="vendorW9OnFile">
+                  <span>W-9 on file</span>
+                </label>
+                <div class="upload-row">
+                  <input type="file" id="w9FileInput" accept=".pdf" style="display:none" onchange="handleDocUpload('w9', this)">
+                  <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('w9FileInput').click()">Upload W-9</button>
+                  <a id="w9ViewLink" href="#" target="_blank" class="btn btn-sm btn-link" style="display:none">View W-9</a>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>W-9 Received Date</label>
+                <input type="date" id="vendorW9Date" class="form-control">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>License Document</label>
+                <div class="upload-row">
+                  <input type="file" id="licenseFileInput" accept=".pdf" style="display:none" onchange="handleDocUpload('license', this)">
+                  <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('licenseFileInput').click()">Upload License</button>
+                  <a id="licenseViewLink" href="#" target="_blank" class="btn btn-sm btn-link" style="display:none">View License</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeVendorModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveVendor()">Save Vendor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vendor Detail Modal -->
+  <div id="vendorDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <h2 id="vendorDetailTitle">Vendor Details</h2>
+        </div>
+        <button class="close-btn" onclick="closeVendorDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body vendor-detail-body" id="vendorDetailBody">
+        <div class="loading">Loading...</div>
+      </div>
+      <div class="modal-footer" id="vendorDetailFooter">
+        <button class="btn btn-secondary" onclick="closeVendorDetailModal()">Close</button>
+        <button class="btn btn-primary" onclick="editCurrentVendor()">Edit Vendor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Duplicates Review Modal -->
+  <div id="duplicatesModal" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2>Potential Duplicate Vendors</h2>
+        <button class="close-btn" onclick="closeDuplicatesModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">These vendors appear to be duplicates. Select pairs to merge.</p>
+        <div id="duplicatesList" class="duplicates-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeDuplicatesModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Merge Confirmation Modal -->
+  <div id="mergeModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Merge Vendors</h2>
+        <button class="close-btn" onclick="closeMergeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">Choose which vendor to keep. All invoices, lien releases, and POs from the other vendor will be reassigned.</p>
+        <div id="mergeOptions" class="merge-options"></div>
+        <div class="merge-preview" id="mergePreview"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeMergeModal()">Cancel</button>
+        <button class="btn btn-warning" onclick="confirmMerge()">Merge Vendors</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expiring Documents Modal -->
+  <div id="expiringModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Expiring Documents</h2>
+        <button class="close-btn" onclick="closeExpiringModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">These vendors have insurance or licenses expiring within 30 days.</p>
+        <div id="expiringList" class="expiring-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeExpiringModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="js/toasts.js?v=20260107"></script>
+  <script src="js/nav-sidebar.js"></script>
+  <script>
+// ============================================================
+// VENDORS PAGE
+// ============================================================
+
+let state = {
+  vendors: [],
+  duplicates: [],
+  expiring: [],
+  currentVendor: null,
+  searchQuery: '',
+  tradeFilter: '',
+  pendingMerge: null
+};
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadVendors();
+  await checkDuplicates();
+  await checkExpiring();
+  setupFilters();
+});
+
+// ============================================================
+// DATA LOADING
+// ============================================================
+
+async function loadVendors() {
+  try {
+    const res = await fetch('/api/vendors');
+    state.vendors = await res.json();
+    renderVendorList();
+    updateStats();
+  } catch (err) {
+    console.error('Failed to load vendors:', err);
+    document.getElementById('vendorList').innerHTML =
+      '<div class="error-state">Failed to load vendors</div>';
+  }
+}
+
+async function checkDuplicates() {
+  try {
+    const res = await fetch('/api/vendors/duplicates');
+    state.duplicates = await res.json();
+
+    const warning = document.getElementById('duplicateWarning');
+    const count = document.getElementById('duplicateCount');
+
+    if (state.duplicates.length > 0) {
+      warning.style.display = 'flex';
+      count.textContent = state.duplicates.length;
+    } else {
+      warning.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Failed to check duplicates:', err);
+  }
+}
+
+async function checkExpiring() {
+  try {
+    const res = await fetch('/api/vendors/expiring');
+    state.expiring = await res.json();
+
+    const warning = document.getElementById('expiringWarning');
+    const count = document.getElementById('expiringCount');
+
+    if (state.expiring.length > 0) {
+      warning.style.display = 'flex';
+      count.textContent = state.expiring.length;
+    } else {
+      warning.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Failed to check expiring:', err);
+  }
+}
+
+function updateStats() {
+  document.getElementById('totalVendors').textContent = state.vendors.length;
+
+  // Count vendors with compliance docs
+  const compliant = state.vendors.filter(v => v.coi_on_file && v.w9_on_file).length;
+  document.getElementById('activeVendors').textContent = compliant;
+}
+
+// ============================================================
+// DOCUMENT UPLOAD
+// ============================================================
+
+async function handleDocUpload(docType, input) {
+  if (!input.files || !input.files[0]) return;
+
+  const vendorId = document.getElementById('vendorId').value;
+  if (!vendorId) {
+    showToast('Please save the vendor first before uploading documents', 'error');
+    input.value = '';
+    return;
+  }
+
+  const file = input.files[0];
+  if (file.type !== 'application/pdf') {
+    showToast('Please upload a PDF file', 'error');
+    input.value = '';
+    return;
+  }
+
+  // Show loading
+  showToast('Uploading document...', 'info');
+
+  try {
+    // Convert to base64
+    const base64 = await fileToBase64(file);
+
+    const res = await fetch(`/api/vendors/${vendorId}/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        document_type: docType,
+        file_data: base64,
+        file_name: file.name
+      })
+    });
+
+    if (!res.ok) throw new Error('Upload failed');
+
+    const result = await res.json();
+
+    // Update UI
+    if (docType === 'coi') {
+      document.getElementById('vendorCOIOnFile').checked = true;
+      document.getElementById('coiViewLink').href = result.url;
+      document.getElementById('coiViewLink').style.display = 'inline';
+    } else if (docType === 'w9') {
+      document.getElementById('vendorW9OnFile').checked = true;
+      document.getElementById('vendorW9Date').value = new Date().toISOString().split('T')[0];
+      document.getElementById('w9ViewLink').href = result.url;
+      document.getElementById('w9ViewLink').style.display = 'inline';
+    } else if (docType === 'license') {
+      document.getElementById('licenseViewLink').href = result.url;
+      document.getElementById('licenseViewLink').style.display = 'inline';
+    }
+
+    showToast('Document uploaded successfully', 'success');
+  } catch (err) {
+    console.error('Upload error:', err);
+    showToast('Failed to upload document', 'error');
+  }
+
+  input.value = '';
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
+}
+
+function showExpiringModal() {
+  if (!state.expiring || state.expiring.length === 0) {
+    showToast('No expiring items', 'info');
+    return;
+  }
+
+  const content = state.expiring.map(v => `
+    <div class="expiring-item">
+      <div class="expiring-vendor">${v.name}</div>
+      <div class="expiring-issues">
+        ${v.issues.map(i => `
+          <span class="expiring-badge ${i.status}">${i.type}: ${formatDate(i.date)}</span>
+        `).join('')}
+      </div>
+      <button class="btn btn-sm btn-secondary" onclick="openVendor('${v.id}'); closeExpiringModal();">View</button>
+    </div>
+  `).join('');
+
+  document.getElementById('expiringList').innerHTML = content;
+  const modal = document.getElementById('expiringModal');
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('show'));
+}
+
+function closeExpiringModal() {
+  const modal = document.getElementById('expiringModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+
+function renderVendorList() {
+  const container = document.getElementById('vendorList');
+  let filtered = state.vendors;
+
+  // Apply filters
+  if (state.tradeFilter) {
+    filtered = filtered.filter(v => v.trade === state.tradeFilter);
+  }
+  if (state.searchQuery) {
+    const q = state.searchQuery.toLowerCase();
+    filtered = filtered.filter(v =>
+      (v.name || '').toLowerCase().includes(q) ||
+      (v.email || '').toLowerCase().includes(q) ||
+      (v.phone || '').includes(q)
+    );
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state">No vendors found</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="vendor-list-header">
+      <div>Name</div>
+      <div>Trade</div>
+      <div>Contact</div>
+      <div>Status</div>
+      <div>Invoices</div>
+      <div>Total Paid</div>
+    </div>
+    ${filtered.map(v => renderVendorRow(v)).join('')}
+  `;
+}
+
+function renderVendorRow(vendor) {
+  const tradeBadge = vendor.trade ?
+    `<span class="trade-badge">${formatTrade(vendor.trade)}</span>` :
+    '<span class="text-muted">-</span>';
+
+  const contact = vendor.email || vendor.phone || '-';
+  const invoiceCount = vendor.invoice_count || 0;
+  const totalPaid = vendor.total_paid || 0;
+
+  // Build status indicators
+  const statusIcons = [];
+  if (vendor.is_preferred) statusIcons.push('<span class="status-icon preferred" title="Preferred">★</span>');
+
+  const warnings = getVendorWarnings(vendor);
+  if (warnings.length > 0) {
+    statusIcons.push(`<span class="status-icon warning" title="${warnings.join(', ')}">⚠</span>`);
+  } else if (vendor.coi_on_file && vendor.w9_on_file) {
+    statusIcons.push('<span class="status-icon valid" title="Compliant">✓</span>');
+  }
+
+  return `
+    <div class="vendor-row ${vendor.status === 'inactive' ? 'inactive' : ''}" onclick="openVendor('${vendor.id}')">
+      <div class="vendor-name">${vendor.name}</div>
+      <div class="vendor-trade">${tradeBadge}</div>
+      <div class="vendor-contact">${contact}</div>
+      <div class="vendor-status-icons">${statusIcons.join('')}</div>
+      <div class="vendor-invoices">${invoiceCount}</div>
+      <div class="vendor-total">${formatMoney(totalPaid)}</div>
+    </div>
+  `;
+}
+
+function getVendorWarnings(vendor) {
+  const warnings = [];
+  const today = new Date();
+  const thirtyDays = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  if (vendor.gl_expiration && new Date(vendor.gl_expiration) < today) {
+    warnings.push('GL expired');
+  } else if (vendor.gl_expiration && new Date(vendor.gl_expiration) < thirtyDays) {
+    warnings.push('GL expiring');
+  }
+
+  if (vendor.wc_expiration && new Date(vendor.wc_expiration) < today) {
+    warnings.push('WC expired');
+  } else if (vendor.wc_expiration && new Date(vendor.wc_expiration) < thirtyDays) {
+    warnings.push('WC expiring');
+  }
+
+  if (!vendor.w9_on_file) warnings.push('No W-9');
+  if (!vendor.coi_on_file) warnings.push('No COI');
+
+  return warnings;
+}
+
+function formatTrade(trade) {
+  if (!trade) return '';
+  return trade.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatMoney(amount) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(amount || 0);
+}
+
+// ============================================================
+// FILTERS
+// ============================================================
+
+function setupFilters() {
+  document.getElementById('tradeFilter').addEventListener('change', e => {
+    state.tradeFilter = e.target.value;
+    renderVendorList();
+  });
+
+  let debounce;
+  document.getElementById('searchInput').addEventListener('input', e => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.searchQuery = e.target.value;
+      renderVendorList();
+    }, 300);
+  });
+}
+
+// ============================================================
+// ADD/EDIT VENDOR
+// ============================================================
+
+function switchVendorTab(tabName) {
+  document.querySelectorAll('.form-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.form-tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.form-tab[onclick*="${tabName}"]`).classList.add('active');
+  document.getElementById(`vendorTab-${tabName}`).classList.add('active');
+}
+
+function showAddVendorModal() {
+  document.getElementById('vendorModalTitle').textContent = 'Add Vendor';
+  clearVendorForm();
+  switchVendorTab('basic');
+  const modal = document.getElementById('vendorModal');
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('show'));
+}
+
+function clearVendorForm() {
+  document.getElementById('vendorId').value = '';
+  // Basic
+  document.getElementById('vendorName').value = '';
+  document.getElementById('vendorContactName').value = '';
+  document.getElementById('vendorEmail').value = '';
+  document.getElementById('vendorPhone').value = '';
+  document.getElementById('vendorAddress').value = '';
+  document.getElementById('vendorTrade').value = '';
+  document.getElementById('vendorStatus').value = 'active';
+  document.getElementById('vendorIsPreferred').checked = false;
+  document.getElementById('vendorRating').value = '';
+  document.getElementById('vendorNotes').value = '';
+  // Insurance
+  document.getElementById('vendorGLPolicy').value = '';
+  document.getElementById('vendorGLExpiration').value = '';
+  document.getElementById('vendorGLCoverage').value = '';
+  document.getElementById('vendorWCPolicy').value = '';
+  document.getElementById('vendorWCExpiration').value = '';
+  document.getElementById('vendorAutoPolicy').value = '';
+  document.getElementById('vendorAutoExpiration').value = '';
+  document.getElementById('vendorCOIOnFile').checked = false;
+  // Compliance
+  document.getElementById('vendorLicense').value = '';
+  document.getElementById('vendorLicenseState').value = '';
+  document.getElementById('vendorLicenseExpiration').value = '';
+  document.getElementById('vendorTaxId').value = '';
+  document.getElementById('vendorPaymentTerms').value = 'Net 30';
+  document.getElementById('vendorW9OnFile').checked = false;
+  document.getElementById('vendorW9Date').value = '';
+}
+
+function closeVendorModal() {
+  const modal = document.getElementById('vendorModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function saveVendor() {
+  const id = document.getElementById('vendorId').value;
+  const data = {
+    // Basic
+    name: document.getElementById('vendorName').value.trim(),
+    contact_name: document.getElementById('vendorContactName').value.trim() || null,
+    email: document.getElementById('vendorEmail').value.trim() || null,
+    phone: document.getElementById('vendorPhone').value.trim() || null,
+    address: document.getElementById('vendorAddress').value.trim() || null,
+    trade: document.getElementById('vendorTrade').value || null,
+    status: document.getElementById('vendorStatus').value || 'active',
+    is_preferred: document.getElementById('vendorIsPreferred').checked,
+    rating: document.getElementById('vendorRating').value ? parseInt(document.getElementById('vendorRating').value) : null,
+    notes: document.getElementById('vendorNotes').value.trim() || null,
+    // Insurance
+    gl_policy_number: document.getElementById('vendorGLPolicy').value.trim() || null,
+    gl_expiration: document.getElementById('vendorGLExpiration').value || null,
+    gl_coverage_amount: document.getElementById('vendorGLCoverage').value ? parseFloat(document.getElementById('vendorGLCoverage').value) : null,
+    wc_policy_number: document.getElementById('vendorWCPolicy').value.trim() || null,
+    wc_expiration: document.getElementById('vendorWCExpiration').value || null,
+    auto_policy_number: document.getElementById('vendorAutoPolicy').value.trim() || null,
+    auto_expiration: document.getElementById('vendorAutoExpiration').value || null,
+    coi_on_file: document.getElementById('vendorCOIOnFile').checked,
+    // Compliance
+    license_number: document.getElementById('vendorLicense').value.trim() || null,
+    license_state: document.getElementById('vendorLicenseState').value || null,
+    license_expiration: document.getElementById('vendorLicenseExpiration').value || null,
+    tax_id: document.getElementById('vendorTaxId').value.trim() || null,
+    payment_terms: document.getElementById('vendorPaymentTerms').value || 'Net 30',
+    w9_on_file: document.getElementById('vendorW9OnFile').checked,
+    w9_received_date: document.getElementById('vendorW9Date').value || null
+  };
+
+  if (!data.name) {
+    showToast('Vendor name is required', 'error');
+    return;
+  }
+
+  try {
+    const url = id ? `/api/vendors/${id}` : '/api/vendors';
+    const method = id ? 'PATCH' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!res.ok) throw new Error('Failed to save vendor');
+
+    showToast(id ? 'Vendor updated' : 'Vendor created', 'success');
+    closeVendorModal();
+    await loadVendors();
+    await checkDuplicates();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// VENDOR DETAIL
+// ============================================================
+
+async function openVendor(id) {
+  const modal = document.getElementById('vendorDetailModal');
+  const body = document.getElementById('vendorDetailBody');
+
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+  body.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const res = await fetch(`/api/vendors/${id}/details`);
+    const vendor = await res.json();
+    state.currentVendor = vendor;
+
+    document.getElementById('vendorDetailTitle').textContent = vendor.name;
+
+    body.innerHTML = `
+      <div class="vendor-detail-grid">
+        <div class="vendor-info-section">
+          ${renderVendorStatusBadges(vendor)}
+
+          <div class="detail-card">
+            <h3>Contact Information</h3>
+            <div class="detail-grid">
+              <div class="detail-row">
+                <label>Contact</label>
+                <span>${vendor.contact_name || '-'}</span>
+              </div>
+              <div class="detail-row">
+                <label>Email</label>
+                <span>${vendor.email || '-'}</span>
+              </div>
+              <div class="detail-row">
+                <label>Phone</label>
+                <span>${vendor.phone || '-'}</span>
+              </div>
+              <div class="detail-row">
+                <label>Address</label>
+                <span>${vendor.address || '-'}</span>
+              </div>
+              <div class="detail-row">
+                <label>Trade</label>
+                <span>${vendor.trade ? formatTrade(vendor.trade) : '-'}</span>
+              </div>
+              <div class="detail-row">
+                <label>Payment Terms</label>
+                <span>${vendor.payment_terms || 'Net 30'}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-card">
+            <h3>Insurance & Compliance</h3>
+            <div class="compliance-grid">
+              ${renderInsuranceStatus('General Liability', vendor.gl_policy_number, vendor.gl_expiration, vendor.gl_coverage_amount)}
+              ${renderInsuranceStatus('Workers Comp', vendor.wc_policy_number, vendor.wc_expiration)}
+              ${renderInsuranceStatus('Auto', vendor.auto_policy_number, vendor.auto_expiration)}
+              ${renderLicenseStatus(vendor)}
+              ${renderComplianceItem('COI on File', vendor.coi_on_file)}
+              ${renderComplianceItem('W-9 on File', vendor.w9_on_file)}
+            </div>
+          </div>
+
+          <div class="detail-card">
+            <h3>Summary</h3>
+            <div class="vendor-summary-stats">
+              <div class="summary-stat">
+                <span class="stat-value">${vendor.stats?.invoice_count || 0}</span>
+                <span class="stat-label">Invoices</span>
+              </div>
+              <div class="summary-stat">
+                <span class="stat-value">${formatMoney(vendor.stats?.total_invoiced || 0)}</span>
+                <span class="stat-label">Total Invoiced</span>
+              </div>
+              <div class="summary-stat">
+                <span class="stat-value">${vendor.stats?.po_count || 0}</span>
+                <span class="stat-label">POs</span>
+              </div>
+              <div class="summary-stat">
+                <span class="stat-value">${vendor.stats?.lien_release_count || 0}</span>
+                <span class="stat-label">Lien Releases</span>
+              </div>
+            </div>
+          </div>
+
+          ${vendor.notes ? `
+          <div class="detail-card">
+            <h3>Notes</h3>
+            <p>${vendor.notes}</p>
+          </div>
+          ` : ''}
+        </div>
+
+        <div class="vendor-history-section">
+          <div class="detail-card">
+            <h3>Recent Invoices</h3>
+            ${vendor.recent_invoices?.length > 0 ? `
+              <div class="mini-list">
+                ${vendor.recent_invoices.map(inv => `
+                  <div class="mini-list-item">
+                    <span class="item-title">${inv.invoice_number || 'No #'}</span>
+                    <span class="item-meta">${inv.job?.name || 'No job'}</span>
+                    <span class="item-amount">${formatMoney(inv.amount)}</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<div class="empty-state-small">No invoices</div>'}
+          </div>
+
+          <div class="detail-card">
+            <h3>Jobs Worked</h3>
+            ${vendor.jobs?.length > 0 ? `
+              <div class="tag-list">
+                ${vendor.jobs.map(job => `<span class="job-tag">${job.name}</span>`).join('')}
+              </div>
+            ` : '<div class="empty-state-small">No jobs</div>'}
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    console.error('Error loading vendor:', err);
+    body.innerHTML = '<div class="error-state">Failed to load vendor details</div>';
+  }
+}
+
+function renderVendorStatusBadges(vendor) {
+  const badges = [];
+  if (vendor.is_preferred) badges.push('<span class="vendor-badge preferred">Preferred</span>');
+  if (vendor.status === 'inactive') badges.push('<span class="vendor-badge inactive">Inactive</span>');
+  if (vendor.status === 'pending') badges.push('<span class="vendor-badge pending">Pending</span>');
+  if (vendor.rating) badges.push(`<span class="vendor-badge rating">${'★'.repeat(vendor.rating)}</span>`);
+
+  const warnings = getComplianceWarnings(vendor);
+  if (warnings.length > 0) {
+    badges.push(`<span class="vendor-badge warning">${warnings.length} Warning${warnings.length > 1 ? 's' : ''}</span>`);
+  }
+
+  return badges.length > 0 ? `<div class="vendor-badges">${badges.join('')}</div>` : '';
+}
+
+function getComplianceWarnings(vendor) {
+  const warnings = [];
+  const today = new Date();
+  const thirtyDays = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  if (vendor.gl_expiration && new Date(vendor.gl_expiration) < thirtyDays) {
+    warnings.push('GL expiring soon');
+  }
+  if (vendor.wc_expiration && new Date(vendor.wc_expiration) < thirtyDays) {
+    warnings.push('WC expiring soon');
+  }
+  if (vendor.license_expiration && new Date(vendor.license_expiration) < thirtyDays) {
+    warnings.push('License expiring soon');
+  }
+  if (!vendor.w9_on_file) {
+    warnings.push('W-9 missing');
+  }
+  if (!vendor.coi_on_file) {
+    warnings.push('COI missing');
+  }
+
+  return warnings;
+}
+
+function renderInsuranceStatus(label, policyNumber, expiration, coverage) {
+  const hasPolicy = !!policyNumber;
+  const isExpired = expiration && new Date(expiration) < new Date();
+  const isExpiringSoon = expiration && !isExpired && new Date(expiration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  let statusClass = 'missing';
+  let statusText = 'Not on file';
+
+  if (hasPolicy) {
+    if (isExpired) {
+      statusClass = 'expired';
+      statusText = `Expired ${formatDate(expiration)}`;
+    } else if (isExpiringSoon) {
+      statusClass = 'expiring';
+      statusText = `Expires ${formatDate(expiration)}`;
+    } else if (expiration) {
+      statusClass = 'valid';
+      statusText = `Valid until ${formatDate(expiration)}`;
+    } else {
+      statusClass = 'valid';
+      statusText = 'On file';
+    }
+  }
+
+  return `
+    <div class="compliance-item ${statusClass}">
+      <span class="compliance-label">${label}</span>
+      <span class="compliance-status">${statusText}</span>
+      ${coverage ? `<span class="compliance-coverage">${formatMoney(coverage)}</span>` : ''}
+    </div>
+  `;
+}
+
+function renderLicenseStatus(vendor) {
+  const hasLicense = !!vendor.license_number;
+  const isExpired = vendor.license_expiration && new Date(vendor.license_expiration) < new Date();
+  const isExpiringSoon = vendor.license_expiration && !isExpired && new Date(vendor.license_expiration) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  let statusClass = 'missing';
+  let statusText = 'Not on file';
+
+  if (hasLicense) {
+    if (isExpired) {
+      statusClass = 'expired';
+      statusText = `Expired ${formatDate(vendor.license_expiration)}`;
+    } else if (isExpiringSoon) {
+      statusClass = 'expiring';
+      statusText = `Expires ${formatDate(vendor.license_expiration)}`;
+    } else if (vendor.license_expiration) {
+      statusClass = 'valid';
+      statusText = `#${vendor.license_number} (${vendor.license_state || 'FL'})`;
+    } else {
+      statusClass = 'valid';
+      statusText = `#${vendor.license_number}`;
+    }
+  }
+
+  return `
+    <div class="compliance-item ${statusClass}">
+      <span class="compliance-label">License</span>
+      <span class="compliance-status">${statusText}</span>
+    </div>
+  `;
+}
+
+function renderComplianceItem(label, isOnFile) {
+  return `
+    <div class="compliance-item ${isOnFile ? 'valid' : 'missing'}">
+      <span class="compliance-label">${label}</span>
+      <span class="compliance-status">${isOnFile ? 'Yes' : 'No'}</span>
+    </div>
+  `;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function closeVendorDetailModal() {
+  const modal = document.getElementById('vendorDetailModal');
+  modal.style.display = 'none';
+  modal.classList.remove('show');
+  state.currentVendor = null;
+}
+
+function editCurrentVendor() {
+  if (!state.currentVendor) return;
+  const v = state.currentVendor;
+
+  closeVendorDetailModal();
+
+  document.getElementById('vendorModalTitle').textContent = 'Edit Vendor';
+  document.getElementById('vendorId').value = v.id;
+
+  // Basic Info
+  document.getElementById('vendorName').value = v.name || '';
+  document.getElementById('vendorContactName').value = v.contact_name || '';
+  document.getElementById('vendorEmail').value = v.email || '';
+  document.getElementById('vendorPhone').value = v.phone || '';
+  document.getElementById('vendorAddress').value = v.address || '';
+  document.getElementById('vendorTrade').value = v.trade || '';
+  document.getElementById('vendorStatus').value = v.status || 'active';
+  document.getElementById('vendorIsPreferred').checked = v.is_preferred || false;
+  document.getElementById('vendorRating').value = v.rating || '';
+  document.getElementById('vendorNotes').value = v.notes || '';
+
+  // Insurance
+  document.getElementById('vendorGLPolicy').value = v.gl_policy_number || '';
+  document.getElementById('vendorGLExpiration').value = v.gl_expiration || '';
+  document.getElementById('vendorGLCoverage').value = v.gl_coverage_amount || '';
+  document.getElementById('vendorWCPolicy').value = v.wc_policy_number || '';
+  document.getElementById('vendorWCExpiration').value = v.wc_expiration || '';
+  document.getElementById('vendorAutoPolicy').value = v.auto_policy_number || '';
+  document.getElementById('vendorAutoExpiration').value = v.auto_expiration || '';
+  document.getElementById('vendorCOIOnFile').checked = v.coi_on_file || false;
+
+  // COI document link
+  if (v.coi_url) {
+    document.getElementById('coiViewLink').href = v.coi_url;
+    document.getElementById('coiViewLink').style.display = 'inline';
+  } else {
+    document.getElementById('coiViewLink').style.display = 'none';
+  }
+
+  // Compliance
+  document.getElementById('vendorLicense').value = v.license_number || '';
+  document.getElementById('vendorLicenseState').value = v.license_state || '';
+  document.getElementById('vendorLicenseExpiration').value = v.license_expiration || '';
+  document.getElementById('vendorTaxId').value = v.tax_id || '';
+  document.getElementById('vendorPaymentTerms').value = v.payment_terms || 'Net 30';
+  document.getElementById('vendorW9OnFile').checked = v.w9_on_file || false;
+  document.getElementById('vendorW9Date').value = v.w9_received_date || '';
+
+  // W-9 document link
+  if (v.w9_url) {
+    document.getElementById('w9ViewLink').href = v.w9_url;
+    document.getElementById('w9ViewLink').style.display = 'inline';
+  } else {
+    document.getElementById('w9ViewLink').style.display = 'none';
+  }
+
+  // License document link
+  if (v.license_url) {
+    document.getElementById('licenseViewLink').href = v.license_url;
+    document.getElementById('licenseViewLink').style.display = 'inline';
+  } else {
+    document.getElementById('licenseViewLink').style.display = 'none';
+  }
+
+  switchVendorTab('basic');
+  const modal = document.getElementById('vendorModal');
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('show'));
+}
+
+// ============================================================
+// DUPLICATES
+// ============================================================
+
+function showDuplicatesModal() {
+  const modal = document.getElementById('duplicatesModal');
+  const list = document.getElementById('duplicatesList');
+
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('show'));
+
+  if (state.duplicates.length === 0) {
+    list.innerHTML = '<div class="empty-state">No duplicate vendors found</div>';
+    return;
+  }
+
+  list.innerHTML = state.duplicates.map(dup => `
+    <div class="duplicate-pair">
+      <div class="duplicate-info">
+        <div class="dup-vendor">
+          <span class="dup-name">${dup.vendor1.name}</span>
+          <span class="dup-meta">${dup.vendor1.invoice_count || 0} invoices</span>
+        </div>
+        <div class="dup-similarity">
+          <span class="similarity-score">${dup.similarity}%</span>
+          <span class="similarity-label">match</span>
+        </div>
+        <div class="dup-vendor">
+          <span class="dup-name">${dup.vendor2.name}</span>
+          <span class="dup-meta">${dup.vendor2.invoice_count || 0} invoices</span>
+        </div>
+      </div>
+      <button class="btn btn-sm btn-warning" onclick="showMergeModal('${dup.vendor1.id}', '${dup.vendor2.id}')">
+        Merge
+      </button>
+    </div>
+  `).join('');
+}
+
+function closeDuplicatesModal() {
+  const modal = document.getElementById('duplicatesModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+function showMergeModal(id1, id2) {
+  const v1 = state.vendors.find(v => v.id === id1);
+  const v2 = state.vendors.find(v => v.id === id2);
+
+  if (!v1 || !v2) return;
+
+  state.pendingMerge = { v1, v2, keepId: id1 };
+
+  const options = document.getElementById('mergeOptions');
+  options.innerHTML = `
+    <label class="merge-option selected" onclick="selectMergeTarget('${v1.id}')">
+      <input type="radio" name="mergeTarget" value="${v1.id}" checked>
+      <div class="merge-option-content">
+        <span class="merge-option-name">${v1.name}</span>
+        <span class="merge-option-meta">${v1.email || v1.phone || 'No contact'}</span>
+      </div>
+    </label>
+    <label class="merge-option" onclick="selectMergeTarget('${v2.id}')">
+      <input type="radio" name="mergeTarget" value="${v2.id}">
+      <div class="merge-option-content">
+        <span class="merge-option-name">${v2.name}</span>
+        <span class="merge-option-meta">${v2.email || v2.phone || 'No contact'}</span>
+      </div>
+    </label>
+  `;
+
+  updateMergePreview();
+  const modal = document.getElementById('mergeModal');
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('show'));
+}
+
+function selectMergeTarget(id) {
+  state.pendingMerge.keepId = id;
+  document.querySelectorAll('.merge-option').forEach(opt => {
+    opt.classList.toggle('selected', opt.querySelector('input').value === id);
+  });
+  updateMergePreview();
+}
+
+function updateMergePreview() {
+  const { v1, v2, keepId } = state.pendingMerge;
+  const keepVendor = keepId === v1.id ? v1 : v2;
+  const removeVendor = keepId === v1.id ? v2 : v1;
+
+  document.getElementById('mergePreview').innerHTML = `
+    <div class="merge-preview-content">
+      <p><strong>"${removeVendor.name}"</strong> will be deleted.</p>
+      <p>All invoices, lien releases, and POs will be reassigned to <strong>"${keepVendor.name}"</strong>.</p>
+    </div>
+  `;
+}
+
+function closeMergeModal() {
+  const modal = document.getElementById('mergeModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+  state.pendingMerge = null;
+}
+
+async function confirmMerge() {
+  if (!state.pendingMerge) return;
+
+  const { v1, v2, keepId } = state.pendingMerge;
+  const removeId = keepId === v1.id ? v2.id : v1.id;
+
+  try {
+    const res = await fetch('/api/vendors/merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keep_vendor_id: keepId,
+        remove_vendor_id: removeId
+      })
+    });
+
+    if (!res.ok) throw new Error('Failed to merge vendors');
+
+    const result = await res.json();
+    showToast(`Merged vendors. Updated ${result.updated_count} records.`, 'success');
+
+    closeMergeModal();
+    closeDuplicatesModal();
+    await loadVendors();
+    await checkDuplicates();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+  </script>
+</body>
+</html>

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Lien Releases</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260113">
+  <link rel="stylesheet" href="css/styles.css?v=20260114">
 </head>
 <body>
   <div class="app">
@@ -17,9 +17,7 @@
           <span class="brand-name">Ross Built</span>
         </div>
         <nav class="main-nav">
-          <a href="index.html" class="main-nav-link active">Financial</a>
-          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
-          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
           <button class="btn btn-primary" onclick="showUploadModal()">+ Upload Release</button>
@@ -27,18 +25,14 @@
       </div>
       <div class="header-sub">
         <nav class="sub-nav">
-          <a href="index.html" class="sub-nav-link">Invoices</a>
-          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
-          <a href="draws.html" class="sub-nav-link">Draws</a>
-          <a href="budgets.html" class="sub-nav-link">Budgets</a>
-          <a href="reconciliation.html" class="sub-nav-link">Reconciliation</a>
-          <a href="lien-releases.html" class="sub-nav-link active">Lien Releases</a>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="main">
+    <div class="app-body">
+      <main class="main">
       <!-- Filters -->
       <div class="table-toolbar">
         <div class="filter-controls">
@@ -69,6 +63,7 @@
         <div class="loading">Loading lien releases...</div>
       </div>
     </main>
+    </div>
   </div>
 
   <!-- Upload Modal -->
@@ -118,14 +113,18 @@
 
   <!-- Attach to Draw Modal -->
   <div id="attachDrawModal" class="modal">
-    <div class="modal-content modal-sm">
+    <div class="modal-content modal-md">
       <div class="modal-header">
         <h2>Attach to Draw</h2>
         <button class="close-btn" onclick="closeAttachDrawModal()">&times;</button>
       </div>
       <div class="modal-body">
+        <div id="suggestedDrawsSection" class="suggested-draws-section" style="display: none;">
+          <h4>Suggested Draws</h4>
+          <div id="suggestedDrawsList" class="suggested-draws-list"></div>
+        </div>
         <div class="form-group">
-          <label>Select Draw</label>
+          <label>Or Select Draw Manually</label>
           <select id="drawSelect" class="form-control">
             <option value="">Select a draw...</option>
           </select>
@@ -159,6 +158,7 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <script src="js/toasts.js?v=20260107"></script>
+  <script src="js/nav-sidebar.js"></script>
   <script src="js/searchable-picker.js?v=20260107"></script>
   <script src="js/sidebar.js?v=20260112"></script>
   <script>
@@ -482,32 +482,76 @@ async function uploadFile(file) {
 // ============================================================
 
 async function openLienRelease(id) {
+  console.log('[LienRelease] Opening:', id);
   const modal = document.getElementById('detailModal');
   const body = document.getElementById('detailModalBody');
   const footer = document.getElementById('detailModalFooter');
 
+  // Show modal with proper class for CSS transitions
   modal.style.display = 'flex';
+  // Use requestAnimationFrame to ensure display:flex is applied before adding show class
+  requestAnimationFrame(() => {
+    modal.classList.add('show');
+  });
   body.innerHTML = '<div class="loading">Loading...</div>';
+  footer.innerHTML = '';
 
   try {
+    console.log('[LienRelease] Fetching data...');
     const res = await fetch(`/api/lien-releases/${id}`);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
     const lr = await res.json();
+    console.log('[LienRelease] Data received:', lr.id);
     state.currentLienRelease = lr;
 
-    const vendor = lr.vendor || state.vendors.find(v => v.id === lr.vendor_id);
-    const job = lr.job || state.jobs.find(j => j.id === lr.job_id);
+    const vendor = lr.vendor || (state.vendors || []).find(v => v.id === lr.vendor_id);
+    const job = lr.job || (state.jobs || []).find(j => j.id === lr.job_id);
+    console.log('[LienRelease] Vendor:', vendor?.name, 'Job:', job?.name);
 
+    console.log('[LienRelease] Setting title...');
     document.getElementById('detailModalTitle').textContent =
       `${formatReleaseType(lr.release_type)} - ${vendor?.name || 'Unknown Vendor'}`;
     document.getElementById('detailStatusBadge').className =
       `status-badge status-${getStatusClass(lr.status)}`;
     document.getElementById('detailStatusBadge').textContent = formatStatus(lr.status);
 
+    console.log('[LienRelease] Building body HTML...');
+
+    // Build vendor options safely
+    const vendorOptions = (state.vendors || []).map(v =>
+      `<option value="${v.id}" ${v.id === lr.vendor_id ? 'selected' : ''}>${escapeHtml(v.name)}</option>`
+    ).join('');
+
+    // Build job options safely
+    const jobOptions = (state.jobs || []).map(j =>
+      `<option value="${j.id}" ${j.id === lr.job_id ? 'selected' : ''}>${escapeHtml(j.name)}</option>`
+    ).join('');
+
+    // Build activity safely (limit to 20 items max)
+    const activityItems = (lr.activity || []).slice(0, 20);
+    const activityHtml = activityItems.length > 0 ? `
+      <div class="detail-card">
+        <h3>Activity</h3>
+        <div class="activity-log">
+          ${activityItems.map(a => `
+            <div class="activity-item">
+              <span class="activity-action">${escapeHtml(a.action || '')}</span>
+              <span class="activity-by">${escapeHtml(a.performed_by || 'System')}</span>
+              <span class="activity-time">${formatDate(a.created_at)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    console.log('[LienRelease] Assigning body innerHTML...');
     body.innerHTML = `
       <div class="lien-release-detail-layout">
         <div class="pdf-viewer-section">
           ${lr.pdf_url
-            ? `<iframe src="${lr.pdf_url}" class="pdf-viewer-iframe"></iframe>`
+            ? `<iframe src="${lr.pdf_url}" class="pdf-viewer-iframe" title="Lien Release PDF"></iframe>`
             : '<div class="no-pdf">No PDF available</div>'}
         </div>
         <div class="detail-form-section">
@@ -545,14 +589,14 @@ async function openLienRelease(id) {
                 <label>Vendor</label>
                 <select id="editVendor" class="form-control">
                   <option value="">Select Vendor...</option>
-                  ${state.vendors.map(v => `<option value="${v.id}" ${v.id === lr.vendor_id ? 'selected' : ''}>${v.name}</option>`).join('')}
+                  ${vendorOptions}
                 </select>
               </div>
               <div class="detail-row">
                 <label>Job</label>
                 <select id="editJob" class="form-control">
                   <option value="">Select Job...</option>
-                  ${state.jobs.map(j => `<option value="${j.id}" ${j.id === lr.job_id ? 'selected' : ''}>${j.name}</option>`).join('')}
+                  ${jobOptions}
                 </select>
               </div>
             </div>
@@ -563,56 +607,45 @@ async function openLienRelease(id) {
             <div class="detail-grid">
               <div class="detail-row">
                 <label>Signer Name</label>
-                <input type="text" id="editSignerName" class="form-control" value="${lr.signer_name || ''}">
+                <input type="text" id="editSignerName" class="form-control" value="${escapeHtml(lr.signer_name || '')}">
               </div>
               <div class="detail-row">
                 <label>Signer Title</label>
-                <input type="text" id="editSignerTitle" class="form-control" value="${lr.signer_title || ''}">
+                <input type="text" id="editSignerTitle" class="form-control" value="${escapeHtml(lr.signer_title || '')}">
               </div>
               <div class="detail-row">
                 <label>Notary Name</label>
-                <input type="text" id="editNotaryName" class="form-control" value="${lr.notary_name || ''}">
+                <input type="text" id="editNotaryName" class="form-control" value="${escapeHtml(lr.notary_name || '')}">
               </div>
               <div class="detail-row">
                 <label>Notary County</label>
-                <input type="text" id="editNotaryCounty" class="form-control" value="${lr.notary_county || ''}">
+                <input type="text" id="editNotaryCounty" class="form-control" value="${escapeHtml(lr.notary_county || '')}">
               </div>
             </div>
           </div>
 
           <div class="detail-card">
             <h3>Notes</h3>
-            <textarea id="editNotes" class="form-control" rows="3">${lr.notes || ''}</textarea>
+            <textarea id="editNotes" class="form-control" rows="3">${escapeHtml(lr.notes || '')}</textarea>
           </div>
 
-          ${lr.needs_review ? `
+          ${lr.needs_review && lr.review_flags ? `
           <div class="detail-card review-flags-card">
             <h3>Review Flags</h3>
             <div class="review-flags">
-              ${(lr.review_flags || []).map(f => `<span class="flag-badge">${f}</span>`).join('')}
+              ${(lr.review_flags || []).map(f => `<span class="flag-badge">${escapeHtml(f)}</span>`).join('')}
             </div>
           </div>
           ` : ''}
 
-          ${lr.activity && lr.activity.length > 0 ? `
-          <div class="detail-card">
-            <h3>Activity</h3>
-            <div class="activity-log">
-              ${lr.activity.map(a => `
-                <div class="activity-item">
-                  <span class="activity-action">${a.action}</span>
-                  <span class="activity-by">${a.performed_by || 'System'}</span>
-                  <span class="activity-time">${formatDate(a.created_at)}</span>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-          ` : ''}
+          ${activityHtml}
         </div>
       </div>
     `;
+    console.log('[LienRelease] Body HTML assigned.');
 
     // Footer buttons
+    console.log('[LienRelease] Building footer...');
     footer.innerHTML = `
       <div class="footer-left">
         <button class="btn btn-danger" onclick="deleteLienRelease('${lr.id}')">Delete</button>
@@ -629,15 +662,29 @@ async function openLienRelease(id) {
         <button class="btn btn-primary" onclick="saveLienRelease('${lr.id}')">Save Changes</button>
       </div>
     `;
+    console.log('[LienRelease] Modal fully rendered.');
 
   } catch (err) {
-    console.error('Error loading lien release:', err);
-    body.innerHTML = '<div class="error-state">Failed to load lien release</div>';
+    console.error('[LienRelease] Error loading lien release:', err);
+    body.innerHTML = '<div class="error-state">Failed to load lien release: ' + escapeHtml(err.message) + '</div>';
   }
 }
 
+// Helper to escape HTML to prevent XSS and rendering issues
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function closeDetailModal() {
-  document.getElementById('detailModal').style.display = 'none';
+  const modal = document.getElementById('detailModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
   state.currentLienRelease = null;
 }
 
@@ -718,11 +765,47 @@ async function deleteLienRelease(id) {
 
 let pendingAttachId = null;
 
-function showAttachDrawModal(lienReleaseId) {
+async function showAttachDrawModal(lienReleaseId) {
   pendingAttachId = lienReleaseId;
   const lr = state.currentLienRelease;
 
-  // Filter draws by job if lien release has a job
+  // Show modal immediately
+  document.getElementById('attachDrawModal').style.display = 'flex';
+
+  // Load suggested draws
+  const suggestedSection = document.getElementById('suggestedDrawsSection');
+  const suggestedList = document.getElementById('suggestedDrawsList');
+  suggestedSection.style.display = 'none';
+  suggestedList.innerHTML = '<div class="loading">Loading suggestions...</div>';
+
+  try {
+    const res = await fetch(`/api/lien-releases/${lienReleaseId}/suggested-draws`);
+    const suggestions = await res.json();
+
+    if (suggestions && suggestions.length > 0) {
+      suggestedSection.style.display = 'block';
+      suggestedList.innerHTML = suggestions.map(s => `
+        <div class="suggested-draw-item" onclick="selectSuggestedDraw('${s.draw_id}')">
+          <div class="suggested-draw-info">
+            <span class="suggested-draw-title">Draw #${s.draw_number} - ${s.job_name}</span>
+            <span class="suggested-draw-meta">
+              ${s.period_end ? formatDate(s.period_end) : 'No date'} - ${formatMoney(s.total_amount || 0)}
+            </span>
+            <span class="suggested-draw-reasons">${s.reasons.join(' • ')}</span>
+          </div>
+          <div class="suggested-draw-score">
+            <span class="score-badge">${s.score}%</span>
+            <span class="score-label">match</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    console.error('Failed to load suggestions:', err);
+    suggestedSection.style.display = 'none';
+  }
+
+  // Populate manual select dropdown
   let availableDraws = state.draws.filter(d => d.status === 'draft' || d.status === 'pending');
   if (lr?.job_id) {
     availableDraws = availableDraws.filter(d => d.job_id === lr.job_id);
@@ -734,8 +817,17 @@ function showAttachDrawModal(lienReleaseId) {
     const job = state.jobs.find(j => j.id === d.job_id);
     select.innerHTML += `<option value="${d.id}">Draw #${d.draw_number} - ${job?.name || 'Unknown Job'}</option>`;
   });
+}
 
-  document.getElementById('attachDrawModal').style.display = 'flex';
+function selectSuggestedDraw(drawId) {
+  document.getElementById('drawSelect').value = drawId;
+  // Highlight the selected suggestion
+  document.querySelectorAll('.suggested-draw-item').forEach(item => {
+    item.classList.remove('selected');
+    if (item.onclick.toString().includes(drawId)) {
+      item.classList.add('selected');
+    }
+  });
 }
 
 function closeAttachDrawModal() {

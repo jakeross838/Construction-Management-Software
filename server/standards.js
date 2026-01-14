@@ -210,6 +210,158 @@ function generatePONumber(jobName, sequence) {
 }
 
 // ============================================================
+// VENDOR NORMALIZATION & MATCHING
+// ============================================================
+
+/**
+ * Common business suffixes to strip for comparison
+ */
+const BUSINESS_SUFFIXES = [
+  'llc', 'inc', 'corp', 'co', 'company', 'incorporated', 'limited', 'ltd',
+  'enterprises', 'enterprise', 'services', 'service', 'solutions', 'group',
+  'holdings', 'partners', 'associates', 'of florida', 'fl', 'usa'
+];
+
+/**
+ * Normalize vendor name for comparison
+ * Strips suffixes, punctuation, extra spaces, and lowercases
+ */
+function normalizeVendorName(name) {
+  if (!name) return '';
+
+  let normalized = name.toLowerCase().trim();
+
+  // Remove punctuation except apostrophes
+  normalized = normalized.replace(/[.,\-_&]/g, ' ');
+
+  // Remove business suffixes
+  for (const suffix of BUSINESS_SUFFIXES) {
+    const regex = new RegExp(`\\b${suffix}\\.?\\b`, 'gi');
+    normalized = normalized.replace(regex, '');
+  }
+
+  // Remove "dba" and anything after it, or keep what's after as alternative
+  const dbaMatch = normalized.match(/\bdba\b\s*(.*)/i);
+  if (dbaMatch) {
+    normalized = normalized.replace(/\bdba\b.*/i, '');
+  }
+
+  // Collapse multiple spaces to single space
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+
+  return normalized;
+}
+
+/**
+ * Calculate similarity score between two strings (0-100)
+ * Uses a combination of exact match, starts-with, and Levenshtein-like scoring
+ */
+function calculateStringSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0;
+
+  const s1 = str1.toLowerCase();
+  const s2 = str2.toLowerCase();
+
+  // Exact match
+  if (s1 === s2) return 100;
+
+  // One contains the other
+  if (s1.includes(s2) || s2.includes(s1)) {
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+    return Math.round((shorter.length / longer.length) * 90);
+  }
+
+  // Word-based matching
+  const words1 = s1.split(/\s+/).filter(w => w.length > 1);
+  const words2 = s2.split(/\s+/).filter(w => w.length > 1);
+
+  if (words1.length === 0 || words2.length === 0) return 0;
+
+  let matchingWords = 0;
+  for (const w1 of words1) {
+    for (const w2 of words2) {
+      if (w1 === w2) {
+        matchingWords++;
+        break;
+      }
+      // Partial word match (one starts with the other)
+      if (w1.startsWith(w2) || w2.startsWith(w1)) {
+        matchingWords += 0.7;
+        break;
+      }
+    }
+  }
+
+  const maxWords = Math.max(words1.length, words2.length);
+  return Math.round((matchingWords / maxWords) * 85);
+}
+
+/**
+ * Calculate vendor similarity score (0-100)
+ * Compares normalized vendor names
+ */
+function calculateVendorSimilarity(vendor1, vendor2) {
+  const name1 = typeof vendor1 === 'string' ? vendor1 : vendor1?.name;
+  const name2 = typeof vendor2 === 'string' ? vendor2 : vendor2?.name;
+
+  if (!name1 || !name2) return 0;
+
+  const norm1 = normalizeVendorName(name1);
+  const norm2 = normalizeVendorName(name2);
+
+  return calculateStringSimilarity(norm1, norm2);
+}
+
+/**
+ * Find best matching vendor from a list
+ * Returns { vendor, score } or null if no good match
+ */
+function findBestVendorMatch(vendorName, vendorList, threshold = 70) {
+  if (!vendorName || !vendorList || vendorList.length === 0) return null;
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const vendor of vendorList) {
+    const score = calculateVendorSimilarity(vendorName, vendor);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = vendor;
+    }
+  }
+
+  if (bestScore >= threshold) {
+    return { vendor: bestMatch, score: bestScore };
+  }
+
+  return null;
+}
+
+/**
+ * Get canonical vendor name (properly formatted)
+ */
+function getCanonicalVendorName(name) {
+  if (!name) return null;
+
+  // Check for DBA pattern and use the DBA name
+  const dbaMatch = name.match(/\bdba\b\s+(.+)/i);
+  let baseName = dbaMatch ? dbaMatch[1] : name;
+
+  // Title case
+  baseName = toTitleCase(baseName);
+
+  // Standardize common suffixes
+  baseName = baseName
+    .replace(/\bLlc\b/g, 'LLC')
+    .replace(/\bInc\b/g, 'Inc.')
+    .replace(/\bCorp\b/g, 'Corp.')
+    .replace(/\bCo\b(?!\w)/g, 'Co.');
+
+  return baseName.trim();
+}
+
+// ============================================================
 // EXPORT
 // ============================================================
 
@@ -217,6 +369,7 @@ module.exports = {
   validValues,
   DOC_PREFIXES,
   MONTHS,
+  BUSINESS_SUFFIXES,
 
   // Normalization
   toTitleCase,
@@ -229,6 +382,13 @@ module.exports = {
   zeroPad,
   getMonthAbbrev,
   getYear,
+
+  // Vendor matching
+  normalizeVendorName,
+  calculateStringSimilarity,
+  calculateVendorSimilarity,
+  findBestVendorMatch,
+  getCanonicalVendorName,
 
   // Document naming
   generateInvoiceFilename,
