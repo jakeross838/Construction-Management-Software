@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Budgets</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260112d">
+  <link rel="stylesheet" href="css/styles.css?v=20260114">
 </head>
 <body>
   <div class="app">
@@ -17,9 +17,7 @@
           <span class="brand-name">Ross Built</span>
         </div>
         <nav class="main-nav">
-          <a href="index.html" class="main-nav-link active">Financial</a>
-          <span class="main-nav-link disabled" title="Coming soon">Projects</span>
-          <span class="main-nav-link disabled" title="Coming soon">Reports</span>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
           <button class="btn btn-primary" onclick="showImportModal()">Import Budget</button>
@@ -27,18 +25,14 @@
       </div>
       <div class="header-sub">
         <nav class="sub-nav">
-          <a href="index.html" class="sub-nav-link">Invoices</a>
-          <a href="pos.html" class="sub-nav-link">Purchase Orders</a>
-          <a href="draws.html" class="sub-nav-link">Draws</a>
-          <a href="budgets.html" class="sub-nav-link active">Budgets</a>
-          <a href="reconciliation.html" class="sub-nav-link">Reconciliation</a>
-          <a href="lien-releases.html" class="sub-nav-link">Lien Releases</a>
+          <!-- Filled by nav-sidebar.js -->
         </nav>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="main">
+    <div class="app-body">
+      <main class="main">
       <!-- Budget Content -->
       <div id="budgetContent">
         <div class="empty-state">Select a job from the sidebar to view budget</div>
@@ -57,49 +51,85 @@
           </div>
         </div>
 
-        <!-- Summary Section -->
+        <!-- Contract Overview -->
         <section class="draw-section draw-summary-section">
-          <div class="draw-summary-grid">
+          <div class="section-header">
+            <h3>Contract</h3>
+            <span class="section-badge" id="coCountBadge" style="display: none;">0 COs</span>
+          </div>
+          <div class="draw-summary-grid" style="grid-template-columns: repeat(2, 1fr);">
             <div class="summary-card">
-              <div class="summary-label">Original Budget</div>
+              <div class="summary-label">Base Contract</div>
               <div class="summary-value" id="summaryBudget">$0</div>
             </div>
-            <div class="summary-card">
-              <div class="summary-label">Change Orders</div>
-              <div class="summary-value" id="summaryChangeOrders">$0</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">Revised Budget</div>
+            <div class="summary-card highlight">
+              <div class="summary-label">Current Contract</div>
               <div class="summary-value" id="summaryTotalContract">$0</div>
-            </div>
-            <div class="summary-card highlight" id="projectedCard">
-              <div class="summary-label">Projected Final</div>
-              <div class="summary-value" id="summaryProjected">$0</div>
-            </div>
-            <div class="summary-card" id="projectedVarianceCard">
-              <div class="summary-label">Projected Variance</div>
-              <div class="summary-value" id="summaryProjectedVariance">$0</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">Billed to Date</div>
-              <div class="summary-value" id="summaryBilled">$0</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">Paid to Date</div>
-              <div class="summary-value" id="summaryPaid">$0</div>
-            </div>
-            <div class="summary-card" id="overBudgetCard">
-              <div class="summary-label">Over Budget</div>
-              <div class="summary-value" id="summaryOverBudget">0 items</div>
+              <div class="summary-hint" id="coSummaryHint"></div>
             </div>
           </div>
         </section>
 
-        <!-- Budget Lines Section -->
+        <!-- Base Budget Status -->
+        <section class="draw-section draw-summary-section">
+          <div class="section-header">
+            <h3>Base Budget Status</h3>
+            <span class="section-subtitle">Excludes change orders</span>
+          </div>
+          <div class="draw-summary-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="summary-card">
+              <div class="summary-label">Drawn</div>
+              <div class="summary-value" id="summaryBilled">$0</div>
+              <div class="summary-hint">Billed to owner</div>
+            </div>
+            <div class="summary-card" id="projectedCard">
+              <div class="summary-label">Projected Cost</div>
+              <div class="summary-value" id="summaryProjected">$0</div>
+              <div class="summary-hint">POs + invoices</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Budget Remaining</div>
+              <div class="summary-value" id="summaryRemaining">$0</div>
+              <div class="summary-hint">Not yet committed</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Budget Forecast -->
+        <section class="draw-section draw-summary-section">
+          <div class="section-header">
+            <h3>Forecast</h3>
+            <span class="section-subtitle">Variance from closed lines + open overages</span>
+          </div>
+          <div class="draw-summary-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="summary-card" id="coverageCard">
+              <div class="summary-label">Closed</div>
+              <div class="summary-value" id="summaryCoverage">0%</div>
+              <div class="summary-hint" id="coverageHint">of budget closed</div>
+            </div>
+            <div class="summary-card highlight" id="projectedVarianceCard">
+              <div class="summary-label">Projected Variance</div>
+              <div class="summary-value" id="summaryProjectedVariance">$0</div>
+              <div class="summary-hint">Under / over budget</div>
+            </div>
+            <div class="summary-card" id="confirmedSavingsCard">
+              <div class="summary-label">Closed Variance</div>
+              <div class="summary-value" id="summaryConfirmedSavings">$0</div>
+              <div class="summary-hint">Locked in</div>
+            </div>
+            <div class="summary-card" id="potentialSavingsCard">
+              <div class="summary-label">Open Overages</div>
+              <div class="summary-value" id="summaryPotentialSavings">$0</div>
+              <div class="summary-hint">Over budget on open lines</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Base Budget Lines Section -->
         <section class="draw-section">
           <div class="section-header">
-            <h3>Budget by Cost Code</h3>
-            <span class="section-subtitle">Live view - updates when invoices are approved</span>
+            <h3>Base Budget by Cost Code</h3>
+            <span class="section-subtitle">Excludes change orders - shows live status including invoices awaiting approval</span>
             <div class="division-controls">
               <button onclick="toggleAllGroups(false)">Expand All</button>
               <button onclick="toggleAllGroups(true)">Collapse All</button>
@@ -113,17 +143,16 @@
                     <th>Cost Code</th>
                     <th>Description</th>
                     <th>Budget</th>
-                    <th>Committed</th>
                     <th>Billed</th>
-                    <th>Paid</th>
                     <th>Projected</th>
-                    <th>%</th>
+                    <th>Status</th>
+                    <th>% Complete</th>
                     <th>Variance</th>
                   </tr>
                 </thead>
                 <tbody id="budgetBody">
                   <tr>
-                    <td colspan="9" class="loading">Loading budget...</td>
+                    <td colspan="8" class="loading">Loading budget...</td>
                   </tr>
                 </tbody>
                 <tfoot id="budgetFooter">
@@ -136,9 +165,10 @@
         <!-- Change Orders Section (PCCOs) -->
         <section class="draw-section">
           <div class="section-header">
-            <h3>Prime Contract Change Orders (PCCOs)</h3>
+            <h3>Change Orders (PCCOs)</h3>
+            <span class="section-subtitle">Contract modifications with owner - tracked separately from base budget</span>
             <div class="section-header-actions">
-              <span class="section-badge" id="changeOrderCount">0 change orders</span>
+              <span class="section-badge" id="changeOrderCount">0 PCCOs</span>
               <button class="btn btn-sm btn-primary" onclick="showAddCOModal()">+ Add Change Order</button>
             </div>
           </div>
@@ -169,6 +199,7 @@
         </section>
       </div>
     </main>
+    </div>
   </div>
 
   <!-- Change Order Modal -->
@@ -397,6 +428,14 @@
         </div>
       </div>
       <div class="modal-footer">
+        <div id="ccCloseoutActions" style="display: flex; gap: 0.5rem;">
+          <button id="btnCloseoutLine" class="btn btn-primary" onclick="closeOutBudgetLine()" style="display: none;">
+            Close Out Line
+          </button>
+          <button id="btnReopenLine" class="btn btn-secondary" onclick="reopenBudgetLine()" style="display: none;">
+            Reopen Line
+          </button>
+        </div>
         <button class="btn btn-secondary" onclick="closeModal('costCodeDetailModal')">Close</button>
       </div>
     </div>
@@ -438,6 +477,7 @@
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
   <script src="js/toasts.js"></script>
+  <script src="js/nav-sidebar.js"></script>
   <script src="js/sidebar.js?v=20260112"></script>
   <script>
     // ============================================================
@@ -536,43 +576,90 @@
       // Header
       document.getElementById('budgetPageTitle').textContent = `Budget - ${job?.name || 'Unknown Job'}`;
 
-      // Summary cards
-      const budget = data.totals.budgeted;
-      const changeOrders = data.totals.changeOrderTotal || 0;
-      const revisedBudget = budget + changeOrders;
-      const projected = data.totals.projected || budget;
-      const projectedVariance = revisedBudget - projected;
+      // Contract Overview
+      const baseBudget = data.totals.budgeted;
+      const changeOrderTotal = data.totals.changeOrderTotal || 0;
+      const totalContract = baseBudget + changeOrderTotal;
+      const coCount = (data.jobChangeOrders || []).filter(co => co.status === 'approved').length;
 
-      document.getElementById('summaryBudget').textContent = formatMoney(budget);
-      document.getElementById('summaryChangeOrders').textContent = formatMoney(changeOrders);
-      document.getElementById('summaryTotalContract').textContent = formatMoney(revisedBudget);
-      document.getElementById('summaryProjected').textContent = formatMoney(projected);
-      document.getElementById('summaryBilled').textContent = formatMoney(data.totals.billed);
-      document.getElementById('summaryPaid').textContent = formatMoney(data.totals.paid);
+      document.getElementById('summaryBudget').textContent = formatMoney(baseBudget);
+      document.getElementById('summaryTotalContract').textContent = formatMoney(totalContract);
 
-      // Projected variance: positive = under budget (good), negative = over budget (bad)
-      document.getElementById('summaryProjectedVariance').textContent = formatMoney(projectedVariance);
-      const varianceCard = document.getElementById('projectedVarianceCard');
-      if (projectedVariance < 0) {
-        varianceCard.className = 'summary-card over-budget';
-      } else if (projectedVariance > 0) {
-        varianceCard.className = 'summary-card under-budget';
+      // Show CO count badge and hint if there are approved COs
+      const coBadge = document.getElementById('coCountBadge');
+      const coHint = document.getElementById('coSummaryHint');
+      if (coCount > 0) {
+        coBadge.textContent = `${coCount} CO${coCount !== 1 ? 's' : ''}`;
+        coBadge.style.display = 'inline-block';
+        coHint.textContent = `+${formatMoney(changeOrderTotal)} in COs`;
       } else {
-        varianceCard.className = 'summary-card';
+        coBadge.style.display = 'none';
+        coHint.textContent = '';
       }
 
-      // Highlight projected card if over budget
-      const projectedCard = document.getElementById('projectedCard');
-      projectedCard.className = projectedVariance < 0 ? 'summary-card highlight over-budget' : 'summary-card highlight';
+      // Base Budget Status (excludes change orders)
+      // Projected = Committed + In Review
+      const committed = data.totals.committed || 0;
+      const inReview = data.totals.pending || 0;
+      const projected = committed + inReview;
+      const budgetRemaining = baseBudget - projected; // What's not yet committed
 
-      // Count over-budget items (where projected exceeds budget)
-      const overBudgetCount = (data.lines || []).filter(line => {
+      document.getElementById('summaryBilled').textContent = formatMoney(data.totals.billed || 0);
+      document.getElementById('summaryProjected').textContent = formatMoney(projected);
+      document.getElementById('summaryRemaining').textContent = formatMoney(budgetRemaining);
+
+      // Calculate variance:
+      // - Closed lines: actual variance (under or over)
+      // - Open lines: only count overages (committed > budget)
+      // Underages only recognized when line is closed
+      let closedVariance = 0;  // Net variance from closed lines (+ = under, - = over)
+      let openOverages = 0;    // Amount over budget on open lines
+
+      (data.lines || []).forEach(line => {
         const budgeted = line.budgeted || 0;
-        const lineProjected = line.projected || 0;
-        return budgeted > 0 && lineProjected > budgeted;
-      }).length;
-      document.getElementById('summaryOverBudget').textContent = `${overBudgetCount} item${overBudgetCount !== 1 ? 's' : ''}`;
-      document.getElementById('overBudgetCard').className = `summary-card ${overBudgetCount > 0 ? 'over-budget' : ''}`;
+        const lineCommitted = (line.committed || 0) + (line.pending || 0);
+        const variance = budgeted - lineCommitted;
+
+        if (line.closedAt) {
+          // Closed line - count the variance (under or over)
+          closedVariance += variance;
+        } else if (lineCommitted > budgeted) {
+          // Open line but already over budget - count the overage
+          openOverages += Math.abs(variance);
+        }
+        // Open lines at or under budget: assume full budget spend (no variance to count)
+      });
+
+      // Coverage = % of budget that is closed (where we know final cost)
+      const closedPercent = data.totals.budgeted > 0
+        ? ((data.totals.budgetClosed || 0) / data.totals.budgeted) * 100
+        : 0;
+      document.getElementById('summaryCoverage').textContent = `${closedPercent.toFixed(0)}%`;
+      document.getElementById('coverageHint').textContent = 'of budget closed';
+
+      // Style coverage card
+      const coverageCard = document.getElementById('coverageCard');
+      coverageCard.className = 'summary-card';
+
+      // Total projected variance = closed variance - open overages
+      const totalVariance = closedVariance - openOverages;
+      document.getElementById('summaryProjectedVariance').textContent = formatMoney(totalVariance);
+      const varianceCard = document.getElementById('projectedVarianceCard');
+      if (totalVariance < 0) {
+        varianceCard.className = 'summary-card highlight over-budget';
+      } else if (totalVariance > 0) {
+        varianceCard.className = 'summary-card highlight under-budget';
+      } else {
+        varianceCard.className = 'summary-card highlight';
+      }
+
+      // Closed variance (net under/over from closed lines)
+      document.getElementById('summaryConfirmedSavings').textContent = formatMoney(closedVariance);
+      document.getElementById('confirmedSavingsCard').className = closedVariance > 0 ? 'summary-card under-budget' : (closedVariance < 0 ? 'summary-card over-budget' : 'summary-card');
+
+      // Open overages (amount over budget on open lines)
+      document.getElementById('summaryPotentialSavings').textContent = formatMoney(openOverages > 0 ? -openOverages : 0);
+      document.getElementById('potentialSavingsCard').className = openOverages > 0 ? 'summary-card over-budget' : 'summary-card';
 
       // Budget lines table
       renderBudgetTable(data.lines);
@@ -682,15 +769,22 @@
         // Calculate category totals
         const catTotals = catLines.reduce((acc, line) => ({
           budgeted: acc.budgeted + (line.budgeted || 0),
-          committed: acc.committed + (line.committed || 0),
           billed: acc.billed + (line.billed || 0),
-          paid: acc.paid + (line.paid || 0),
-          projected: acc.projected + (line.projected || line.budgeted || 0)
-        }), { budgeted: 0, committed: 0, billed: 0, paid: 0, projected: 0 });
+          projected: acc.projected + (line.committed || 0) + (line.pending || 0)
+        }), { budgeted: 0, billed: 0, projected: 0 });
 
-        const catPercent = catTotals.budgeted > 0 ? (catTotals.billed / catTotals.budgeted) * 100 : 0;
-        const catVariance = catTotals.budgeted - catTotals.projected;
-        const catHealthClass = catTotals.projected > catTotals.budgeted ? 'budget-over' : (catPercent >= 80 ? 'budget-warning' : '');
+        // Projected = Committed + In Review (what we're tracking to spend)
+        const catProjected = catTotals.projected;
+        // % Complete = Billed / Budget (actual progress)
+        const catPercentComplete = catTotals.budgeted > 0 ? (catTotals.billed / catTotals.budgeted) * 100 : 0;
+        // Variance = Budget - Projected (positive = savings, negative = over)
+        const catVariance = catTotals.budgeted - catProjected;
+        const catPercentProjected = catTotals.budgeted > 0 ? (catProjected / catTotals.budgeted) * 100 : 0;
+        const catHealthClass = catVariance < 0 ? 'budget-over' : (catPercentProjected >= 80 ? 'budget-warning' : '');
+
+        // Count closed lines in category
+        const closedCount = catLines.filter(l => l.closedAt).length;
+        const openCount = catLines.length - closedCount;
 
         // Category header row - escape quotes for onclick
         const escapedCategory = category.replace(/'/g, "\\'");
@@ -702,12 +796,11 @@
               <span class="category-count">(${catLines.length})</span>
             </td>
             <td class="amount">${formatMoneyDecimal(catTotals.budgeted)}</td>
-            <td class="amount">${formatMoneyDecimal(catTotals.committed)}</td>
             <td class="amount">${formatMoneyDecimal(catTotals.billed)}</td>
-            <td class="amount">${formatMoneyDecimal(catTotals.paid)}</td>
-            <td class="amount">${formatMoneyDecimal(catTotals.projected)}</td>
-            <td class="percent">${catPercent.toFixed(1)}%</td>
-            <td class="amount ${catVariance < 0 ? 'over-budget' : ''}">${formatMoneyDecimal(catVariance)}</td>
+            <td class="amount">${formatMoneyDecimal(catProjected)}</td>
+            <td class="status-cell">${closedCount > 0 ? `<span class="status-summary">${closedCount} closed</span>` : ''}</td>
+            <td class="percent">${catPercentComplete.toFixed(1)}%</td>
+            <td class="amount ${catVariance < 0 ? 'over-budget' : (catVariance > 0 ? 'under-budget' : '')}">${formatMoneyDecimal(catVariance)}</td>
           </tr>
         `;
 
@@ -715,39 +808,49 @@
         if (!isCollapsed) {
           catLines.forEach(line => {
             const budgeted = line.budgeted || 0;
-            const committed = line.committed || 0;
             const billed = line.billed || 0;
-            const paid = line.paid || 0;
-            const projected = line.projected || budgeted;
+            const committed = line.committed || 0;
+            const pending = line.pending || 0;
+            const isClosed = !!line.closedAt;
+            // Projected = Committed + In Review
+            const projected = committed + pending;
+            // Variance = Budget - Projected (positive = savings)
             const variance = budgeted - projected;
+            // % Complete = Billed / Budget (actual progress)
             const percentComplete = budgeted > 0 ? (billed / budgeted) * 100 : (billed > 0 ? 100 : 0);
+            // For health class, use projected %
+            const percentProjected = budgeted > 0 ? (projected / budgeted) * 100 : (projected > 0 ? 100 : 0);
 
-            // Determine health class based on projected vs budget
+            // Determine health class based on variance and closed status
             let healthClass = '';
             let healthIndicator = '';
-            if (projected > budgeted) {
+            if (isClosed) {
+              healthClass = 'budget-closed';
+              healthIndicator = '<span class="budget-health-indicator health-closed"></span>';
+            } else if (variance < 0) {
               healthClass = 'budget-over';
               healthIndicator = '<span class="budget-health-indicator health-over"></span>';
-            } else if (budgeted > 0 && percentComplete >= 80) {
+            } else if (budgeted > 0 && percentProjected >= 80) {
               healthClass = 'budget-warning';
               healthIndicator = '<span class="budget-health-indicator health-warning"></span>';
-            } else if (billed > 0) {
+            } else if (projected > 0) {
               healthClass = 'budget-ok';
               healthIndicator = '<span class="budget-health-indicator health-ok"></span>';
             }
 
-            const varianceClass = variance < 0 ? 'over-budget' : '';
-            const projectedClass = projected > budgeted ? 'over-budget' : '';
+            const varianceClass = variance < 0 ? 'over-budget' : (variance > 0 ? 'under-budget' : '');
+            const statusBadge = isClosed
+              ? `<span class="status-badge status-closed" title="Closed by ${line.closedBy || 'Unknown'}">Closed</span>`
+              : `<span class="status-badge status-open">Open</span>`;
 
             html += `
               <tr class="${healthClass} category-line clickable-row" data-cost-code="${line.costCode}" data-cost-code-id="${line.costCodeId}" onclick="showCostCodeDetail('${line.costCodeId}')" title="Click to view details">
                 <td class="cost-code">${healthIndicator}${line.costCode}</td>
                 <td>${line.description || '-'}</td>
                 <td class="amount">${formatMoneyDecimal(budgeted)}</td>
-                <td class="amount">${formatMoneyDecimal(committed)}</td>
                 <td class="amount">${formatMoneyDecimal(billed)}</td>
-                <td class="amount">${formatMoneyDecimal(paid)}</td>
-                <td class="amount ${projectedClass}">${formatMoneyDecimal(projected)}</td>
+                <td class="amount">${formatMoneyDecimal(projected)}</td>
+                <td class="status-cell">${statusBadge}</td>
                 <td class="percent">${percentComplete.toFixed(1)}%</td>
                 <td class="amount ${varianceClass}">${formatMoneyDecimal(variance)}</td>
               </tr>
@@ -761,25 +864,30 @@
       // Totals row
       const totals = lines.reduce((acc, line) => ({
         budgeted: acc.budgeted + (line.budgeted || 0),
-        committed: acc.committed + (line.committed || 0),
         billed: acc.billed + (line.billed || 0),
-        paid: acc.paid + (line.paid || 0),
-        projected: acc.projected + (line.projected || line.budgeted || 0)
-      }), { budgeted: 0, committed: 0, billed: 0, paid: 0, projected: 0 });
+        projected: acc.projected + (line.committed || 0) + (line.pending || 0)
+      }), { budgeted: 0, billed: 0, projected: 0 });
 
-      const totalVariance = totals.budgeted - totals.projected;
-      const overallPercent = totals.budgeted > 0 ? (totals.billed / totals.budgeted) * 100 : 0;
+      // Projected = Committed + In Review
+      const totalProjected = totals.projected;
+      // Variance = Budget - Projected (positive = savings)
+      const totalVariance = totals.budgeted - totalProjected;
+      // % Complete = Billed / Budget
+      const overallPercentComplete = totals.budgeted > 0 ? (totals.billed / totals.budgeted) * 100 : 0;
+
+      // Count closed vs open lines
+      const closedLinesCount = lines.filter(l => l.closedAt).length;
+      const openLinesCount = lines.length - closedLinesCount;
 
       tfoot.innerHTML = `
         <tr class="totals-row">
           <td colspan="2"><strong>TOTAL</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.budgeted)}</strong></td>
-          <td class="amount"><strong>${formatMoneyDecimal(totals.committed)}</strong></td>
           <td class="amount"><strong>${formatMoneyDecimal(totals.billed)}</strong></td>
-          <td class="amount"><strong>${formatMoneyDecimal(totals.paid)}</strong></td>
-          <td class="amount ${totals.projected > totals.budgeted ? 'over-budget' : ''}"><strong>${formatMoneyDecimal(totals.projected)}</strong></td>
-          <td class="percent"><strong>${overallPercent.toFixed(1)}%</strong></td>
-          <td class="amount ${totalVariance < 0 ? 'over-budget' : ''}"><strong>${formatMoneyDecimal(totalVariance)}</strong></td>
+          <td class="amount"><strong>${formatMoneyDecimal(totalProjected)}</strong></td>
+          <td class="status-cell"><span class="status-summary">${closedLinesCount} closed / ${openLinesCount} open</span></td>
+          <td class="percent"><strong>${overallPercentComplete.toFixed(1)}%</strong></td>
+          <td class="amount ${totalVariance < 0 ? 'over-budget' : (totalVariance > 0 ? 'under-budget' : '')}"><strong>${formatMoneyDecimal(totalVariance)}</strong></td>
         </tr>
       `;
 
@@ -1307,6 +1415,9 @@
     async function showCostCodeDetail(costCodeId) {
       if (!state.currentJob || !costCodeId) return;
 
+      // Store current cost code ID for close-out actions
+      state.currentCostCodeId = costCodeId;
+
       try {
         const res = await fetch(`/api/jobs/${state.currentJob.id}/cost-code/${costCodeId}/details`);
         if (!res.ok) throw new Error('Failed to fetch details');
@@ -1336,6 +1447,15 @@
 
         // Reset to invoices tab
         switchCCTab('cc-invoices');
+
+        // Check if this line is closed (from budget data)
+        const budgetLine = (state.budgetData?.lines || []).find(l => l.costCodeId === costCodeId);
+        const isClosed = budgetLine?.closedAt;
+        state.currentLineClosedAt = isClosed;
+
+        // Show/hide close-out buttons based on status
+        document.getElementById('btnCloseoutLine').style.display = isClosed ? 'none' : 'inline-block';
+        document.getElementById('btnReopenLine').style.display = isClosed ? 'inline-block' : 'none';
 
         // Show modal
         document.getElementById('costCodeDetailModal').classList.add('show');
@@ -1537,6 +1657,93 @@
       const invoice = state.currentViewingInvoice;
       if (invoice) {
         window.open(`index.html?invoice=${invoice.id}`, '_blank');
+      }
+    }
+
+    // ============================================================
+    // BUDGET LINE CLOSE-OUT
+    // ============================================================
+
+    async function closeOutBudgetLine() {
+      const costCodeId = state.currentCostCodeId;
+      const jobId = state.currentJob?.id;
+
+      if (!costCodeId || !jobId) {
+        showToast('No cost code selected', 'error');
+        return;
+      }
+
+      // Get current line data to show what's being locked in
+      const line = (state.budgetData?.lines || []).find(l => l.costCodeId === costCodeId);
+      const budget = line?.budgeted || 0;
+      const committed = (line?.committed || 0) + (line?.pending || 0);
+      const variance = budget - committed;
+      const varianceText = variance >= 0
+        ? `${formatMoney(variance)} UNDER budget`
+        : `${formatMoney(Math.abs(variance))} OVER budget`;
+
+      // Confirm action with details
+      const confirmMsg = `Close out this budget line?\n\nBudget: ${formatMoney(budget)}\nCommitted: ${formatMoney(committed)}\nVariance: ${varianceText}\n\nThis will lock in the committed cost as final.`;
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/budget/${costCodeId}/close`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ closed_by: 'User' })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to close out budget line');
+        }
+
+        showToast(`Line closed at ${formatMoney(committed)} (${varianceText})`, 'success');
+        closeModal('costCodeDetailModal');
+
+        // Refresh budget data
+        loadBudget(jobId);
+      } catch (err) {
+        console.error('Error closing budget line:', err);
+        showToast(err.message || 'Failed to close out budget line', 'error');
+      }
+    }
+
+    async function reopenBudgetLine() {
+      const costCodeId = state.currentCostCodeId;
+      const jobId = state.currentJob?.id;
+
+      if (!costCodeId || !jobId) {
+        showToast('No cost code selected', 'error');
+        return;
+      }
+
+      // Confirm action
+      if (!confirm('Reopen this budget line? Savings will become potential (not confirmed) again.')) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/budget/${costCodeId}/reopen`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to reopen budget line');
+        }
+
+        showToast('Budget line reopened successfully', 'success');
+        closeModal('costCodeDetailModal');
+
+        // Refresh budget data
+        loadBudget(jobId);
+      } catch (err) {
+        console.error('Error reopening budget line:', err);
+        showToast(err.message || 'Failed to reopen budget line', 'error');
       }
     }
 

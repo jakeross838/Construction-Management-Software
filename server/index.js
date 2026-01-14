@@ -9,7 +9,7 @@ const PID_FILE = path.join(__dirname, '..', 'server.pid');
 const { supabase, port } = require('../config');
 const { uploadPDF, uploadStampedPDF, downloadPDF } = require('./storage');
 const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid, stampPartiallyBilled } = require('./pdf-stamper');
-const { processInvoice } = require('./ai-processor');
+const { processInvoice, processDocument, processLienRelease, processMultiPageDocument, splitPDF, DOCUMENT_TYPES } = require('./ai-processor');
 const standards = require('./standards');
 const aiLearning = require('./ai-learning');
 const ExcelJS = require('exceljs');
@@ -405,6 +405,262 @@ app.post('/api/vendors', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Find potential duplicate vendors (MUST be before :id routes)
+app.get('/api/vendors/duplicates', asyncHandler(async (req, res) => {
+  const { calculateVendorSimilarity } = require('./standards');
+
+  const { data: vendors, error } = await supabase
+    .from('v2_vendors')
+    .select('id, name')
+    .is('deleted_at', null)
+    .order('name');
+
+  if (error) throw error;
+
+  const duplicates = [];
+  const threshold = 70;
+
+  for (let i = 0; i < vendors.length; i++) {
+    for (let j = i + 1; j < vendors.length; j++) {
+      const similarity = calculateVendorSimilarity(vendors[i].name, vendors[j].name);
+      if (similarity >= threshold) {
+        duplicates.push({
+          vendor1: vendors[i],
+          vendor2: vendors[j],
+          similarity
+        });
+      }
+    }
+  }
+
+  duplicates.sort((a, b) => b.similarity - a.similarity);
+  res.json(duplicates);
+}));
+
+// Merge two vendors (MUST be before :id routes)
+app.post('/api/vendors/merge', asyncHandler(async (req, res) => {
+  const { keep_vendor_id, remove_vendor_id } = req.body;
+
+  if (!keep_vendor_id || !remove_vendor_id) {
+    return res.status(400).json({ error: 'keep_vendor_id and remove_vendor_id are required' });
+  }
+
+  if (keep_vendor_id === remove_vendor_id) {
+    return res.status(400).json({ error: 'Cannot merge vendor with itself' });
+  }
+
+  let updatedCount = 0;
+
+  const { data: invoiceUpdate } = await supabase
+    .from('v2_invoices')
+    .update({ vendor_id: keep_vendor_id })
+    .eq('vendor_id', remove_vendor_id)
+    .select('id');
+  updatedCount += (invoiceUpdate?.length || 0);
+
+  const { data: poUpdate } = await supabase
+    .from('v2_purchase_orders')
+    .update({ vendor_id: keep_vendor_id })
+    .eq('vendor_id', remove_vendor_id)
+    .select('id');
+  updatedCount += (poUpdate?.length || 0);
+
+  const { data: lienUpdate } = await supabase
+    .from('v2_lien_releases')
+    .update({ vendor_id: keep_vendor_id })
+    .eq('vendor_id', remove_vendor_id)
+    .select('id');
+  updatedCount += (lienUpdate?.length || 0);
+
+  await supabase
+    .from('v2_vendors')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', remove_vendor_id);
+
+  res.json({
+    success: true,
+    updated_count: updatedCount,
+    keep_vendor_id,
+    removed_vendor_id: remove_vendor_id
+  });
+}));
+
+// Update vendor
+app.patch('/api/vendors/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_vendors')
+    .update(req.body)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.json(data);
+}));
+
+// Upload vendor document (COI, W-9, License)
+app.post('/api/vendors/:id/documents', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { document_type, file_data, file_name } = req.body;
+
+  if (!document_type || !file_data) {
+    return res.status(400).json({ error: 'document_type and file_data are required' });
+  }
+
+  const validTypes = ['coi', 'w9', 'license'];
+  if (!validTypes.includes(document_type)) {
+    return res.status(400).json({ error: 'Invalid document_type. Must be: coi, w9, or license' });
+  }
+
+  // Decode base64 file
+  const buffer = Buffer.from(file_data.split(',')[1] || file_data, 'base64');
+  const fileName = `vendor-docs/${id}/${document_type}_${Date.now()}.pdf`;
+
+  // Upload to Supabase storage
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from('documents')
+    .upload(fileName, buffer, {
+      contentType: 'application/pdf',
+      upsert: true
+    });
+
+  if (uploadError) {
+    console.error('Upload error:', uploadError);
+    throw new Error('Failed to upload document');
+  }
+
+  // Get public URL
+  const { data: urlData } = supabase.storage
+    .from('documents')
+    .getPublicUrl(fileName);
+
+  const publicUrl = urlData.publicUrl;
+
+  // Update vendor record with document URL
+  const updateField = {
+    coi: { coi_url: publicUrl, coi_on_file: true },
+    w9: { w9_url: publicUrl, w9_on_file: true, w9_received_date: new Date().toISOString().split('T')[0] },
+    license: { license_url: publicUrl }
+  }[document_type];
+
+  const { data: vendor, error: updateError } = await supabase
+    .from('v2_vendors')
+    .update(updateField)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (updateError) throw updateError;
+
+  res.json({ success: true, url: publicUrl, vendor });
+}));
+
+// Get vendors with expiring documents
+app.get('/api/vendors/expiring', asyncHandler(async (req, res) => {
+  const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const { data: vendors, error } = await supabase
+    .from('v2_vendors')
+    .select('id, name, trade, gl_expiration, wc_expiration, auto_expiration, license_expiration')
+    .is('deleted_at', null)
+    .or(`gl_expiration.lte.${thirtyDaysFromNow},wc_expiration.lte.${thirtyDaysFromNow},license_expiration.lte.${thirtyDaysFromNow}`)
+    .order('gl_expiration', { ascending: true });
+
+  if (error) throw error;
+
+  // Categorize by urgency
+  const today = new Date().toISOString().split('T')[0];
+  const result = (vendors || []).map(v => {
+    const issues = [];
+    if (v.gl_expiration && v.gl_expiration <= today) issues.push({ type: 'GL', status: 'expired', date: v.gl_expiration });
+    else if (v.gl_expiration && v.gl_expiration <= thirtyDaysFromNow) issues.push({ type: 'GL', status: 'expiring', date: v.gl_expiration });
+
+    if (v.wc_expiration && v.wc_expiration <= today) issues.push({ type: 'WC', status: 'expired', date: v.wc_expiration });
+    else if (v.wc_expiration && v.wc_expiration <= thirtyDaysFromNow) issues.push({ type: 'WC', status: 'expiring', date: v.wc_expiration });
+
+    if (v.license_expiration && v.license_expiration <= today) issues.push({ type: 'License', status: 'expired', date: v.license_expiration });
+    else if (v.license_expiration && v.license_expiration <= thirtyDaysFromNow) issues.push({ type: 'License', status: 'expiring', date: v.license_expiration });
+
+    return { ...v, issues };
+  }).filter(v => v.issues.length > 0);
+
+  res.json(result);
+}));
+
+// Get vendor details with stats
+app.get('/api/vendors/:id/details', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get vendor
+  const { data: vendor, error: vendorError } = await supabase
+    .from('v2_vendors')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (vendorError || !vendor) {
+    return res.status(404).json({ error: 'Vendor not found' });
+  }
+
+  // Get invoice stats
+  const { data: invoices } = await supabase
+    .from('v2_invoices')
+    .select('id, amount, invoice_number, job:v2_jobs(id, name)')
+    .eq('vendor_id', id)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  // Get PO count
+  const { count: poCount } = await supabase
+    .from('v2_purchase_orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('vendor_id', id)
+    .is('deleted_at', null);
+
+  // Get lien release count
+  const { count: lienCount } = await supabase
+    .from('v2_lien_releases')
+    .select('id', { count: 'exact', head: true })
+    .eq('vendor_id', id)
+    .is('deleted_at', null);
+
+  // Get unique jobs
+  const { data: jobIds } = await supabase
+    .from('v2_invoices')
+    .select('job_id')
+    .eq('vendor_id', id)
+    .is('deleted_at', null)
+    .not('job_id', 'is', null);
+
+  const uniqueJobIds = [...new Set((jobIds || []).map(j => j.job_id))];
+  let jobs = [];
+  if (uniqueJobIds.length > 0) {
+    const { data: jobData } = await supabase
+      .from('v2_jobs')
+      .select('id, name')
+      .in('id', uniqueJobIds);
+    jobs = jobData || [];
+  }
+
+  // Calculate totals
+  const totalInvoiced = (invoices || []).reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+
+  res.json({
+    ...vendor,
+    stats: {
+      invoice_count: invoices?.length || 0,
+      total_invoiced: totalInvoiced,
+      po_count: poCount || 0,
+      lien_release_count: lienCount || 0
+    },
+    recent_invoices: invoices || [],
+    jobs
+  });
+}));
 
 // ============================================================
 // COST CODES API
@@ -2179,6 +2435,354 @@ app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
   }
 });
 
+// ============================================================
+// MASTER DOCUMENT PROCESSOR - Universal upload endpoint
+// ============================================================
+
+/**
+ * Universal document processor - classifies and routes any document type
+ * Supports: invoices, lien releases, POs, quotes, change orders, insurance, contracts
+ */
+app.post('/api/documents/process', upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF file provided' });
+    }
+
+    const originalFilename = req.file.originalname;
+    const pdfBuffer = req.file.buffer;
+    const uploadedBy = req.body.uploaded_by || 'System';
+
+    console.log(`[Document Processor] Processing: ${originalFilename}`);
+
+    // Process document with AI classification and routing
+    const result = await processDocument(pdfBuffer, originalFilename, { uploadedBy });
+
+    if (!result.success && result.documentType === DOCUMENT_TYPES.UNKNOWN) {
+      return res.status(422).json({
+        success: false,
+        error: 'Could not classify document',
+        messages: result.messages,
+        classification: result.classification
+      });
+    }
+
+    // Handle different document types
+    let savedRecord = null;
+
+    if (result.documentType === DOCUMENT_TYPES.INVOICE) {
+      // Invoice processing - create the invoice record
+      const invoiceData = result.data;
+
+      if (!invoiceData.success) {
+        return res.status(422).json({
+          success: false,
+          documentType: result.documentType,
+          error: 'Invoice processing failed',
+          messages: result.messages
+        });
+      }
+
+      // Check for duplicates
+      const duplicates = invoiceData.suggestions?.possible_duplicates || [];
+      const highConfidenceDupe = duplicates.find(d => d.confidence >= 0.95);
+
+      if (highConfidenceDupe) {
+        return res.status(409).json({
+          success: false,
+          documentType: result.documentType,
+          error: 'Duplicate invoice detected',
+          message: `This appears to be a duplicate of invoice #${highConfidenceDupe.invoice_number}`,
+          duplicate: highConfidenceDupe
+        });
+      }
+
+      // Upload PDF
+      let pdf_url = null;
+      const jobId = invoiceData.matchedJob?.id;
+      const storagePath = invoiceData.standardizedFilename;
+
+      if (jobId) {
+        const uploadResult = await uploadPDF(pdfBuffer, storagePath, jobId);
+        pdf_url = uploadResult.url;
+      } else {
+        const uploadResult = await uploadPDF(pdfBuffer, `unassigned/${storagePath}`, null);
+        pdf_url = uploadResult.url;
+      }
+
+      // Create invoice record
+      const { data: invoice, error: invError } = await supabase
+        .from('v2_invoices')
+        .insert({
+          job_id: jobId || null,
+          vendor_id: invoiceData.vendor?.id || null,
+          po_id: invoiceData.po?.id || null,
+          invoice_number: invoiceData.extracted.invoiceNumber,
+          invoice_date: invoiceData.extracted.invoiceDate,
+          due_date: invoiceData.extracted.dueDate || null,
+          amount: invoiceData.extracted.totalAmount || 0,
+          pdf_url,
+          status: 'received',
+          notes: invoiceData.messages.join('\n'),
+          ai_processed: true,
+          ai_confidence: invoiceData.ai_confidence || null,
+          ai_extracted_data: invoiceData.ai_extracted_data || null,
+          needs_review: invoiceData.needs_review || false,
+          review_flags: invoiceData.review_flags || null
+        })
+        .select()
+        .single();
+
+      if (invError) throw invError;
+
+      // Create allocations if available
+      if (invoiceData.suggested_allocations?.length > 0) {
+        const allocs = invoiceData.suggested_allocations.map(sa => ({
+          invoice_id: invoice.id,
+          cost_code_id: sa.cost_code_id,
+          amount: sa.amount,
+          notes: `Auto-suggested based on ${invoiceData.extracted.vendor?.tradeType || 'detected'} trade type`
+        }));
+        await supabase.from('v2_invoice_allocations').insert(allocs);
+      }
+
+      savedRecord = invoice;
+      result.redirect.id = invoice.id;
+
+    } else if (result.documentType === DOCUMENT_TYPES.LIEN_RELEASE) {
+      // Lien release processing - create the lien release record
+      const lienData = result.data;
+
+      if (!lienData.success) {
+        return res.status(422).json({
+          success: false,
+          documentType: result.documentType,
+          error: 'Lien release processing failed',
+          messages: result.messages
+        });
+      }
+
+      // Upload PDF
+      let pdf_url = null;
+      const jobId = lienData.matchedJob?.id;
+      const vendorName = lienData.vendor?.name || lienData.extracted?.vendor?.companyName || 'Unknown';
+      const releaseType = lienData.extracted?.releaseType || 'unknown';
+      const dateStr = lienData.extracted?.throughDate || new Date().toISOString().split('T')[0];
+      const storagePath = `lien-releases/LR_${vendorName.replace(/[^a-zA-Z0-9]/g, '')}_${releaseType}_${dateStr}.pdf`;
+
+      if (jobId) {
+        const uploadResult = await uploadPDF(pdfBuffer, storagePath, jobId);
+        pdf_url = uploadResult.url;
+      } else {
+        const uploadResult = await uploadPDF(pdfBuffer, `unassigned/${storagePath}`, null);
+        pdf_url = uploadResult.url;
+      }
+
+      // Create lien release record
+      const { data: lienRelease, error: lienError } = await supabase
+        .from('v2_lien_releases')
+        .insert({
+          job_id: jobId || null,
+          vendor_id: lienData.vendor?.id || null,
+          release_type: lienData.extracted?.releaseType || 'conditional_progress',
+          amount: lienData.extracted?.amount || null,
+          through_date: lienData.extracted?.throughDate || null,
+          release_date: lienData.extracted?.releaseDate || new Date().toISOString().split('T')[0],
+          pdf_url,
+          status: 'received',
+          signer_name: lienData.extracted?.signer?.name || null,
+          signer_title: lienData.extracted?.signer?.title || null,
+          notary_name: lienData.extracted?.notary?.name || null,
+          notary_county: lienData.extracted?.notary?.county || null,
+          notary_expiration: lienData.extracted?.notary?.expiration || null,
+          ai_processed: true,
+          ai_confidence: lienData.ai_confidence || null,
+          ai_extracted_data: lienData.ai_extracted_data || null,
+          needs_review: lienData.needs_review || false,
+          review_flags: lienData.review_flags || null
+        })
+        .select()
+        .single();
+
+      if (lienError) throw lienError;
+
+      savedRecord = lienRelease;
+      result.redirect.id = lienRelease.id;
+    }
+
+    // Return unified response
+    res.json({
+      success: true,
+      documentType: result.documentType,
+      classification: result.classification,
+      data: result.data,
+      savedRecord,
+      redirect: result.redirect,
+      messages: result.messages
+    });
+
+  } catch (err) {
+    console.error('Document processing error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Multi-page document processor - splits combined PDFs and processes each page
+ * Use this for combined lien releases, multiple invoices in one PDF, etc.
+ */
+app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF file provided' });
+    }
+
+    const originalFilename = req.file.originalname;
+    const pdfBuffer = req.file.buffer;
+    const uploadedBy = req.body.uploaded_by || 'System';
+
+    console.log(`[Multi-Page Processor] Processing: ${originalFilename}`);
+
+    // Process the combined document (extraction only)
+    const result = await processMultiPageDocument(pdfBuffer, originalFilename, { uploadedBy });
+
+    // Now save each processed page to the database
+    for (const page of result.processedPages) {
+      try {
+        if (page.documentType === DOCUMENT_TYPES.LIEN_RELEASE) {
+          const lienData = page.data;
+
+          // Upload the split PDF page
+          let pdf_url = null;
+          const jobId = lienData.matchedJob?.id;
+          const vendorName = lienData.vendor?.name || lienData.extracted?.vendor?.companyName || 'Unknown';
+          const releaseType = lienData.extracted?.releaseType || 'unknown';
+          const dateStr = lienData.extracted?.throughDate || new Date().toISOString().split('T')[0];
+          const storagePath = `lien-releases/LR_${vendorName.replace(/[^a-zA-Z0-9]/g, '')}_${releaseType}_${dateStr}_p${page.pageNumber}.pdf`;
+
+          // Get the split page buffer from the result
+                    const pages = await splitPDF(pdfBuffer);
+          const pageBuffer = pages[page.pageNumber - 1]?.buffer;
+
+          if (pageBuffer) {
+            if (jobId) {
+              const uploadResult = await uploadPDF(pageBuffer, storagePath, jobId);
+              pdf_url = uploadResult.url;
+            } else {
+              const uploadResult = await uploadPDF(pageBuffer, `unassigned/${storagePath}`, null);
+              pdf_url = uploadResult.url;
+            }
+          }
+
+          // Create lien release record
+          const { data: lienRelease, error: lienError } = await supabase
+            .from('v2_lien_releases')
+            .insert({
+              job_id: jobId || null,
+              vendor_id: lienData.vendor?.id || null,
+              release_type: lienData.extracted?.releaseType || 'conditional_progress',
+              amount: lienData.extracted?.amount || null,
+              through_date: lienData.extracted?.throughDate || null,
+              release_date: lienData.extracted?.releaseDate || new Date().toISOString().split('T')[0],
+              pdf_url,
+              status: 'received',
+              signer_name: lienData.extracted?.signer?.name || null,
+              signer_title: lienData.extracted?.signer?.title || null,
+              notary_name: lienData.extracted?.notary?.name || null,
+              notary_county: lienData.extracted?.notary?.county || null,
+              notary_expiration: lienData.extracted?.notary?.expiration || null,
+              ai_processed: true,
+              ai_confidence: lienData.ai_confidence || null,
+              ai_extracted_data: lienData.ai_extracted_data || null,
+              needs_review: lienData.needs_review || false,
+              review_flags: lienData.review_flags || null,
+              uploaded_by: uploadedBy
+            })
+            .select()
+            .single();
+
+          if (lienError) {
+            console.error(`Error saving lien release page ${page.pageNumber}:`, lienError);
+            page.saveError = lienError.message;
+          } else {
+            page.savedRecord = lienRelease;
+            page.redirect = { page: 'lien-releases.html', id: lienRelease.id };
+          }
+
+        } else if (page.documentType === DOCUMENT_TYPES.INVOICE) {
+          // Similar saving logic for invoices if needed
+          const invoiceData = page.data;
+
+          // Get the split page buffer
+                    const pages = await splitPDF(pdfBuffer);
+          const pageBuffer = pages[page.pageNumber - 1]?.buffer;
+
+          let pdf_url = null;
+          const jobId = invoiceData.matchedJob?.id;
+          const storagePath = invoiceData.standardizedFilename || `invoice_page${page.pageNumber}.pdf`;
+
+          if (pageBuffer) {
+            if (jobId) {
+              const uploadResult = await uploadPDF(pageBuffer, storagePath, jobId);
+              pdf_url = uploadResult.url;
+            } else {
+              const uploadResult = await uploadPDF(pageBuffer, `unassigned/${storagePath}`, null);
+              pdf_url = uploadResult.url;
+            }
+          }
+
+          // Create invoice record
+          const { data: invoice, error: invError } = await supabase
+            .from('v2_invoices')
+            .insert({
+              job_id: jobId || null,
+              vendor_id: invoiceData.vendor?.id || null,
+              po_id: invoiceData.po?.id || null,
+              invoice_number: invoiceData.extracted?.invoiceNumber || `PAGE-${page.pageNumber}`,
+              invoice_date: invoiceData.extracted?.invoiceDate || null,
+              due_date: invoiceData.extracted?.dueDate || null,
+              amount: invoiceData.extracted?.totalAmount || 0,
+              pdf_url,
+              status: 'received',
+              notes: invoiceData.messages?.join('\n') || '',
+              ai_processed: true,
+              ai_confidence: invoiceData.ai_confidence || null,
+              ai_extracted_data: invoiceData.ai_extracted_data || null,
+              needs_review: invoiceData.needs_review || false,
+              review_flags: invoiceData.review_flags || null
+            })
+            .select()
+            .single();
+
+          if (invError) {
+            console.error(`Error saving invoice page ${page.pageNumber}:`, invError);
+            page.saveError = invError.message;
+          } else {
+            page.savedRecord = invoice;
+            page.redirect = { page: 'index.html', id: invoice.id };
+          }
+        }
+      } catch (saveErr) {
+        console.error(`Error saving page ${page.pageNumber}:`, saveErr);
+        page.saveError = saveErr.message;
+      }
+    }
+
+    res.json({
+      success: result.success,
+      totalPages: result.totalPages,
+      processedPages: result.processedPages,
+      failedPages: result.failedPages,
+      summary: result.summary,
+      messages: result.messages
+    });
+
+  } catch (err) {
+    console.error('Multi-page document processing error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Code invoice (assign job, vendor, PO, cost codes)
 app.patch('/api/invoices/:id/code', async (req, res) => {
   try {
@@ -2880,6 +3484,17 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       .select('id, code, name, category')
       .order('code');
 
+    // Get invoices that are linked to job change orders (PCCOs) - these are CO work, not base budget
+    const { data: coInvoiceLinks } = await supabase
+      .from('v2_change_order_invoices')
+      .select(`
+        invoice_id,
+        change_order:v2_job_change_orders!inner(job_id)
+      `)
+      .eq('change_order.job_id', jobId);
+
+    const coInvoiceIds = new Set((coInvoiceLinks || []).map(link => link.invoice_id));
+
     // Get allocations from all invoices for this job (include po_id to check if linked to PO)
     const { data: allocations } = await supabase
       .from('v2_invoice_allocations')
@@ -2890,6 +3505,9 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
         invoice:v2_invoices!inner(id, job_id, status, po_id)
       `)
       .eq('invoice.job_id', jobId);
+
+    // Filter out allocations from invoices linked to change orders (base budget only)
+    const baseBudgetAllocations = (allocations || []).filter(a => !coInvoiceIds.has(a.invoice.id));
 
     // Get committed amounts from POs (only sent or approved POs commit to budget)
     const { data: poLines } = await supabase
@@ -2903,39 +3521,62 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       .neq('po.status', 'cancelled')
       .or('status_detail.eq.sent,status_detail.eq.approved,approval_status.eq.approved', { foreignTable: 'po' });
 
-    // Build actuals and committed by cost code
+    // Build actuals, committed, and pending by cost code
     const actualsByCostCode = {};
     const committedByCostCode = {};
+    const pendingByCostCode = {};
+    const poAmountByCostCode = {};  // Track PO amounts separately to know PO coverage
 
-    // First, add PO line items to committed
+    // First, add PO line items to committed and track PO coverage
     if (poLines) {
       poLines.forEach(pl => {
         const ccId = pl.cost_code_id;
         if (!committedByCostCode[ccId]) committedByCostCode[ccId] = 0;
-        committedByCostCode[ccId] += parseFloat(pl.amount) || 0;
+        if (!poAmountByCostCode[ccId]) poAmountByCostCode[ccId] = 0;
+        const amount = parseFloat(pl.amount) || 0;
+        committedByCostCode[ccId] += amount;
+        poAmountByCostCode[ccId] += amount;  // Track PO amount for coverage
       });
     }
 
-    // Process invoice allocations
-    if (allocations) {
-      allocations.forEach(a => {
+    // Process invoice allocations (base budget only - excludes CO invoices)
+    if (baseBudgetAllocations) {
+      baseBudgetAllocations.forEach(a => {
         const ccId = a.cost_code_id;
         if (!actualsByCostCode[ccId]) {
-          actualsByCostCode[ccId] = { billed: 0, paid: 0, costCode: a.cost_code };
+          actualsByCostCode[ccId] = { billed: 0, paid: 0, approved: 0, costCode: a.cost_code };
         }
 
-        // Only count approved, in_draw, or paid invoices as billed
-        if (['approved', 'in_draw', 'paid'].includes(a.invoice.status)) {
-          actualsByCostCode[ccId].billed += parseFloat(a.amount) || 0;
+        const amount = parseFloat(a.amount) || 0;
+
+        // Track pending invoices (needs_approval, received)
+        if (['needs_approval', 'received'].includes(a.invoice.status)) {
+          if (!pendingByCostCode[ccId]) pendingByCostCode[ccId] = 0;
+          pendingByCostCode[ccId] += amount;
+        }
+
+        // Track approved invoices (approved, in_draw) - not yet paid but committed
+        if (['approved', 'in_draw'].includes(a.invoice.status)) {
+          actualsByCostCode[ccId].approved += amount;
+          actualsByCostCode[ccId].billed += amount;
 
           // Add to committed if invoice is NOT linked to a PO (to avoid double counting)
           if (!a.invoice.po_id) {
             if (!committedByCostCode[ccId]) committedByCostCode[ccId] = 0;
-            committedByCostCode[ccId] += parseFloat(a.amount) || 0;
+            committedByCostCode[ccId] += amount;
           }
         }
+
+        // Track paid invoices
         if (a.invoice.status === 'paid') {
-          actualsByCostCode[ccId].paid += parseFloat(a.amount) || 0;
+          actualsByCostCode[ccId].paid += amount;
+          actualsByCostCode[ccId].billed += amount;
+
+          // Add to committed if invoice is NOT linked to a PO (to avoid double counting)
+          if (!a.invoice.po_id) {
+            if (!committedByCostCode[ccId]) committedByCostCode[ccId] = 0;
+            committedByCostCode[ccId] += amount;
+          }
         }
       });
     }
@@ -2947,7 +3588,10 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
         budgeted: parseFloat(bl.budgeted_amount) || 0,
         costCode: bl.cost_code?.code || '',
         description: bl.cost_code?.name || '',
-        category: bl.cost_code?.category || 'Uncategorized'
+        category: bl.cost_code?.category || 'Uncategorized',
+        closedAt: bl.closed_at || null,
+        closedBy: bl.closed_by || null,
+        notes: bl.notes || null
       };
     });
 
@@ -2962,13 +3606,14 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
     Object.keys(budgetMap).forEach(id => allCostCodeIds.add(id));
     Object.keys(actualsByCostCode).forEach(id => allCostCodeIds.add(id));
     Object.keys(committedByCostCode).forEach(id => allCostCodeIds.add(id));
+    Object.keys(pendingByCostCode).forEach(id => allCostCodeIds.add(id));
 
     // Build result lines (filter out lines with no activity unless they have budget)
     const hideEmpty = req.query.hideEmpty !== 'false'; // Default to hiding empty lines
     const lines = [];
     allCostCodeIds.forEach(ccId => {
       const budget = budgetMap[ccId] || {};
-      const actuals = actualsByCostCode[ccId] || { billed: 0, paid: 0 };
+      const actuals = actualsByCostCode[ccId] || { billed: 0, paid: 0, approved: 0 };
       const costCodeInfo = costCodeLookup[ccId] || {};
       const costCode = budget.costCode || costCodeInfo.code || '';
       const description = budget.description || costCodeInfo.name || '';
@@ -2976,17 +3621,39 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
 
       const budgeted = budget.budgeted || 0;
       const committed = committedByCostCode[ccId] || 0;
+      const pending = pendingByCostCode[ccId] || 0;
+      const poAmount = poAmountByCostCode[ccId] || 0;
+      const hasPOCoverage = poAmount > 0;
       const billed = actuals.billed;
       const paid = actuals.paid;
+      const approved = actuals.approved;
 
       // Skip empty lines unless hideEmpty is disabled
-      if (hideEmpty && budgeted === 0 && committed === 0 && billed === 0 && paid === 0) {
+      if (hideEmpty && budgeted === 0 && committed === 0 && billed === 0 && paid === 0 && pending === 0) {
         return;
       }
 
-      // Projected cost = MAX(budget, committed, billed)
-      // If committed or billed exceeds budget, we project to go over
-      const projected = Math.max(budgeted, committed, billed);
+      // Projected cost logic:
+      // - Closed lines: use actual (we know final cost, locks in under/over)
+      // - Open lines: assume full budget unless already over (conservative)
+      // Underages only recognized when line is closed
+      // Overages show immediately when committed > budget
+      let projected;
+      if (budget.closedAt) {
+        // Closed - we know the final cost
+        projected = committed + pending;
+      } else {
+        // Open - assume full budget, but show overage if already over
+        projected = Math.max(budgeted, committed + pending);
+      }
+
+      // Variance = Budget - Committed - Pending - Paid (conservative view)
+      // Shows how much budget remains after all known activity
+      const variance = budgeted - committed - pending;
+
+      // % Complete = (Committed + Pending + Paid) / Budget
+      // Note: Paid is included in committed for non-PO invoices, so use committed + pending
+      const percentComplete = budgeted > 0 ? ((committed + pending) / budgeted) * 100 : 0;
 
       lines.push({
         costCodeId: ccId,
@@ -2995,9 +3662,18 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
         category,
         budgeted,
         committed,
-        billed,
+        pending,
+        poAmount,
+        hasPOCoverage,
         paid,
-        projected
+        approved,
+        billed,
+        projected,
+        variance,
+        percentComplete,
+        closedAt: budget.closedAt || null,
+        closedBy: budget.closedBy || null,
+        notes: budget.notes || null
       });
     });
 
@@ -3008,13 +3684,27 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
     const totals = lines.reduce((acc, line) => ({
       budgeted: acc.budgeted + line.budgeted,
       committed: acc.committed + line.committed,
+      pending: acc.pending + line.pending,
       billed: acc.billed + line.billed,
       paid: acc.paid + line.paid,
-      projected: acc.projected + line.projected
-    }), { budgeted: 0, committed: 0, billed: 0, paid: 0, projected: 0 });
+      projected: acc.projected + line.projected,
+      poAmount: acc.poAmount + (line.poAmount || 0),
+      budgetWithPO: acc.budgetWithPO + (line.hasPOCoverage ? line.budgeted : 0),
+      linesWithPO: acc.linesWithPO + (line.hasPOCoverage ? 1 : 0),
+      linesClosed: acc.linesClosed + (line.closedAt ? 1 : 0),
+      budgetClosed: acc.budgetClosed + (line.closedAt ? line.budgeted : 0)
+    }), { budgeted: 0, committed: 0, pending: 0, billed: 0, paid: 0, projected: 0, poAmount: 0, budgetWithPO: 0, linesWithPO: 0, linesClosed: 0, budgetClosed: 0 });
 
+    // Variance = Budget - Committed - Pending (conservative - shows remaining budget)
+    totals.variance = totals.budgeted - totals.committed - totals.pending;
     totals.remaining = totals.budgeted - totals.billed;
-    totals.percentComplete = totals.budgeted > 0 ? (totals.billed / totals.budgeted) * 100 : 0;
+    // % Complete based on committed + pending vs budget
+    totals.percentComplete = totals.budgeted > 0 ? ((totals.committed + totals.pending) / totals.budgeted) * 100 : 0;
+
+    // PO Coverage stats
+    totals.totalLines = lines.length;
+    totals.poCoveragePercent = totals.budgeted > 0 ? (totals.budgetWithPO / totals.budgeted) * 100 : 0;
+    totals.knownCoveragePercent = totals.budgeted > 0 ? ((totals.budgetWithPO + totals.budgetClosed) / totals.budgeted) * 100 : 0;
 
     // Get PO change orders for this job
     const { data: poChangeOrders } = await supabase
@@ -3220,6 +3910,90 @@ app.get('/api/jobs/:jobId/cost-code/:costCodeId/details', async (req, res) => {
 
   } catch (err) {
     console.error('Cost code details error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Close out a budget line (lock in savings)
+app.post('/api/jobs/:jobId/budget/:costCodeId/close', async (req, res) => {
+  try {
+    const { jobId, costCodeId } = req.params;
+    const { closed_by, notes } = req.body;
+
+    // Check if budget line exists
+    const { data: existing } = await supabase
+      .from('v2_budget_lines')
+      .select('id, closed_at')
+      .eq('job_id', jobId)
+      .eq('cost_code_id', costCodeId)
+      .single();
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Budget line not found' });
+    }
+
+    if (existing.closed_at) {
+      return res.status(400).json({ error: 'Budget line is already closed' });
+    }
+
+    // Close the budget line
+    const { data, error } = await supabase
+      .from('v2_budget_lines')
+      .update({
+        closed_at: new Date().toISOString(),
+        closed_by: closed_by || 'Unknown',
+        notes: notes || null
+      })
+      .eq('id', existing.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, budgetLine: data });
+  } catch (err) {
+    console.error('Close budget line error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reopen a closed budget line
+app.post('/api/jobs/:jobId/budget/:costCodeId/reopen', async (req, res) => {
+  try {
+    const { jobId, costCodeId } = req.params;
+
+    // Check if budget line exists and is closed
+    const { data: existing } = await supabase
+      .from('v2_budget_lines')
+      .select('id, closed_at')
+      .eq('job_id', jobId)
+      .eq('cost_code_id', costCodeId)
+      .single();
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Budget line not found' });
+    }
+
+    if (!existing.closed_at) {
+      return res.status(400).json({ error: 'Budget line is not closed' });
+    }
+
+    // Reopen the budget line
+    const { data, error } = await supabase
+      .from('v2_budget_lines')
+      .update({
+        closed_at: null,
+        closed_by: null
+      })
+      .eq('id', existing.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, budgetLine: data });
+  } catch (err) {
+    console.error('Reopen budget line error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -8731,6 +9505,169 @@ app.get('/api/lien-releases/:id/activity', asyncHandler(async (req, res) => {
 
   if (error) throw error;
   res.json(data || []);
+}));
+
+// Get suggested draws for a lien release
+// Suggests draws based on vendor, job, and date matching
+app.get('/api/lien-releases/:id/suggested-draws', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get the lien release
+  const { data: lienRelease, error: lrError } = await supabase
+    .from('v2_lien_releases')
+    .select('vendor_id, job_id, through_date')
+    .eq('id', id)
+    .single();
+
+  if (lrError || !lienRelease) {
+    return res.status(404).json({ error: 'Lien release not found' });
+  }
+
+  // Get all draft draws (only suggest draft draws that can accept releases)
+  const { data: draws, error: drawError } = await supabase
+    .from('v2_draws')
+    .select(`
+      id,
+      draw_number,
+      period_end,
+      status,
+      total_amount,
+      job_id,
+      job:v2_jobs(id, name)
+    `)
+    .eq('status', 'draft')
+    .order('created_at', { ascending: false });
+
+  if (drawError) throw drawError;
+
+  // For each draw, check if the vendor has invoices in it
+  const suggestedDraws = [];
+
+  for (const draw of (draws || [])) {
+    let score = 0;
+    const reasons = [];
+
+    // Check if same job
+    if (lienRelease.job_id && draw.job_id === lienRelease.job_id) {
+      score += 50;
+      reasons.push('Same job');
+    }
+
+    // Check if vendor has invoices in this draw
+    const { data: vendorInvoices } = await supabase
+      .from('v2_draw_invoices')
+      .select(`
+        invoice:v2_invoices!inner(vendor_id)
+      `)
+      .eq('draw_id', draw.id)
+      .eq('invoice.vendor_id', lienRelease.vendor_id);
+
+    if (vendorInvoices && vendorInvoices.length > 0) {
+      score += 40;
+      reasons.push(`Vendor has ${vendorInvoices.length} invoice(s) in draw`);
+    }
+
+    // Check date proximity
+    if (lienRelease.through_date && draw.period_end) {
+      const lrDate = new Date(lienRelease.through_date);
+      const drawDate = new Date(draw.period_end);
+      const daysDiff = Math.abs((lrDate - drawDate) / (1000 * 60 * 60 * 24));
+
+      if (daysDiff <= 7) {
+        score += 10;
+        reasons.push('Dates within 7 days');
+      } else if (daysDiff <= 30) {
+        score += 5;
+        reasons.push('Dates within 30 days');
+      }
+    }
+
+    // Only include if there's some relevance
+    if (score > 0) {
+      suggestedDraws.push({
+        draw_id: draw.id,
+        draw_number: draw.draw_number,
+        job_name: draw.job?.name || 'Unknown Job',
+        period_end: draw.period_end,
+        total_amount: draw.total_amount,
+        score,
+        reasons
+      });
+    }
+  }
+
+  // Sort by score descending
+  suggestedDraws.sort((a, b) => b.score - a.score);
+
+  res.json(suggestedDraws.slice(0, 5)); // Return top 5 suggestions
+}));
+
+// Get lien release coverage status for a draw
+// Shows which vendors have invoices but are missing lien releases
+app.get('/api/draws/:id/lien-release-coverage', asyncHandler(async (req, res) => {
+  const drawId = req.params.id;
+
+  // Get all invoices in this draw with their vendors
+  const { data: drawInvoices, error: invError } = await supabase
+    .from('v2_draw_invoices')
+    .select(`
+      invoice:v2_invoices(
+        id,
+        vendor_id,
+        amount,
+        vendor:v2_vendors(id, name)
+      )
+    `)
+    .eq('draw_id', drawId);
+
+  if (invError) throw invError;
+
+  // Get all lien releases attached to this draw
+  const { data: lienReleases, error: lrError } = await supabase
+    .from('v2_lien_releases')
+    .select('vendor_id')
+    .eq('draw_id', drawId)
+    .is('deleted_at', null);
+
+  if (lrError) throw lrError;
+
+  // Build vendor coverage map
+  const vendorLienReleaseSet = new Set((lienReleases || []).map(lr => lr.vendor_id));
+
+  // Group invoices by vendor
+  const vendorInvoices = {};
+  for (const di of (drawInvoices || [])) {
+    if (!di.invoice) continue;
+    const vendorId = di.invoice.vendor_id;
+    const vendorName = di.invoice.vendor?.name || 'Unknown Vendor';
+
+    if (!vendorInvoices[vendorId]) {
+      vendorInvoices[vendorId] = {
+        vendor_id: vendorId,
+        vendor_name: vendorName,
+        invoice_count: 0,
+        total_amount: 0,
+        has_lien_release: vendorLienReleaseSet.has(vendorId)
+      };
+    }
+    vendorInvoices[vendorId].invoice_count++;
+    vendorInvoices[vendorId].total_amount += parseFloat(di.invoice.amount || 0);
+  }
+
+  const coverage = Object.values(vendorInvoices);
+  const totalVendors = coverage.length;
+  const vendorsWithRelease = coverage.filter(v => v.has_lien_release).length;
+  const vendorsMissingRelease = coverage.filter(v => !v.has_lien_release);
+
+  res.json({
+    total_vendors: totalVendors,
+    vendors_with_release: vendorsWithRelease,
+    vendors_missing_release: vendorsMissingRelease.length,
+    coverage_percent: totalVendors > 0 ? Math.round((vendorsWithRelease / totalVendors) * 100) : 100,
+    is_complete: vendorsMissingRelease.length === 0,
+    vendors: coverage,
+    missing_vendors: vendorsMissingRelease
+  });
 }));
 
 app.listen(port, () => {
