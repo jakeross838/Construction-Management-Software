@@ -2090,11 +2090,10 @@ app.get('/api/invoices/:id/activity', async (req, res) => {
       .from('v2_invoice_activity')
       .select('*')
       .eq('invoice_id', req.params.id)
-      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    res.json(data);
+    res.json(data || []);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -4174,6 +4173,49 @@ app.get('/api/jobs/:id/budget/export', async (req, res) => {
 // ============================================================
 // DRAWS API
 // ============================================================
+
+// List all draws across all jobs
+app.get('/api/draws', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('v2_draws')
+      .select(`
+        *,
+        job:v2_jobs(id, name),
+        invoices:v2_draw_invoices(
+          invoice:v2_invoices(id, invoice_number, amount, vendor:v2_vendors(name))
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Get CO billings for all draws
+    const drawIds = data.map(d => d.id);
+    const { data: coBillings } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('draw_id, amount')
+      .in('draw_id', drawIds.length > 0 ? drawIds : ['00000000-0000-0000-0000-000000000000']);
+
+    // Calculate total amount for each draw (invoices + CO billings)
+    const drawsWithTotals = data.map(draw => {
+      const invoiceTotal = draw.invoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
+      const coTotal = (coBillings || [])
+        .filter(b => b.draw_id === draw.id)
+        .reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+      return {
+        ...draw,
+        total_amount: invoiceTotal + coTotal,
+        invoice_total: invoiceTotal,
+        co_total: coTotal
+      };
+    });
+
+    res.json(drawsWithTotals);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/jobs/:id/draws', async (req, res) => {
   try {
