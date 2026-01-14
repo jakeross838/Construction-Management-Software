@@ -778,8 +778,9 @@ app.get('/api/purchase-orders', async (req, res) => {
         vendor:v2_vendors(id, name),
         job:v2_jobs(id, name),
         line_items:v2_po_line_items(
-          id, description, amount, invoiced_amount,
-          cost_code:v2_cost_codes(id, code, name)
+          id, description, amount, invoiced_amount, cost_type, title, change_order_id,
+          cost_code:v2_cost_codes(id, code, name),
+          change_order:v2_job_change_orders(id, change_order_number, title)
         )
       `)
       .is('deleted_at', null)
@@ -872,8 +873,9 @@ app.get('/api/purchase-orders/:id', async (req, res) => {
         vendor:v2_vendors(id, name, email, phone),
         job:v2_jobs(id, name, address),
         line_items:v2_po_line_items(
-          id, description, amount, invoiced_amount,
-          cost_code:v2_cost_codes(id, code, name, category)
+          id, description, amount, invoiced_amount, cost_type, title, change_order_id,
+          cost_code:v2_cost_codes(id, code, name, category),
+          change_order:v2_job_change_orders(id, change_order_number, title, status)
         )
       `)
       .eq('id', req.params.id)
@@ -2334,9 +2336,9 @@ app.get('/api/jobs/:jobId/funding-sources', async (req, res) => {
     const { data: pos, error: poError } = await supabase
       .from('v2_purchase_orders')
       .select(`
-        id, po_number, vendor_id, total_amount, status,
+        id, po_number, vendor_id, total_amount, status, description, created_at,
         vendor:v2_vendors(id, name),
-        line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount, description,
+        line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount, description, change_order_id,
           cost_code:v2_cost_codes(id, code, name)
         )
       `)
@@ -2693,9 +2695,13 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
     if (!allocationsCreated && result.suggested_allocations?.length > 0) {
       const suggestedAllocs = result.suggested_allocations.map(sa => ({
         invoice_id: invoice.id,
+        job_id: result.matchedJob?.id || null,
         cost_code_id: sa.cost_code_id,
         amount: sa.amount,
-        notes: `Auto-suggested based on ${result.extracted.vendor?.tradeType || 'detected'} trade type`
+        po_id: sa.po_id || null, // AI-linked PO
+        notes: sa._aiLinked
+          ? `Auto-suggested (AI-linked to PO)`
+          : `Auto-suggested based on ${result.extracted.vendor?.tradeType || 'detected'} trade type`
       }));
 
       await supabase.from('v2_invoice_allocations').insert(suggestedAllocs);
@@ -2985,9 +2991,13 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       if (invoiceData.suggested_allocations?.length > 0) {
         const allocs = invoiceData.suggested_allocations.map(sa => ({
           invoice_id: invoice.id,
+          job_id: invoiceData.matchedJob?.id || null,
           cost_code_id: sa.cost_code_id,
           amount: sa.amount,
-          notes: `Auto-suggested based on ${invoiceData.extracted.vendor?.tradeType || 'detected'} trade type`
+          po_id: sa.po_id || null, // AI-linked PO
+          notes: sa._aiLinked
+            ? `Auto-suggested (AI-linked to PO)`
+            : `Auto-suggested based on ${invoiceData.extracted.vendor?.tradeType || 'detected'} trade type`
         }));
         await supabase.from('v2_invoice_allocations').insert(allocs);
       }

@@ -8,8 +8,35 @@ class POModals {
     this.currentLineItems = [];
     this.attachments = [];
     this.changeOrders = [];
+    this.jobChangeOrders = []; // Job-level COs for linking to line items
     this.pendingFiles = []; // Files to upload after saving new PO
     this.isEditing = false;
+  }
+
+  // Check if a cost code is a CO cost code (ends with 'C')
+  isCOCostCode(costCodeId) {
+    const costCodes = window.poState?.costCodes || [];
+    const cc = costCodes.find(c => c.id === costCodeId);
+    return cc?.code?.endsWith('C') || false;
+  }
+
+  // Fetch job-level change orders
+  async fetchJobChangeOrders(jobId) {
+    if (!jobId) {
+      this.jobChangeOrders = [];
+      return;
+    }
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/change-orders`);
+      if (res.ok) {
+        this.jobChangeOrders = await res.json();
+      } else {
+        this.jobChangeOrders = [];
+      }
+    } catch (err) {
+      console.error('Failed to fetch job change orders:', err);
+      this.jobChangeOrders = [];
+    }
   }
 
   // ============================================================
@@ -26,6 +53,7 @@ class POModals {
     this.currentLineItems = [];
     this.attachments = [];
     this.changeOrders = [];
+    this.jobChangeOrders = [];
     this.pendingFiles = [];
     this.isEditing = false;
   }
@@ -334,20 +362,49 @@ class POModals {
 
   renderLineItemEdit(item, index, costCodes) {
     const costTypes = ['Labor', 'Material', 'Equipment', 'Subcontractor', 'Other'];
+    const isCO = this.isCOCostCode(item.cost_code_id);
+
+    // Build CO picker options
+    let coPickerHtml = '';
+    if (isCO) {
+      const coOptions = this.jobChangeOrders
+        .filter(co => co.status === 'approved' || co.status === 'pending_approval')
+        .map(co => {
+          const coNum = `CO-${String(co.change_order_number).padStart(3, '0')}`;
+          const selected = item.change_order_id === co.id ? 'selected' : '';
+          return `<option value="${co.id}" ${selected}>${coNum}: ${this.escapeHtml(co.title || 'Untitled')}</option>`;
+        }).join('');
+
+      coPickerHtml = `
+        <div class="line-item-co-picker" data-index="${index}">
+          <label class="co-picker-label">Change Order <span class="required">*</span></label>
+          <select class="form-input co-select ${!item.change_order_id ? 'needs-co' : ''}"
+            onchange="window.poModals.updateLineItem(${index}, 'change_order_id', this.value)">
+            <option value="">Select Change Order...</option>
+            ${coOptions}
+            <option value="create-new">+ Create New Change Order</option>
+          </select>
+        </div>
+      `;
+    }
+
     return `
-      <div class="line-item-edit" data-index="${index}">
-        <input type="text" placeholder="Title" value="${this.escapeHtml(item.title || '')}" class="form-input line-item-title"
-          onchange="window.poModals.updateLineItem(${index}, 'title', this.value)">
-        <div class="line-item-cost-code-picker" id="lineItemCostCode-${index}" data-index="${index}" data-value="${item.cost_code_id || ''}"></div>
-        <select class="form-input cost-type-select" onchange="window.poModals.updateLineItem(${index}, 'cost_type', this.value)">
-          <option value="">Type...</option>
-          ${costTypes.map(t => `<option value="${t}" ${item.cost_type === t ? 'selected' : ''}>${t}</option>`).join('')}
-        </select>
-        <input type="text" placeholder="Description" value="${this.escapeHtml(item.description || '')}" class="form-input description-input"
-          onchange="window.poModals.updateLineItem(${index}, 'description', this.value)">
-        <input type="number" placeholder="0.00" value="${item.amount || ''}" step="0.01" class="form-input amount"
-          onchange="window.poModals.updateLineItem(${index}, 'amount', this.value)">
-        <button type="button" class="btn-remove" onclick="window.poModals.removeLineItem(${index})">×</button>
+      <div class="line-item-edit ${isCO ? 'has-co-code' : ''}" data-index="${index}">
+        <div class="line-item-main-row">
+          <input type="text" placeholder="Title" value="${this.escapeHtml(item.title || '')}" class="form-input line-item-title"
+            onchange="window.poModals.updateLineItem(${index}, 'title', this.value)">
+          <div class="line-item-cost-code-picker" id="lineItemCostCode-${index}" data-index="${index}" data-value="${item.cost_code_id || ''}"></div>
+          <select class="form-input cost-type-select" onchange="window.poModals.updateLineItem(${index}, 'cost_type', this.value)">
+            <option value="">Type...</option>
+            ${costTypes.map(t => `<option value="${t}" ${item.cost_type === t ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <input type="text" placeholder="Description" value="${this.escapeHtml(item.description || '')}" class="form-input description-input"
+            onchange="window.poModals.updateLineItem(${index}, 'description', this.value)">
+          <input type="number" placeholder="0.00" value="${item.amount || ''}" step="0.01" class="form-input amount"
+            onchange="window.poModals.updateLineItem(${index}, 'amount', this.value)">
+          <button type="button" class="btn-remove" onclick="window.poModals.removeLineItem(${index})">×</button>
+        </div>
+        ${coPickerHtml}
       </div>
     `;
   }
@@ -363,11 +420,36 @@ class POModals {
           value: value,
           placeholder: 'Search cost codes...',
           onChange: (costCodeId) => {
+            const wasCO = this.isCOCostCode(this.currentLineItems[index]?.cost_code_id);
             this.updateLineItem(index, 'cost_code_id', costCodeId);
+            const isCO = this.isCOCostCode(costCodeId);
+
+            // If CO status changed, refresh the line item to show/hide CO picker
+            if (wasCO !== isCO) {
+              // Clear change_order_id if no longer a CO cost code
+              if (!isCO) {
+                this.updateLineItem(index, 'change_order_id', null);
+              }
+              this.refreshLineItems();
+            }
           }
         });
       }
     });
+  }
+
+  // Handle CO picker change, including "create-new" option
+  updateLineItem(index, field, value) {
+    if (this.currentLineItems[index]) {
+      // Handle "create-new" CO selection
+      if (field === 'change_order_id' && value === 'create-new') {
+        this.showCreateCOForLineItem(index);
+        return;
+      }
+
+      this.currentLineItems[index][field] = value;
+      if (field === 'amount') this.updateLineItemsTotal();
+    }
   }
 
   // ============================================================
@@ -1057,15 +1139,8 @@ class POModals {
   cancelEdit() { this.isEditing = false; if (this.currentPO.id) this.openPO(this.currentPO.id); else this.closeModal(); }
 
   addLineItem() {
-    this.currentLineItems.push({ title: '', cost_code_id: null, cost_type: '', description: '', amount: 0 });
+    this.currentLineItems.push({ title: '', cost_code_id: null, cost_type: '', description: '', amount: 0, change_order_id: null });
     this.refreshLineItems();
-  }
-
-  updateLineItem(index, field, value) {
-    if (this.currentLineItems[index]) {
-      this.currentLineItems[index][field] = value;
-      if (field === 'amount') this.updateLineItemsTotal();
-    }
   }
 
   removeLineItem(index) {
@@ -1102,11 +1177,19 @@ class POModals {
         type: 'jobs',
         value: defaultJobId,
         placeholder: 'Search jobs...',
-        onChange: (jobId) => {
+        onChange: async (jobId) => {
           this.selectedJobId = jobId;
+          // Fetch change orders for this job
+          await this.fetchJobChangeOrders(jobId);
+          // Refresh line items to update CO pickers
+          this.refreshLineItems();
         }
       });
       this.selectedJobId = defaultJobId;
+      // Fetch COs for the default job
+      if (defaultJobId) {
+        this.fetchJobChangeOrders(defaultJobId);
+      }
     }
 
     const vendorContainer = document.getElementById('po-vendor-picker-container');
@@ -1126,13 +1209,134 @@ class POModals {
     this.initLineItemCostCodePickers();
   }
 
+  // Show modal to create a new CO for a line item
+  showCreateCOForLineItem(lineItemIndex) {
+    const jobId = this.selectedJobId || this.currentPO?.job_id;
+    if (!jobId) {
+      window.toasts?.error('Please select a job first');
+      return;
+    }
+
+    const lineItem = this.currentLineItems[lineItemIndex];
+    const amount = parseFloat(lineItem?.amount || 0);
+
+    const modalHtml = `
+      <div id="create-co-for-line-modal" class="modal" style="display: flex; opacity: 1; z-index: 10003;">
+        <div class="modal-content" style="max-width: 500px; opacity: 1;">
+          <div class="modal-header">
+            <h2>Create Change Order</h2>
+            <button class="modal-close" onclick="window.poModals.closeCreateCOForLineModal()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p class="modal-hint">This line item uses a CO cost code. Create or select a Change Order to link it to.</p>
+            <div class="form-group">
+              <label>Title <span class="required">*</span></label>
+              <input type="text" id="new-co-title" class="form-input" placeholder="e.g., Kitchen upgrade">
+            </div>
+            <div class="form-group">
+              <label>Amount</label>
+              <div class="amount-input-group">
+                <span class="amount-prefix">$</span>
+                <input type="number" id="new-co-amount" class="form-input" value="${amount}" step="0.01">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <textarea id="new-co-description" class="form-input" rows="2" placeholder="Optional description"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick="window.poModals.closeCreateCOForLineModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="window.poModals.submitCreateCOForLine(${lineItemIndex})">Create & Link</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'create-co-for-line-modal-wrapper';
+    wrapper.innerHTML = modalHtml;
+    document.body.appendChild(wrapper);
+
+    setTimeout(() => document.getElementById('new-co-title')?.focus(), 100);
+  }
+
+  closeCreateCOForLineModal() {
+    const wrapper = document.getElementById('create-co-for-line-modal-wrapper');
+    if (wrapper) wrapper.remove();
+  }
+
+  async submitCreateCOForLine(lineItemIndex) {
+    const title = document.getElementById('new-co-title')?.value?.trim();
+    const amountStr = document.getElementById('new-co-amount')?.value;
+    const description = document.getElementById('new-co-description')?.value?.trim();
+
+    if (!title) {
+      window.toasts?.error('Please enter a title for the Change Order');
+      return;
+    }
+
+    const amount = parseFloat(amountStr) || 0;
+    const jobId = this.selectedJobId || this.currentPO?.job_id;
+
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/change-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          amount,
+          description,
+          status: 'approved'
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create Change Order');
+      }
+
+      const newCO = await response.json();
+
+      // Add to cached COs
+      this.jobChangeOrders.push(newCO);
+
+      // Link line item to new CO
+      this.currentLineItems[lineItemIndex].change_order_id = newCO.id;
+
+      this.closeCreateCOForLineModal();
+      this.refreshLineItems();
+
+      window.toasts?.success(`Created CO-${String(newCO.change_order_number).padStart(3, '0')}: ${title}`);
+    } catch (err) {
+      console.error('Failed to create CO:', err);
+      window.toasts?.error('Failed to create Change Order', { details: err.message });
+    }
+  }
+
   async savePO(andSend = false) {
     const po = this.currentPO;
     const isNew = !po.id;
     const jobId = this.selectedJobId || po.job_id;
     const vendorId = this.selectedVendorId || po.vendor_id;
 
-    // No validation for drafts - validation happens on send
+    // Validate CO cost code line items have a CO assigned
+    const coLineItemsWithoutCO = this.currentLineItems.filter((item, index) => {
+      const isCO = this.isCOCostCode(item.cost_code_id);
+      return isCO && !item.change_order_id;
+    });
+
+    if (coLineItemsWithoutCO.length > 0) {
+      const costCodes = window.poState?.costCodes || [];
+      const missingCodes = coLineItemsWithoutCO.map(item => {
+        const cc = costCodes.find(c => c.id === item.cost_code_id);
+        return cc?.code || 'Unknown';
+      }).join(', ');
+
+      window.showToast?.(`CO cost codes require a Change Order: ${missingCodes}`, 'error');
+      return;
+    }
+
     const data = {
       title: document.getElementById('poTitle')?.value?.trim() || null,
       po_number: document.getElementById('poNumber')?.value?.trim() || null,

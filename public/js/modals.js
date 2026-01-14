@@ -16,7 +16,7 @@ const Modals = {
   cachedChangeOrders: [],   // All available COs for the job
   isDirty: false,
   isEditMode: false,  // Start in view mode, click Edit to enable editing
-  showFundingOptions: false, // Hide funding source dropdowns by default (invoice PO is used)
+  activeLinkPicker: null, // Currently open link picker popover index
 
   /**
    * Initialize modal system
@@ -76,7 +76,7 @@ const Modals = {
       }
       this.currentInvoice = invoice;
       this.isEditMode = false;  // Start in view mode
-      this.showFundingOptions = false;  // Hide funding options by default (use invoice PO)
+      this.activeLinkPicker = null;  // Close any open link pickers
 
       // Fetch allocations, activity, approval context, and PO line items
       const [allocations, activity, approvalContext] = await Promise.all([
@@ -342,12 +342,6 @@ const Modals = {
                       <div class="field-error" id="error-vendor_id"></div>
                     </div>
 
-                    <div class="form-group picker-group">
-                      <label for="edit-po">Purchase Order ${this.buildAiIndicator(invoice, 'po_id')}</label>
-                      <div id="po-picker-container" class="search-picker-container"></div>
-                      <input type="hidden" id="edit-po" name="po_id">
-                      <div class="field-error" id="error-po_id"></div>
-                    </div>
                   </div>
 
                   <div class="form-section">
@@ -355,11 +349,6 @@ const Modals = {
                       <h3>Line Items</h3>
                       ${canEdit ? `
                         <div class="section-header-actions" id="line-items-actions">
-                          ${(this.cachedPurchaseOrders?.length > 0 || this.cachedChangeOrders?.length > 0) ? `
-                            <button type="button" class="btn-link-subtle" onclick="Modals.toggleFundingOptions()" id="split-funding-btn" title="Show funding source options for each line">
-                              ${this.showFundingOptions ? '− Hide funding options' : '+ Split funding'}
-                            </button>
-                          ` : ''}
                           <button type="button" class="btn-add-line" onclick="Modals.addAllocation()">
                             + Add Line
                           </button>
@@ -508,7 +497,7 @@ const Modals = {
   },
 
   /**
-   * Build allocations HTML - Adaptive.build inspired clean line items
+   * Build allocations HTML - Simplified line items with inline link picker
    * @param {Array} allocations - The allocations to render
    * @param {number} invoiceAmount - Invoice amount for validation
    * @param {boolean} isReadOnly - If true, fields are not editable
@@ -521,18 +510,6 @@ const Modals = {
     const hasCOs = (this.cachedChangeOrders || []).length > 0;
     const hasFundingSources = hasPOs || hasCOs;
 
-    // Get invoice-level PO as default (Option A: invoice PO is the default funding source)
-    const invoicePOId = this.currentInvoice?.po_id || null;
-    const invoicePO = invoicePOId ? (this.cachedPurchaseOrders || []).find(po => po.id === invoicePOId) : null;
-
-    // Check if any allocation has explicit non-default funding (needs expanded view)
-    const hasCustomFunding = allocations?.some(a =>
-      (a.po_id && a.po_id !== invoicePOId) || // Different PO than invoice
-      a.change_order_id || // Has CO
-      a._fundingSource === 'co' || // Explicitly set to CO
-      (a._explicitBase && invoicePOId) // Explicitly set to base when invoice has PO
-    );
-
     const buildLineItem = (alloc, index) => {
       // Check if this specific allocation is AI-suggested
       const allocIsAi = alloc.notes?.includes('Auto-suggested') || alloc.notes?.includes('trade type');
@@ -541,52 +518,9 @@ const Modals = {
       const icon = confidencePct >= 90 ? '✓' : confidencePct >= 70 ? '◐' : '?';
       const aiBadge = allocIsAi && confidencePct > 0 ? `<span class="ai-badge ${confidenceClass}" title="AI-suggested based on vendor trade type (${confidencePct}% confidence)"><span class="ai-badge-icon">${icon}</span><span class="ai-badge-score">${confidencePct}%</span><span class="ai-badge-label">AI</span></span>` : '';
 
-      // Determine current funding source type
-      // Priority: explicit allocation po_id/change_order_id > _fundingSource flag > invoice-level PO > no PO/CO
-      let fundingSource = 'base';
-      let effectivePoId = alloc.po_id;
-
-      if (alloc.po_id) {
-        fundingSource = 'po';
-      } else if (alloc.change_order_id) {
-        fundingSource = 'co';
-      } else if (alloc._fundingSource) {
-        fundingSource = alloc._fundingSource;
-      } else if (invoicePOId && !alloc._explicitBase) {
-        // Default to invoice-level PO if set and user hasn't explicitly chosen base
-        fundingSource = 'po';
-        effectivePoId = invoicePOId;
-      }
-
-      // Check if this allocation has custom funding (different from invoice default)
-      const hasCustomFundingThisLine =
-        (alloc.po_id && alloc.po_id !== invoicePOId) ||
-        alloc.change_order_id ||
-        alloc._fundingSource === 'co' ||
-        (alloc._explicitBase && invoicePOId);
-
-      // Show funding options if: expanded mode OR this line has custom funding OR no invoice PO
-      const showFundingOptions = this.showFundingOptions || hasCustomFundingThisLine || !invoicePOId;
-
-      // Build PO options (use effectivePoId for selection which may come from invoice-level PO)
-      const poOptions = (this.cachedPurchaseOrders || []).map(po => {
-        const remaining = parseFloat(po.remaining || 0);
-        const vendorName = po.vendor?.name || 'Unknown';
-        return `<option value="${po.id}" ${effectivePoId === po.id ? 'selected' : ''}>${po.po_number} - ${vendorName} ($${remaining.toLocaleString('en-US', {minimumFractionDigits: 0})} remaining)</option>`;
-      }).join('');
-
-      // Build CO options
-      const coOptions = (this.cachedChangeOrders || []).map(co => {
-        const remaining = parseFloat(co.remaining || 0);
-        return `<option value="${co.id}" ${alloc.change_order_id === co.id ? 'selected' : ''}>CO-${String(co.change_order_number).padStart(3, '0')}: ${co.title} ($${remaining.toLocaleString('en-US', {minimumFractionDigits: 0})} remaining)</option>`;
-      }).join('');
-
-      // Build PO line item options (for selected PO - use effectivePoId)
-      const selectedPO = effectivePoId ? (this.cachedPurchaseOrders || []).find(po => po.id === effectivePoId) : null;
-      const poLineOptions = selectedPO ? (selectedPO.line_items || []).map(li => {
-        const remaining = parseFloat(li.amount || 0) - parseFloat(li.invoiced_amount || 0);
-        return `<option value="${li.id}" ${alloc.po_line_item_id === li.id ? 'selected' : ''}>${li.cost_code?.code || 'N/A'} - $${remaining.toLocaleString('en-US', {minimumFractionDigits: 0})} remaining</option>`;
-      }).join('') : '';
+      // Get linked funding display
+      const linkDisplay = this.getLinkDisplay(alloc);
+      const isAiLinked = alloc._aiLinked || false;
 
       return `
         <div class="line-item" data-index="${index}">
@@ -595,40 +529,6 @@ const Modals = {
               <label class="field-label">Cost code / Account <span class="required">*</span> ${aiBadge}</label>
               <div class="cc-picker-container" data-index="${index}" data-readonly="${isReadOnly}"></div>
             </div>
-            ${showFundingOptions && hasFundingSources ? `
-            <div class="line-item-field" style="flex: 0 0 140px;">
-              <label class="field-label">Funding Source</label>
-              <select class="field-input funding-source-select" onchange="Modals.updateFundingSource(${index}, this.value)" ${isReadOnly ? 'disabled' : ''}>
-                <option value="base" ${fundingSource === 'base' ? 'selected' : ''}>No PO/CO</option>
-                ${hasPOs ? `<option value="po" ${fundingSource === 'po' ? 'selected' : ''}>Purchase Order</option>` : ''}
-                ${hasCOs ? `<option value="co" ${fundingSource === 'co' ? 'selected' : ''}>Change Order</option>` : ''}
-              </select>
-            </div>
-            <div class="line-item-field funding-detail-field" style="flex: 0 0 200px; ${fundingSource === 'base' ? 'display:none;' : ''}">
-              ${fundingSource === 'po' ? `
-                <label class="field-label">Purchase Order</label>
-                <select class="field-input po-select" onchange="Modals.updateAllocation(${index}, 'po_id', this.value)" ${isReadOnly ? 'disabled' : ''}>
-                  <option value="">-- Select PO --</option>
-                  ${poOptions}
-                </select>
-                ${selectedPO && (selectedPO.line_items || []).length > 0 ? `
-                <select class="field-input po-line-select" style="margin-top: 4px;" onchange="Modals.updateAllocation(${index}, 'po_line_item_id', this.value)" ${isReadOnly ? 'disabled' : ''}>
-                  <option value="">-- Line Item (optional) --</option>
-                  ${poLineOptions}
-                </select>
-                ` : ''}
-              ` : fundingSource === 'co' ? `
-                <label class="field-label">Change Order</label>
-                <select class="field-input co-select" onchange="Modals.updateAllocation(${index}, 'change_order_id', this.value)" ${isReadOnly ? 'disabled' : ''}>
-                  <option value="">-- Select CO --</option>
-                  ${coOptions}
-                </select>
-              ` : `
-                <label class="field-label">&nbsp;</label>
-                <div class="base-budget-label">No PO/CO</div>
-              `}
-            </div>
-            ` : ''}
             <div class="line-item-field amount-field">
               <label class="field-label">Amount <span class="required">*</span></label>
               <div class="amount-input-group ${isReadOnly ? 'locked' : ''}">
@@ -639,6 +539,14 @@ const Modals = {
                   ${isReadOnly ? 'readonly' : ''}>
                 ${!isReadOnly ? `<button type="button" class="btn-fill-remaining" onclick="Modals.fillRemaining(${index})" title="Fill with remaining unallocated amount">Fill</button>` : ''}
               </div>
+            </div>
+            <div class="line-item-field linked-to-field">
+              <label class="field-label">Linked To ${isAiLinked ? '<span class="ai-linked-badge" title="AI auto-matched">AI</span>' : ''}</label>
+              <div class="linked-to-display">
+                <span class="linked-to-text ${linkDisplay.type}">${linkDisplay.text}</span>
+                ${canEdit && hasFundingSources ? `<button type="button" class="btn-change-link" onclick="Modals.showLinkPicker(${index}, event)" title="Change linked PO/CO">Link</button>` : ''}
+              </div>
+              <div class="link-picker-popover" id="link-picker-${index}" style="display: none;"></div>
             </div>
             ${canEdit && allocations.length > 1 ? `
               <button type="button" class="btn-delete-row" onclick="Modals.removeAllocation(${index})" title="Delete">
@@ -657,6 +565,85 @@ const Modals = {
     }
 
     return allocations.map((alloc, index) => buildLineItem(alloc, index)).join('');
+  },
+
+  /**
+   * Get display text for allocation's linked funding source
+   */
+  getLinkDisplay(alloc) {
+    const isCOCostCode = this.isCOCostCode(alloc.cost_code || alloc.cost_code_id);
+
+    // Get PO info if linked
+    let poInfo = null;
+    if (alloc.po_id) {
+      const po = (this.cachedPurchaseOrders || []).find(p => p.id === alloc.po_id);
+      if (po) {
+        poInfo = {
+          number: po.po_number,
+          remaining: parseFloat(po.remaining || 0)
+        };
+      }
+    }
+
+    // Get CO info if linked
+    let coInfo = null;
+    if (alloc.change_order_id) {
+      const co = (this.cachedChangeOrders || []).find(c => c.id === alloc.change_order_id);
+      if (co) {
+        coInfo = {
+          number: `CO-${String(co.change_order_number).padStart(3, '0')}`,
+          remaining: parseFloat(co.remaining || 0)
+        };
+      }
+    }
+
+    // Both PO and CO linked (dual link)
+    if (poInfo && coInfo) {
+      return {
+        type: 'dual',
+        text: `${poInfo.number} → ${coInfo.number}`,
+        poNumber: poInfo.number,
+        coNumber: coInfo.number
+      };
+    }
+
+    // Only PO linked
+    if (poInfo) {
+      // If CO cost code but no CO linked, show warning
+      if (isCOCostCode) {
+        return {
+          type: 'po-needs-co',
+          text: `${poInfo.number} (Needs CO)`,
+          poNumber: poInfo.number
+        };
+      }
+      return {
+        type: 'po',
+        text: `${poInfo.number} ($${poInfo.remaining.toLocaleString('en-US', {maximumFractionDigits: 0})} left)`
+      };
+    }
+
+    // Only CO linked
+    if (coInfo) {
+      return {
+        type: 'co',
+        text: `${coInfo.number} ($${coInfo.remaining.toLocaleString('en-US', {maximumFractionDigits: 0})} left)`
+      };
+    }
+
+    // No links - check if CO cost code needs linking
+    if (isCOCostCode) {
+      return {
+        type: 'needs-co',
+        text: 'Needs CO Link'
+      };
+    }
+
+    // No link - base budget
+    return {
+      type: 'base',
+      text: 'No PO/CO'
+    };
   },
 
   /**
@@ -1422,42 +1409,585 @@ const Modals = {
   },
 
   /**
-   * Update funding source for an allocation (No PO/CO, PO, or CO)
-   * Clears/sets appropriate IDs and re-renders the allocation line
+   * Show link picker modal for allocation - supports dual PO+CO linking
    */
-  updateFundingSource(index, sourceType) {
-    if (!this.currentAllocations[index]) return;
+  showLinkPicker(index, event) {
+    event?.stopPropagation();
+
+    // Close any existing picker
+    this.closeLinkPicker();
 
     const alloc = this.currentAllocations[index];
+    const isCOCostCode = this.isCOCostCode(alloc.cost_code || alloc.cost_code_id);
+    this.activeLinkPicker = index;
 
-    // Clear all funding source references first
-    alloc.po_id = null;
-    alloc.po_line_item_id = null;
-    alloc.change_order_id = null;
+    // Build modal HTML with separate PO and CO selection
+    let html = `
+      <div id="link-picker-modal" class="link-picker-overlay">
+        <div class="link-picker-backdrop" onclick="Modals.closeLinkPicker()"></div>
+        <div class="link-picker-dialog">
+          <div class="link-picker-header">
+            <h2>Link Funding Source</h2>
+            <p class="link-picker-subtitle">Select a Purchase Order and/or Change Order for this allocation${isCOCostCode ? ' <span class="co-code-hint">(CO cost code detected)</span>' : ''}</p>
+            <button class="modal-close" onclick="Modals.closeLinkPicker()">&times;</button>
+          </div>
+          <div class="link-picker-body">
+    `;
 
-    // Set internal tracking for re-render
-    alloc._fundingSource = sourceType;
+    // Purchase Orders section - separate radio group
+    html += '<div class="link-section">';
+    html += '<h3 class="link-section-title"><span class="section-icon po-icon">PO</span> Purchase Order</h3>';
+    html += '<div class="link-cards">';
 
-    // Track if user explicitly chose "No PO/CO" (to override invoice-level PO default)
-    alloc._explicitBase = (sourceType === 'base');
+    // "No PO" option
+    const noPOSelected = !alloc.po_id;
+    html += `
+      <label class="link-card link-card-none ${noPOSelected ? 'selected' : ''}">
+        <input type="radio" name="link-po" value="none" ${noPOSelected ? 'checked' : ''}>
+        <div class="none-card-content">
+          <span class="none-icon">—</span>
+          <span class="none-text">No PO</span>
+        </div>
+      </label>
+    `;
 
-    // If switching to PO and invoice has a default PO, pre-select it
-    if (sourceType === 'po' && this.currentInvoice?.po_id) {
-      alloc.po_id = this.currentInvoice.po_id;
+    if (this.cachedPurchaseOrders?.length > 0) {
+      for (const po of this.cachedPurchaseOrders) {
+        const total = parseFloat(po.total_amount || 0);
+        const remaining = parseFloat(po.remaining || 0);
+        const used = total - remaining;
+        const pctUsed = total > 0 ? Math.round((used / total) * 100) : 0;
+        const isSelected = alloc.po_id === po.id;
+        const vendorName = po.vendor?.name || 'Unknown Vendor';
+        const description = po.description || '';
+
+        // Get cost codes from line items
+        const costCodes = (po.line_items || [])
+          .map(li => li.cost_code?.code)
+          .filter(Boolean)
+          .filter((v, i, a) => a.indexOf(v) === i) // unique
+          .slice(0, 3); // max 3
+        const costCodeText = costCodes.length > 0
+          ? costCodes.join(', ') + (po.line_items?.length > 3 ? '...' : '')
+          : '';
+
+        // Format date
+        const createdDate = po.created_at ? new Date(po.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+
+        html += `
+          <label class="link-card ${isSelected ? 'selected' : ''}">
+            <input type="radio" name="link-po" value="${po.id}" ${isSelected ? 'checked' : ''}>
+            <div class="link-card-header">
+              <span class="link-card-number">${po.po_number}</span>
+              <span class="link-card-status ${po.status}">${po.status}</span>
+            </div>
+            <div class="link-card-vendor">${this.escapeHtml(vendorName)}</div>
+            ${description ? `<div class="link-card-desc">${this.escapeHtml(description)}</div>` : ''}
+            ${costCodeText ? `<div class="link-card-costcodes"><span class="cc-label">Cost Codes:</span> ${costCodeText}</div>` : ''}
+            <div class="link-card-amounts">
+              <div class="link-card-amount-row">
+                <span class="label">Total:</span>
+                <span class="value">$${total.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+              </div>
+              <div class="link-card-amount-row remaining">
+                <span class="label">Remaining:</span>
+                <span class="value highlight">$${remaining.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+              </div>
+            </div>
+            <div class="link-card-progress">
+              <div class="progress-bar" style="width: ${pctUsed}%"></div>
+            </div>
+            ${createdDate ? `<div class="link-card-date">Created ${createdDate}</div>` : ''}
+          </label>
+        `;
+      }
     }
 
-    // Re-render just this allocation line to show correct secondary dropdown
+    // Create New PO option
+    html += `
+      <label class="link-card create-card">
+        <input type="radio" name="link-po" value="create-po">
+        <div class="create-card-content">
+          <span class="create-icon">+</span>
+          <span class="create-text">Create New PO</span>
+        </div>
+      </label>
+    `;
+
+    html += '</div></div>'; // link-cards, link-section
+
+    // Change Orders section - separate radio group
+    html += '<div class="link-section">';
+    html += `<h3 class="link-section-title"><span class="section-icon co-icon">CO</span> Change Order ${isCOCostCode ? '<span class="required-hint">(Required for CO cost codes)</span>' : ''}</h3>`;
+    html += '<div class="link-cards">';
+
+    // "No CO" option
+    const noCOSelected = !alloc.change_order_id;
+    html += `
+      <label class="link-card link-card-none ${noCOSelected ? 'selected' : ''} ${isCOCostCode ? 'not-recommended' : ''}">
+        <input type="radio" name="link-co" value="none" ${noCOSelected ? 'checked' : ''}>
+        <div class="none-card-content">
+          <span class="none-icon">—</span>
+          <span class="none-text">No CO</span>
+          ${isCOCostCode ? '<span class="none-warning">Not recommended for CO cost codes</span>' : ''}
+        </div>
+      </label>
+    `;
+
+    if (this.cachedChangeOrders?.length > 0) {
+      for (const co of this.cachedChangeOrders) {
+        const total = parseFloat(co.amount || co.total_amount || 0);
+        const remaining = parseFloat(co.remaining || 0);
+        const used = total - remaining;
+        const pctUsed = total > 0 ? Math.round((used / total) * 100) : 0;
+        const isSelected = alloc.change_order_id === co.id;
+        const coNumber = `CO-${String(co.change_order_number).padStart(3, '0')}`;
+        const statusLabel = co.status === 'pending_approval' ? 'pending' : (co.status || 'approved');
+
+        html += `
+          <label class="link-card co-card ${isSelected ? 'selected' : ''}">
+            <input type="radio" name="link-co" value="${co.id}" ${isSelected ? 'checked' : ''}>
+            <div class="link-card-header">
+              <span class="link-card-number">${coNumber}</span>
+              <span class="link-card-status ${statusLabel}">${statusLabel}</span>
+            </div>
+            <div class="link-card-title">${this.escapeHtml(co.title || 'Untitled')}</div>
+            <div class="link-card-amounts">
+              <div class="link-card-amount-row">
+                <span class="label">Total:</span>
+                <span class="value">$${total.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+              </div>
+              <div class="link-card-amount-row remaining">
+                <span class="label">Remaining:</span>
+                <span class="value highlight">$${remaining.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+              </div>
+            </div>
+            <div class="link-card-progress co-progress">
+              <div class="progress-bar" style="width: ${pctUsed}%"></div>
+            </div>
+          </label>
+        `;
+      }
+    }
+
+    // Create New CO option
+    html += `
+      <label class="link-card create-card co-create">
+        <input type="radio" name="link-co" value="create-co">
+        <div class="create-card-content">
+          <span class="create-icon">+</span>
+          <span class="create-text">Create New Change Order</span>
+        </div>
+      </label>
+    `;
+
+    html += '</div></div>'; // link-cards, link-section
+
+    html += `
+          </div>
+          <div class="link-picker-footer">
+            <button type="button" class="btn btn-secondary" onclick="Modals.closeLinkPicker()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="Modals.applyLinkSelection(${index})">Link Selected</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add modal to body
+    const modalContainer = document.createElement('div');
+    modalContainer.id = 'link-picker-modal-container';
+    modalContainer.innerHTML = html;
+    document.body.appendChild(modalContainer);
+
+    // Add click handlers to cards for better reliability
+    modalContainer.querySelectorAll('.link-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio) {
+          radio.checked = true;
+          // Update selected state visually
+          const name = radio.name;
+          modalContainer.querySelectorAll(`input[name="${name}"]`).forEach(r => {
+            r.closest('.link-card')?.classList.remove('selected');
+          });
+          card.classList.add('selected');
+
+          // Auto-suggest CO from PO when a PO is selected
+          if (name === 'link-po' && radio.value && radio.value !== 'none' && radio.value !== 'create-po') {
+            this.autoSuggestCOFromPO(index, radio.value, modalContainer);
+          }
+        }
+      });
+    });
+  },
+
+  /**
+   * Auto-suggest CO based on selected PO's line item change_order_id
+   * When a PO is selected, check if a line item matches the allocation's cost code
+   * and has a change_order_id - if so, auto-select that CO
+   */
+  autoSuggestCOFromPO(allocIndex, poId, modalContainer) {
+    const alloc = this.currentAllocations[allocIndex];
+    const allocCostCodeId = alloc.cost_code?.id || alloc.cost_code_id;
+
+    if (!allocCostCodeId) return;
+
+    // Find the selected PO
+    const po = this.cachedPurchaseOrders?.find(p => p.id === poId);
+    if (!po?.line_items) return;
+
+    // Find a line item with matching cost code that has a change_order_id
+    const matchingLineItem = po.line_items.find(li => {
+      const liCostCodeId = li.cost_code?.id || li.cost_code_id;
+      return liCostCodeId === allocCostCodeId && li.change_order_id;
+    });
+
+    if (!matchingLineItem?.change_order_id) return;
+
+    // Check if there's a matching CO in cached COs
+    const matchingCO = this.cachedChangeOrders?.find(co => co.id === matchingLineItem.change_order_id);
+    if (!matchingCO) return;
+
+    // Auto-select the CO
+    const coRadio = modalContainer.querySelector(`input[name="link-co"][value="${matchingCO.id}"]`);
+    if (coRadio) {
+      coRadio.checked = true;
+      // Update selected state visually
+      modalContainer.querySelectorAll('input[name="link-co"]').forEach(r => {
+        r.closest('.link-card')?.classList.remove('selected');
+      });
+      coRadio.closest('.link-card')?.classList.add('selected');
+
+      // Show toast notification
+      const coNumber = `CO-${String(matchingCO.change_order_number).padStart(3, '0')}`;
+      window.toasts?.info(`Auto-linked to ${coNumber} from PO line item`, { duration: 3000 });
+    }
+  },
+
+  /**
+   * Apply the selected link options (supports dual PO+CO selection)
+   */
+  applyLinkSelection(index) {
+    const selectedPO = document.querySelector('input[name="link-po"]:checked');
+    const selectedCO = document.querySelector('input[name="link-co"]:checked');
+
+    const poValue = selectedPO?.value || 'none';
+    const coValue = selectedCO?.value || 'none';
+    const alloc = this.currentAllocations[index];
+
+    // Handle create actions first (these need special modal flow)
+    if (poValue === 'create-po') {
+      // Store the CO selection to apply after PO creation
+      this._pendingCOSelection = coValue !== 'none' && coValue !== 'create-co' ? coValue : null;
+      this.closeLinkPicker();
+      this.showCreatePOModal(index);
+      return;
+    }
+
+    if (coValue === 'create-co') {
+      // Store the PO selection to apply after CO creation
+      this._pendingPOSelection = poValue !== 'none' ? poValue : null;
+      this.closeLinkPicker();
+      this.showCreateCOModal(index);
+      return;
+    }
+
+    // Apply selections
+    alloc.po_id = (poValue !== 'none') ? poValue : null;
+    alloc.change_order_id = (coValue !== 'none') ? coValue : null;
+    alloc.po_line_item_id = null;
+    alloc._aiLinked = false; // User manually changed, no longer AI-linked
+
+    this.closeLinkPicker();
     this.refreshAllocationsUI();
     this.markDirty();
   },
 
   /**
-   * Toggle visibility of funding source options
-   * By default, allocations use the invoice-level PO. Click "Split funding" to show per-line options.
+   * Close the link picker modal
    */
-  toggleFundingOptions() {
-    this.showFundingOptions = !this.showFundingOptions;
-    this.refreshAllocationsUI();
+  closeLinkPicker() {
+    // Remove the modal container
+    const modalContainer = document.getElementById('link-picker-modal-container');
+    if (modalContainer) {
+      modalContainer.remove();
+    }
+    this.activeLinkPicker = null;
+  },
+
+  /**
+   * Show modal to create a new Change Order and link to allocation
+   */
+  showCreateCOModal(allocationIndex) {
+    const alloc = this.currentAllocations[allocationIndex];
+    const amount = parseFloat(alloc.amount || 0);
+    const jobId = this.currentInvoice?.job_id;
+
+    if (!jobId) {
+      window.toasts?.error('Please select a job first');
+      return;
+    }
+
+    // Create modal HTML
+    const modalHtml = `
+      <div id="create-co-modal" class="modal" style="display: flex; opacity: 1; z-index: 10002;">
+        <div class="modal-content" style="max-width: 500px; opacity: 1;">
+          <div class="modal-header">
+            <h2>Create Change Order</h2>
+            <button class="modal-close" onclick="Modals.closeCreateCOModal()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Title <span class="required">*</span></label>
+              <input type="text" id="co-title" class="field-input" placeholder="e.g., Kitchen upgrade">
+            </div>
+            <div class="form-group">
+              <label>Amount</label>
+              <div class="amount-input-group">
+                <span class="amount-prefix">$</span>
+                <input type="text" id="co-amount" class="field-input" value="${this.formatAmountInput(amount)}">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <textarea id="co-description" class="field-input" rows="3" placeholder="Optional description..."></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick="Modals.closeCreateCOModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="Modals.submitCreateCO(${allocationIndex})">Create & Link</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add modal to DOM
+    const container = document.getElementById('modal-container') || document.body;
+    const wrapper = document.createElement('div');
+    wrapper.id = 'create-co-modal-wrapper';
+    wrapper.innerHTML = modalHtml;
+    container.appendChild(wrapper);
+  },
+
+  /**
+   * Close the create CO modal
+   */
+  closeCreateCOModal() {
+    const wrapper = document.getElementById('create-co-modal-wrapper');
+    if (wrapper) {
+      wrapper.remove();
+    }
+  },
+
+  /**
+   * Submit creation of new CO and link to allocation
+   */
+  async submitCreateCO(allocationIndex) {
+    const title = document.getElementById('co-title')?.value?.trim();
+    const amountStr = document.getElementById('co-amount')?.value;
+    const description = document.getElementById('co-description')?.value?.trim();
+
+    if (!title) {
+      window.toasts?.error('Please enter a title for the Change Order');
+      return;
+    }
+
+    const amount = window.Validation?.parseCurrency(amountStr) || 0;
+    const jobId = this.currentInvoice?.job_id;
+
+    try {
+      // Create the CO via API
+      const response = await fetch(`/api/jobs/${jobId}/change-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          amount,
+          description,
+          status: 'approved' // Auto-approve since it's being created for an invoice
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create Change Order');
+      }
+
+      const newCO = await response.json();
+
+      // Add to cached COs
+      this.cachedChangeOrders.push({
+        ...newCO,
+        remaining: amount
+      });
+
+      // Link allocation to new CO
+      const alloc = this.currentAllocations[allocationIndex];
+      alloc.change_order_id = newCO.id;
+      alloc.po_line_item_id = null;
+
+      // Apply pending PO selection from dual picker (if any)
+      if (this._pendingPOSelection) {
+        alloc.po_id = this._pendingPOSelection;
+        this._pendingPOSelection = null;
+      }
+
+      this.closeCreateCOModal();
+      this.refreshAllocationsUI();
+      this.markDirty();
+
+      window.toasts?.success(`Created CO-${String(newCO.change_order_number).padStart(3, '0')}: ${title}`);
+    } catch (err) {
+      console.error('Failed to create CO:', err);
+      window.toasts?.error('Failed to create Change Order', { details: err.message });
+    }
+  },
+
+  /**
+   * Show modal to create a new Purchase Order and link to allocation
+   */
+  showCreatePOModal(allocationIndex) {
+    const alloc = this.currentAllocations[allocationIndex];
+    const amount = parseFloat(alloc.amount || 0);
+    const jobId = this.currentInvoice?.job_id;
+    const vendorId = this.currentInvoice?.vendor_id;
+    const vendorName = this.currentInvoice?.vendor?.name || '';
+
+    if (!jobId) {
+      window.toasts?.error('Please select a job first');
+      return;
+    }
+
+    // Create modal HTML
+    const modalHtml = `
+      <div id="create-po-modal" class="modal" style="display: flex; opacity: 1; z-index: 10002;">
+        <div class="modal-content" style="max-width: 500px; opacity: 1;">
+          <div class="modal-header">
+            <h2>Create Purchase Order</h2>
+            <button class="modal-close" onclick="Modals.closeCreatePOModal()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Vendor</label>
+              <input type="text" class="field-input" value="${this.escapeHtml(vendorName)}" readonly style="background: var(--bg-card); opacity: 0.7;">
+              <input type="hidden" id="po-vendor-id" value="${vendorId || ''}">
+            </div>
+            <div class="form-group">
+              <label>Description <span class="required">*</span></label>
+              <input type="text" id="po-description" class="field-input" placeholder="e.g., Framing materials for main structure">
+            </div>
+            <div class="form-group">
+              <label>Amount</label>
+              <div class="amount-input-group">
+                <span class="amount-prefix">$</span>
+                <input type="text" id="po-amount" class="field-input" value="${this.formatAmountInput(amount)}">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea id="po-notes" class="field-input" rows="2" placeholder="Optional notes"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick="Modals.closeCreatePOModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="Modals.submitCreatePO(${allocationIndex})">Create & Link</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add to DOM
+    const wrapper = document.createElement('div');
+    wrapper.id = 'create-po-modal-wrapper';
+    wrapper.innerHTML = modalHtml;
+    document.body.appendChild(wrapper);
+
+    // Focus description field
+    setTimeout(() => document.getElementById('po-description')?.focus(), 100);
+  },
+
+  /**
+   * Close the create PO modal
+   */
+  closeCreatePOModal() {
+    const wrapper = document.getElementById('create-po-modal-wrapper');
+    if (wrapper) {
+      wrapper.remove();
+    }
+  },
+
+  /**
+   * Submit creation of new PO and link to allocation
+   */
+  async submitCreatePO(allocationIndex) {
+    const description = document.getElementById('po-description')?.value?.trim();
+    const amountStr = document.getElementById('po-amount')?.value;
+    const notes = document.getElementById('po-notes')?.value?.trim();
+    const vendorId = document.getElementById('po-vendor-id')?.value;
+
+    if (!description) {
+      window.toasts?.error('Please enter a description for the Purchase Order');
+      return;
+    }
+
+    if (!vendorId) {
+      window.toasts?.error('No vendor associated with this invoice');
+      return;
+    }
+
+    const amount = window.Validation?.parseCurrency(amountStr) || 0;
+    const jobId = this.currentInvoice?.job_id;
+
+    try {
+      // Create the PO via API
+      const response = await fetch('/api/purchase-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: jobId,
+          vendor_id: vendorId,
+          description,
+          total_amount: amount,
+          notes,
+          status: 'open',
+          approval_status: 'approved' // Auto-approve since it's being created for an invoice
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create Purchase Order');
+      }
+
+      const newPO = await response.json();
+
+      // Add to cached POs
+      this.cachedPurchaseOrders.push({
+        ...newPO,
+        remaining: amount,
+        vendor: this.currentInvoice?.vendor
+      });
+
+      // Link allocation to new PO
+      const alloc = this.currentAllocations[allocationIndex];
+      alloc.po_id = newPO.id;
+      alloc.po_line_item_id = null;
+
+      // Apply pending CO selection from dual picker (if any)
+      if (this._pendingCOSelection) {
+        alloc.change_order_id = this._pendingCOSelection;
+        this._pendingCOSelection = null;
+      }
+
+      this.closeCreatePOModal();
+      this.refreshAllocationsUI();
+      this.markDirty();
+
+      window.toasts?.success(`Created ${newPO.po_number}`);
+    } catch (err) {
+      console.error('Failed to create PO:', err);
+      window.toasts?.error('Failed to create Purchase Order', { details: err.message });
+    }
   },
 
   /**
@@ -1569,6 +2099,37 @@ const Modals = {
   },
 
   /**
+   * Find cost code by ID
+   */
+  findCostCodeById(costCodeId) {
+    if (!costCodeId) return null;
+    // Use SearchablePicker's cached cost codes
+    if (window.SearchablePicker?.cache?.costCodes) {
+      return window.SearchablePicker.cache.costCodes.find(cc => cc.id === costCodeId);
+    }
+    return null;
+  },
+
+  /**
+   * Check if a cost code is a Change Order cost code (ends with 'C')
+   * @param {Object|string} costCodeOrId - Either the cost_code object from allocation, or a cost_code_id
+   */
+  isCOCostCode(costCodeOrId) {
+    // If passed an object with 'code' property (cost_code from allocation)
+    if (costCodeOrId && typeof costCodeOrId === 'object' && costCodeOrId.code) {
+      return costCodeOrId.code.endsWith('C');
+    }
+    // If passed an ID, try to look it up from cache
+    if (typeof costCodeOrId === 'string') {
+      const costCode = this.findCostCodeById(costCodeOrId);
+      if (costCode) {
+        return costCode.code?.endsWith('C') || false;
+      }
+    }
+    return false;
+  },
+
+  /**
    * Handle invoice amount change - updates all balance sections
    */
   handleAmountChange(input) {
@@ -1580,18 +2141,35 @@ const Modals = {
   },
 
   /**
-   * Handle job change - reload POs for job
+   * Handle job change - reload funding sources (POs/COs) for new job
    */
   async handleJobChange(jobId) {
     this.markDirty();
 
-    // Update the PO picker to use the new job
-    const poContainer = document.getElementById('po-picker-container');
-    if (poContainer && window.SearchablePicker) {
-      // Clear PO value and update jobId for filtering
-      document.getElementById('edit-po').value = '';
-      window.SearchablePicker.updateJobId(poContainer, jobId);
+    // Update current invoice job reference
+    if (this.currentInvoice) {
+      this.currentInvoice.job_id = jobId;
     }
+
+    // Clear all allocation links since job changed
+    if (this.currentAllocations) {
+      for (const alloc of this.currentAllocations) {
+        alloc.po_id = null;
+        alloc.change_order_id = null;
+        alloc.po_line_item_id = null;
+      }
+    }
+
+    // Fetch funding sources for new job
+    if (jobId) {
+      await this.fetchFundingSources(jobId);
+    } else {
+      this.cachedPurchaseOrders = [];
+      this.cachedChangeOrders = [];
+    }
+
+    // Refresh allocations UI with new funding sources
+    this.refreshAllocationsUI();
   },
 
   /**
@@ -3027,60 +3605,6 @@ const Modals = {
         });
         // Set initial value on hidden input
         document.getElementById('edit-vendor').value = this.currentInvoice?.vendor_id || '';
-      }
-
-      // Initialize PO picker
-      const poContainer = document.getElementById('po-picker-container');
-      if (poContainer && window.SearchablePicker) {
-        window.SearchablePicker.init(poContainer, {
-          type: 'pos',
-          value: this.currentInvoice?.po_id || null,
-          placeholder: 'Search purchase orders...',
-          disabled: pickersDisabled,
-          jobId: this.currentInvoice?.job_id || null,
-          onChange: async (poId) => {
-            const oldPoId = this.currentInvoice?.po_id;
-            document.getElementById('edit-po').value = poId || '';
-
-            // Update currentInvoice so allocations can use it as default
-            if (this.currentInvoice) {
-              this.currentInvoice.po_id = poId || null;
-            }
-
-            // Update allocations that were using the old invoice-level PO default
-            // (those without explicit _fundingSource set and not explicitly set to base)
-            if (this.currentAllocations) {
-              for (const alloc of this.currentAllocations) {
-                // Skip allocations with explicit funding source choices
-                if (alloc._explicitBase || alloc._fundingSource === 'co' || alloc.change_order_id) {
-                  continue;
-                }
-                // Update allocations that were using old PO or had no explicit PO
-                if (alloc.po_id === oldPoId || (!alloc.po_id && !alloc._fundingSource)) {
-                  alloc.po_id = poId || null;
-                  alloc.po_line_item_id = null; // Reset line item since PO changed
-                  if (poId) {
-                    alloc._fundingSource = 'po';
-                  } else {
-                    alloc._fundingSource = null; // Will default to base
-                  }
-                }
-              }
-            }
-
-            // Fetch PO line items when PO changes
-            await this.fetchPOLineItems(poId);
-            // Fetch funding sources to update cached POs
-            if (this.currentInvoice?.job_id) {
-              await this.fetchFundingSources(this.currentInvoice.job_id);
-            }
-            // Refresh allocations UI to show PO line item picker
-            this.refreshAllocationsUI();
-            this.markDirty();
-          }
-        });
-        // Set initial value on hidden input
-        document.getElementById('edit-po').value = this.currentInvoice?.po_id || '';
       }
 
       // Initialize cost code pickers
