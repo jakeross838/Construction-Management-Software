@@ -49,9 +49,13 @@ window.CostCodePicker = {
    * Initialize a cost code picker on an element
    * @param {HTMLElement} container - Container element
    * @param {Object} options - Configuration options
+   *        - value: initial cost code ID
+   *        - onChange: callback when selection changes
+   *        - disabled: whether picker is disabled
+   *        - filter: function(costCode) returning true to include code
    */
   init(container, options = {}) {
-    const { value, onChange, disabled } = options;
+    const { value, onChange, disabled, filter } = options;
 
     // Build picker HTML
     container.innerHTML = `
@@ -96,8 +100,9 @@ window.CostCodePicker = {
       }
     });
 
-    // Store callback
+    // Store callback and filter
     picker._onChange = onChange;
+    picker._filter = filter;
   },
 
   /**
@@ -233,14 +238,19 @@ window.CostCodePicker = {
     const dropdown = picker.querySelector('.cc-picker-dropdown');
     this.selectedIndex = -1;
 
-    // Filter codes
+    // Get base codes - apply picker-specific filter if set
+    let baseCodes = picker._filter
+      ? this.costCodes.filter(picker._filter)
+      : this.costCodes;
+
+    // Filter codes by search query
     const q = query.toLowerCase().trim();
     this.filteredCodes = q
-      ? this.costCodes.filter(cc =>
+      ? baseCodes.filter(cc =>
           cc.code.toLowerCase().includes(q) ||
           cc.name.toLowerCase().includes(q)
         )
-      : [...this.costCodes];
+      : [...baseCodes];
 
     // Sort by code number
     this.filteredCodes.sort((a, b) => a.code.localeCompare(b.code));

@@ -253,8 +253,110 @@ function normalizeVendorName(name) {
 }
 
 /**
+ * Simple Soundex implementation for phonetic matching
+ */
+function soundex(str) {
+  if (!str) return '';
+  const s = str.toUpperCase().replace(/[^A-Z]/g, '');
+  if (!s) return '';
+
+  const codes = {
+    B: 1, F: 1, P: 1, V: 1,
+    C: 2, G: 2, J: 2, K: 2, Q: 2, S: 2, X: 2, Z: 2,
+    D: 3, T: 3,
+    L: 4,
+    M: 5, N: 5,
+    R: 6
+  };
+
+  let result = s[0];
+  let prevCode = codes[s[0]] || 0;
+
+  for (let i = 1; i < s.length && result.length < 4; i++) {
+    const code = codes[s[i]] || 0;
+    if (code && code !== prevCode) {
+      result += code;
+    }
+    prevCode = code;
+  }
+
+  return result.padEnd(4, '0');
+}
+
+/**
+ * Get word root by removing common suffixes
+ */
+function getWordRoot(word) {
+  if (!word || word.length < 4) return word;
+  return word
+    .replace(/(ing|ed|er|ers|s|es|tion|ment|ly)$/i, '')
+    .replace(/([^aeiou])\1$/, '$1'); // Remove doubled consonants
+}
+
+/**
+ * Calculate Levenshtein distance between two strings
+ */
+function levenshteinDistance(a, b) {
+  if (!a || !b) return Math.max(a?.length || 0, b?.length || 0);
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b[i - 1] === a[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+/**
+ * Calculate word similarity (0-1) using multiple methods
+ */
+function calculateWordSimilarity(w1, w2) {
+  if (w1 === w2) return 1;
+
+  // Check if one starts with the other
+  if (w1.startsWith(w2) || w2.startsWith(w1)) return 0.9;
+
+  // Check word roots
+  const root1 = getWordRoot(w1);
+  const root2 = getWordRoot(w2);
+  if (root1 === root2 && root1.length >= 3) return 0.85;
+  if (root1.startsWith(root2) || root2.startsWith(root1)) return 0.8;
+
+  // Soundex match (phonetic)
+  if (soundex(w1) === soundex(w2)) return 0.75;
+
+  // Levenshtein distance
+  const maxLen = Math.max(w1.length, w2.length);
+  const distance = levenshteinDistance(w1, w2);
+  const similarity = 1 - (distance / maxLen);
+
+  // Only count as match if quite similar
+  if (similarity >= 0.7) return similarity * 0.7;
+
+  return 0;
+}
+
+/**
  * Calculate similarity score between two strings (0-100)
- * Uses a combination of exact match, starts-with, and Levenshtein-like scoring
+ * Uses a combination of exact match, word roots, Soundex, and Levenshtein
  */
 function calculateStringSimilarity(str1, str2) {
   if (!str1 || !str2) return 0;
@@ -269,32 +371,39 @@ function calculateStringSimilarity(str1, str2) {
   if (s1.includes(s2) || s2.includes(s1)) {
     const longer = s1.length > s2.length ? s1 : s2;
     const shorter = s1.length > s2.length ? s2 : s1;
-    return Math.round((shorter.length / longer.length) * 90);
+    return Math.round((shorter.length / longer.length) * 95);
   }
 
-  // Word-based matching
+  // Word-based matching with fuzzy matching
   const words1 = s1.split(/\s+/).filter(w => w.length > 1);
   const words2 = s2.split(/\s+/).filter(w => w.length > 1);
 
   if (words1.length === 0 || words2.length === 0) return 0;
 
-  let matchingWords = 0;
+  let totalScore = 0;
+  const usedWords2 = new Set();
+
   for (const w1 of words1) {
-    for (const w2 of words2) {
-      if (w1 === w2) {
-        matchingWords++;
-        break;
+    let bestMatch = 0;
+    let bestIdx = -1;
+
+    for (let i = 0; i < words2.length; i++) {
+      if (usedWords2.has(i)) continue;
+      const similarity = calculateWordSimilarity(w1, words2[i]);
+      if (similarity > bestMatch) {
+        bestMatch = similarity;
+        bestIdx = i;
       }
-      // Partial word match (one starts with the other)
-      if (w1.startsWith(w2) || w2.startsWith(w1)) {
-        matchingWords += 0.7;
-        break;
-      }
+    }
+
+    if (bestMatch > 0.5 && bestIdx >= 0) {
+      totalScore += bestMatch;
+      usedWords2.add(bestIdx);
     }
   }
 
   const maxWords = Math.max(words1.length, words2.length);
-  return Math.round((matchingWords / maxWords) * 85);
+  return Math.round((totalScore / maxWords) * 90);
 }
 
 /**

@@ -21,6 +21,7 @@
       items: [
         { id: 'invoices', label: 'Invoices', href: 'index.html' },
         { id: 'pos', label: 'Purchase Orders', href: 'pos.html' },
+        { id: 'cos', label: 'Change Orders', href: 'change-orders.html' },
         { id: 'draws', label: 'Draws', href: 'draws.html' },
         { id: 'budget', label: 'Budget', href: 'budgets.html' }
       ]

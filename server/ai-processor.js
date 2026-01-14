@@ -157,6 +157,82 @@ async function extractFromScannedPDF(pdfBuffer, schema, systemPrompt) {
   return JSON.parse(jsonStr);
 }
 
+/**
+ * Extract data from an image using Claude's vision capability
+ * Supports JPEG, PNG, GIF, WebP
+ */
+async function extractFromImage(base64Image, mediaType, schema, systemPrompt) {
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mediaType,
+            data: base64Image
+          }
+        },
+        {
+          type: 'text',
+          text: `Please analyze this document image and extract all information according to this schema:\n\n${schema}\n\nReturn ONLY valid JSON, no markdown code blocks.`
+        }
+      ]
+    }]
+  });
+
+  let jsonStr = response.content[0].text.trim();
+  if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+  }
+  return JSON.parse(jsonStr);
+}
+
+/**
+ * Extract invoice data from a text document (Word, Excel)
+ * Uses the existing text-based extraction with the extracted text
+ */
+async function extractInvoiceFromText(documentText, filename, documentType) {
+  console.log(`[AI] Extracting invoice from ${documentType} text (${documentText.length} chars)`);
+  return await extractInvoiceData(documentText, filename);
+}
+
+/**
+ * Extract invoice data from an image using Claude Vision
+ */
+async function extractInvoiceFromImage(base64Image, mediaType, filename) {
+  console.log(`[AI] Extracting invoice from image: ${filename} (${mediaType})`);
+
+  const systemPrompt = `You are an expert construction invoice processing assistant for Ross Built Custom Homes, a custom home builder in Florida.
+
+CRITICAL IDENTIFICATION RULES:
+1. Ross Built Custom Homes (or "Ross Built") is ALWAYS the general contractor being billed - NEVER the vendor
+2. The VENDOR is the subcontractor/supplier company SENDING the invoice - they performed work or supplied materials
+3. Look for "Bill To:", "Invoice To:", "Customer:" fields - these typically show Ross Built
+4. Look for company letterhead, logo, or "From:" - this is typically the VENDOR
+
+EXTRACTION ACCURACY REQUIREMENTS:
+1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown
+2. Amounts: Extract the TOTAL AMOUNT DUE. Look for "Total", "Amount Due", "Balance Due"
+3. Dates: Convert all dates to YYYY-MM-DD format
+4. Line items: Extract ALL work items with their individual amounts
+
+JOB/PROJECT IDENTIFICATION:
+Job references can appear in MANY forms. Check ALL of these locations:
+1. "P.O.#" or "PO#" field - often contains client name or job reference
+2. "Subject:", "Job:", "Project:", "Site:", "Location:", "Re:" fields
+3. Any street address that is NOT the vendor's address
+4. Client/homeowner last name
+
+Return ONLY valid JSON, no markdown code blocks.`;
+
+  return await extractFromImage(base64Image, mediaType, INVOICE_SCHEMA, systemPrompt);
+}
+
 // ============================================================
 // AI EXTRACTION
 // ============================================================
@@ -859,7 +935,8 @@ async function findOrCreateVendor(vendorData) {
 
   if (vendors && vendors.length > 0) {
     // Use standards.findBestVendorMatch which handles LLC, Inc, Co removal and better normalization
-    const match = standards.findBestVendorMatch(vendorData.companyName, vendors, 75);
+    // Threshold lowered to 65 to catch variations like "TNT Paint" vs "TNT Painting"
+    const match = standards.findBestVendorMatch(vendorData.companyName, vendors, 65);
 
     if (match) {
       console.log(`[Vendor Match] "${vendorData.companyName}" → "${match.vendor.name}" (${match.score}% similarity)`);
@@ -2073,6 +2150,9 @@ module.exports = {
   classifyDocument,
   extractTextFromPDF,
   extractInvoiceData,
+  extractInvoiceFromImage,
+  extractInvoiceFromText,
+  extractFromImage,
   extractLienReleaseData,
   findMatchingJob,
   findOrCreateVendor,

@@ -40,13 +40,23 @@ const VALIDATION_RULES = {
 // STATUS TRANSITIONS
 // ============================================================
 
+// Invoice Pipeline Flow:
+// 1. needs_review    - Accountant reviews, full editing, job optional
+// 2. ready_for_approval - PM reviews under specific job, read-only (can unlock)
+// 3. approved        - Ready for draws, read-only (can unlock)
+// 4. in_draw         - Added to a draw
+// 5. paid            - Draw funded, archived
+
 const STATUS_TRANSITIONS = {
-  received: ['needs_approval', 'denied', 'deleted'],
-  needs_approval: ['approved', 'denied', 'received', 'deleted'],
-  approved: ['in_draw', 'needs_approval'],
+  needs_review: ['ready_for_approval', 'denied', 'deleted'],
+  ready_for_approval: ['approved', 'needs_review', 'denied'],
+  approved: ['in_draw', 'ready_for_approval'],
   in_draw: ['paid', 'approved'],
   paid: [],     // Archived - read only
-  denied: ['received', 'deleted']  // Can resubmit or delete
+  denied: ['needs_review', 'deleted'],  // Can resubmit or delete
+  // Legacy statuses - map to new flow
+  received: ['needs_review', 'ready_for_approval', 'denied', 'deleted'],
+  needs_approval: ['approved', 'ready_for_approval', 'denied', 'needs_review']
 };
 
 // ============================================================
@@ -54,11 +64,15 @@ const STATUS_TRANSITIONS = {
 // ============================================================
 
 const PRE_TRANSITION_REQUIREMENTS = {
-  needs_approval: ['job_id', 'vendor_id'],
-  approved: ['job_id', 'vendor_id', 'allocations_balanced'],
+  needs_review: [],  // No requirements - accountant can edit freely
+  ready_for_approval: ['job_id', 'vendor_id'],  // Must have job and vendor
+  approved: ['job_id', 'vendor_id', 'allocations_balanced'],  // Must have allocations
   in_draw: ['draw_id'],
   paid: ['funded_draw']
 };
+
+// Statuses where editing is locked by default (need unlock button)
+const LOCKED_STATUSES = ['ready_for_approval', 'approved', 'in_draw', 'paid'];
 
 // ============================================================
 // VALIDATION FUNCTIONS

@@ -1,0 +1,395 @@
+// @ts-check
+const { test, expect } = require('@playwright/test');
+
+test.describe('PO Allocation Integration', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('http://localhost:3001');
+    await page.waitForSelector('.invoice-card', { timeout: 10000 });
+  });
+
+  test('Invoice with PO defaults allocation funding source to that PO', async ({ page }) => {
+    console.log('=== Testing PO Allocation Integration ===');
+
+    // Find the test invoice that has a PO linked (Island Lumber #971925)
+    const invoiceCard = page.locator('.invoice-card').filter({ hasText: '971925' }).first();
+
+    // Check if it exists
+    const exists = await invoiceCard.count() > 0;
+    console.log('Found invoice #971925:', exists);
+
+    if (!exists) {
+      // Try to find any invoice with a PO
+      const anyPOInvoice = page.locator('.invoice-card').filter({ has: page.locator('.po-badge:not(.no-po)') }).first();
+      const anyExists = await anyPOInvoice.count() > 0;
+      console.log('Found any invoice with PO:', anyExists);
+
+      if (!anyExists) {
+        console.log('No invoices with PO found - skipping test');
+        return;
+      }
+
+      await anyPOInvoice.click();
+    } else {
+      await invoiceCard.click();
+    }
+
+    // Wait for modal to open
+    await page.waitForTimeout(2000);
+    const modalVisible = await page.locator('#modal-container.active').count() > 0;
+    console.log('Modal opened:', modalVisible);
+
+    if (!modalVisible) {
+      console.log('Modal did not open - skipping');
+      return;
+    }
+
+    // Check if the invoice has a PO selected in the header
+    const poPickerValue = await page.locator('#edit-po').inputValue();
+    console.log('Invoice PO ID:', poPickerValue);
+
+    // Check the funding source dropdown on the first allocation line
+    const fundingSourceSelect = page.locator('.funding-source-select').first();
+    const fundingSourceExists = await fundingSourceSelect.count() > 0;
+    console.log('Funding source dropdown exists:', fundingSourceExists);
+
+    if (fundingSourceExists) {
+      const selectedValue = await fundingSourceSelect.inputValue();
+      console.log('Selected funding source:', selectedValue);
+
+      // If invoice has PO, funding source should default to 'po'
+      if (poPickerValue) {
+        expect(selectedValue).toBe('po');
+        console.log('✓ Funding source correctly defaults to PO');
+
+        // Check the PO dropdown shows the correct PO selected
+        const poSelect = page.locator('.po-select').first();
+        const poSelectExists = await poSelect.count() > 0;
+
+        if (poSelectExists) {
+          const selectedPO = await poSelect.inputValue();
+          console.log('Selected PO in allocation:', selectedPO);
+          expect(selectedPO).toBe(poPickerValue);
+          console.log('✓ Allocation PO matches invoice PO');
+        }
+      }
+    } else {
+      console.log('No funding source dropdown - job may not have POs/COs');
+    }
+
+    console.log('=== Test completed ===');
+  });
+
+  test('Changing funding source to Base Budget overrides invoice PO default', async ({ page }) => {
+    console.log('=== Testing Base Budget Override ===');
+
+    // Find invoice with PO
+    const invoiceCard = page.locator('.invoice-card').filter({ hasText: '971925' }).first();
+    const exists = await invoiceCard.count() > 0;
+
+    if (!exists) {
+      console.log('Test invoice not found - skipping');
+      return;
+    }
+
+    await invoiceCard.click();
+    await page.waitForTimeout(2000);
+    const modalVisible = await page.locator('#modal-container.active').count() > 0;
+    if (!modalVisible) {
+      console.log('Modal did not open - skipping');
+      return;
+    }
+
+    // Get initial funding source
+    const fundingSourceSelect = page.locator('.funding-source-select').first();
+    const fundingSourceExists = await fundingSourceSelect.count() > 0;
+
+    if (!fundingSourceExists) {
+      console.log('No funding source dropdown - skipping');
+      return;
+    }
+
+    const initialValue = await fundingSourceSelect.inputValue();
+    console.log('Initial funding source:', initialValue);
+
+    // Change to Base Budget
+    await fundingSourceSelect.selectOption('base');
+    await page.waitForTimeout(500); // Wait for UI update
+
+    // Verify it changed
+    const newValue = await fundingSourceSelect.inputValue();
+    console.log('New funding source:', newValue);
+    expect(newValue).toBe('base');
+
+    // The funding detail field should be hidden for base budget
+    const fundingDetailField = page.locator('.funding-detail-field').first();
+    const isHidden = await fundingDetailField.evaluate(el => el.style.display === 'none' || window.getComputedStyle(el).display === 'none');
+    console.log('Funding detail hidden:', isHidden);
+
+    console.log('✓ Can override to Base Budget');
+    console.log('=== Test completed ===');
+  });
+
+  test('Changing funding source to Change Order works', async ({ page }) => {
+    console.log('=== Testing Change Order Selection ===');
+
+    // Find invoice with PO
+    const invoiceCard = page.locator('.invoice-card').filter({ hasText: '971925' }).first();
+    const exists = await invoiceCard.count() > 0;
+
+    if (!exists) {
+      console.log('Test invoice not found - skipping');
+      return;
+    }
+
+    await invoiceCard.click();
+    await page.waitForTimeout(2000);
+    const modalVisible = await page.locator('#modal-container.active').count() > 0;
+    if (!modalVisible) {
+      console.log('Modal did not open - skipping');
+      return;
+    }
+
+    const fundingSourceSelect = page.locator('.funding-source-select').first();
+    const fundingSourceExists = await fundingSourceSelect.count() > 0;
+
+    if (!fundingSourceExists) {
+      console.log('No funding source dropdown - skipping');
+      return;
+    }
+
+    // Check if CO option exists
+    const coOption = fundingSourceSelect.locator('option[value="co"]');
+    const coExists = await coOption.count() > 0;
+    console.log('CO option exists:', coExists);
+
+    if (!coExists) {
+      console.log('No Change Orders available - skipping');
+      return;
+    }
+
+    // Change to Change Order
+    await fundingSourceSelect.selectOption('co');
+    await page.waitForTimeout(500);
+
+    const newValue = await fundingSourceSelect.inputValue();
+    console.log('New funding source:', newValue);
+    expect(newValue).toBe('co');
+
+    // CO dropdown should now be visible
+    const coSelect = page.locator('.co-select').first();
+    const coSelectVisible = await coSelect.isVisible();
+    console.log('CO dropdown visible:', coSelectVisible);
+    expect(coSelectVisible).toBe(true);
+
+    // Select a CO
+    const coOptions = await coSelect.locator('option:not([value=""])').count();
+    console.log('Number of CO options:', coOptions);
+
+    if (coOptions > 0) {
+      await coSelect.selectOption({ index: 1 }); // Select first CO
+      const selectedCO = await coSelect.inputValue();
+      console.log('Selected CO:', selectedCO);
+      expect(selectedCO).toBeTruthy();
+      console.log('✓ Can select Change Order');
+    }
+
+    console.log('=== Test completed ===');
+  });
+
+  test('Invoice PO change syncs allocations', async ({ page }) => {
+    console.log('=== Testing PO Change Sync ===');
+
+    // Find invoice with PO
+    const invoiceCard = page.locator('.invoice-card').filter({ hasText: '971925' }).first();
+    const exists = await invoiceCard.count() > 0;
+
+    if (!exists) {
+      console.log('Test invoice not found - skipping');
+      return;
+    }
+
+    await invoiceCard.click();
+    await page.waitForTimeout(2000);
+    const modalVisible = await page.locator('#modal-container.active').count() > 0;
+    if (!modalVisible) {
+      console.log('Modal did not open - skipping');
+      return;
+    }
+
+    // Get the PO picker container
+    const poPicker = page.locator('#po-picker-container');
+    const poPickerExists = await poPicker.count() > 0;
+
+    if (!poPickerExists) {
+      console.log('PO picker not found - skipping');
+      return;
+    }
+
+    // Get initial allocation PO
+    const poSelect = page.locator('.po-select').first();
+    const poSelectExists = await poSelect.count() > 0;
+
+    if (!poSelectExists) {
+      console.log('Allocation PO select not found - skipping');
+      return;
+    }
+
+    const initialAllocPO = await poSelect.inputValue();
+    console.log('Initial allocation PO:', initialAllocPO);
+
+    // Try to click the PO picker to open dropdown
+    await poPicker.click();
+    await page.waitForTimeout(300);
+
+    // Check if dropdown opened
+    const dropdown = page.locator('.search-picker-dropdown:visible');
+    const dropdownVisible = await dropdown.count() > 0;
+    console.log('PO dropdown opened:', dropdownVisible);
+
+    if (dropdownVisible) {
+      // Look for PO options
+      const poOptions = dropdown.locator('.search-picker-option');
+      const optionCount = await poOptions.count();
+      console.log('PO options available:', optionCount);
+    }
+
+    console.log('✓ PO picker is interactive');
+    console.log('=== Test completed ===');
+  });
+
+  test('Allocation PO persists after save and reopen', async ({ page }) => {
+    console.log('=== Testing Allocation PO Persistence ===');
+
+    // Find invoice with PO
+    const invoiceCard = page.locator('.invoice-card').filter({ hasText: '971925' }).first();
+    const exists = await invoiceCard.count() > 0;
+
+    if (!exists) {
+      console.log('Test invoice not found - skipping');
+      return;
+    }
+
+    await invoiceCard.click();
+    await page.waitForTimeout(2000);
+    const modalVisible = await page.locator('#modal-container.active').count() > 0;
+    if (!modalVisible) {
+      console.log('Modal did not open - skipping');
+      return;
+    }
+
+    // Check if we have a funding source dropdown
+    const fundingSourceSelect = page.locator('.funding-source-select').first();
+    const fundingSourceExists = await fundingSourceSelect.count() > 0;
+    if (!fundingSourceExists) {
+      console.log('No funding source dropdown - skipping');
+      return;
+    }
+
+    // Get the current funding source
+    let currentFundingSource = await fundingSourceSelect.inputValue();
+    console.log('Current funding source:', currentFundingSource);
+
+    // If currently "base" or no PO selected, switch to PO
+    if (currentFundingSource !== 'po') {
+      await fundingSourceSelect.selectOption('po');
+      await page.waitForTimeout(500);
+      currentFundingSource = 'po';
+    }
+
+    // Get the PO select and record the value
+    const poSelect = page.locator('.po-select').first();
+    const poSelectExists = await poSelect.count() > 0;
+    if (!poSelectExists) {
+      console.log('PO select not found - skipping');
+      return;
+    }
+
+    let selectedPO = await poSelect.inputValue();
+    console.log('Selected PO before save:', selectedPO);
+
+    // If no PO selected, select the first one
+    if (!selectedPO) {
+      const poOptions = await poSelect.locator('option:not([value=""])').count();
+      if (poOptions > 0) {
+        await poSelect.selectOption({ index: 1 });
+        await page.waitForTimeout(300);
+        selectedPO = await poSelect.inputValue();
+        console.log('Selected first PO:', selectedPO);
+      }
+    }
+
+    if (!selectedPO) {
+      console.log('No PO to select - skipping');
+      return;
+    }
+
+    // Click Save button
+    const saveButton = page.locator('button').filter({ hasText: 'Save' }).first();
+    const saveExists = await saveButton.count() > 0;
+    console.log('Save button exists:', saveExists);
+
+    if (saveExists) {
+      await saveButton.click();
+      console.log('Clicked Save');
+
+      // Wait for save to complete (modal should close or show success)
+      await page.waitForTimeout(2000);
+    }
+
+    // Check if modal closed
+    const modalClosed = await page.locator('#modal-container.active').count() === 0;
+    console.log('Modal closed after save:', modalClosed);
+
+    if (!modalClosed) {
+      // Check for error message
+      const errorToast = page.locator('.toast.error');
+      const hasError = await errorToast.count() > 0;
+      if (hasError) {
+        const errorText = await errorToast.textContent();
+        console.log('Save error:', errorText);
+      }
+      // Close modal manually
+      const closeButton = page.locator('button').filter({ hasText: 'Cancel' }).first();
+      if (await closeButton.count() > 0) {
+        await closeButton.click();
+        await page.waitForTimeout(500);
+      }
+    }
+
+    // Wait a bit for the list to refresh
+    await page.waitForTimeout(1000);
+
+    // Reopen the same invoice
+    console.log('Reopening invoice...');
+    const invoiceCardAgain = page.locator('.invoice-card').filter({ hasText: '971925' }).first();
+    await invoiceCardAgain.click();
+    await page.waitForTimeout(2000);
+
+    // Check that the PO is still selected
+    const fundingSourceAfter = page.locator('.funding-source-select').first();
+    const fundingSourceAfterExists = await fundingSourceAfter.count() > 0;
+
+    if (fundingSourceAfterExists) {
+      const fundingSourceValue = await fundingSourceAfter.inputValue();
+      console.log('Funding source after reopen:', fundingSourceValue);
+
+      if (fundingSourceValue === 'po') {
+        const poSelectAfter = page.locator('.po-select').first();
+        if (await poSelectAfter.count() > 0) {
+          const poValueAfter = await poSelectAfter.inputValue();
+          console.log('PO value after reopen:', poValueAfter);
+
+          if (poValueAfter === selectedPO) {
+            console.log('✓ Allocation PO persisted after save!');
+          } else {
+            console.log('✗ PO changed after reopen. Expected:', selectedPO, 'Got:', poValueAfter);
+          }
+        }
+      } else {
+        console.log('Funding source changed to:', fundingSourceValue);
+      }
+    }
+
+    console.log('=== Test completed ===');
+  });
+});

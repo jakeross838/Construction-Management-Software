@@ -12,6 +12,8 @@ const Modals = {
   currentInvoice: null,
   currentAllocations: [],
   currentPOLineItems: [],  // PO line items for linking allocations
+  cachedPurchaseOrders: [], // All available POs for the job
+  cachedChangeOrders: [],   // All available COs for the job
   isDirty: false,
   isEditMode: false,  // Start in view mode, click Edit to enable editing
 
@@ -80,12 +82,21 @@ const Modals = {
         this.fetchActivity(invoiceId),
         this.fetchApprovalContext(invoiceId)
       ]);
-      // Fetch PO line items if invoice has a PO
+      // Fetch PO line items if invoice has a PO (for backward compatibility)
       if (invoice.po_id) {
         await this.fetchPOLineItems(invoice.po_id);
       } else {
         this.currentPOLineItems = [];
       }
+
+      // Fetch all funding sources (POs and COs) for the job
+      if (invoice.job_id) {
+        await this.fetchFundingSources(invoice.job_id);
+      } else {
+        this.cachedPurchaseOrders = [];
+        this.cachedChangeOrders = [];
+      }
+
       // Initialize with one empty allocation if none exist
       // This ensures the UI row has a backing data entry
       this.currentAllocations = allocations.length > 0
@@ -204,10 +215,16 @@ const Modals = {
   buildEditModal(invoice, allocations, activity = [], approvalContext = {}) {
     const statusInfo = window.Validation?.getStatusInfo(invoice.status) || {};
     const isArchived = invoice.status === 'paid';
-    // Can edit if not archived and in edit mode
-    const canEdit = !isArchived && this.isEditMode;
-    // Show original PDF for needs_approval/received, stamped for approved+
-    const showOriginal = ['needs_approval', 'received'].includes(invoice.status);
+    // Locked statuses require explicit unlock to edit
+    const lockedStatuses = ['ready_for_approval', 'approved', 'in_draw', 'paid', 'needs_approval'];
+    const isLockedStatus = lockedStatuses.includes(invoice.status);
+    // Editable statuses - accountant can edit freely
+    const editableStatuses = ['needs_review', 'received', 'denied'];
+    const isEditableStatus = editableStatuses.includes(invoice.status);
+    // Can edit if: editable status OR (locked status AND explicitly unlocked)
+    const canEdit = !isArchived && (isEditableStatus || (isLockedStatus && this.isEditMode));
+    // Show original PDF for needs_review/ready_for_approval, stamped for approved+
+    const showOriginal = ['needs_review', 'ready_for_approval'].includes(invoice.status);
 
     // Store for use in field locking
     this.canEdit = canEdit;
@@ -222,6 +239,9 @@ const Modals = {
     const hasPartialPayment = alreadyProcessed > 0 && remainingAmount > 0.01;
     const isClosedOut = !!invoice.closed_out_at;
 
+    // Show read-only badge for locked statuses that haven't been unlocked
+    const showReadOnlyBadge = isArchived || (isLockedStatus && !this.isEditMode);
+
     return `
       <div class="modal-backdrop">
         <div class="modal modal-fullscreen">
@@ -229,14 +249,13 @@ const Modals = {
             <div class="modal-title">
               <h2>${this.isEditMode ? 'Edit Invoice' : 'View Invoice'}</h2>
               <span class="status-badge status-${invoice.status}">${statusInfo.label || invoice.status}</span>
-              ${isArchived ? '<span class="readonly-badge">Read Only</span>' : ''}
-              ${!isArchived && !this.isEditMode ? '<button type="button" class="btn btn-secondary btn-sm" onclick="Modals.enterEditMode()">Edit</button>' : ''}
+              ${showReadOnlyBadge ? '<span class="readonly-badge">Read Only</span>' : ''}
             </div>
             <button class="modal-close" onclick="Modals.closeActiveModal()">&times;</button>
           </div>
 
           <div class="modal-body modal-split-view">
-            ${hasPartialPayment && invoice.status === 'needs_approval' ? `
+            ${hasPartialPayment && invoice.status === 'ready_for_approval' ? `
             <div class="partial-billing-banner">
               <div class="banner-icon">⚠️</div>
               <div class="banner-content">
@@ -491,6 +510,13 @@ const Modals = {
     // Get cost code confidence from AI data if available
     const costCodeConfidence = this.currentInvoice?.ai_confidence?.costCode || 0;
     const canEdit = !isReadOnly;
+    const hasPOs = (this.cachedPurchaseOrders || []).length > 0;
+    const hasCOs = (this.cachedChangeOrders || []).length > 0;
+    const hasFundingSources = hasPOs || hasCOs;
+
+    // Get invoice-level PO as default (Option A: invoice PO is the default funding source)
+    const invoicePOId = this.currentInvoice?.po_id || null;
+    const invoicePO = invoicePOId ? (this.cachedPurchaseOrders || []).find(po => po.id === invoicePOId) : null;
 
     const buildLineItem = (alloc, index) => {
       // Check if this specific allocation is AI-suggested
@@ -500,6 +526,44 @@ const Modals = {
       const icon = confidencePct >= 90 ? '✓' : confidencePct >= 70 ? '◐' : '?';
       const aiBadge = allocIsAi && confidencePct > 0 ? `<span class="ai-badge ${confidenceClass}" title="AI-suggested based on vendor trade type (${confidencePct}% confidence)"><span class="ai-badge-icon">${icon}</span><span class="ai-badge-score">${confidencePct}%</span><span class="ai-badge-label">AI</span></span>` : '';
 
+      // Determine current funding source type
+      // Priority: explicit allocation po_id/change_order_id > _fundingSource flag > invoice-level PO > no PO/CO
+      let fundingSource = 'base';
+      let effectivePoId = alloc.po_id;
+
+      if (alloc.po_id) {
+        fundingSource = 'po';
+      } else if (alloc.change_order_id) {
+        fundingSource = 'co';
+      } else if (alloc._fundingSource) {
+        fundingSource = alloc._fundingSource;
+      } else if (invoicePOId && !alloc._explicitBase) {
+        // Default to invoice-level PO if set and user hasn't explicitly chosen base
+        // Use invoicePOId (not invoicePO object) so this works even if PO isn't in cached list
+        fundingSource = 'po';
+        effectivePoId = invoicePOId;
+      }
+
+      // Build PO options (use effectivePoId for selection which may come from invoice-level PO)
+      const poOptions = (this.cachedPurchaseOrders || []).map(po => {
+        const remaining = parseFloat(po.remaining || 0);
+        const vendorName = po.vendor?.name || 'Unknown';
+        return `<option value="${po.id}" ${effectivePoId === po.id ? 'selected' : ''}>${po.po_number} - ${vendorName} ($${remaining.toLocaleString('en-US', {minimumFractionDigits: 0})} remaining)</option>`;
+      }).join('');
+
+      // Build CO options
+      const coOptions = (this.cachedChangeOrders || []).map(co => {
+        const remaining = parseFloat(co.remaining || 0);
+        return `<option value="${co.id}" ${alloc.change_order_id === co.id ? 'selected' : ''}>CO-${String(co.change_order_number).padStart(3, '0')}: ${co.title} ($${remaining.toLocaleString('en-US', {minimumFractionDigits: 0})} remaining)</option>`;
+      }).join('');
+
+      // Build PO line item options (for selected PO - use effectivePoId)
+      const selectedPO = effectivePoId ? (this.cachedPurchaseOrders || []).find(po => po.id === effectivePoId) : null;
+      const poLineOptions = selectedPO ? (selectedPO.line_items || []).map(li => {
+        const remaining = parseFloat(li.amount || 0) - parseFloat(li.invoiced_amount || 0);
+        return `<option value="${li.id}" ${alloc.po_line_item_id === li.id ? 'selected' : ''}>${li.cost_code?.code || 'N/A'} - $${remaining.toLocaleString('en-US', {minimumFractionDigits: 0})} remaining</option>`;
+      }).join('') : '';
+
       return `
         <div class="line-item" data-index="${index}">
           <div class="line-item-header">
@@ -507,18 +571,38 @@ const Modals = {
               <label class="field-label">Cost code / Account <span class="required">*</span> ${aiBadge}</label>
               <div class="cc-picker-container" data-index="${index}" data-readonly="${isReadOnly}"></div>
             </div>
-            ${this.currentPOLineItems.length > 0 ? `
-            <div class="line-item-field flex-1">
-              <label class="field-label">PO Line Item</label>
-              <select class="field-input po-line-select" onchange="Modals.updateAllocation(${index}, 'po_line_item_id', this.value)" ${isReadOnly ? 'disabled' : ''}>
-                <option value="">-- Select Line --</option>
-                ${this.currentPOLineItems.map(li => `
-                  <option value="${li.id}" ${alloc.po_line_item_id === li.id ? 'selected' : ''}>
-                    ${li.cost_code?.code || 'N/A'} - $${parseFloat(li.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${li.description || 'No desc'})
-                  </option>
-                `).join('')}
+            ${hasFundingSources ? `
+            <div class="line-item-field" style="flex: 0 0 140px;">
+              <label class="field-label">Funding Source</label>
+              <select class="field-input funding-source-select" onchange="Modals.updateFundingSource(${index}, this.value)" ${isReadOnly ? 'disabled' : ''}>
+                <option value="base" ${fundingSource === 'base' ? 'selected' : ''}>No PO/CO</option>
+                ${hasPOs ? `<option value="po" ${fundingSource === 'po' ? 'selected' : ''}>Purchase Order</option>` : ''}
+                ${hasCOs ? `<option value="co" ${fundingSource === 'co' ? 'selected' : ''}>Change Order</option>` : ''}
               </select>
-              <div class="po-line-remaining">${this.getPOLineRemaining(alloc.po_line_item_id)}</div>
+            </div>
+            <div class="line-item-field funding-detail-field" style="flex: 0 0 200px; ${fundingSource === 'base' ? 'display:none;' : ''}">
+              ${fundingSource === 'po' ? `
+                <label class="field-label">Purchase Order</label>
+                <select class="field-input po-select" onchange="Modals.updateAllocation(${index}, 'po_id', this.value)" ${isReadOnly ? 'disabled' : ''}>
+                  <option value="">-- Select PO --</option>
+                  ${poOptions}
+                </select>
+                ${selectedPO && (selectedPO.line_items || []).length > 0 ? `
+                <select class="field-input po-line-select" style="margin-top: 4px;" onchange="Modals.updateAllocation(${index}, 'po_line_item_id', this.value)" ${isReadOnly ? 'disabled' : ''}>
+                  <option value="">-- Line Item (optional) --</option>
+                  ${poLineOptions}
+                </select>
+                ` : ''}
+              ` : fundingSource === 'co' ? `
+                <label class="field-label">Change Order</label>
+                <select class="field-input co-select" onchange="Modals.updateAllocation(${index}, 'change_order_id', this.value)" ${isReadOnly ? 'disabled' : ''}>
+                  <option value="">-- Select CO --</option>
+                  ${coOptions}
+                </select>
+              ` : `
+                <label class="field-label">&nbsp;</label>
+                <div class="base-budget-label">No PO/CO</div>
+              `}
             </div>
             ` : ''}
             <div class="line-item-field amount-field">
@@ -529,6 +613,7 @@ const Modals = {
                   value="${this.formatAmountInput(alloc.amount)}"
                   oninput="Modals.updateAllocation(${index}, 'amount', this.value)"
                   ${isReadOnly ? 'readonly' : ''}>
+                ${!isReadOnly ? `<button type="button" class="btn-fill-remaining" onclick="Modals.fillRemaining(${index})" title="Fill with remaining unallocated amount">Fill</button>` : ''}
               </div>
             </div>
             ${canEdit && allocations.length > 1 ? `
@@ -575,53 +660,71 @@ const Modals = {
   },
 
   /**
-   * Build allocation summary with inline validation
+   * Build allocation summary with progress bar, quick actions, and warnings
    */
   buildAllocationSummary(allocations, invoiceAmount) {
-    // Only count allocations that have a cost code selected
-    const validAllocations = (allocations || []).filter(a => a.cost_code_id);
-    const total = validAllocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const allAllocations = allocations || [];
+    const total = allAllocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
     const amount = parseFloat(invoiceAmount || 0);
     const diff = amount - total;
     const balanced = Math.abs(diff) < 0.01;
     const isOver = diff < -0.01;
     const isUnder = diff > 0.01;
-    const hasAllocations = validAllocations.length > 0;
+    const hasAllocations = allAllocations.length > 0;
 
     // Calculate percentage for progress bar
     const percentage = amount > 0 ? Math.min((total / amount) * 100, 100) : 0;
 
     // Determine status
     let statusClass = 'pending';
-    if (balanced) statusClass = 'balanced';
-    else if (isOver) statusClass = 'over';
-    else if (hasAllocations) statusClass = 'partial';
+    let statusIcon = '○';
+    let statusText = 'No allocations';
+    if (balanced) {
+      statusClass = 'balanced';
+      statusIcon = '✓';
+      statusText = 'Fully allocated';
+    } else if (isOver) {
+      statusClass = 'over';
+      statusIcon = '✗';
+      statusText = 'Over-allocated';
+    } else if (hasAllocations && total > 0) {
+      statusClass = 'partial';
+      statusIcon = '◐';
+      statusText = 'Partial';
+    }
+
+    // Check if we're in read-only mode
+    const isReadOnly = this.currentInvoice?.status === 'paid' ||
+      (['ready_for_approval', 'approved', 'in_draw', 'needs_approval'].includes(this.currentInvoice?.status) && !this.isEditMode);
 
     return `
       <div class="allocation-summary-card ${statusClass}">
-        <div class="summary-amounts">
-          <div class="summary-amount-item">
-            <span class="summary-label">Invoice Total</span>
-            <span class="summary-value">${window.Validation?.formatCurrency(amount)}</span>
-          </div>
-          <div class="summary-amount-item">
-            <span class="summary-label">Allocated</span>
-            <span class="summary-value ${statusClass}">${window.Validation?.formatCurrency(total)}</span>
-          </div>
-          ${isUnder || isOver ? `
-          <div class="summary-amount-item">
-            <span class="summary-label">${isOver ? 'Over by' : 'Remaining'}</span>
-            <span class="summary-value ${isOver ? 'over' : ''}">${window.Validation?.formatCurrency(Math.abs(diff))}</span>
-          </div>
+        <div class="summary-header">
+          <span class="status-indicator ${statusClass}">${statusIcon} ${statusText}</span>
+          ${!isReadOnly && hasAllocations && allAllocations.length > 1 ? `
+            <button type="button" class="btn btn-xs btn-outline" onclick="Modals.splitEvenly()" title="Divide total evenly across all lines">
+              ⚖ Split Evenly
+            </button>
           ` : ''}
         </div>
-        <div class="summary-progress">
-          <div class="progress-bar">
-            <div class="progress-fill ${statusClass}" style="width: ${percentage}%"></div>
+        <div class="summary-progress-row">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar">
+              <div class="progress-fill ${statusClass}" style="width: ${percentage}%"></div>
+            </div>
           </div>
-          <span class="progress-label">${Math.round(percentage)}% allocated</span>
+          <span class="progress-amount">${window.Validation?.formatCurrency(total)} / ${window.Validation?.formatCurrency(amount)}</span>
         </div>
-        ${isOver ? `<div class="allocation-error">Cannot approve — allocations exceed invoice total</div>` : ''}
+        ${isUnder ? `
+          <div class="allocation-warning">
+            ⚠️ ${window.Validation?.formatCurrency(diff)} unallocated — will be partial approval
+          </div>
+        ` : ''}
+        ${isOver ? `
+          <div class="allocation-error">
+            ✗ Over by ${window.Validation?.formatCurrency(Math.abs(diff))} — reduce to approve
+          </div>
+        ` : ''}
       </div>
     `;
   },
@@ -827,7 +930,7 @@ const Modals = {
     // Process activity log - filter out noise
     if (activity && activity.length) {
       // Status actions we care about (not "edited" which is redundant)
-      const statusActions = ['uploaded', 'needs_approval', 'approved', 'denied', 'paid', 'added_to_draw', 'removed_from_draw'];
+      const statusActions = ['uploaded', 'needs_review', 'ready_for_approval', 'needs_approval', 'approved', 'denied', 'paid', 'added_to_draw', 'removed_from_draw'];
 
       activity.forEach(a => {
         const action = a.action || 'note';
@@ -903,20 +1006,20 @@ const Modals = {
 
   /**
    * Build status pipeline showing invoice workflow stages
-   * Flow: Received → Needs Approval → Approved → In Draw (final)
+   * Flow: Needs Review → Ready for Approval → Approved → In Draw (final)
    * Note: "Paid" (to vendor) is separate - can happen anytime after approval
    */
   buildStatusPipeline(currentStatus) {
     const stages = [
-      { id: 'received', label: 'Received', icon: '📥' },
-      { id: 'needs_approval', label: 'Review', icon: '👁️' },
+      { id: 'needs_review', label: 'Needs Review', icon: '📥' },
+      { id: 'ready_for_approval', label: 'Ready for Approval', icon: '👁️' },
       { id: 'approved', label: 'Approved', icon: '✓' },
       { id: 'in_draw', label: 'In Draw', icon: '📋' }
     ];
 
     // Map 'paid' status to 'in_draw' for pipeline purposes (paid is archived/complete)
     const effectiveStatus = currentStatus === 'paid' ? 'in_draw' : currentStatus;
-    const statusOrder = ['received', 'needs_approval', 'approved', 'in_draw'];
+    const statusOrder = ['needs_review', 'ready_for_approval', 'approved', 'in_draw'];
     const currentIndex = statusOrder.indexOf(effectiveStatus);
 
     return stages.map((stage, index) => {
@@ -947,7 +1050,9 @@ const Modals = {
   getActivityIcon(action) {
     const icons = {
       'uploaded': '📥',
-      'needs_approval': '🏷️',
+      'needs_review': '📝',
+      'ready_for_approval': '🏷️',
+      'needs_approval': '🏷️', // Legacy
       'approved': '✅',
       'denied': '❌',
       'paid': '💰',
@@ -967,7 +1072,9 @@ const Modals = {
   formatActivityAction(action) {
     const labels = {
       'uploaded': 'Uploaded',
-      'needs_approval': 'Needs Approval',
+      'needs_review': 'Needs Review',
+      'ready_for_approval': 'Ready for Approval',
+      'needs_approval': 'Ready for Approval', // Legacy
       'approved': 'Approved',
       'denied': 'Denied',
       'paid': 'Marked as paid',
@@ -1003,9 +1110,9 @@ const Modals = {
 
   /**
    * Build status-based action buttons for the footer
-   * received → Submit | Deny | Delete
-   * needs_approval → Approve | Save | Deny | Close Out (if partial)
-   * approved → Add to Draw | Unapprove | Save | Close Out (if partial)
+   * needs_review → Submit for Approval | Save | Delete (accountant full edit)
+   * ready_for_approval → Approve | Deny | Unlock to Edit (PM review, read-only)
+   * approved → Add to Draw | Send Back | Unlock to Edit | Close Out (if partial)
    * in_draw → Remove from Draw (view only)
    * paid → View only
    * denied → Resubmit | Save | Delete
@@ -1030,27 +1137,40 @@ const Modals = {
     buttons.push(`<button type="button" class="btn btn-secondary" onclick="console.log('[MODALS] Cancel clicked'); Modals.closeActiveModal()">Cancel</button>`);
 
     switch (status) {
-      case 'received':
-        // New invoice - needs coding
+      case 'needs_review':
+        // Accountant review - full editing, job optional
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
         buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice(true)">Save</button>`);
-        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveAndSubmit()">Submit</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveAndSubmit()">Submit for Approval</button>`);
         break;
 
-      case 'needs_approval':
-        // PM Review - view only, can only approve or deny (sends back to accountant)
+      case 'ready_for_approval':
+        // PM Review - read-only by default, can unlock to edit
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="Modals.denyInvoice()">Deny</button>`);
+        if (this.isEditMode) {
+          // Unlocked - show Save button
+          buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
+        } else {
+          // Locked - show Unlock button
+          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
+        }
         buttons.push(`<button type="button" class="btn btn-success" onclick="Modals.approveInvoice()">Approve</button>`);
         break;
 
       case 'approved':
-        // Approved - waiting to be added to a draw (legacy, new flow auto-adds on approval)
-        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.unapproveInvoice()">Unapprove</button>`);
+        // Approved - waiting to be added to a draw
+        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.unapproveInvoice()">Send Back</button>`);
+        if (this.isEditMode) {
+          // Unlocked - show Save button
+          buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
+        } else {
+          // Locked - show Unlock button
+          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
+        }
         // Show Close Out button if there's a remaining balance to write off
         if (hasRemainingBalance) {
           buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.showCloseOutDialog()">Close Out</button>`);
         }
-        buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
         buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.addToDraw()">Add to Draw</button>`);
         break;
 
@@ -1066,6 +1186,24 @@ const Modals = {
         buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.resubmitInvoice()">Resubmit</button>`);
         break;
 
+      // Legacy status support
+      case 'received':
+        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
+        buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice(true)">Save</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveAndSubmit()">Submit</button>`);
+        break;
+
+      case 'needs_approval':
+        // Legacy - same as ready_for_approval
+        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="Modals.denyInvoice()">Deny</button>`);
+        if (this.isEditMode) {
+          buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
+        } else {
+          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
+        }
+        buttons.push(`<button type="button" class="btn btn-success" onclick="Modals.approveInvoice()">Approve</button>`);
+        break;
+
       default:
         // Unknown status - just save
         buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveInvoice()">Save</button>`);
@@ -1075,24 +1213,15 @@ const Modals = {
   },
 
   /**
-   * Add a new allocation row - auto-fills with remaining unallocated amount
+   * Add a new allocation row - starts at $0, first line auto-balances when you enter amount
    */
   addAllocation() {
-    const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
-    const alreadyBilled = Math.max(
-      parseFloat(this.currentInvoice?.billed_amount || 0),
-      parseFloat(this.currentInvoice?.paid_amount || 0)
-    );
-    const maxAllocatable = invoiceAmount - alreadyBilled;
-
-    // Calculate remaining unallocated
-    const currentAllocated = this.currentAllocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
-    const remaining = Math.max(0, maxAllocatable - currentAllocated);
-
+    // Add new line with $0 - when user enters amount, first line auto-balances
     this.currentAllocations.push({
       cost_code_id: null,
-      amount: remaining,
-      notes: ''
+      amount: 0,
+      notes: '',
+      change_order_id: null
     });
     this.refreshAllocationsUI();
     this.markDirty();
@@ -1100,11 +1229,44 @@ const Modals = {
 
   /**
    * Remove an allocation row
+   * Does NOT auto-inflate first line (allows partial approvals)
    */
   removeAllocation(index) {
     this.currentAllocations.splice(index, 1);
     this.refreshAllocationsUI();
     this.markDirty();
+  },
+
+  /**
+   * Split total evenly across all allocation lines
+   */
+  splitEvenly() {
+    if (this.currentAllocations.length < 2) return;
+
+    const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
+    const alreadyBilled = Math.max(
+      parseFloat(this.currentInvoice?.billed_amount || 0),
+      parseFloat(this.currentInvoice?.paid_amount || 0)
+    );
+    const maxAllocatable = invoiceAmount - alreadyBilled;
+
+    // Divide evenly
+    const perLine = Math.floor((maxAllocatable / this.currentAllocations.length) * 100) / 100;
+    const remainder = Math.round((maxAllocatable - (perLine * this.currentAllocations.length)) * 100) / 100;
+
+    this.currentAllocations.forEach((alloc, i) => {
+      // Give remainder to first line
+      alloc.amount = i === 0 ? perLine + remainder : perLine;
+    });
+
+    this.refreshAllocationsUI();
+    this.markDirty();
+
+    // Flash all amount fields to show they changed
+    document.querySelectorAll('#allocations-container .amount-input').forEach(input => {
+      input.classList.add('highlight-flash');
+      setTimeout(() => input.classList.remove('highlight-flash'), 600);
+    });
   },
 
   /**
@@ -1135,6 +1297,20 @@ const Modals = {
     this.currentAllocations[index].amount = remaining;
     this.refreshAllocationsUI();
     this.markDirty();
+
+    // Highlight the filled field
+    const container = document.getElementById('allocations-container');
+    if (container) {
+      const allLineItems = container.querySelectorAll('.allocation-line-item');
+      const lineItem = allLineItems[index];
+      if (lineItem) {
+        const input = lineItem.querySelector('.amount-input');
+        if (input) {
+          input.classList.add('highlight-flash');
+          setTimeout(() => input.classList.remove('highlight-flash'), 600);
+        }
+      }
+    }
   },
 
   // Alias for fillRemaining
@@ -1168,17 +1344,86 @@ const Modals = {
 
   /**
    * Update an allocation value
+   * Auto-balances to PREVENT over-allocation (but allows under-allocation for partial approvals)
+   * When you enter an amount that would push total over invoice amount, first line reduces to compensate
    */
   updateAllocation(index, field, value) {
     if (!this.currentAllocations[index]) return;
 
     if (field === 'amount') {
       value = window.Validation?.parseCurrency(value) || 0;
+
+      // Get max allocatable amount (invoice amount minus already billed)
+      const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
+      const alreadyBilled = Math.max(
+        parseFloat(this.currentInvoice?.billed_amount || 0),
+        parseFloat(this.currentInvoice?.paid_amount || 0)
+      );
+      const maxAllocatable = invoiceAmount - alreadyBilled;
+
+      // Update this allocation
+      this.currentAllocations[index].amount = value;
+
+      // Calculate new total
+      const newTotal = this.currentAllocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+      // Only auto-balance if we're OVER the max (prevent over-allocation)
+      // This allows partial approvals (under-allocation) while preventing going over
+      if (newTotal > maxAllocatable + 0.01 && index > 0 && this.currentAllocations.length > 1) {
+        // Sum all allocations except the first
+        const otherTotal = this.currentAllocations
+          .slice(1)
+          .reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+        // First line gets reduced to fit within max (but never negative)
+        const firstLineAmount = Math.max(0, maxAllocatable - otherTotal);
+        this.currentAllocations[0].amount = Math.round(firstLineAmount * 100) / 100;
+
+        // Update the first line's input field in the DOM and highlight it
+        const firstAmountInput = document.querySelector('#allocations-container .line-item:first-child .amount-input');
+        if (firstAmountInput) {
+          firstAmountInput.value = this.formatAmountInput(this.currentAllocations[0].amount);
+          // Flash highlight to show auto-adjustment
+          firstAmountInput.classList.add('highlight-flash');
+          setTimeout(() => firstAmountInput.classList.remove('highlight-flash'), 600);
+        }
+      }
+    } else {
+      this.currentAllocations[index][field] = value;
     }
 
-    this.currentAllocations[index][field] = value;
     this.refreshAllocationSummary();
     this.refreshBudgetStanding();
+    this.markDirty();
+  },
+
+  /**
+   * Update funding source for an allocation (No PO/CO, PO, or CO)
+   * Clears/sets appropriate IDs and re-renders the allocation line
+   */
+  updateFundingSource(index, sourceType) {
+    if (!this.currentAllocations[index]) return;
+
+    const alloc = this.currentAllocations[index];
+
+    // Clear all funding source references first
+    alloc.po_id = null;
+    alloc.po_line_item_id = null;
+    alloc.change_order_id = null;
+
+    // Set internal tracking for re-render
+    alloc._fundingSource = sourceType;
+
+    // Track if user explicitly chose "No PO/CO" (to override invoice-level PO default)
+    alloc._explicitBase = (sourceType === 'base');
+
+    // If switching to PO and invoice has a default PO, pre-select it
+    if (sourceType === 'po' && this.currentInvoice?.po_id) {
+      alloc.po_id = this.currentInvoice.po_id;
+    }
+
+    // Re-render just this allocation line to show correct secondary dropdown
+    this.refreshAllocationsUI();
     this.markDirty();
   },
 
@@ -1335,8 +1580,19 @@ const Modals = {
    * Refresh allocations UI
    */
   refreshAllocationsUI() {
-    const isArchived = this.currentInvoice?.status === 'paid';
-    const isReadOnly = isArchived || !this.isEditMode;
+    const invoice = this.currentInvoice;
+    const isArchived = invoice?.status === 'paid';
+
+    // Editable statuses - accountant can edit freely without unlocking
+    const editableStatuses = ['needs_review', 'received', 'denied'];
+    const isEditableStatus = editableStatuses.includes(invoice?.status);
+
+    // Locked statuses - require explicit unlock to edit
+    const lockedStatuses = ['ready_for_approval', 'approved', 'in_draw', 'paid', 'needs_approval'];
+    const isLockedStatus = lockedStatuses.includes(invoice?.status);
+
+    // Read-only if archived OR (locked status AND not in edit mode)
+    const isReadOnly = isArchived || (isLockedStatus && !this.isEditMode);
 
     const container = document.getElementById('allocations-container');
     if (container) {
@@ -1361,8 +1617,19 @@ const Modals = {
    * Initialize cost code pickers
    */
   async initCostCodePickers() {
-    const isArchived = this.currentInvoice?.status === 'paid';
-    const isReadOnly = isArchived || !this.isEditMode;
+    const invoice = this.currentInvoice;
+    const isArchived = invoice?.status === 'paid';
+
+    // Editable statuses - accountant can edit freely without unlocking
+    const editableStatuses = ['needs_review', 'received', 'denied'];
+    const isEditableStatus = editableStatuses.includes(invoice?.status);
+
+    // Locked statuses - require explicit unlock to edit
+    const lockedStatuses = ['ready_for_approval', 'approved', 'in_draw', 'paid', 'needs_approval'];
+    const isLockedStatus = lockedStatuses.includes(invoice?.status);
+
+    // Read-only if archived OR (locked status AND not in edit mode)
+    const isReadOnly = isArchived || (isLockedStatus && !this.isEditMode);
 
     // Initialize each picker
     document.querySelectorAll('.cc-picker-container').forEach(container => {
@@ -1508,17 +1775,17 @@ const Modals = {
   },
 
   /**
-   * Save and transition to 'needs_approval' status
+   * Save and transition to 'ready_for_approval' status
    */
   async saveAndSubmit() {
-    // Validate required fields for coding
-    const errors = this.validateForStatus('needs_approval');
+    // Validate required fields for submission
+    const errors = this.validateForStatus('ready_for_approval');
     if (errors.length > 0) {
       window.toasts?.error('Missing required fields', { details: errors.join(', ') });
       return;
     }
 
-    await this.saveWithStatus('needs_approval', 'Invoice submitted for approval');
+    await this.saveWithStatus('ready_for_approval', 'Invoice submitted for approval');
   },
 
   /**
@@ -2153,8 +2420,9 @@ const Modals = {
     if (!amount || amount <= 0) errors.push('Amount');
     if (!this.getFormValue('invoice_date')) errors.push('Invoice date');
 
-    // For 'needs_approval' status - need job and allocations
-    if (targetStatus === 'needs_approval') {
+    // For 'ready_for_approval' status - need job and allocations
+    // (This is when accountant submits to PM for approval)
+    if (targetStatus === 'ready_for_approval' || targetStatus === 'needs_approval') {
       if (!this.getFormValue('job_id')) errors.push('Job');
       if (!this.currentAllocations?.length || !this.currentAllocations.some(a => a.cost_code_id)) {
         errors.push('At least one cost code allocation');
@@ -2665,9 +2933,19 @@ const Modals = {
    * Populate dropdowns (jobs, vendors, POs) using searchable pickers
    */
   async populateDropdowns() {
-    const isArchived = this.currentInvoice?.status === 'paid';
-    // Pickers disabled when not in edit mode or archived
-    const pickersDisabled = isArchived || !this.isEditMode;
+    const invoice = this.currentInvoice;
+    const isArchived = invoice?.status === 'paid';
+
+    // Editable statuses - accountant can edit freely without unlocking
+    const editableStatuses = ['needs_review', 'received', 'denied'];
+    const isEditableStatus = editableStatuses.includes(invoice?.status);
+
+    // Locked statuses - require explicit unlock to edit
+    const lockedStatuses = ['ready_for_approval', 'approved', 'in_draw', 'paid', 'needs_approval'];
+    const isLockedStatus = lockedStatuses.includes(invoice?.status);
+
+    // Pickers enabled if: editable status OR (locked status AND in edit mode)
+    const pickersDisabled = isArchived || (isLockedStatus && !this.isEditMode);
 
     try {
       // Initialize Job picker
@@ -2714,9 +2992,41 @@ const Modals = {
           disabled: pickersDisabled,
           jobId: this.currentInvoice?.job_id || null,
           onChange: async (poId) => {
+            const oldPoId = this.currentInvoice?.po_id;
             document.getElementById('edit-po').value = poId || '';
+
+            // Update currentInvoice so allocations can use it as default
+            if (this.currentInvoice) {
+              this.currentInvoice.po_id = poId || null;
+            }
+
+            // Update allocations that were using the old invoice-level PO default
+            // (those without explicit _fundingSource set and not explicitly set to base)
+            if (this.currentAllocations) {
+              for (const alloc of this.currentAllocations) {
+                // Skip allocations with explicit funding source choices
+                if (alloc._explicitBase || alloc._fundingSource === 'co' || alloc.change_order_id) {
+                  continue;
+                }
+                // Update allocations that were using old PO or had no explicit PO
+                if (alloc.po_id === oldPoId || (!alloc.po_id && !alloc._fundingSource)) {
+                  alloc.po_id = poId || null;
+                  alloc.po_line_item_id = null; // Reset line item since PO changed
+                  if (poId) {
+                    alloc._fundingSource = 'po';
+                  } else {
+                    alloc._fundingSource = null; // Will default to base
+                  }
+                }
+              }
+            }
+
             // Fetch PO line items when PO changes
             await this.fetchPOLineItems(poId);
+            // Fetch funding sources to update cached POs
+            if (this.currentInvoice?.job_id) {
+              await this.fetchFundingSources(this.currentInvoice.job_id);
+            }
             // Refresh allocations UI to show PO line item picker
             this.refreshAllocationsUI();
             this.markDirty();
@@ -2779,6 +3089,64 @@ const Modals = {
     } catch (err) {
       console.error('Failed to fetch PO line items:', err);
       this.currentPOLineItems = [];
+      return [];
+    }
+  },
+
+  /**
+   * Fetch all funding sources (POs and COs) for a job
+   * Used to populate allocation funding source dropdowns
+   */
+  async fetchFundingSources(jobId) {
+    if (!jobId) {
+      this.cachedPurchaseOrders = [];
+      this.cachedChangeOrders = [];
+      return { purchase_orders: [], change_orders: [] };
+    }
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/funding-sources`);
+      if (!response.ok) {
+        this.cachedPurchaseOrders = [];
+        this.cachedChangeOrders = [];
+        return { purchase_orders: [], change_orders: [] };
+      }
+      const data = await response.json();
+      this.cachedPurchaseOrders = data.purchase_orders || [];
+      this.cachedChangeOrders = data.change_orders || [];
+      return data;
+    } catch (err) {
+      console.error('Failed to fetch funding sources:', err);
+      this.cachedPurchaseOrders = [];
+      this.cachedChangeOrders = [];
+      return { purchase_orders: [], change_orders: [] };
+    }
+  },
+
+  /**
+   * Fetch approved change orders for a job (for allocation dropdown)
+   * Includes draft and pending COs too since work can be done before approval
+   */
+  async fetchJobChangeOrders(jobId) {
+    if (!jobId) {
+      this.cachedChangeOrders = [];
+      return [];
+    }
+    try {
+      // Fetch all non-rejected, non-closed COs - work can be coded before CO is approved
+      const response = await fetch(`/api/jobs/${jobId}/change-orders`);
+      if (!response.ok) {
+        this.cachedChangeOrders = [];
+        return [];
+      }
+      const allCOs = await response.json();
+      // Filter to show draft, pending_approval, and approved (not rejected or closed)
+      this.cachedChangeOrders = allCOs.filter(co =>
+        ['draft', 'pending_approval', 'approved'].includes(co.status)
+      );
+      return this.cachedChangeOrders;
+    } catch (err) {
+      console.error('Failed to fetch job change orders:', err);
+      this.cachedChangeOrders = [];
       return [];
     }
   },

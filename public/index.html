@@ -153,12 +153,13 @@
         </div>
 
         <div class="form-group">
-          <label>PDF Document *</label>
+          <label>Document *</label>
           <div class="file-drop-zone" id="dropZone">
-            <input type="file" id="pdfFileInput" accept="application/pdf">
+            <input type="file" id="pdfFileInput" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.tif,.heic,.doc,.docx,.xls,.xlsx,.csv,application/pdf,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
             <div class="drop-zone-content">
-              <div class="drop-icon">PDF</div>
-              <p>Click to select or drag PDF here</p>
+              <div class="drop-icon">📄</div>
+              <p>Click to select or drag file here</p>
+              <small style="color: var(--text-secondary);">PDF, Images (JPG, PNG), Word, Excel</small>
             </div>
           </div>
           <div id="selectedFileName" class="selected-file" style="display: none;"></div>
@@ -274,14 +275,21 @@
       dropZone.classList.remove('dragover');
       if (e.dataTransfer.files && e.dataTransfer.files[0]) {
         var file = e.dataTransfer.files[0];
-        if (file.type === 'application/pdf') {
+        // Accept PDFs, images, Word docs, and Excel files
+        var validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/tiff', 'image/heic',
+          'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'];
+        var validExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.tif', '.heic', '.doc', '.docx', '.xls', '.xlsx', '.csv'];
+        var ext = '.' + file.name.split('.').pop().toLowerCase();
+
+        if (validTypes.includes(file.type) || validExtensions.includes(ext)) {
           selectedFile = file;
           fileNameDiv.textContent = file.name;
           fileNameDiv.style.display = 'block';
           processBtn.disabled = false;
           console.log('File dropped:', file.name);
         } else {
-          showToast('Please select a PDF file', 'error');
+          showToast('Unsupported file type. Use PDF, images, Word, or Excel.', 'error');
         }
       }
     };
@@ -302,7 +310,7 @@
 
       try {
         var formData = new FormData();
-        formData.append('pdf', selectedFile);
+        formData.append('file', selectedFile);
         formData.append('uploaded_by', 'Jake Ross');
 
         var response = await fetch('/api/documents/process', {

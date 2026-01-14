@@ -142,13 +142,21 @@ function renderInvoiceList() {
     // Archive = paid only
     filtered = filtered.filter(inv => inv.status === 'paid');
   } else if (state.currentStatusFilter === 'approval') {
-    // "Invoicing" tab includes received, needs_approval, approved, and denied
-    // Sort: needs_approval first, then denied, then received, then approved
+    // "Invoicing" tab includes needs_review, ready_for_approval, approved, and denied
+    // Also support legacy statuses: received → needs_review, needs_approval → ready_for_approval
     filtered = filtered.filter(inv =>
-      inv.status === 'received' || inv.status === 'needs_approval' || inv.status === 'approved' || inv.status === 'denied'
+      inv.status === 'needs_review' || inv.status === 'ready_for_approval' ||
+      inv.status === 'approved' || inv.status === 'denied' ||
+      inv.status === 'received' || inv.status === 'needs_approval'
     );
-    const statusOrder = { 'needs_approval': 0, 'denied': 1, 'received': 2, 'approved': 3 };
-    filtered.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+    // Map legacy statuses for sorting
+    const statusOrder = {
+      'needs_review': 0, 'received': 0,  // Legacy received = needs_review
+      'ready_for_approval': 1, 'needs_approval': 1,  // Legacy needs_approval = ready_for_approval
+      'denied': 2,
+      'approved': 3
+    };
+    filtered.sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
   } else {
     // Specific status
     filtered = filtered.filter(inv => inv.status === state.currentStatusFilter);
@@ -182,48 +190,37 @@ function renderInvoiceList() {
 
   // For the Invoicing tab, render with group headers
   if (state.currentStatusFilter === 'approval') {
+    // Group invoices - include legacy statuses in their modern equivalents
     const groups = {
-      needs_approval: filtered.filter(inv => inv.status === 'needs_approval'),
+      needs_review: filtered.filter(inv => inv.status === 'needs_review' || inv.status === 'received'),
+      ready_for_approval: filtered.filter(inv => inv.status === 'ready_for_approval' || inv.status === 'needs_approval'),
       denied: filtered.filter(inv => inv.status === 'denied'),
-      received: filtered.filter(inv => inv.status === 'received'),
       approved: filtered.filter(inv => inv.status === 'approved')
     };
 
     let html = '';
 
-    // Handle "received" status invoices
-    if (groups.received.length > 0) {
-      // Split into matched (has job_id) and unmatched (no job_id)
-      const unmatchedInvoices = groups.received.filter(inv => !inv.job_id);
-      const matchedInvoices = groups.received.filter(inv => inv.job_id);
-
-      // Unassigned: Invoices with no job (only in All Jobs view)
-      if (!state.currentJobFilter && unmatchedInvoices.length > 0) {
-        html += `<div class="invoice-group-header unassigned-header">
-          <span>Unassigned</span>
-        </div>`;
-        html += unmatchedInvoices.map(inv => renderInvoiceCard(inv)).join('');
-      }
-
-      // Needs Review: AI-matched invoices needing verification (shows in both views)
-      if (matchedInvoices.length > 0) {
-        html += `<div class="invoice-group-header needs-review-header">
-          <span>Needs Review</span>
-        </div>`;
-        html += matchedInvoices.map(inv => renderInvoiceCard(inv)).join('');
-      }
+    // Needs Review: Only show in "All Jobs" view - this is the accountant's queue
+    if (!state.currentJobFilter && groups.needs_review.length > 0) {
+      html += `<div class="invoice-group-header needs-review-header">
+        <span>Needs Review</span>
+      </div>`;
+      html += groups.needs_review.map(inv => renderInvoiceCard(inv)).join('');
     }
 
-    if (groups.needs_approval.length > 0) {
-      html += '<div class="invoice-group-header">Ready for Approval</div>';
-      html += groups.needs_approval.map(inv => renderInvoiceCard(inv)).join('');
-    }
-
+    // Denied: Show in both views - needs correction
     if (groups.denied.length > 0) {
       html += '<div class="invoice-group-header denied-header">Denied - Needs Correction</div>';
       html += groups.denied.map(inv => renderInvoiceCard(inv)).join('');
     }
 
+    // Ready for Approval: PM reviews (shows in job view)
+    if (groups.ready_for_approval.length > 0) {
+      html += '<div class="invoice-group-header ready-for-approval-header">Ready for Approval</div>';
+      html += groups.ready_for_approval.map(inv => renderInvoiceCard(inv)).join('');
+    }
+
+    // Approved: Ready to be added to draws
     if (groups.approved.length > 0) {
       html += `<div class="invoice-group-header approved-header"><span>Approved - Ready for Draw</span></div>`;
       html += groups.approved.map(inv => renderInvoiceCard(inv)).join('');
@@ -251,6 +248,27 @@ function renderInvoiceCard(inv) {
       poInfo = `<span class="po-badge" title="PO #${inv.po.po_number}">${inv.po.po_number}</span>`;
     } else {
       poInfo = `<span class="po-badge no-po" title="No Purchase Order linked">No PO</span>`;
+    }
+
+    // Build cost code info from allocations
+    let costCodeInfo = '';
+    const allocations = inv.allocations || [];
+    if (allocations.length > 0) {
+      // Get unique cost codes with their info (dedupe by code)
+      const seenCodes = new Set();
+      const costCodes = allocations
+        .filter(a => a.cost_code && !seenCodes.has(a.cost_code.code) && seenCodes.add(a.cost_code.code))
+        .map(a => ({
+          code: a.cost_code.code,
+          name: a.cost_code.name
+        }));
+
+      // Show all cost codes as separate badges
+      if (costCodes.length > 0) {
+        costCodeInfo = costCodes.map(cc =>
+          `<span class="cost-code-badge" title="${cc.code} - ${cc.name}">${cc.code} ${cc.name}</span>`
+        ).join('');
+      }
     }
 
     // Calculate allocation info
@@ -320,6 +338,7 @@ function renderInvoiceCard(inv) {
           <span>#${inv.invoice_number || 'N/A'}</span>
           <span>${formatDate(inv.invoice_date)}</span>
           ${poInfo}
+          ${costCodeInfo}
           ${allocationInfo}
           ${drawBadge}
           ${paidToVendorBadge}
@@ -404,9 +423,9 @@ function renderInvoiceModal(invoice, activity, approvalContext = {}) {
   const infoPanel = document.getElementById('invoiceInfoPanel');
   const footer = document.getElementById('invoiceModalFooter');
 
-  // PDF Viewer - show original for needs_approval/received, stamped for approved+
+  // PDF Viewer - show original for needs_review/ready_for_approval, stamped for approved+
   if (invoice.pdf_url || invoice.pdf_stamped_url) {
-    const showOriginal = ['needs_approval', 'received'].includes(invoice.status);
+    const showOriginal = ['needs_review', 'ready_for_approval'].includes(invoice.status);
     const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
     pdfContainer.innerHTML = `<iframe src="${pdfUrl}"></iframe>`;
   } else {
@@ -568,20 +587,32 @@ function renderInvoiceModal(invoice, activity, approvalContext = {}) {
   `;
 
   // Footer buttons - based on status
-  const canEdit = ['received', 'needs_approval', 'approved'].includes(invoice.status);
-  const canApprove = invoice.status === 'needs_approval';
-  const canDelete = ['received', 'needs_approval'].includes(invoice.status);
+  // Locked statuses require "Unlock to Edit" button
+  const lockedStatuses = ['ready_for_approval', 'approved', 'in_draw', 'paid'];
+  const isLocked = lockedStatuses.includes(invoice.status);
+  const canEdit = ['needs_review', 'ready_for_approval', 'approved'].includes(invoice.status);
+  const canApprove = invoice.status === 'ready_for_approval';
+  const canSubmitForApproval = invoice.status === 'needs_review' && invoice.job_id && invoice.vendor_id;
+  const canDelete = ['needs_review', 'ready_for_approval'].includes(invoice.status);
   const canMarkPaid = ['approved', 'in_draw'].includes(invoice.status) && !invoice.paid_to_vendor;
   const canUnmarkPaid = invoice.paid_to_vendor;
 
   let buttons = [`<button class="btn btn-secondary" onclick="closeModal('invoiceModal')">Close</button>`];
 
   if (canEdit) {
-    buttons.push(`<button class="btn btn-primary" onclick="openEditModal('${invoice.id}')">Edit</button>`);
+    if (isLocked) {
+      buttons.push(`<button class="btn btn-outline-primary" onclick="openEditModal('${invoice.id}')">🔓 Unlock to Edit</button>`);
+    } else {
+      buttons.push(`<button class="btn btn-primary" onclick="openEditModal('${invoice.id}')">Edit</button>`);
+    }
   }
 
   if (canDelete) {
     buttons.push(`<button class="btn btn-danger" onclick="quickDelete('${invoice.id}')">Delete</button>`);
+  }
+
+  if (canSubmitForApproval) {
+    buttons.push(`<button class="btn btn-primary" onclick="submitForApproval('${invoice.id}')">Submit for Approval</button>`);
   }
 
   if (canApprove) {
@@ -649,6 +680,34 @@ async function approveInvoice(invoiceId) {
   } catch (err) {
     console.error('Failed to approve:', err);
     alert('Failed to approve invoice');
+  }
+}
+
+// Submit invoice for PM approval (needs_review -> ready_for_approval)
+async function submitForApproval(invoiceId) {
+  if (!confirm('Submit this invoice for PM approval?')) return;
+
+  try {
+    const res = await fetch(`/api/invoices/${invoiceId}/transition`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        new_status: 'ready_for_approval',
+        performed_by: 'Accountant'
+      })
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.message || 'Submit failed');
+    }
+
+    closeModal('invoiceModal');
+    loadInvoices();
+    window.toasts?.success('Invoice submitted for approval');
+  } catch (err) {
+    console.error('Failed to submit for approval:', err);
+    alert('Failed to submit invoice: ' + err.message);
   }
 }
 
@@ -1045,19 +1104,21 @@ function formatDateTime(dateStr) {
 }
 
 function formatStatus(status, invoice = null) {
-  // For 'received' status, label depends on whether invoice has a job
-  if (status === 'received') {
+  // For 'needs_review' or legacy 'received' status, label depends on whether invoice has a job
+  if (status === 'needs_review' || status === 'received') {
     if (invoice && invoice.job_id) {
-      return 'Review';  // AI-matched, needs review
+      return 'Needs Review';  // AI-matched, needs accountant review
     }
     return 'Unassigned';  // No job assigned
   }
 
   const labels = {
-    needs_approval: 'Ready',
+    ready_for_approval: 'Ready for Approval',
+    needs_approval: 'Ready for Approval',  // Legacy
     approved: 'Approved',
     in_draw: 'In Draw',
-    paid: 'Paid'
+    paid: 'Paid',
+    denied: 'Denied'
   };
   return labels[status] || status;
 }
@@ -1065,9 +1126,13 @@ function formatStatus(status, invoice = null) {
 function formatAction(action) {
   const labels = {
     uploaded: 'Uploaded',
-    needs_approval: 'Needs Approval',
+    needs_review: 'Needs Review',
+    ready_for_approval: 'Ready for Approval',
+    needs_approval: 'Ready for Approval', // Legacy
     approved: 'Approved',
     added_to_draw: 'Added to draw',
+    removed_from_draw: 'Removed from draw',
+    denied: 'Denied',
     paid: 'Paid'
   };
   return labels[action] || action;

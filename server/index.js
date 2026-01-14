@@ -9,7 +9,8 @@ const PID_FILE = path.join(__dirname, '..', 'server.pid');
 const { supabase, port } = require('../config');
 const { uploadPDF, uploadStampedPDF, downloadPDF } = require('./storage');
 const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid, stampPartiallyBilled } = require('./pdf-stamper');
-const { processInvoice, processDocument, processLienRelease, processMultiPageDocument, splitPDF, DOCUMENT_TYPES } = require('./ai-processor');
+const { processInvoice, processDocument, processLienRelease, processMultiPageDocument, splitPDF, DOCUMENT_TYPES, extractInvoiceFromImage, extractInvoiceFromText } = require('./ai-processor');
+const { convertDocument, isSupported, getSupportedExtensions, FILE_TYPES } = require('./document-converter');
 const standards = require('./standards');
 const aiLearning = require('./ai-learning');
 const ExcelJS = require('exceljs');
@@ -79,7 +80,37 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Multer for file uploads (memory storage)
-const upload = multer({ storage: multer.memoryStorage() });
+// Accept all document types for AI processing
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (req, file, cb) => {
+    // Allow all supported file types
+    const supportedMimes = [
+      // PDFs
+      'application/pdf',
+      // Images
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/tiff', 'image/heic', 'image/heif', 'image/bmp',
+      // Word documents
+      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      // Excel
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'
+    ];
+
+    if (supportedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      // Also check by extension as fallback
+      const ext = path.extname(file.originalname).toLowerCase();
+      const supportedExts = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.tif', '.heic', '.heif', '.bmp', '.doc', '.docx', '.xls', '.xlsx', '.csv'];
+      if (supportedExts.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`Unsupported file type. Supported: PDF, images (JPG, PNG, etc.), Word (.doc, .docx), Excel (.xls, .xlsx)`));
+      }
+    }
+  }
+});
 
 // ============================================================
 // ACTIVITY LOGGING HELPER
@@ -168,6 +199,58 @@ async function syncPOLineItemsOnAllocationChange(invoice, oldAllocations, newAll
   }
 }
 
+/**
+ * Update PO invoiced amounts when allocations are linked to POs.
+ * Groups allocations by PO and updates the PO's total invoiced amount.
+ */
+async function updatePOInvoicedAmounts(allocations) {
+  // Group allocations by PO
+  const byPO = {};
+  for (const alloc of allocations) {
+    if (!alloc.po_id) continue;
+    if (!byPO[alloc.po_id]) byPO[alloc.po_id] = 0;
+    byPO[alloc.po_id] += parseFloat(alloc.amount) || 0;
+  }
+
+  // Update each PO's line items
+  for (const [poId, totalAmount] of Object.entries(byPO)) {
+    // Also update PO line items if po_line_item_id is specified
+    const poAllocations = allocations.filter(a => a.po_id === poId);
+    await updatePOLineItemsForAllocations(poId, poAllocations, true);
+  }
+}
+
+/**
+ * Update CO invoiced amounts when allocations are linked to COs.
+ * Groups allocations by CO and updates the CO's invoiced_amount.
+ */
+async function updateCOInvoicedAmounts(allocations) {
+  // Group allocations by CO
+  const byCO = {};
+  for (const alloc of allocations) {
+    if (!alloc.change_order_id) continue;
+    if (!byCO[alloc.change_order_id]) byCO[alloc.change_order_id] = 0;
+    byCO[alloc.change_order_id] += parseFloat(alloc.amount) || 0;
+  }
+
+  // Recalculate total invoiced for each CO from all allocations
+  for (const coId of Object.keys(byCO)) {
+    const { data: allCOAllocations } = await supabase
+      .from('v2_invoice_allocations')
+      .select('amount')
+      .eq('change_order_id', coId);
+
+    const totalInvoiced = (allCOAllocations || []).reduce(
+      (sum, a) => sum + (parseFloat(a.amount) || 0), 0
+    );
+
+    await supabase
+      .from('v2_job_change_orders')
+      .update({ invoiced_amount: totalInvoiced })
+      .eq('id', coId);
+  }
+}
+
 // ============================================================
 // // OWNER DASHBOARD STATS (All Jobs)
 // ============================================================
@@ -180,8 +263,8 @@ app.get('/api/dashboard/stats', async (req, res) => {
       .select('status, amount, job_id');
 
     const stats = {
-      received: { count: 0, amount: 0 },
-      needs_approval: { count: 0, amount: 0 },
+      needs_review: { count: 0, amount: 0 },
+      ready_for_approval: { count: 0, amount: 0 },
       approved: { count: 0, amount: 0 },
       in_draw: { count: 0, amount: 0 },
       paid: { count: 0, amount: 0 }
@@ -249,8 +332,8 @@ app.get('/api/dashboard/stats', async (req, res) => {
       jobs: jobSummaries,
       total_contract,
       alerts: {
-        needsCoding: stats.received.count,
-        needsApproval: stats.needs_approval.count,
+        needsReview: stats.needs_review.count,
+        readyForApproval: stats.ready_for_approval.count,
         inDraws: drawStats.submitted.count
       }
     });
@@ -2061,8 +2144,10 @@ app.get('/api/invoices/:id', async (req, res) => {
         job:v2_jobs(id, name, address),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
-          id, amount, notes, job_id, po_line_item_id,
-          cost_code:v2_cost_codes(id, code, name, category)
+          id, amount, notes, job_id, po_id, po_line_item_id, change_order_id,
+          cost_code:v2_cost_codes(id, code, name, category),
+          purchase_order:v2_purchase_orders(id, po_number),
+          change_order:v2_job_change_orders(id, change_order_number, title)
         ),
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
       `)
@@ -2224,13 +2309,72 @@ app.get('/api/invoices/:id/allocations', async (req, res) => {
         notes,
         cost_code_id,
         job_id,
-        cost_code:v2_cost_codes(id, code, name, category)
+        po_id,
+        po_line_item_id,
+        change_order_id,
+        cost_code:v2_cost_codes(id, code, name, category),
+        purchase_order:v2_purchase_orders(id, po_number),
+        change_order:v2_job_change_orders(id, change_order_number, title)
       `)
       .eq('invoice_id', req.params.id);
 
     if (error) throw error;
     res.json(data || []);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get available funding sources (POs and COs) for a job
+app.get('/api/jobs/:jobId/funding-sources', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+
+    // Get open/active POs for the job
+    const { data: pos, error: poError } = await supabase
+      .from('v2_purchase_orders')
+      .select(`
+        id, po_number, vendor_id, total_amount, status,
+        vendor:v2_vendors(id, name),
+        line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount, description,
+          cost_code:v2_cost_codes(id, code, name)
+        )
+      `)
+      .eq('job_id', jobId)
+      .in('status', ['open', 'active'])
+      .is('deleted_at', null)
+      .order('po_number');
+
+    if (poError) throw poError;
+
+    // Get approved COs for the job
+    const { data: cos, error: coError } = await supabase
+      .from('v2_job_change_orders')
+      .select('id, change_order_number, title, amount, invoiced_amount, status')
+      .eq('job_id', jobId)
+      .in('status', ['approved', 'pending_approval'])
+      .order('change_order_number');
+
+    if (coError) throw coError;
+
+    // Calculate remaining amounts
+    const posWithRemaining = (pos || []).map(po => ({
+      ...po,
+      invoiced_total: (po.line_items || []).reduce((sum, li) => sum + parseFloat(li.invoiced_amount || 0), 0),
+      remaining: parseFloat(po.total_amount || 0) - (po.line_items || []).reduce((sum, li) => sum + parseFloat(li.invoiced_amount || 0), 0)
+    }));
+
+    const cosWithRemaining = (cos || []).map(co => ({
+      ...co,
+      remaining: parseFloat(co.amount || 0) - parseFloat(co.invoiced_amount || 0)
+    }));
+
+    res.json({
+      purchase_orders: posWithRemaining,
+      change_orders: cosWithRemaining
+    });
+  } catch (err) {
+    console.error('Error getting funding sources:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2260,7 +2404,7 @@ app.post('/api/invoices/upload', upload.single('pdf'), async (req, res) => {
         amount,
         notes: notes || null,
         pdf_url,
-        status: 'received'
+        status: 'needs_review'
       })
       .select()
       .single();
@@ -2278,18 +2422,169 @@ app.post('/api/invoices/upload', upload.single('pdf'), async (req, res) => {
   }
 });
 
-// AI-powered invoice processing
-app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
+// AI-powered invoice processing - accepts PDF, images, Word, Excel
+app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No PDF file provided' });
+      return res.status(400).json({
+        error: 'No file provided',
+        supported: 'PDF, images (JPG, PNG, etc.), Word (.doc, .docx), Excel (.xls, .xlsx)'
+      });
     }
 
     const originalFilename = req.file.originalname;
-    const pdfBuffer = req.file.buffer;
+    const fileBuffer = req.file.buffer;
+    const mimetype = req.file.mimetype;
 
-    // Process with AI
-    const result = await processInvoice(pdfBuffer, originalFilename);
+    console.log(`[Upload] Processing: ${originalFilename} (${mimetype}, ${fileBuffer.length} bytes)`);
+
+    // Convert document to processable format
+    const converted = await convertDocument(fileBuffer, originalFilename, mimetype);
+
+    if (!converted.success) {
+      return res.status(400).json({
+        error: 'Document conversion failed',
+        details: converted.error,
+        supported: getSupportedExtensions()
+      });
+    }
+
+    console.log(`[Upload] Converted: ${converted.fileType}`);
+
+    // Process based on document type
+    let result;
+
+    if (converted.fileType === 'PDF') {
+      // Standard PDF processing
+      result = await processInvoice(fileBuffer, originalFilename);
+    } else if (converted.fileType === 'IMAGE') {
+      // Image processing via Claude Vision
+      console.log(`[Upload] Using Claude Vision for image: ${converted.data.mediaType}`);
+
+      // Extract invoice data using vision
+      const extracted = await extractInvoiceFromImage(
+        converted.data.base64,
+        converted.data.mediaType,
+        originalFilename
+      );
+
+      // Build result similar to processInvoice output
+      result = {
+        success: true,
+        ai_processed: true,
+        extracted: {
+          vendor: extracted.vendor,
+          invoiceNumber: extracted.invoiceNumber,
+          invoiceDate: extracted.invoiceDate,
+          dueDate: extracted.dueDate,
+          totalAmount: extracted.amounts?.totalAmount,
+          lineItems: extracted.lineItems || [],
+          job: extracted.job,
+          extractionConfidence: extracted.extractionConfidence
+        },
+        ai_extracted_data: {
+          parsed_vendor_name: extracted.vendor?.companyName,
+          parsed_amount: extracted.amounts?.totalAmount,
+          parsed_invoice_number: extracted.invoiceNumber,
+          parsed_date: extracted.invoiceDate,
+          source_type: 'image',
+          original_format: converted.data.originalFormat
+        },
+        ai_confidence: extracted.extractionConfidence || {},
+        messages: ['Processed image document with Claude Vision'],
+        needs_review: true,
+        review_flags: ['image_source']
+      };
+
+      // Run matching logic (vendor, job, PO)
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates } = require('./ai-processor');
+
+      if (extracted.vendor?.companyName) {
+        result.vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
+      }
+      if (extracted.job) {
+        result.matchedJob = await findMatchingJob(extracted.job);
+      }
+      if (result.vendor && result.matchedJob) {
+        result.po = await findOrCreatePO(result.vendor, result.matchedJob, result.extracted.totalAmount, extracted.job?.poNumber);
+      }
+
+      // Generate standardized filename
+      const vendorName = result.vendor?.name || extracted.vendor?.companyName || 'Unknown';
+      const jobName = result.matchedJob?.name || 'Unassigned';
+      const dateStr = extracted.invoiceDate || new Date().toISOString().split('T')[0];
+      result.standardizedFilename = standards.generateInvoiceFilename(jobName, vendorName, dateStr);
+
+      // Check for duplicates
+      if (result.vendor?.id && extracted.invoiceNumber) {
+        const dupes = await checkForDuplicates(result.vendor.id, extracted.invoiceNumber, result.extracted.totalAmount);
+        result.suggestions = { possible_duplicates: dupes };
+      }
+    } else if (converted.fileType === 'WORD' || converted.fileType === 'EXCEL') {
+      // Text-based document processing
+      console.log(`[Upload] Processing ${converted.fileType} document as text`);
+
+      const documentText = converted.data.text;
+      const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
+
+      // Build result similar to processInvoice output
+      result = {
+        success: true,
+        ai_processed: true,
+        extracted: {
+          vendor: extracted.vendor,
+          invoiceNumber: extracted.invoiceNumber,
+          invoiceDate: extracted.invoiceDate,
+          dueDate: extracted.dueDate,
+          totalAmount: extracted.amounts?.totalAmount,
+          lineItems: extracted.lineItems || [],
+          job: extracted.job,
+          extractionConfidence: extracted.extractionConfidence
+        },
+        ai_extracted_data: {
+          parsed_vendor_name: extracted.vendor?.companyName,
+          parsed_amount: extracted.amounts?.totalAmount,
+          parsed_invoice_number: extracted.invoiceNumber,
+          parsed_date: extracted.invoiceDate,
+          source_type: converted.fileType.toLowerCase(),
+          raw_text: documentText?.substring(0, 2000)
+        },
+        ai_confidence: extracted.extractionConfidence || {},
+        messages: [`Processed ${converted.fileType} document`],
+        needs_review: true,
+        review_flags: [`${converted.fileType.toLowerCase()}_source`]
+      };
+
+      // Run matching logic
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates } = require('./ai-processor');
+
+      if (extracted.vendor?.companyName) {
+        result.vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
+      }
+      if (extracted.job) {
+        result.matchedJob = await findMatchingJob(extracted.job);
+      }
+      if (result.vendor && result.matchedJob) {
+        result.po = await findOrCreatePO(result.vendor, result.matchedJob, result.extracted.totalAmount, extracted.job?.poNumber);
+      }
+
+      // Generate standardized filename
+      const vendorName = result.vendor?.name || extracted.vendor?.companyName || 'Unknown';
+      const jobName = result.matchedJob?.name || 'Unassigned';
+      const dateStr = extracted.invoiceDate || new Date().toISOString().split('T')[0];
+      result.standardizedFilename = standards.generateInvoiceFilename(jobName, vendorName, dateStr);
+
+      // Check for duplicates
+      if (result.vendor?.id && extracted.invoiceNumber) {
+        const dupes = await checkForDuplicates(result.vendor.id, extracted.invoiceNumber, result.extracted.totalAmount);
+        result.suggestions = { possible_duplicates: dupes };
+      }
+    } else {
+      return res.status(400).json({
+        error: 'Unsupported file type',
+        fileType: converted.fileType
+      });
+    }
 
     if (!result.success) {
       return res.status(422).json({
@@ -2318,16 +2613,20 @@ app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
     }
 
     // Upload PDF with standardized name
+    // Use converted PDF for images, or original buffer for PDFs
     let pdf_url = null;
     const jobId = result.matchedJob?.id;
     const storagePath = result.standardizedFilename;
 
+    // Determine which buffer to upload (converted PDF for images, original for PDFs)
+    const bufferToUpload = converted.pdfBuffer || fileBuffer;
+
     if (jobId) {
-      const uploadResult = await uploadPDF(pdfBuffer, storagePath, jobId);
+      const uploadResult = await uploadPDF(bufferToUpload, storagePath, jobId);
       pdf_url = uploadResult.url;
     } else {
       // Upload to unassigned folder if no job match
-      const uploadResult = await uploadPDF(pdfBuffer, `unassigned/${storagePath}`, null);
+      const uploadResult = await uploadPDF(bufferToUpload, `unassigned/${storagePath}`, null);
       pdf_url = uploadResult.url;
     }
 
@@ -2343,7 +2642,7 @@ app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
         due_date: result.extracted.dueDate || null,
         amount: result.extracted.totalAmount || 0,
         pdf_url,
-        status: 'received',
+        status: 'needs_review',
         notes: result.messages.join('\n'),
         // AI metadata for confidence badges
         ai_processed: result.ai_processed || false,
@@ -2442,20 +2741,168 @@ app.post('/api/invoices/process', upload.single('pdf'), async (req, res) => {
  * Universal document processor - classifies and routes any document type
  * Supports: invoices, lien releases, POs, quotes, change orders, insurance, contracts
  */
-app.post('/api/documents/process', upload.single('pdf'), async (req, res) => {
+app.post('/api/documents/process', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No PDF file provided' });
+      return res.status(400).json({
+        error: 'No file provided',
+        supported: 'PDF, images (JPG, PNG, etc.), Word (.doc, .docx), Excel (.xls, .xlsx)'
+      });
     }
 
     const originalFilename = req.file.originalname;
-    const pdfBuffer = req.file.buffer;
+    const fileBuffer = req.file.buffer;
+    const mimetype = req.file.mimetype;
     const uploadedBy = req.body.uploaded_by || 'System';
 
-    console.log(`[Document Processor] Processing: ${originalFilename}`);
+    console.log(`[Document Processor] Processing: ${originalFilename} (${mimetype})`);
 
-    // Process document with AI classification and routing
-    const result = await processDocument(pdfBuffer, originalFilename, { uploadedBy });
+    // Convert document to processable format
+    const converted = await convertDocument(fileBuffer, originalFilename, mimetype);
+
+    if (!converted.success) {
+      return res.status(400).json({
+        error: 'Document conversion failed',
+        details: converted.error,
+        supported: getSupportedExtensions()
+      });
+    }
+
+    // Use converted PDF for storage, original buffer for PDF files
+    const pdfBuffer = converted.pdfBuffer || fileBuffer;
+
+    // For non-PDF files, we need special handling
+    let result;
+
+    if (converted.fileType === 'PDF') {
+      // Standard PDF processing with document classification
+      result = await processDocument(pdfBuffer, originalFilename, { uploadedBy });
+    } else if (converted.fileType === 'IMAGE') {
+      // Image processing - extract invoice data using vision
+      console.log(`[Document Processor] Using Claude Vision for image`);
+
+      const extracted = await extractInvoiceFromImage(
+        converted.data.base64,
+        converted.data.mediaType,
+        originalFilename
+      );
+
+      // Build result similar to processDocument output
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates } = require('./ai-processor');
+
+      let vendor = null;
+      let matchedJob = null;
+      let po = null;
+
+      if (extracted.vendor?.companyName) {
+        vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
+      }
+      if (extracted.job) {
+        matchedJob = await findMatchingJob(extracted.job);
+      }
+      if (vendor && matchedJob) {
+        po = await findOrCreatePO(vendor, matchedJob, extracted.amounts?.totalAmount, extracted.job?.poNumber);
+      }
+
+      result = {
+        success: true,
+        documentType: DOCUMENT_TYPES.INVOICE,
+        classification: { type: 'invoice', confidence: 0.9, reasoning: 'Image processed as invoice' },
+        data: {
+          success: true,
+          extracted: {
+            vendor: extracted.vendor,
+            invoiceNumber: extracted.invoiceNumber,
+            invoiceDate: extracted.invoiceDate,
+            dueDate: extracted.dueDate,
+            totalAmount: extracted.amounts?.totalAmount,
+            lineItems: extracted.lineItems || []
+          },
+          vendor,
+          matchedJob,
+          po,
+          ai_confidence: extracted.extractionConfidence || {},
+          needs_review: true,
+          review_flags: ['image_source'],
+          standardizedFilename: standards.generateInvoiceFilename(
+            matchedJob?.name || 'Unassigned',
+            vendor?.name || extracted.vendor?.companyName || 'Unknown',
+            extracted.invoiceDate || new Date().toISOString().split('T')[0]
+          ),
+          suggestions: {}
+        },
+        messages: ['Processed image document with Claude Vision']
+      };
+
+      // Check for duplicates
+      if (vendor?.id && extracted.invoiceNumber) {
+        const dupes = await checkForDuplicates(vendor.id, extracted.invoiceNumber, extracted.amounts?.totalAmount);
+        result.data.suggestions.possible_duplicates = dupes;
+      }
+    } else if (converted.fileType === 'WORD' || converted.fileType === 'EXCEL') {
+      // Text-based document processing
+      console.log(`[Document Processor] Processing ${converted.fileType} as text`);
+
+      const documentText = converted.data.text;
+      const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
+
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates } = require('./ai-processor');
+
+      let vendor = null;
+      let matchedJob = null;
+      let po = null;
+
+      if (extracted.vendor?.companyName) {
+        vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
+      }
+      if (extracted.job) {
+        matchedJob = await findMatchingJob(extracted.job);
+      }
+      if (vendor && matchedJob) {
+        po = await findOrCreatePO(vendor, matchedJob, extracted.amounts?.totalAmount, extracted.job?.poNumber);
+      }
+
+      result = {
+        success: true,
+        documentType: DOCUMENT_TYPES.INVOICE,
+        classification: { type: 'invoice', confidence: 0.8, reasoning: `${converted.fileType} processed as invoice` },
+        data: {
+          success: true,
+          extracted: {
+            vendor: extracted.vendor,
+            invoiceNumber: extracted.invoiceNumber,
+            invoiceDate: extracted.invoiceDate,
+            dueDate: extracted.dueDate,
+            totalAmount: extracted.amounts?.totalAmount,
+            lineItems: extracted.lineItems || []
+          },
+          vendor,
+          matchedJob,
+          po,
+          ai_confidence: extracted.extractionConfidence || {},
+          needs_review: true,
+          review_flags: [`${converted.fileType.toLowerCase()}_source`],
+          standardizedFilename: standards.generateInvoiceFilename(
+            matchedJob?.name || 'Unassigned',
+            vendor?.name || extracted.vendor?.companyName || 'Unknown',
+            extracted.invoiceDate || new Date().toISOString().split('T')[0]
+          ),
+          suggestions: {}
+        },
+        messages: [`Processed ${converted.fileType} document`]
+      };
+
+      // Check for duplicates
+      if (vendor?.id && extracted.invoiceNumber) {
+        const dupes = await checkForDuplicates(vendor.id, extracted.invoiceNumber, extracted.amounts?.totalAmount);
+        result.data.suggestions.possible_duplicates = dupes;
+      }
+    } else {
+      return res.status(400).json({
+        error: 'Unsupported file type for document processing',
+        fileType: converted.fileType
+      });
+    }
 
     if (!result.success && result.documentType === DOCUMENT_TYPES.UNKNOWN) {
       return res.status(422).json({
@@ -2521,7 +2968,7 @@ app.post('/api/documents/process', upload.single('pdf'), async (req, res) => {
           due_date: invoiceData.extracted.dueDate || null,
           amount: invoiceData.extracted.totalAmount || 0,
           pdf_url,
-          status: 'received',
+          status: 'needs_review',
           notes: invoiceData.messages.join('\n'),
           ai_processed: true,
           ai_confidence: invoiceData.ai_confidence || null,
@@ -2742,7 +3189,7 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
               due_date: invoiceData.extracted?.dueDate || null,
               amount: invoiceData.extracted?.totalAmount || 0,
               pdf_url,
-              status: 'received',
+              status: 'needs_review',
               notes: invoiceData.messages?.join('\n') || '',
               ai_processed: true,
               ai_confidence: invoiceData.ai_confidence || null,
@@ -2797,7 +3244,7 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
         job_id,
         vendor_id,
         po_id: po_id || null,
-        status: 'needs_approval',
+        status: 'ready_for_approval',
         coded_at: new Date().toISOString(),
         coded_by
       })
@@ -2822,12 +3269,14 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
           amount: a.amount,
           notes: a.notes,
           job_id: a.job_id || null,
-          po_line_item_id: a.po_line_item_id || null
+          po_id: a.po_id || null,
+          po_line_item_id: a.po_line_item_id || null,
+          change_order_id: a.change_order_id || null
         })));
     }
 
     // Log activity
-    await logActivity(invoiceId, 'needs_approval', coded_by, {
+    await logActivity(invoiceId, 'ready_for_approval', coded_by, {
       job_id,
       vendor_id,
       po_id,
@@ -3089,11 +3538,11 @@ app.patch('/api/invoices/:id/deny', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    // Only allow deny from received or needs_approval status
-    const allowedStatuses = ['received', 'needs_approval'];
+    // Only allow deny from needs_review or ready_for_approval status
+    const allowedStatuses = ['needs_review', 'ready_for_approval'];
     if (!allowedStatuses.includes(invoice.status)) {
       return res.status(400).json({
-        error: `Cannot deny invoice in '${invoice.status}' status. Only received or needs_approval invoices can be denied.`
+        error: `Cannot deny invoice in '${invoice.status}' status. Only needs_review or ready_for_approval invoices can be denied.`
       });
     }
 
@@ -3163,11 +3612,11 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    // Only allow close-out from needs_approval or approved status
-    const allowedStatuses = ['needs_approval', 'approved'];
+    // Only allow close-out from ready_for_approval or approved status
+    const allowedStatuses = ['ready_for_approval', 'approved'];
     if (!allowedStatuses.includes(invoice.status)) {
       return res.status(400).json({
-        error: `Cannot close out invoice in '${invoice.status}' status. Only needs_approval or approved invoices can be closed out.`
+        error: `Cannot close out invoice in '${invoice.status}' status. Only ready_for_approval or approved invoices can be closed out.`
       });
     }
 
@@ -3372,6 +3821,36 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
       }
     }
 
+    // Get OLD allocations to subtract their PO/CO amounts before deleting
+    const { data: oldAllocations } = await supabase
+      .from('v2_invoice_allocations')
+      .select('id, amount, po_id, po_line_item_id, change_order_id')
+      .eq('invoice_id', invoiceId);
+
+    // Subtract old PO amounts
+    const oldPoAllocations = (oldAllocations || []).filter(a => a.po_id);
+    for (const alloc of oldPoAllocations) {
+      await updatePOLineItemsForAllocations(alloc.po_id, [alloc], false);
+    }
+
+    // Subtract old CO amounts
+    const oldCoAllocations = (oldAllocations || []).filter(a => a.change_order_id);
+    for (const alloc of oldCoAllocations) {
+      const { data: coData } = await supabase
+        .from('v2_job_change_orders')
+        .select('invoiced_amount')
+        .eq('id', alloc.change_order_id)
+        .single();
+      if (coData) {
+        const newAmount = Math.max(0, (parseFloat(coData.invoiced_amount) || 0) - (parseFloat(alloc.amount) || 0));
+        await supabase
+          .from('v2_job_change_orders')
+          .update({ invoiced_amount: newAmount })
+          .eq('id', alloc.change_order_id);
+      }
+    }
+
+    // Now delete old allocations
     await supabase
       .from('v2_invoice_allocations')
       .delete()
@@ -3386,10 +3865,24 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
           amount: a.amount,
           notes: a.notes,
           job_id: a.job_id || null,
-          po_line_item_id: a.po_line_item_id || null
+          po_id: a.po_id || null,
+          po_line_item_id: a.po_line_item_id || null,
+          change_order_id: a.change_order_id || null
         })));
 
       if (error) throw error;
+
+      // Update PO invoiced amounts for allocations linked to POs
+      const poAllocations = allocations.filter(a => a.po_id);
+      if (poAllocations.length > 0) {
+        await updatePOInvoicedAmounts(poAllocations);
+      }
+
+      // Update CO invoiced amounts for allocations linked to COs
+      const coAllocations = allocations.filter(a => a.change_order_id);
+      if (coAllocations.length > 0) {
+        await updateCOInvoicedAmounts(coAllocations);
+      }
     }
 
     res.json({ success: true });
@@ -3548,8 +4041,8 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
 
         const amount = parseFloat(a.amount) || 0;
 
-        // Track pending invoices (needs_approval, received)
-        if (['needs_approval', 'received'].includes(a.invoice.status)) {
+        // Track pending invoices (ready_for_approval, needs_review)
+        if (['ready_for_approval', 'needs_review'].includes(a.invoice.status)) {
           if (!pendingByCostCode[ccId]) pendingByCostCode[ccId] = 0;
           pendingByCostCode[ccId] += amount;
         }
@@ -4875,8 +5368,8 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
           fully_billed: true
         });
       } else {
-        // Partially billed - cycle back to needs_approval for remaining
-        updateData.status = 'needs_approval';
+        // Partially billed - cycle back to ready_for_approval for remaining
+        updateData.status = 'ready_for_approval';
         partialInvoices.push({
           id: inv.id,
           billed: currentAllocationSum,
@@ -5602,6 +6095,7 @@ app.post('/api/jobs/:jobId/change-orders', async (req, res) => {
     const {
       change_order_number, title, description, reason, amount,
       base_amount, gc_fee_percent, gc_fee_amount,
+      admin_hours, admin_rate, admin_cost,
       status, first_billed_draw_number, days_added, created_by
     } = req.body;
 
@@ -5642,6 +6136,9 @@ app.post('/api/jobs/:jobId/change-orders', async (req, res) => {
     if (base_amount !== undefined) insertData.base_amount = parseFloat(base_amount);
     if (gc_fee_percent !== undefined) insertData.gc_fee_percent = parseFloat(gc_fee_percent);
     if (gc_fee_amount !== undefined) insertData.gc_fee_amount = parseFloat(gc_fee_amount);
+    if (admin_hours !== undefined) insertData.admin_hours = parseFloat(admin_hours) || 0;
+    if (admin_rate !== undefined) insertData.admin_rate = parseFloat(admin_rate) || 0;
+    if (admin_cost !== undefined) insertData.admin_cost = parseFloat(admin_cost) || 0;
     if (first_billed_draw_number) insertData.first_billed_draw_number = first_billed_draw_number;
 
     const { data: co, error } = await supabase
@@ -5668,6 +6165,7 @@ app.patch('/api/change-orders/:id', async (req, res) => {
     const {
       change_order_number, title, description, reason, amount,
       base_amount, gc_fee_percent, gc_fee_amount,
+      admin_hours, admin_rate, admin_cost,
       status, first_billed_draw_number, days_added, updated_by
     } = req.body;
 
@@ -5694,6 +6192,9 @@ app.patch('/api/change-orders/:id', async (req, res) => {
     if (base_amount !== undefined) updates.base_amount = parseFloat(base_amount);
     if (gc_fee_percent !== undefined) updates.gc_fee_percent = parseFloat(gc_fee_percent);
     if (gc_fee_amount !== undefined) updates.gc_fee_amount = parseFloat(gc_fee_amount);
+    if (admin_hours !== undefined) updates.admin_hours = parseFloat(admin_hours) || 0;
+    if (admin_rate !== undefined) updates.admin_rate = parseFloat(admin_rate) || 0;
+    if (admin_cost !== undefined) updates.admin_cost = parseFloat(admin_cost) || 0;
     if (days_added !== undefined) updates.days_added = parseInt(days_added);
     if (status !== undefined) updates.status = status;
     if (first_billed_draw_number !== undefined) updates.first_billed_draw_number = first_billed_draw_number;
@@ -5961,6 +6462,60 @@ app.delete('/api/change-orders/:id/unlink-invoice/:invoiceId', async (req, res) 
     res.json({ success: true });
   } catch (err) {
     console.error('Error unlinking invoice from CO:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// CHANGE ORDER COST CODES
+// ============================================================
+
+// Get cost codes for a change order
+app.get('/api/change-orders/:id/cost-codes', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('v2_change_order_cost_codes')
+      .select('*, cost_code:v2_cost_codes(id, code, name)')
+      .eq('change_order_id', id)
+      .order('created_at');
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    console.error('Error fetching CO cost codes:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save cost codes for a change order (replace all)
+app.put('/api/change-orders/:id/cost-codes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cost_codes } = req.body;
+
+    // Delete existing cost codes
+    await supabase.from('v2_change_order_cost_codes').delete().eq('change_order_id', id);
+
+    // Insert new cost codes
+    if (cost_codes && cost_codes.length > 0) {
+      const toInsert = cost_codes.map(cc => ({
+        change_order_id: id,
+        cost_code_id: cc.cost_code_id,
+        amount: parseFloat(cc.amount) || 0,
+        description: cc.description || null
+      }));
+
+      const { error } = await supabase.from('v2_change_order_cost_codes').insert(toInsert);
+      if (error) throw error;
+    }
+
+    await logCOActivity(id, 'cost_codes_updated', 'System', { count: cost_codes?.length || 0 });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error saving CO cost codes:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -7174,8 +7729,8 @@ app.get('/api/jobs/:id/stats', async (req, res) => {
       .eq('job_id', jobId);
 
     const stats = {
-      received: { count: 0, amount: 0 },
-      needs_approval: { count: 0, amount: 0 },
+      needs_review: { count: 0, amount: 0 },
+      ready_for_approval: { count: 0, amount: 0 },
       approved: { count: 0, amount: 0 },
       in_draw: { count: 0, amount: 0 },
       paid: { count: 0, amount: 0 }
@@ -7243,7 +7798,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
 
   // Check if invoice is archived (read-only) - allow status changes to unarchive
   const archivedStatuses = ['paid'];
-  const allowedUnarchiveStatuses = ['approved', 'needs_approval', 'in_draw', 'received'];
+  const allowedUnarchiveStatuses = ['approved', 'ready_for_approval', 'in_draw', 'needs_review'];
   if (archivedStatuses.includes(existing.status) && !allowedUnarchiveStatuses.includes(updates.status)) {
     throw new AppError('ARCHIVED_INVOICE', `Cannot edit archived invoice (status: ${existing.status})`, { status: 400 });
   }
@@ -7313,14 +7868,9 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     updateFields.notes = existingNotes + separator + updates.partial_approval_note;
   }
 
-  // Auto-transition: When assigning a job_id to an unmatched (received) invoice,
-  // automatically move it to needs_approval status
-  if (updateFields.job_id && existing.status === 'received' && !updates.status) {
-    updates.status = 'needs_approval';
-    updateFields.status = 'needs_approval';
-
-    // AI LEARNING: Record this assignment so AI can learn for future invoices
-    // This teaches the AI to recognize similar references
+  // AI LEARNING: When assigning a job_id, record it so AI can learn for future invoices
+  // Note: Status transition is NOT automatic - user must explicitly click "Submit for Approval"
+  if (updateFields.job_id && updateFields.job_id !== existing.job_id) {
     try {
       const { data: assignedJob } = await supabase
         .from('v2_jobs')
@@ -7373,8 +7923,8 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     }
 
     const statusTransitions = {
-      // Unapprove: approved → needs_approval (clear approval)
-      'approved_to_needs_approval': () => {
+      // Unapprove: approved → ready_for_approval (clear approval)
+      'approved_to_ready_for_approval': () => {
         updateFields.approved_at = null;
         updateFields.approved_by = null;
       },
@@ -7382,19 +7932,19 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
       'in_draw_to_approved': () => {
         // Keep approval info
       },
-      // Resubmit denied: denied → received (clear denial)
-      'denied_to_received': () => {
+      // Resubmit denied: denied → needs_review (clear denial)
+      'denied_to_needs_review': () => {
         updateFields.denied_at = null;
         updateFields.denied_by = null;
         updateFields.denial_reason = null;
       },
-      // Submit: received → needs_approval
-      'received_to_needs_approval': () => {
+      // Submit for approval: needs_review → ready_for_approval
+      'needs_review_to_ready_for_approval': () => {
         updateFields.coded_at = new Date().toISOString();
         updateFields.coded_by = performedBy;
       },
-      // Approve: needs_approval → approved (stamping handled below)
-      'needs_approval_to_approved': () => {
+      // Approve: ready_for_approval → approved (stamping handled below)
+      'ready_for_approval_to_approved': () => {
         updateFields.approved_at = new Date().toISOString();
         updateFields.approved_by = performedBy;
       },
@@ -7644,8 +8194,8 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
       }
     }
 
-    // Handle clearing stamps when transitioning back to needs_approval (from any status)
-    if (updates.status === 'needs_approval') {
+    // Handle clearing stamps when transitioning back to ready_for_approval (from any status)
+    if (updates.status === 'ready_for_approval') {
       updateFields.pdf_stamped_url = null;
       updateFields.approved_at = null;
       updateFields.approved_by = null;
@@ -7756,7 +8306,9 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         amount: parseFloat(a.amount) || 0,
         notes: a.notes || null,
         job_id: a.job_id || null,
-        po_line_item_id: a.po_line_item_id || null
+        po_id: a.po_id || null,
+        po_line_item_id: a.po_line_item_id || null,
+        change_order_id: a.change_order_id || null
       }));
 
     if (allocsToInsert.length > 0) {
@@ -7875,7 +8427,9 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
         amount: a.amount,
         notes: a.notes,
         job_id: a.job_id || null,
-        po_line_item_id: a.po_line_item_id || null
+        po_id: a.po_id || null,
+        po_line_item_id: a.po_line_item_id || null,
+        change_order_id: a.change_order_id || null
       }));
       await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
     }
@@ -7962,10 +8516,10 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
 
   // Handle status-specific logic
   switch (new_status) {
-    case 'needs_approval':
+    case 'ready_for_approval':
       updateData.coded_at = new Date().toISOString();
       updateData.coded_by = performedBy;
-      // Clear stamp when moving back to needs_approval (needs approval)
+      // Clear stamp when moving back to ready_for_approval
       updateData.pdf_stamped_url = null;
       updateData.approved_at = null;
       updateData.approved_by = null;
@@ -7991,7 +8545,9 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
           amount: a.amount,
           notes: a.notes,
           job_id: a.job_id || null,
-          po_line_item_id: a.po_line_item_id || null
+          po_id: a.po_id || null,
+          po_line_item_id: a.po_line_item_id || null,
+          change_order_id: a.change_order_id || null
         }));
         await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
       }
@@ -8155,7 +8711,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
       }
       break;
 
-    case 'received':
+    case 'needs_review':
       // Clearing denial (if coming from denied)
       if (invoice.status === 'denied') {
         updateData.denied_at = null;

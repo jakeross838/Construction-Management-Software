@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Change Orders</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260114g">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav">
+          <!-- Filled by nav-sidebar.js -->
+        </nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="showCreateCOModal()">+ New Change Order</button>
+          <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav">
+          <!-- Filled by nav-sidebar.js -->
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="app-body">
+      <main class="main">
+      <!-- Filters -->
+      <div class="table-toolbar">
+        <div class="filter-controls">
+          <select id="statusFilter" class="form-control filter-select">
+            <option value="">All Status</option>
+            <option value="draft">Draft</option>
+            <option value="pending_approval">Pending Approval</option>
+            <option value="approved">Approved</option>
+            <option value="closed">Closed</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="Search change orders..." class="form-control search-input">
+        </div>
+      </div>
+
+      <!-- No Job Selected State -->
+      <div id="noJobSelected" class="empty-state" style="display: none;">
+        <div class="empty-icon">📋</div>
+        <h3>Select a Job</h3>
+        <p>Choose a job from the sidebar to view its change orders</p>
+      </div>
+
+      <!-- CO List -->
+      <div class="co-list" id="coList">
+        <div class="loading">Loading change orders...</div>
+      </div>
+    </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit CO Modal -->
+  <div id="createCOModal" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2 id="createCOTitle">New Change Order</h2>
+        <button class="close-btn" onclick="closeCreateCOModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editCOId">
+
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label>Title <span class="required">*</span></label>
+            <input type="text" id="coTitle" class="form-control" placeholder="e.g., Kitchen cabinet upgrade">
+          </div>
+          <div class="form-group flex-1">
+            <label>Days Added</label>
+            <input type="number" id="coDaysAdded" class="form-control" value="0" placeholder="0">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="coDescription" class="form-control" rows="2" placeholder="Describe the change..."></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Reason</label>
+            <select id="coReason" class="form-control" onchange="onReasonChange()">
+              <option value="owner_request">Owner Request</option>
+              <option value="design_change">Design Change</option>
+              <option value="scope_change">Scope Change</option>
+              <option value="unforeseen_conditions">Unforeseen Conditions</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group flex-2">
+            <label class="reason-hint-label">Fee Guidance</label>
+            <div id="reasonHint" class="reason-hint">
+              <span class="hint-icon">💡</span>
+              <span class="hint-text">Owner-initiated change - higher markup justified due to workflow disruption</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>Amount</h3>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label>Base Amount <span class="required">*</span></label>
+              <div class="input-with-prefix">
+                <span class="input-prefix">$</span>
+                <input type="text" id="coBaseAmount" class="form-control" placeholder="0.00" oninput="calculateCOTotal()">
+              </div>
+            </div>
+            <div class="form-group flex-1">
+              <label>GC Fee %</label>
+              <div class="input-with-suffix">
+                <input type="number" id="coGCFeePercent" class="form-control" value="20" min="0" max="100" oninput="calculateCOTotal()">
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+            <div class="form-group flex-1">
+              <label>GC Fee Amount</label>
+              <div class="input-with-prefix">
+                <span class="input-prefix">$</span>
+                <input type="text" id="coGCFeeAmount" class="form-control" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>Admin / Management Time</h3>
+          <p class="form-hint">Track time spent coordinating, scheduling, and managing this change order</p>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label>Hours</label>
+              <input type="number" id="coAdminHours" class="form-control" value="0" min="0" step="0.5" placeholder="0" oninput="calculateCOTotal()">
+            </div>
+            <div class="form-group flex-1">
+              <label>Hourly Rate</label>
+              <div class="input-with-prefix">
+                <span class="input-prefix">$</span>
+                <input type="number" id="coAdminRate" class="form-control" value="85" min="0" oninput="calculateCOTotal()">
+              </div>
+            </div>
+            <div class="form-group flex-1">
+              <label>Admin Cost</label>
+              <div class="input-with-prefix">
+                <span class="input-prefix">$</span>
+                <input type="text" id="coAdminCost" class="form-control" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section co-total-section">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label>Total Amount</label>
+              <div class="input-with-prefix total-highlight">
+                <span class="input-prefix">$</span>
+                <input type="text" id="coTotalAmount" class="form-control" readonly>
+              </div>
+            </div>
+          </div>
+          <div class="co-breakdown-summary" id="coBreakdownSummary"></div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-header-inline">
+            <h3>Cost Code Breakdown</h3>
+            <label class="toggle-label">
+              <input type="checkbox" id="coCostCodeToggle" onchange="toggleCostCodeBreakdown()">
+              <span>Use cost code breakdown</span>
+            </label>
+          </div>
+          <div id="coCostCodeSection" style="display: none;">
+            <p class="form-hint">Allocate the base amount across cost codes (optional)</p>
+            <div id="coCostCodeLines">
+              <!-- Cost code lines added dynamically -->
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addCostCodeLine()">+ Add Cost Code</button>
+            <div id="costCodeTotal" class="cost-code-total" style="display: none;">
+              <span>Total: <strong id="costCodeTotalAmount">$0.00</strong></span>
+              <span id="costCodeVariance" class="variance"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCreateCOModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveCO()">Save Change Order</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CO Detail Modal (Fullscreen) -->
+  <div id="coDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <h2 id="coDetailTitle">Change Order</h2>
+          <span id="coStatusBadge" class="status-badge"></span>
+        </div>
+        <button class="close-btn" onclick="closeCODetailModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="coDetailBody">
+        <div class="loading">Loading...</div>
+      </div>
+      <div class="modal-footer" id="coDetailFooter">
+        <!-- Action buttons -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <div id="confirmDialog" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2 id="confirmTitle">Confirm</h2>
+        <button class="close-btn" onclick="closeConfirmDialog()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage"></p>
+        <div id="confirmInput" style="display: none;">
+          <label id="confirmInputLabel"></label>
+          <textarea id="confirmInputField" rows="3" class="form-control"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeConfirmDialog()">Cancel</button>
+        <button class="btn btn-primary" id="confirmBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="js/toasts.js?v=20260114"></script>
+  <script src="js/nav-sidebar.js?v=20260114"></script>
+  <script src="js/cost-code-picker.js?v=20260114e"></script>
+  <script src="js/sidebar.js?v=20260114"></script>
+  <script src="js/co-app.js?v=20260114g"></script>
+</body>
+</html>
