@@ -52,6 +52,61 @@ Use these ONLY for status indicators. Do not use for general UI elements.
 
 ---
 
+## 1a. Color Enforcement Rules (CRITICAL)
+
+This application uses a **dark theme only**. Do NOT introduce light theme colors.
+
+### Forbidden Colors (DO NOT USE)
+These hex values indicate light theme and must NEVER appear in new code:
+```css
+/* NEVER USE THESE - they are light theme colors */
+#ffffff    /* Use var(--card) or var(--foreground) instead */
+#f6f7fb    /* Use var(--background) or var(--card-elevated) instead */
+#e6e9ef    /* Use var(--border) instead */
+#323338    /* Use var(--foreground) instead */
+#676879    /* Use var(--text-muted) or var(--text-secondary) instead */
+#c5c7d0    /* Use var(--border) instead */
+#9699a6    /* Use var(--text-muted) instead */
+```
+
+### Required Variable Mappings
+| Old Light Theme | Use Instead |
+|-----------------|-------------|
+| `#ffffff` (white bg) | `var(--card)` |
+| `#f6f7fb` (gray bg) | `var(--background)` or `var(--card-elevated)` |
+| `#e6e9ef` (border) | `var(--border)` |
+| `#323338` (dark text) | `var(--foreground)` |
+| `#676879` (gray text) | `var(--text-muted)` |
+| `#0073ea` (blue) | `var(--accent-blue)` |
+| `#00c875` (green) | `var(--success)` |
+| `#d83a52` (red) | `var(--danger)` |
+| `#fdab3d` (orange) | `var(--warning)` |
+
+### Dropdown Consistency Rule
+**Dropdowns MUST match their input backgrounds:**
+- Input background: `var(--card)`
+- Dropdown background: `var(--card)` (same!)
+- Dropdown items on hover: `var(--card-elevated)`
+
+### Exception: White Text on Colored Buttons
+The ONLY acceptable use of `#ffffff` is for text on colored buttons:
+```css
+/* This is OK - white text on colored background */
+.btn-primary { background: var(--accent-blue); color: #ffffff; }
+.btn-success { background: var(--success); color: white; }
+```
+
+### Code Review Checklist
+Before merging any CSS changes, verify:
+- [ ] No hardcoded `#ffffff`, `#f6f7fb`, `#e6e9ef`, `#323338`, `#676879`
+- [ ] All backgrounds use `var(--card)`, `var(--background)`, or `var(--card-elevated)`
+- [ ] All borders use `var(--border)`
+- [ ] All text uses `var(--foreground)`, `var(--text-secondary)`, or `var(--text-muted)`
+- [ ] Dropdowns match their associated input backgrounds
+- [ ] Focus states use `var(--accent-blue)` with appropriate box-shadow
+
+---
+
 ## 2. Typography
 
 ### Font Stack
