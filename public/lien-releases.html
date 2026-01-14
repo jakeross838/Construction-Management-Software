@@ -20,7 +20,7 @@
           <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
-          <button class="btn btn-primary" onclick="showUploadModal()">+ Upload Release</button>
+          <button class="btn btn-primary" id="uploadBtn">+ Upload</button>
         </div>
       </div>
       <div class="header-sub">
@@ -66,28 +66,41 @@
     </div>
   </div>
 
-  <!-- Upload Modal -->
+  <!-- Universal Upload Modal -->
   <div id="uploadModal" class="modal">
-    <div class="modal-content modal-md">
+    <div class="modal-content">
       <div class="modal-header">
-        <h2>Upload Lien Release</h2>
-        <button class="close-btn" onclick="closeUploadModal()">&times;</button>
+        <h2>Upload Document</h2>
+        <button class="close-btn" id="closeUploadBtn">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="upload-zone" id="uploadZone">
-          <input type="file" id="fileInput" accept=".pdf" style="display:none">
-          <div class="upload-content">
-            <div class="upload-icon">📄</div>
-            <p>Drop PDF here or click to browse</p>
-            <p class="upload-hint">AI will extract vendor, amount, dates automatically</p>
+        <div class="upload-info-banner">
+          <div class="info-icon">AI</div>
+          <div class="info-text">
+            <strong>Smart Document Processing</strong>
+            <p>AI will automatically detect if this is a Lien Release, Invoice, or other document type.</p>
           </div>
         </div>
-        <div id="uploadProgress" class="upload-progress" style="display:none">
-          <div class="progress-bar">
-            <div class="progress-fill"></div>
+        <div class="form-group">
+          <label>PDF Document *</label>
+          <div class="file-drop-zone" id="dropZone">
+            <input type="file" id="pdfFileInput" accept="application/pdf">
+            <div class="drop-zone-content">
+              <div class="drop-icon">PDF</div>
+              <p>Click to select or drag PDF here</p>
+            </div>
           </div>
-          <p class="upload-status">Processing...</p>
+          <div id="selectedFileName" class="selected-file" style="display: none;"></div>
         </div>
+        <div id="processingStatus" class="processing-status" style="display: none;">
+          <div class="processing-spinner"></div>
+          <div id="processingMessage">Processing...</div>
+        </div>
+        <div id="resultArea" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelUploadBtn">Cancel</button>
+        <button class="btn btn-primary" id="processBtn" disabled>Process Document</button>
       </div>
     </div>
   </div>
@@ -157,10 +170,10 @@
   <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="js/toasts.js?v=20260107"></script>
-  <script src="js/nav-sidebar.js"></script>
-  <script src="js/searchable-picker.js?v=20260107"></script>
-  <script src="js/sidebar.js?v=20260112"></script>
+  <script src="js/toasts.js?v=20260114"></script>
+  <script src="js/nav-sidebar.js?v=20260114"></script>
+  <script src="js/searchable-picker.js?v=20260114"></script>
+  <script src="js/sidebar.js?v=20260114"></script>
   <script>
 // ============================================================
 // LIEN RELEASES PAGE
@@ -397,85 +410,159 @@ function setupFilters() {
 }
 
 // ============================================================
-// UPLOAD
+// UPLOAD - Simple Universal Upload
 // ============================================================
 
-function showUploadModal() {
-  document.getElementById('uploadModal').style.display = 'flex';
-  document.getElementById('uploadProgress').style.display = 'none';
-  document.getElementById('uploadZone').style.display = 'block';
-}
+(function() {
+  var uploadBtn = document.getElementById('uploadBtn');
+  var modal = document.getElementById('uploadModal');
+  var closeBtn = document.getElementById('closeUploadBtn');
+  var cancelBtn = document.getElementById('cancelUploadBtn');
+  var processBtn = document.getElementById('processBtn');
+  var fileInput = document.getElementById('pdfFileInput');
+  var dropZone = document.getElementById('dropZone');
+  var fileNameDiv = document.getElementById('selectedFileName');
+  var processingDiv = document.getElementById('processingStatus');
+  var processingMsg = document.getElementById('processingMessage');
+  var resultArea = document.getElementById('resultArea');
 
-function closeUploadModal() {
-  document.getElementById('uploadModal').style.display = 'none';
-}
+  var selectedFile = null;
 
-function setupUploadZone() {
-  const zone = document.getElementById('uploadZone');
-  const input = document.getElementById('fileInput');
+  uploadBtn.onclick = function() {
+    console.log('Opening upload modal');
+    resetUploadModal();
+    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+  };
 
-  zone.addEventListener('click', () => input.click());
-
-  zone.addEventListener('dragover', e => {
-    e.preventDefault();
-    zone.classList.add('dragover');
-  });
-
-  zone.addEventListener('dragleave', () => {
-    zone.classList.remove('dragover');
-  });
-
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('dragover');
-    const file = e.dataTransfer.files[0];
-    if (file && file.type === 'application/pdf') {
-      uploadFile(file);
-    } else {
-      showToast('Please upload a PDF file', 'error');
-    }
-  });
-
-  input.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (file) uploadFile(file);
-  });
-}
-
-async function uploadFile(file) {
-  const zone = document.getElementById('uploadZone');
-  const progress = document.getElementById('uploadProgress');
-
-  zone.style.display = 'none';
-  progress.style.display = 'block';
-  progress.querySelector('.upload-status').textContent = 'Processing with AI...';
-
-  const formData = new FormData();
-  formData.append('pdf', file);
-  formData.append('uploaded_by', 'User');
-
-  try {
-    const res = await fetch('/api/lien-releases/process', {
-      method: 'POST',
-      body: formData
-    });
-
-    const result = await res.json();
-
-    if (res.ok && result.success) {
-      showToast('Lien release uploaded and processed', 'success');
-      closeUploadModal();
-      await loadLienReleases();
-      openLienRelease(result.lien_release.id);
-    } else {
-      throw new Error(result.error || 'Processing failed');
-    }
-  } catch (err) {
-    showToast(err.message, 'error');
-    zone.style.display = 'block';
-    progress.style.display = 'none';
+  function closeUploadModal() {
+    modal.style.display = 'none';
+    resetUploadModal();
   }
-}
+
+  closeBtn.onclick = closeUploadModal;
+  cancelBtn.onclick = closeUploadModal;
+
+  modal.onclick = function(e) {
+    if (e.target === modal) closeUploadModal();
+  };
+
+  function resetUploadModal() {
+    selectedFile = null;
+    fileInput.value = '';
+    fileNameDiv.style.display = 'none';
+    fileNameDiv.textContent = '';
+    processingDiv.style.display = 'none';
+    resultArea.style.display = 'none';
+    resultArea.innerHTML = '';
+    processBtn.disabled = true;
+    processBtn.textContent = 'Process Document';
+  }
+
+  fileInput.onchange = function() {
+    if (fileInput.files && fileInput.files[0]) {
+      selectedFile = fileInput.files[0];
+      fileNameDiv.textContent = selectedFile.name;
+      fileNameDiv.style.display = 'block';
+      processBtn.disabled = false;
+    }
+  };
+
+  dropZone.ondragover = function(e) {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  };
+
+  dropZone.ondragleave = function() {
+    dropZone.classList.remove('dragover');
+  };
+
+  dropZone.ondrop = function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      var file = e.dataTransfer.files[0];
+      if (file.type === 'application/pdf') {
+        selectedFile = file;
+        fileNameDiv.textContent = file.name;
+        fileNameDiv.style.display = 'block';
+        processBtn.disabled = false;
+      } else {
+        showToast('Please select a PDF file', 'error');
+      }
+    }
+  };
+
+  processBtn.onclick = async function() {
+    if (!selectedFile) {
+      showToast('Please select a file first', 'error');
+      return;
+    }
+
+    processBtn.disabled = true;
+    processBtn.textContent = 'Processing...';
+    processingDiv.style.display = 'flex';
+    processingMsg.textContent = 'Uploading and analyzing document...';
+    resultArea.style.display = 'none';
+
+    try {
+      var formData = new FormData();
+      formData.append('pdf', selectedFile);
+      formData.append('uploaded_by', 'Jake Ross');
+
+      var response = await fetch('/api/documents/process', {
+        method: 'POST',
+        body: formData
+      });
+
+      var result = await response.json();
+      processingDiv.style.display = 'none';
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Processing failed');
+      }
+
+      var docType = result.documentType || 'unknown';
+      var typeLabels = {
+        invoice: 'Invoice',
+        lien_release: 'Lien Release',
+        purchase_order: 'Purchase Order',
+        quote: 'Quote',
+        unknown: 'Unknown Document'
+      };
+
+      resultArea.innerHTML = '<div class="result-success">' +
+        '<h3>Document Processed</h3>' +
+        '<p><strong>Type:</strong> ' + (typeLabels[docType] || docType) + '</p>' +
+        (result.data?.vendor?.name ? '<p><strong>Vendor:</strong> ' + result.data.vendor.name + '</p>' : '') +
+        '</div>';
+      resultArea.style.display = 'block';
+
+      processBtn.textContent = 'Done';
+      showToast(typeLabels[docType] + ' processed successfully', 'success');
+
+      // Refresh the list
+      if (typeof loadLienReleases === 'function') {
+        loadLienReleases();
+      }
+
+      setTimeout(function() {
+        closeUploadModal();
+      }, 2000);
+
+    } catch (err) {
+      processingDiv.style.display = 'none';
+      processBtn.disabled = false;
+      processBtn.textContent = 'Try Again';
+      showToast(err.message || 'Upload failed', 'error');
+    }
+  };
+
+  console.log('Lien releases upload module initialized');
+})();
+
+// Legacy function stub for compatibility
+function setupUploadZone() {}
 
 // ============================================================
 // DETAIL MODAL

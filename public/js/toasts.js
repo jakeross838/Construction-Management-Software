@@ -274,3 +274,18 @@ class ToastManager {
 
 // Export singleton instance
 window.toasts = new ToastManager();
+
+// Global helper function for backward compatibility
+function showToast(message, type = 'info') {
+  window.toasts.show(type, message);
+}
+
+// Also expose closeModal if not defined elsewhere
+if (typeof window.closeModal === 'undefined') {
+  window.closeModal = function(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  };
+}

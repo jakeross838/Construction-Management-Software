@@ -20,7 +20,7 @@
           <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
-          <button class="btn btn-primary" onclick="showUniversalUploadModal()">+ Upload</button>
+          <button class="btn btn-primary" id="uploadBtn">+ Upload</button>
           <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
         </div>
       </div>
@@ -50,7 +50,7 @@
     </div>
   </div>
 
-  <!-- Invoice Detail Modal (Split View with PDF) -->
+  <!-- Invoice Detail Modal -->
   <div id="invoiceModal" class="modal">
     <div class="modal-content modal-xl">
       <div class="modal-header">
@@ -70,167 +70,6 @@
       </div>
       <div class="modal-footer" id="invoiceModalFooter">
         <!-- Action buttons -->
-      </div>
-    </div>
-  </div>
-
-  <!-- Upload Invoice Modal -->
-  <div id="uploadInvoiceModal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Upload Invoice</h2>
-        <button class="close-btn" onclick="closeModal('uploadInvoiceModal')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <form id="uploadInvoiceForm">
-          <!-- AI Toggle -->
-          <div class="form-group ai-toggle">
-            <label class="toggle-label">
-              <input type="checkbox" id="useAIProcessing" checked onchange="toggleAIMode(this.checked)">
-              <span class="toggle-text">Use AI Processing</span>
-              <span class="toggle-hint">Automatically extracts vendor, amount, job, and renames file</span>
-            </label>
-          </div>
-
-          <div class="form-group">
-            <label>PDF File *</label>
-            <div class="file-upload-area" id="fileUploadArea">
-              <input type="file" id="invoicePdfFile" accept=".pdf" required>
-              <div class="file-upload-text">
-                <span class="upload-icon">+</span>
-                <p>Click or drag PDF here</p>
-              </div>
-              <div class="file-name" id="uploadFileName"></div>
-            </div>
-          </div>
-
-          <!-- Manual fields (hidden when AI is enabled) -->
-          <div id="manualFields" style="display: none;">
-            <div class="form-group">
-              <label>Job *</label>
-              <div id="upload-job-picker-container" class="search-picker-container"></div>
-              <input type="hidden" id="uploadJobId">
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Vendor</label>
-                <div id="upload-vendor-picker-container" class="search-picker-container"></div>
-                <input type="hidden" id="uploadVendorId">
-              </div>
-              <div class="form-group">
-                <label>Amount</label>
-                <input type="number" id="uploadAmount" step="0.01" placeholder="0.00">
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Invoice #</label>
-                <input type="text" id="uploadInvoiceNumber" placeholder="e.g. INV-001">
-              </div>
-              <div class="form-group">
-                <label>Invoice Date</label>
-                <input type="date" id="uploadInvoiceDate">
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('uploadInvoiceModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitUploadInvoice()">Process with AI</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- AI Processing Overlay -->
-  <div id="aiProcessingOverlay" class="ai-processing-overlay">
-    <div class="ai-processing-card">
-      <div class="ai-processing-header">
-        <div class="ai-brain-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 2a4 4 0 0 1 4 4c0 1.1-.9 2-2 2h-4c-1.1 0-2-.9-2-2a4 4 0 0 1 4-4z"/>
-            <path d="M8 8v2a4 4 0 0 0 8 0V8"/>
-            <path d="M12 14v4"/>
-            <path d="M8 18h8"/>
-            <circle cx="9" cy="6" r="0.5" fill="currentColor"/>
-            <circle cx="15" cy="6" r="0.5" fill="currentColor"/>
-          </svg>
-          <div class="ai-pulse-ring"></div>
-          <div class="ai-pulse-ring delay-1"></div>
-          <div class="ai-pulse-ring delay-2"></div>
-        </div>
-        <h2>AI Processing Invoice</h2>
-        <p class="ai-processing-subtitle">Analyzing document with Claude AI</p>
-      </div>
-
-      <div class="ai-processing-steps">
-        <div class="ai-step" data-step="extract">
-          <div class="ai-step-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14,2 14,8 20,8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-            </svg>
-          </div>
-          <div class="ai-step-content">
-            <span class="ai-step-label">Extracting Text</span>
-            <span class="ai-step-status">Reading PDF content...</span>
-          </div>
-          <div class="ai-step-check">✓</div>
-        </div>
-
-        <div class="ai-step" data-step="analyze">
-          <div class="ai-step-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 6v6l4 2"/>
-            </svg>
-          </div>
-          <div class="ai-step-content">
-            <span class="ai-step-label">AI Analysis</span>
-            <span class="ai-step-status">Claude is reading the invoice...</span>
-          </div>
-          <div class="ai-step-check">✓</div>
-        </div>
-
-        <div class="ai-step" data-step="match">
-          <div class="ai-step-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="8.5" cy="7" r="4"/>
-              <path d="M20 8v6"/>
-              <path d="M23 11h-6"/>
-            </svg>
-          </div>
-          <div class="ai-step-content">
-            <span class="ai-step-label">Matching Data</span>
-            <span class="ai-step-status">Finding vendor & job matches...</span>
-          </div>
-          <div class="ai-step-check">✓</div>
-        </div>
-
-        <div class="ai-step" data-step="save">
-          <div class="ai-step-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17,21 17,13 7,13 7,21"/>
-              <polyline points="7,3 7,8 15,8"/>
-            </svg>
-          </div>
-          <div class="ai-step-content">
-            <span class="ai-step-label">Saving Invoice</span>
-            <span class="ai-step-status">Creating invoice record...</span>
-          </div>
-          <div class="ai-step-check">✓</div>
-        </div>
-      </div>
-
-      <div class="ai-processing-footer">
-        <div class="ai-progress-bar">
-          <div class="ai-progress-fill"></div>
-        </div>
-        <p class="ai-progress-text">Starting...</p>
       </div>
     </div>
   </div>
@@ -297,65 +136,44 @@
     </div>
   </div>
 
-  <!-- Universal Document Upload Modal -->
+  <!-- Universal Upload Modal - Simple Version -->
   <div id="universalUploadModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>Upload Document</h2>
-        <button class="close-btn" onclick="closeModal('universalUploadModal')">&times;</button>
+        <button class="close-btn" id="closeUploadBtn">&times;</button>
       </div>
       <div class="modal-body">
-        <div id="universalUploadForm">
-          <div class="upload-info-banner">
-            <div class="info-icon">AI</div>
-            <div class="info-text">
-              <strong>Smart Document Processing</strong>
-              <p>Our AI will automatically classify your document (Invoice, Lien Release, Quote, PO, etc.) and route it to the correct system.</p>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>PDF Document *</label>
-            <div class="file-drop-zone" id="universalDropZone">
-              <input type="file" id="universalPdfFile" accept="application/pdf" onchange="handleUniversalFileSelect(this)">
-              <div class="drop-zone-content">
-                <div class="drop-icon">PDF</div>
-                <p>Drag & drop a PDF here, or click to browse</p>
-                <span class="file-types">Invoices, Lien Releases, POs, Quotes, Change Orders, Insurance Certs</span>
-              </div>
-            </div>
-            <div id="universalFileName" class="selected-file" style="display: none;"></div>
-          </div>
-
-          <!-- Split Pages Toggle -->
-          <div class="form-group split-toggle" id="splitToggleGroup" style="display: none;">
-            <label class="toggle-label">
-              <input type="checkbox" id="splitPagesToggle" checked>
-              <span class="toggle-text">Split into separate documents</span>
-              <span class="toggle-hint" id="splitToggleHint">This PDF has multiple pages - split to process each as a separate document</span>
-            </label>
-          </div>
-
-          <!-- Processing Status -->
-          <div id="universalProcessingStatus" class="processing-status" style="display: none;">
-            <div class="processing-spinner"></div>
-            <div class="processing-messages" id="processingMessages"></div>
-          </div>
-
-          <!-- Result Preview -->
-          <div id="universalResultPreview" class="result-preview" style="display: none;">
-            <div class="result-header">
-              <span class="result-type-badge" id="resultTypeBadge"></span>
-              <span class="result-confidence" id="resultConfidence"></span>
-            </div>
-            <div class="result-details" id="resultDetails"></div>
-            <div class="result-actions" id="resultActions"></div>
+        <div class="upload-info-banner">
+          <div class="info-icon">AI</div>
+          <div class="info-text">
+            <strong>Smart Document Processing</strong>
+            <p>AI will automatically detect if this is an Invoice, Lien Release, or other document type.</p>
           </div>
         </div>
+
+        <div class="form-group">
+          <label>PDF Document *</label>
+          <div class="file-drop-zone" id="dropZone">
+            <input type="file" id="pdfFileInput" accept="application/pdf">
+            <div class="drop-zone-content">
+              <div class="drop-icon">PDF</div>
+              <p>Click to select or drag PDF here</p>
+            </div>
+          </div>
+          <div id="selectedFileName" class="selected-file" style="display: none;"></div>
+        </div>
+
+        <div id="processingStatus" class="processing-status" style="display: none;">
+          <div class="processing-spinner"></div>
+          <div id="processingMessage">Processing...</div>
+        </div>
+
+        <div id="resultArea" style="display: none;"></div>
       </div>
-      <div class="modal-footer" id="universalUploadFooter">
-        <button class="btn btn-secondary" onclick="closeModal('universalUploadModal')">Cancel</button>
-        <button class="btn btn-primary" id="processDocumentBtn" onclick="processUniversalDocument()" disabled>Process Document</button>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelUploadBtn">Cancel</button>
+        <button class="btn btn-primary" id="processBtn" disabled>Process Document</button>
       </div>
     </div>
   </div>
@@ -363,366 +181,186 @@
   <!-- Modal Container (for edit/job selection modals) -->
   <div id="modal-container"></div>
 
-  <!-- Connection Status Indicator -->
-  <div class="connection-status" id="connectionStatus">
-    <span class="connection-dot" id="connectionDot"></span>
-    <span id="connectionText">Connecting...</span>
-  </div>
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
 
-  <!-- Core modules (load before app.js) -->
-  <script src="js/toasts.js?v=20260107"></script>
-  <script src="js/nav-sidebar.js"></script>
-  <script src="js/validation.js?v=20260108d"></script>
-  <script src="js/cost-code-picker.js?v=20260107"></script>
-  <script src="js/searchable-picker.js?v=20260108"></script>
-  <script src="js/realtime.js?v=20260107"></script>
-  <script src="js/modals.js?v=20260109s"></script>
-  <script src="js/sidebar.js?v=20260112"></script>
+  <!-- Core modules -->
+  <script src="js/toasts.js?v=20260114b"></script>
+  <script src="js/nav-sidebar.js?v=20260114b"></script>
+  <script src="js/validation.js?v=20260114b"></script>
+  <script src="js/cost-code-picker.js?v=20260114b"></script>
+  <script src="js/searchable-picker.js?v=20260114b"></script>
+  <script src="js/realtime.js?v=20260114b"></script>
+  <script src="js/modals.js?v=20260114b"></script>
+  <script src="js/sidebar.js?v=20260114b"></script>
+  <script src="js/app.js?v=20260114b"></script>
 
-  <!-- Main app -->
-  <script src="js/app.js?v=20260112"></script>
-
-  <!-- Initialize connection status indicator -->
+  <!-- Simple Upload Script -->
   <script>
-    // Update connection status UI
-    window.realtimeSync.on('connectionChange', (data) => {
-      const dot = document.getElementById('connectionDot');
-      const text = document.getElementById('connectionText');
+  (function() {
+    // Elements
+    var uploadBtn = document.getElementById('uploadBtn');
+    var modal = document.getElementById('universalUploadModal');
+    var closeBtn = document.getElementById('closeUploadBtn');
+    var cancelBtn = document.getElementById('cancelUploadBtn');
+    var processBtn = document.getElementById('processBtn');
+    var fileInput = document.getElementById('pdfFileInput');
+    var dropZone = document.getElementById('dropZone');
+    var fileNameDiv = document.getElementById('selectedFileName');
+    var processingDiv = document.getElementById('processingStatus');
+    var processingMsg = document.getElementById('processingMessage');
+    var resultArea = document.getElementById('resultArea');
 
-      dot.className = 'connection-dot ' + data.state;
+    var selectedFile = null;
 
-      const stateLabels = {
-        connected: 'Connected',
-        connecting: 'Connecting...',
-        reconnecting: 'Reconnecting...',
-        disconnected: 'Disconnected',
-        offline: 'Offline',
-        failed: 'Connection Failed'
-      };
+    // Open modal
+    uploadBtn.onclick = function() {
+      console.log('Opening upload modal');
+      resetModal();
+      modal.style.display = 'flex';
+      modal.style.opacity = '1';
+    };
 
-      text.textContent = stateLabels[data.state] || data.state;
-    });
-
-    // Listen for invoice updates to refresh list
-    window.realtimeSync.on('invoice_update', () => {
-      if (typeof loadInvoices === 'function') {
-        loadInvoices();
-      }
-    });
-
-    window.realtimeSync.on('invoice_change', () => {
-      if (typeof loadInvoices === 'function') {
-        loadInvoices();
-      }
-    });
-
-    // ============================================================
-    // Universal Document Upload Functions
-    // ============================================================
-
-    let universalSelectedFile = null;
-    let universalPdfPageCount = 1;
-
-    function showUniversalUploadModal() {
-      // Reset state
-      universalSelectedFile = null;
-      universalPdfPageCount = 1;
-      document.getElementById('universalPdfFile').value = '';
-      document.getElementById('universalFileName').style.display = 'none';
-      document.getElementById('universalProcessingStatus').style.display = 'none';
-      document.getElementById('universalResultPreview').style.display = 'none';
-      document.getElementById('splitToggleGroup').style.display = 'none';
-      document.getElementById('processDocumentBtn').disabled = true;
-      document.getElementById('processDocumentBtn').textContent = 'Process Document';
-
-      // Show modal
-      document.getElementById('universalUploadModal').style.display = 'flex';
+    // Close modal
+    function closeModal() {
+      modal.style.display = 'none';
+      resetModal();
     }
 
-    async function handleUniversalFileSelect(input) {
-      const file = input.files[0];
-      if (file && file.type === 'application/pdf') {
-        universalSelectedFile = file;
-        document.getElementById('universalFileName').textContent = file.name;
-        document.getElementById('universalFileName').style.display = 'block';
-        document.getElementById('processDocumentBtn').disabled = false;
+    closeBtn.onclick = closeModal;
+    cancelBtn.onclick = closeModal;
 
-        // Reset any previous results
-        document.getElementById('universalProcessingStatus').style.display = 'none';
-        document.getElementById('universalResultPreview').style.display = 'none';
+    // Click outside to close
+    modal.onclick = function(e) {
+      if (e.target === modal) closeModal();
+    };
 
-        // Detect page count using pdf.js or ArrayBuffer parsing
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const pdfData = new Uint8Array(arrayBuffer);
-          // Simple page count detection - look for /Type /Page patterns
-          const text = new TextDecoder('latin1').decode(pdfData);
-          const pageMatches = text.match(/\/Type\s*\/Page[^s]/g);
-          universalPdfPageCount = pageMatches ? pageMatches.length : 1;
+    // Reset modal state
+    function resetModal() {
+      selectedFile = null;
+      fileInput.value = '';
+      fileNameDiv.style.display = 'none';
+      fileNameDiv.textContent = '';
+      processingDiv.style.display = 'none';
+      resultArea.style.display = 'none';
+      resultArea.innerHTML = '';
+      processBtn.disabled = true;
+      processBtn.textContent = 'Process Document';
+    }
 
-          // Show split toggle if multi-page
-          const splitToggle = document.getElementById('splitToggleGroup');
-          if (universalPdfPageCount > 1) {
-            splitToggle.style.display = 'block';
-            document.getElementById('splitToggleHint').textContent =
-              `This PDF has ${universalPdfPageCount} pages - split to process each as a separate document`;
-            document.getElementById('splitPagesToggle').checked = true;
-          } else {
-            splitToggle.style.display = 'none';
-          }
-        } catch (e) {
-          console.log('Could not detect page count:', e);
-          universalPdfPageCount = 1;
-          document.getElementById('splitToggleGroup').style.display = 'none';
+    // File selection
+    fileInput.onchange = function() {
+      if (fileInput.files && fileInput.files[0]) {
+        selectedFile = fileInput.files[0];
+        fileNameDiv.textContent = selectedFile.name;
+        fileNameDiv.style.display = 'block';
+        processBtn.disabled = false;
+        console.log('File selected:', selectedFile.name);
+      }
+    };
+
+    // Drag and drop
+    dropZone.ondragover = function(e) {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    };
+
+    dropZone.ondragleave = function() {
+      dropZone.classList.remove('dragover');
+    };
+
+    dropZone.ondrop = function(e) {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        var file = e.dataTransfer.files[0];
+        if (file.type === 'application/pdf') {
+          selectedFile = file;
+          fileNameDiv.textContent = file.name;
+          fileNameDiv.style.display = 'block';
+          processBtn.disabled = false;
+          console.log('File dropped:', file.name);
+        } else {
+          showToast('Please select a PDF file', 'error');
         }
       }
-    }
+    };
 
-    // Setup drag and drop for universal upload
-    document.addEventListener('DOMContentLoaded', () => {
-      const dropZone = document.getElementById('universalDropZone');
-      if (dropZone) {
-        dropZone.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          dropZone.classList.add('dragover');
-        });
-        dropZone.addEventListener('dragleave', () => {
-          dropZone.classList.remove('dragover');
-        });
-        dropZone.addEventListener('drop', (e) => {
-          e.preventDefault();
-          dropZone.classList.remove('dragover');
-          const file = e.dataTransfer.files[0];
-          if (file && file.type === 'application/pdf') {
-            document.getElementById('universalPdfFile').files = e.dataTransfer.files;
-            handleUniversalFileSelect(document.getElementById('universalPdfFile'));
-          }
-        });
-      }
-    });
-
-    async function processUniversalDocument() {
-      if (!universalSelectedFile) {
-        showToast('Please select a PDF file', 'error');
+    // Process document
+    processBtn.onclick = async function() {
+      if (!selectedFile) {
+        showToast('Please select a file first', 'error');
         return;
       }
 
-      const btn = document.getElementById('processDocumentBtn');
-      const statusDiv = document.getElementById('universalProcessingStatus');
-      const messagesDiv = document.getElementById('processingMessages');
-      const resultDiv = document.getElementById('universalResultPreview');
-
-      // Check if we should split pages
-      const shouldSplit = universalPdfPageCount > 1 &&
-        document.getElementById('splitPagesToggle')?.checked;
-
-      // Show processing state
-      btn.disabled = true;
-      btn.textContent = 'Processing...';
-      statusDiv.style.display = 'flex';
-      resultDiv.style.display = 'none';
-      messagesDiv.innerHTML = '<div class="message">Uploading document...</div>';
+      console.log('Processing document:', selectedFile.name);
+      processBtn.disabled = true;
+      processBtn.textContent = 'Processing...';
+      processingDiv.style.display = 'flex';
+      processingMsg.textContent = 'Uploading and analyzing document...';
+      resultArea.style.display = 'none';
 
       try {
-        const formData = new FormData();
-        formData.append('pdf', universalSelectedFile);
+        var formData = new FormData();
+        formData.append('pdf', selectedFile);
         formData.append('uploaded_by', 'Jake Ross');
 
-        // Use different endpoint based on split toggle
-        const endpoint = shouldSplit ? '/api/documents/process-multipage' : '/api/documents/process';
-        messagesDiv.innerHTML += `<div class="message">${shouldSplit ? 'Splitting and processing ' + universalPdfPageCount + ' pages...' : 'Classifying document with AI...'}</div>`;
-
-        const response = await fetch(endpoint, {
+        var response = await fetch('/api/documents/process', {
           method: 'POST',
           body: formData
         });
 
-        const result = await response.json();
+        var result = await response.json();
+        console.log('Processing result:', result);
+
+        processingDiv.style.display = 'none';
 
         if (!response.ok) {
           throw new Error(result.error || 'Processing failed');
         }
 
-        // Show results
-        statusDiv.style.display = 'none';
-        resultDiv.style.display = 'block';
-
-        const typeLabels = {
+        // Show result
+        var docType = result.documentType || 'unknown';
+        var typeLabels = {
           invoice: 'Invoice',
           lien_release: 'Lien Release',
           purchase_order: 'Purchase Order',
-          quote: 'Quote/Estimate',
-          change_order: 'Change Order',
-          insurance_certificate: 'Insurance Certificate',
-          contract: 'Contract',
-          unknown: 'Unknown'
+          quote: 'Quote',
+          unknown: 'Unknown Document'
         };
 
-        // Handle multi-page result vs single result
-        if (shouldSplit && result.totalPages) {
-          // Multi-page result
-          const typeBadge = document.getElementById('resultTypeBadge');
-          typeBadge.textContent = `${result.totalPages} Documents`;
-          typeBadge.className = 'result-type-badge type-multipage';
+        resultArea.innerHTML = '<div class="result-success">' +
+          '<h3>Document Processed</h3>' +
+          '<p><strong>Type:</strong> ' + (typeLabels[docType] || docType) + '</p>' +
+          (result.data?.vendor?.name ? '<p><strong>Vendor:</strong> ' + result.data.vendor.name + '</p>' : '') +
+          (result.data?.extracted?.totalAmount ? '<p><strong>Amount:</strong> $' + Number(result.data.extracted.totalAmount).toLocaleString() + '</p>' : '') +
+          '</div>';
+        resultArea.style.display = 'block';
 
-          document.getElementById('resultConfidence').textContent =
-            `${result.processedPages?.length || 0} succeeded, ${result.failedPages?.length || 0} failed`;
+        processBtn.textContent = 'Done';
+        showToast(typeLabels[docType] + ' processed successfully', 'success');
 
-          // Build details for each processed page
-          const detailsDiv = document.getElementById('resultDetails');
-          let detailsHtml = '<div class="multipage-results">';
-
-          if (result.processedPages?.length > 0) {
-            for (const page of result.processedPages) {
-              const typeLabel = typeLabels[page.documentType] || page.documentType;
-              const vendor = page.data?.extracted?.vendor?.companyName ||
-                             page.data?.vendor?.name || 'Unknown';
-              const amount = page.data?.extracted?.amount ||
-                             page.data?.extracted?.totalAmount ||
-                             page.savedRecord?.amount || '';
-
-              detailsHtml += `
-                <div class="multipage-item">
-                  <span class="page-badge type-${page.documentType}">${typeLabel}</span>
-                  <span class="page-vendor">${vendor}</span>
-                  ${amount ? `<span class="page-amount">$${Number(amount).toLocaleString()}</span>` : ''}
-                </div>
-              `;
-            }
-          }
-
-          if (result.failedPages?.length > 0) {
-            for (const page of result.failedPages) {
-              detailsHtml += `
-                <div class="multipage-item failed">
-                  <span class="page-badge type-unknown">Page ${page.pageNumber}</span>
-                  <span class="page-error">${page.error}</span>
-                </div>
-              `;
-            }
-          }
-
-          detailsHtml += '</div>';
-
-          // Summary
-          detailsHtml += `
-            <div class="multipage-summary">
-              <strong>Summary:</strong>
-              ${result.summary?.lienReleases ? `${result.summary.lienReleases} Lien Releases` : ''}
-              ${result.summary?.invoices ? `${result.summary.invoices} Invoices` : ''}
-              ${result.summary?.other ? `${result.summary.other} Other` : ''}
-            </div>
-          `;
-
-          detailsDiv.innerHTML = detailsHtml;
-
-          // Actions for multipage
-          const actionsDiv = document.getElementById('resultActions');
-          const hasLienReleases = result.summary?.lienReleases > 0;
-          const hasInvoices = result.summary?.invoices > 0;
-
-          let actionsHtml = '';
-          if (hasLienReleases) {
-            actionsHtml += `<button class="btn btn-primary" onclick="navigateToResult('lien-releases.html', '')">View Lien Releases</button>`;
-          }
-          if (hasInvoices) {
-            actionsHtml += `<button class="btn btn-primary" onclick="navigateToResult('index.html', '')">View Invoices</button>`;
-          }
-          actionsHtml += `<button class="btn btn-secondary" onclick="closeModal('universalUploadModal')">Close</button>`;
-          actionsDiv.innerHTML = actionsHtml;
-
-          showToast(`Processed ${result.processedPages?.length || 0} of ${result.totalPages} documents`, 'success');
-
-        } else {
-          // Single document result
-          const typeBadge = document.getElementById('resultTypeBadge');
-          typeBadge.textContent = typeLabels[result.documentType] || result.documentType;
-          typeBadge.className = 'result-type-badge type-' + result.documentType;
-
-          // Confidence
-          const conf = result.classification?.confidence || 0;
-          document.getElementById('resultConfidence').textContent = Math.round(conf * 100) + '% confidence';
-
-          // Details based on document type
-          const detailsDiv = document.getElementById('resultDetails');
-          let detailsHtml = '';
-
-          if (result.documentType === 'invoice') {
-            const data = result.data?.extracted || {};
-            detailsHtml = `
-              <div class="detail-row"><label>Vendor:</label> <span>${data.vendor?.companyName || 'Unknown'}</span></div>
-              <div class="detail-row"><label>Invoice #:</label> <span>${data.invoiceNumber || 'N/A'}</span></div>
-              <div class="detail-row"><label>Amount:</label> <span>$${(data.totalAmount || 0).toLocaleString()}</span></div>
-              <div class="detail-row"><label>Job:</label> <span>${result.data?.matchedJob?.name || 'Not matched'}</span></div>
-            `;
-          } else if (result.documentType === 'lien_release') {
-            const data = result.data?.extracted || {};
-            detailsHtml = `
-              <div class="detail-row"><label>Type:</label> <span>${(data.releaseType || 'unknown').replace(/_/g, ' ')}</span></div>
-              <div class="detail-row"><label>Vendor:</label> <span>${data.vendor?.companyName || 'Unknown'}</span></div>
-              <div class="detail-row"><label>Amount:</label> <span>${data.amount ? '$' + data.amount.toLocaleString() : 'N/A'}</span></div>
-              <div class="detail-row"><label>Through Date:</label> <span>${data.throughDate || 'N/A'}</span></div>
-            `;
-          } else {
-            detailsHtml = `
-              <div class="detail-row"><label>Reasoning:</label> <span>${result.classification?.reasoning || 'N/A'}</span></div>
-              <p class="info-text">This document type requires manual processing.</p>
-            `;
-          }
-          detailsDiv.innerHTML = detailsHtml;
-
-          // Actions
-          const actionsDiv = document.getElementById('resultActions');
-          if (result.redirect?.page) {
-            actionsDiv.innerHTML = `
-              <button class="btn btn-success" onclick="navigateToResult('${result.redirect.page}', '${result.redirect.id || ''}')">
-                View ${typeLabels[result.documentType] || 'Document'}
-              </button>
-            `;
-          } else {
-            actionsDiv.innerHTML = `<button class="btn btn-secondary" onclick="closeModal('universalUploadModal')">Close</button>`;
-          }
-
-          showToast(`${typeLabels[result.documentType]} processed successfully`, 'success');
-
-          // Refresh invoice list if it was an invoice
-          if (result.documentType === 'invoice' && typeof loadInvoices === 'function') {
-            loadInvoices();
-          }
+        // Refresh the invoice list
+        if (typeof loadInvoices === 'function') {
+          loadInvoices();
         }
 
-        // Update button for both cases
-        btn.textContent = 'Upload Another';
-        btn.disabled = false;
-        btn.onclick = () => {
-          universalSelectedFile = null;
-          universalPdfPageCount = 1;
-          document.getElementById('universalPdfFile').value = '';
-          document.getElementById('universalFileName').style.display = 'none';
-          document.getElementById('splitToggleGroup').style.display = 'none';
-          resultDiv.style.display = 'none';
-          btn.textContent = 'Process Document';
-          btn.disabled = true;
-          btn.onclick = processUniversalDocument;
-        };
+        // Auto close after 2 seconds
+        setTimeout(function() {
+          closeModal();
+        }, 2000);
 
       } catch (err) {
-        console.error('Document processing error:', err);
-        statusDiv.style.display = 'none';
-        btn.disabled = false;
-        btn.textContent = 'Try Again';
-        showToast(err.message || 'Processing failed', 'error');
+        console.error('Upload error:', err);
+        processingDiv.style.display = 'none';
+        processBtn.disabled = false;
+        processBtn.textContent = 'Try Again';
+        showToast(err.message || 'Upload failed', 'error');
       }
-    }
+    };
 
-    function navigateToResult(page, id) {
-      closeModal('universalUploadModal');
-      if (id) {
-        window.location.href = `${page}?highlight=${id}`;
-      } else {
-        window.location.href = page;
-      }
-    }
+    console.log('Upload module initialized');
+  })();
   </script>
 </body>
 </html>

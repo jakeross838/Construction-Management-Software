@@ -26,7 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupFileUpload();
   setupInvoiceSearch();
 
-  document.getElementById('uploadInvoiceDate').value = new Date().toISOString().split('T')[0];
+  // Old upload modal element - removed (now using universal upload)
+  // document.getElementById('uploadInvoiceDate').value = new Date().toISOString().split('T')[0];
 
   // Sidebar integration - listen for job selection changes
   if (window.JobSidebar) {
@@ -861,70 +862,34 @@ const AIProcessingUI = {
 };
 
 // ============================================================
-// UPLOAD
+// UPLOAD (Legacy - now handled by inline script in HTML)
 // ============================================================
 
 function setupFileUpload() {
-  const fileInput = document.getElementById('invoicePdfFile');
-  const uploadArea = document.getElementById('fileUploadArea');
-  const fileName = document.getElementById('uploadFileName');
-
-  fileInput?.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      fileName.textContent = e.target.files[0].name;
-      uploadArea.classList.add('has-file');
-    } else {
-      fileName.textContent = '';
-      uploadArea.classList.remove('has-file');
-    }
-  });
+  // Old upload modal removed - upload is now handled by universal upload in HTML
+  // This function is kept for compatibility but does nothing
 }
 
 function showUploadInvoiceModal() {
-  document.getElementById('uploadInvoiceForm').reset();
-  document.getElementById('uploadFileName').textContent = '';
-  document.getElementById('fileUploadArea').classList.remove('has-file');
-  document.getElementById('uploadInvoiceDate').value = new Date().toISOString().split('T')[0];
-
-  // Clear searchable pickers
-  const jobPicker = document.querySelector('#upload-job-picker-container .search-picker');
-  const vendorPicker = document.querySelector('#upload-vendor-picker-container .search-picker');
-  if (jobPicker) {
-    jobPicker.querySelector('.search-picker-input').value = '';
-    jobPicker.querySelector('.search-picker-value').value = '';
-    jobPicker.classList.remove('has-value');
-  }
-  if (vendorPicker) {
-    vendorPicker.querySelector('.search-picker-input').value = '';
-    vendorPicker.querySelector('.search-picker-value').value = '';
-    vendorPicker.classList.remove('has-value');
-  }
-
-  // Reset AI mode (default: on)
-  const aiCheckbox = document.getElementById('useAIProcessing');
-  if (aiCheckbox) {
-    aiCheckbox.checked = true;
-    toggleAIMode(true);
-  }
-
-  showModal('uploadInvoiceModal');
+  // Legacy function - now use the universal upload modal via uploadBtn click
+  const uploadBtn = document.getElementById('uploadBtn');
+  if (uploadBtn) uploadBtn.click();
 }
 
 function toggleAIMode(useAI) {
-  const manualFields = document.getElementById('manualFields');
-  const uploadBtn = document.querySelector('#uploadInvoiceModal .btn-primary');
-
-  if (useAI) {
-    manualFields.style.display = 'none';
-    uploadBtn.textContent = 'Process with AI';
-  } else {
-    manualFields.style.display = 'block';
-    uploadBtn.textContent = 'Upload';
-  }
+  // Legacy function - AI mode is always on with universal upload
 }
 
 async function submitUploadInvoice() {
+  // Legacy function - upload is now handled by universal upload modal
+  // Redirect to new upload
+  const uploadBtn = document.getElementById('uploadBtn');
+  if (uploadBtn) uploadBtn.click();
+  return;
+
+  // === OLD CODE BELOW (kept for reference) ===
   const fileInput = document.getElementById('invoicePdfFile');
+  if (!fileInput) return;
   const useAI = document.getElementById('useAIProcessing')?.checked !== false;
 
   if (!fileInput.files.length) {
@@ -936,10 +901,11 @@ async function submitUploadInvoice() {
   formData.append('pdf', fileInput.files[0]);
 
   // Show processing state
-  const uploadBtn = document.querySelector('#uploadInvoiceModal .btn-primary');
-  const originalText = uploadBtn.textContent;
-  uploadBtn.textContent = useAI ? 'Processing with AI...' : 'Uploading...';
-  uploadBtn.disabled = true;
+  const uploadBtnOld = document.querySelector('#uploadInvoiceModal .btn-primary');
+  if (!uploadBtnOld) return;
+  const originalText = uploadBtnOld.textContent;
+  uploadBtnOld.textContent = useAI ? 'Processing with AI...' : 'Uploading...';
+  uploadBtnOld.disabled = true;
 
   try {
     if (useAI) {
