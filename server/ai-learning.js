@@ -301,11 +301,338 @@ async function getLearningStats() {
   }
 }
 
+/**
+ * Record feedback from a user correction and apply to learning
+ *
+ * @param {Object} params - Feedback parameters
+ * @param {string} params.invoiceId - Invoice being corrected
+ * @param {string} params.fieldName - Field being corrected ('vendor', 'job', 'amount', etc.)
+ * @param {string} params.aiValue - Original AI extracted value
+ * @param {string} params.userValue - User's corrected value
+ * @param {string} params.entityId - ID of matched entity (for vendor/job corrections)
+ * @param {string} params.correctedBy - User making the correction
+ * @param {Object} params.context - Additional context
+ */
+async function recordFeedback({ invoiceId, fieldName, aiValue, userValue, entityId, correctedBy, context }) {
+  try {
+    // Store the feedback
+    const { data: feedback, error } = await supabase
+      .from('v2_ai_feedback')
+      .insert({
+        invoice_id: invoiceId,
+        field_name: fieldName,
+        ai_value: aiValue,
+        user_value: userValue,
+        entity_id: entityId,
+        corrected_by: correctedBy,
+        context: context || {},
+        applied_to_learning: false
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AI Feedback] Failed to record:', error.message);
+      return null;
+    }
+
+    console.log(`[AI Feedback] Recorded: ${fieldName} "${aiValue}" → "${userValue}"`);
+
+    // Apply to learning system based on field type
+    let learningApplied = false;
+
+    if (fieldName === 'vendor' && entityId) {
+      // Learn vendor mapping
+      await recordLearning('vendor', aiValue, entityId, userValue, 'vendor.companyName');
+      // Also record as alias
+      await recordVendorAlias(entityId, aiValue, 'correction');
+      learningApplied = true;
+    } else if (fieldName === 'job' && entityId) {
+      // Learn job mapping
+      await recordLearning('job', aiValue, entityId, userValue, 'job.reference');
+      learningApplied = true;
+    }
+
+    // Mark feedback as applied to learning
+    if (learningApplied) {
+      await supabase
+        .from('v2_ai_feedback')
+        .update({ applied_to_learning: true })
+        .eq('id', feedback.id);
+    }
+
+    return feedback;
+  } catch (err) {
+    console.error('[AI Feedback] Error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Record a vendor alias (alternate name)
+ *
+ * @param {string} vendorId - Vendor UUID
+ * @param {string} alias - Alternate name to record
+ * @param {string} source - Where this came from ('correction', 'manual', 'ai_extracted')
+ */
+async function recordVendorAlias(vendorId, alias, source = 'correction') {
+  if (!vendorId || !alias) return null;
+
+  const normalized = normalizeForLearning(alias);
+  if (normalized.length < 2) return null;
+
+  try {
+    // Check if alias already exists
+    const { data: existing } = await supabase
+      .from('v2_vendor_aliases')
+      .select('*')
+      .eq('alias_normalized', normalized)
+      .single();
+
+    if (existing) {
+      // Update times_matched if same vendor, otherwise log conflict
+      if (existing.vendor_id === vendorId) {
+        await supabase
+          .from('v2_vendor_aliases')
+          .update({ times_matched: existing.times_matched + 1 })
+          .eq('id', existing.id);
+        console.log(`[Vendor Alias] Reinforced: "${alias}" → vendor ${vendorId}`);
+      } else {
+        console.log(`[Vendor Alias] Conflict: "${alias}" already maps to different vendor`);
+      }
+      return existing;
+    }
+
+    // Create new alias
+    const { data: newAlias, error } = await supabase
+      .from('v2_vendor_aliases')
+      .insert({
+        vendor_id: vendorId,
+        alias: alias,
+        alias_normalized: normalized,
+        source: source
+      })
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505') return null; // Duplicate
+      console.error('[Vendor Alias] Failed to create:', error.message);
+      return null;
+    }
+
+    console.log(`[Vendor Alias] Created: "${alias}" → vendor ${vendorId}`);
+    return newAlias;
+  } catch (err) {
+    console.error('[Vendor Alias] Error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Find vendor by alias
+ *
+ * @param {string} name - Vendor name to look up
+ * @returns {Object|null} - { vendor_id, alias, times_matched } or null
+ */
+async function findVendorByAlias(name) {
+  if (!name) return null;
+
+  const normalized = normalizeForLearning(name);
+  if (normalized.length < 2) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('v2_vendor_aliases')
+      .select('vendor_id, alias, times_matched')
+      .eq('alias_normalized', normalized)
+      .single();
+
+    if (error || !data) return null;
+
+    // Verify vendor still exists
+    const { data: vendor } = await supabase
+      .from('v2_vendors')
+      .select('id, name')
+      .eq('id', data.vendor_id)
+      .single();
+
+    if (!vendor) {
+      // Vendor deleted - remove alias
+      await supabase
+        .from('v2_vendor_aliases')
+        .delete()
+        .eq('alias_normalized', normalized);
+      return null;
+    }
+
+    return {
+      vendor_id: data.vendor_id,
+      vendor_name: vendor.name,
+      alias: data.alias,
+      times_matched: data.times_matched,
+      source: 'alias'
+    };
+  } catch (err) {
+    console.error('[Vendor Alias] Lookup error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Find potential duplicate vendors
+ *
+ * @param {number} threshold - Minimum similarity score (default 75)
+ * @returns {Array} - Array of potential duplicate pairs
+ */
+async function findPotentialDuplicateVendors(threshold = 75) {
+  const standards = require('./standards');
+
+  try {
+    // Get all vendors
+    const { data: vendors, error } = await supabase
+      .from('v2_vendors')
+      .select('id, name')
+      .is('deleted_at', null)
+      .order('name');
+
+    if (error || !vendors) return [];
+
+    const duplicates = [];
+    const checked = new Set();
+
+    // Compare each pair
+    for (let i = 0; i < vendors.length; i++) {
+      for (let j = i + 1; j < vendors.length; j++) {
+        const v1 = vendors[i];
+        const v2 = vendors[j];
+        const pairKey = `${v1.id}-${v2.id}`;
+
+        if (checked.has(pairKey)) continue;
+        checked.add(pairKey);
+
+        const similarity = standards.calculateVendorSimilarity(v1.name, v2.name);
+
+        if (similarity >= threshold) {
+          duplicates.push({
+            vendor1: { id: v1.id, name: v1.name },
+            vendor2: { id: v2.id, name: v2.name },
+            similarity: similarity
+          });
+        }
+      }
+    }
+
+    return duplicates.sort((a, b) => b.similarity - a.similarity);
+  } catch (err) {
+    console.error('[Vendor Duplicates] Error:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Flag a potential vendor duplicate for review
+ */
+async function flagVendorDuplicate(vendorId1, vendorId2, similarity) {
+  try {
+    // Ensure consistent ordering
+    const [id1, id2] = [vendorId1, vendorId2].sort();
+
+    const { data, error } = await supabase
+      .from('v2_vendor_duplicates')
+      .upsert({
+        vendor_id_1: id1,
+        vendor_id_2: id2,
+        similarity_score: similarity,
+        status: 'pending'
+      }, { onConflict: 'vendor_id_1,vendor_id_2' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Vendor Duplicates] Flag error:', error.message);
+      return null;
+    }
+
+    return data;
+  } catch (err) {
+    console.error('[Vendor Duplicates] Error flagging:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Enrich vendor info from invoice data
+ * Updates vendor with better contact info if available
+ *
+ * @param {string} vendorId - Vendor UUID
+ * @param {Object} extractedData - AI extracted vendor data
+ */
+async function enrichVendorFromInvoice(vendorId, extractedData) {
+  if (!vendorId || !extractedData) return;
+
+  try {
+    // Get current vendor data
+    const { data: vendor } = await supabase
+      .from('v2_vendors')
+      .select('*')
+      .eq('id', vendorId)
+      .single();
+
+    if (!vendor) return;
+
+    const updates = {};
+    let updated = false;
+
+    // Update email if missing and extracted
+    if (!vendor.email && extractedData.email) {
+      updates.email = extractedData.email;
+      updated = true;
+    }
+
+    // Update phone if missing and extracted
+    if (!vendor.phone && extractedData.phone) {
+      updates.phone = extractedData.phone;
+      updated = true;
+    }
+
+    // Update address if missing and extracted
+    if (!vendor.address && extractedData.address) {
+      updates.address = extractedData.address;
+      updated = true;
+    }
+
+    // Always update invoice tracking
+    updates.last_invoice_date = new Date().toISOString().split('T')[0];
+    updates.invoice_count = (vendor.invoice_count || 0) + 1;
+
+    if (Object.keys(updates).length > 0) {
+      const { error } = await supabase
+        .from('v2_vendors')
+        .update(updates)
+        .eq('id', vendorId);
+
+      if (!error && updated) {
+        console.log(`[Vendor Enrichment] Updated vendor ${vendor.name}:`, Object.keys(updates).filter(k => k !== 'last_invoice_date' && k !== 'invoice_count'));
+      }
+    }
+  } catch (err) {
+    console.error('[Vendor Enrichment] Error:', err.message);
+  }
+}
+
 module.exports = {
   recordLearning,
   findLearnedMapping,
   findBestLearnedMapping,
   recordInvoiceLearning,
   getLearningStats,
-  normalizeForLearning
+  normalizeForLearning,
+  // New feedback functions
+  recordFeedback,
+  recordVendorAlias,
+  findVendorByAlias,
+  findPotentialDuplicateVendors,
+  flagVendorDuplicate,
+  enrichVendorFromInvoice
 };

@@ -1169,7 +1169,26 @@ async function findOrCreateVendor(vendorData) {
 
     if (learnedVendor) {
       console.log(`[AI Learning] Used learned vendor mapping: "${vendorData.companyName}" → "${learnedVendor.name}" (${Math.round(learnedMatch.confidence * 100)}%)`);
+      // Enrich vendor with any new info from this invoice
+      await aiLearning.enrichVendorFromInvoice(learnedVendor.id, vendorData);
       return { vendor: learnedVendor, confidence: learnedMatch.confidence, isNew: false, matchType: 'learned_mapping' };
+    }
+  }
+
+  // Check vendor aliases (learned from corrections)
+  const aliasMatch = await aiLearning.findVendorByAlias(vendorData.companyName);
+  if (aliasMatch) {
+    const { data: aliasVendor } = await supabase
+      .from('v2_vendors')
+      .select('id, name, email, phone')
+      .eq('id', aliasMatch.vendor_id)
+      .single();
+
+    if (aliasVendor) {
+      console.log(`[Vendor Alias] "${vendorData.companyName}" → "${aliasVendor.name}" (alias match)`);
+      // Enrich vendor with any new info from this invoice
+      await aiLearning.enrichVendorFromInvoice(aliasVendor.id, vendorData);
+      return { vendor: aliasVendor, confidence: 0.95, isNew: false, matchType: 'alias_match' };
     }
   }
 
@@ -1185,6 +1204,8 @@ async function findOrCreateVendor(vendorData) {
 
     if (match) {
       console.log(`[Vendor Match] "${vendorData.companyName}" → "${match.vendor.name}" (${match.score}% similarity)`);
+      // Enrich vendor with any new info from this invoice
+      await aiLearning.enrichVendorFromInvoice(match.vendor.id, vendorData);
       return {
         vendor: match.vendor,
         confidence: match.score / 100,
@@ -1202,7 +1223,9 @@ async function findOrCreateVendor(vendorData) {
     .insert({
       name: canonicalName,
       email: vendorData.email || null,
-      phone: vendorData.phone || null
+      phone: vendorData.phone || null,
+      last_invoice_date: new Date().toISOString().split('T')[0],
+      invoice_count: 1
     })
     .select()
     .single();

@@ -824,39 +824,40 @@ app.post('/api/vendors', async (req, res) => {
 
 // Find potential duplicate vendors (MUST be before :id routes)
 app.get('/api/vendors/duplicates', asyncHandler(async (req, res) => {
-  const { calculateVendorSimilarity } = require('./standards');
+  const threshold = parseInt(req.query.threshold) || 75;
+  const flagNew = req.query.flag !== 'false'; // Default to flagging new duplicates
 
-  const { data: vendors, error } = await supabase
-    .from('v2_vendors')
-    .select('id, name')
-    .is('deleted_at', null)
-    .order('name');
+  // Use the enhanced function from ai-learning
+  const duplicates = await aiLearning.findPotentialDuplicateVendors(threshold);
 
-  if (error) throw error;
+  // Also get any previously flagged duplicates from the database
+  const { data: flaggedDuplicates } = await supabase
+    .from('v2_vendor_duplicates')
+    .select(`
+      *,
+      vendor1:vendor_id_1(id, name),
+      vendor2:vendor_id_2(id, name)
+    `)
+    .eq('status', 'pending');
 
-  const duplicates = [];
-  const threshold = 70;
-
-  for (let i = 0; i < vendors.length; i++) {
-    for (let j = i + 1; j < vendors.length; j++) {
-      const similarity = calculateVendorSimilarity(vendors[i].name, vendors[j].name);
-      if (similarity >= threshold) {
-        duplicates.push({
-          vendor1: vendors[i],
-          vendor2: vendors[j],
-          similarity
-        });
-      }
+  // Flag new duplicates in database for tracking
+  if (flagNew) {
+    for (const dup of duplicates) {
+      await aiLearning.flagVendorDuplicate(dup.vendor1.id, dup.vendor2.id, dup.similarity);
     }
   }
 
-  duplicates.sort((a, b) => b.similarity - a.similarity);
-  res.json(duplicates);
+  res.json({
+    duplicates,
+    flagged: flaggedDuplicates || [],
+    threshold,
+    count: duplicates.length
+  });
 }));
 
 // Merge two vendors (MUST be before :id routes)
 app.post('/api/vendors/merge', asyncHandler(async (req, res) => {
-  const { keep_vendor_id, remove_vendor_id } = req.body;
+  const { keep_vendor_id, remove_vendor_id, performed_by = 'System' } = req.body;
 
   if (!keep_vendor_id || !remove_vendor_id) {
     return res.status(400).json({ error: 'keep_vendor_id and remove_vendor_id are required' });
@@ -866,8 +867,22 @@ app.post('/api/vendors/merge', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Cannot merge vendor with itself' });
   }
 
+  // Get both vendors for logging
+  const { data: keepVendor } = await supabase
+    .from('v2_vendors')
+    .select('name')
+    .eq('id', keep_vendor_id)
+    .single();
+
+  const { data: removeVendor } = await supabase
+    .from('v2_vendors')
+    .select('name')
+    .eq('id', remove_vendor_id)
+    .single();
+
   let updatedCount = 0;
 
+  // Transfer invoices
   const { data: invoiceUpdate } = await supabase
     .from('v2_invoices')
     .update({ vendor_id: keep_vendor_id })
@@ -875,6 +890,7 @@ app.post('/api/vendors/merge', asyncHandler(async (req, res) => {
     .select('id');
   updatedCount += (invoiceUpdate?.length || 0);
 
+  // Transfer POs
   const { data: poUpdate } = await supabase
     .from('v2_purchase_orders')
     .update({ vendor_id: keep_vendor_id })
@@ -882,6 +898,7 @@ app.post('/api/vendors/merge', asyncHandler(async (req, res) => {
     .select('id');
   updatedCount += (poUpdate?.length || 0);
 
+  // Transfer lien releases
   const { data: lienUpdate } = await supabase
     .from('v2_lien_releases')
     .update({ vendor_id: keep_vendor_id })
@@ -889,16 +906,117 @@ app.post('/api/vendors/merge', asyncHandler(async (req, res) => {
     .select('id');
   updatedCount += (lienUpdate?.length || 0);
 
+  // Transfer AI learning mappings
+  await supabase
+    .from('v2_ai_learning')
+    .update({ matched_id: keep_vendor_id, matched_name: keepVendor?.name })
+    .eq('entity_type', 'vendor')
+    .eq('matched_id', remove_vendor_id);
+
+  // Transfer vendor aliases to kept vendor
+  await supabase
+    .from('v2_vendor_aliases')
+    .update({ vendor_id: keep_vendor_id })
+    .eq('vendor_id', remove_vendor_id);
+
+  // Record the removed vendor's name as an alias for the kept vendor
+  if (removeVendor?.name) {
+    await aiLearning.recordVendorAlias(keep_vendor_id, removeVendor.name, 'merge');
+  }
+
+  // Update v2_vendor_duplicates to mark as merged
+  const [id1, id2] = [keep_vendor_id, remove_vendor_id].sort();
+  await supabase
+    .from('v2_vendor_duplicates')
+    .update({
+      status: 'merged',
+      merged_into: keep_vendor_id,
+      reviewed_by: performed_by,
+      reviewed_at: new Date().toISOString()
+    })
+    .eq('vendor_id_1', id1)
+    .eq('vendor_id_2', id2);
+
+  // Soft delete the removed vendor
   await supabase
     .from('v2_vendors')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', remove_vendor_id);
 
+  console.log(`[Vendor Merge] "${removeVendor?.name}" merged into "${keepVendor?.name}" - ${updatedCount} records updated`);
+
   res.json({
     success: true,
     updated_count: updatedCount,
     keep_vendor_id,
-    removed_vendor_id: remove_vendor_id
+    keep_vendor_name: keepVendor?.name,
+    removed_vendor_id: remove_vendor_id,
+    removed_vendor_name: removeVendor?.name
+  });
+}));
+
+// Dismiss a flagged vendor duplicate (mark as not a duplicate)
+app.post('/api/vendors/duplicates/dismiss', asyncHandler(async (req, res) => {
+  const { vendor_id_1, vendor_id_2, performed_by = 'System' } = req.body;
+
+  if (!vendor_id_1 || !vendor_id_2) {
+    return res.status(400).json({ error: 'vendor_id_1 and vendor_id_2 are required' });
+  }
+
+  const [id1, id2] = [vendor_id_1, vendor_id_2].sort();
+
+  const { data, error } = await supabase
+    .from('v2_vendor_duplicates')
+    .update({
+      status: 'dismissed',
+      reviewed_by: performed_by,
+      reviewed_at: new Date().toISOString()
+    })
+    .eq('vendor_id_1', id1)
+    .eq('vendor_id_2', id2)
+    .select()
+    .single();
+
+  if (error) {
+    return res.status(404).json({ error: 'Duplicate flag not found' });
+  }
+
+  res.json({ success: true, dismissed: data });
+}));
+
+// Get AI learning statistics
+app.get('/api/ai/stats', asyncHandler(async (req, res) => {
+  const stats = await aiLearning.getLearningStats();
+
+  // Get feedback counts
+  const { count: feedbackCount } = await supabase
+    .from('v2_ai_feedback')
+    .select('*', { count: 'exact', head: true });
+
+  const { count: appliedCount } = await supabase
+    .from('v2_ai_feedback')
+    .select('*', { count: 'exact', head: true })
+    .eq('applied_to_learning', true);
+
+  // Get alias counts
+  const { count: aliasCount } = await supabase
+    .from('v2_vendor_aliases')
+    .select('*', { count: 'exact', head: true });
+
+  // Get duplicate counts
+  const { count: pendingDuplicates } = await supabase
+    .from('v2_vendor_duplicates')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'pending');
+
+  res.json({
+    learning: stats,
+    feedback: {
+      total: feedbackCount || 0,
+      applied: appliedCount || 0
+    },
+    vendor_aliases: aliasCount || 0,
+    pending_duplicates: pendingDuplicates || 0
   });
 }));
 
@@ -9089,6 +9207,42 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     }
   }
 
+  // AI LEARNING: When correcting vendor_id, record feedback and learn the mapping
+  if (updateFields.vendor_id && updateFields.vendor_id !== existing.vendor_id) {
+    try {
+      const { data: newVendor } = await supabase
+        .from('v2_vendors')
+        .select('id, name')
+        .eq('id', updateFields.vendor_id)
+        .single();
+
+      if (newVendor && existing.ai_extracted_data) {
+        const aiVendorName = existing.ai_extracted_data.parsed_vendor_name ||
+                             existing.extracted?.vendor?.companyName;
+        if (aiVendorName && aiVendorName !== newVendor.name) {
+          // Record feedback and learn the correction
+          await aiLearning.recordFeedback({
+            invoiceId: invoiceId,
+            fieldName: 'vendor',
+            aiValue: aiVendorName,
+            userValue: newVendor.name,
+            entityId: newVendor.id,
+            correctedBy: performedBy,
+            context: { original_vendor_id: existing.vendor_id }
+          });
+          // Also increment correction count on vendor
+          await supabase
+            .from('v2_vendors')
+            .update({ correction_count: (existing.vendor?.correction_count || 0) + 1 })
+            .eq('id', existing.vendor_id);
+        }
+      }
+    } catch (learnErr) {
+      console.error('[AI Learning] Error recording vendor learning:', learnErr.message);
+      // Don't fail the update if learning fails
+    }
+  }
+
   // Handle status transitions with proper timestamp updates
   if (updates.status && updates.status !== existing.status) {
     // Validate transition is allowed
@@ -10523,42 +10677,23 @@ app.post('/api/ai/feedback', asyncHandler(async (req, res) => {
     field_name,
     ai_value,
     user_value,
+    entity_id,
     corrected_by = 'unknown',
-    vendor_name,
     context = {}
   } = req.body;
 
-  // Store the feedback for AI learning
-  const { error: insertError } = await supabase
-    .from('v2_ai_feedback')
-    .insert({
-      invoice_id,
-      field_name,
-      ai_value: typeof ai_value === 'object' ? JSON.stringify(ai_value) : String(ai_value || ''),
-      user_value: typeof user_value === 'object' ? JSON.stringify(user_value) : String(user_value || ''),
-      corrected_by,
-      vendor_name,
-      ai_confidence: context.confidence || null,
-      vendor_trade: context.vendor_trade || null,
-      created_at: new Date().toISOString()
-    });
+  // Use the new recordFeedback function which stores AND applies to learning
+  const feedback = await aiLearning.recordFeedback({
+    invoiceId: invoice_id,
+    fieldName: field_name,
+    aiValue: typeof ai_value === 'object' ? JSON.stringify(ai_value) : String(ai_value || ''),
+    userValue: typeof user_value === 'object' ? JSON.stringify(user_value) : String(user_value || ''),
+    entityId: entity_id,
+    correctedBy: corrected_by,
+    context: context
+  });
 
-  // If table doesn't exist, just log the feedback - it's non-critical
-  if (insertError) {
-    console.log('[AI Feedback] Could not store feedback (table may not exist):', insertError.message);
-    console.log('[AI Feedback] Received:', {
-      invoice_id,
-      field_name,
-      ai_value,
-      user_value,
-      corrected_by,
-      vendor_name
-    });
-  } else {
-    console.log(`[AI Feedback] Stored correction: ${field_name} "${ai_value}" → "${user_value}" by ${corrected_by}`);
-  }
-
-  res.json({ success: true });
+  res.json({ success: true, feedback_id: feedback?.id });
 }));
 
 // ============================================================
