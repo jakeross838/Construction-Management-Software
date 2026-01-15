@@ -1027,8 +1027,8 @@
       // G703 section
       renderG703Table(draw.scheduleOfValues || []);
 
-      // CO Billing section
-      renderCOBillingTable(draw.coScheduleOfValues || [], draw.status);
+      // CO Billing section (includes linked COs and unlinked CO cost code allocations)
+      renderCOBillingTable(draw.coScheduleOfValues || [], draw.status, draw.unlinkedCOAllocations);
 
       // Invoices section
       renderInvoicesTable(draw.invoices || [], draw.status);
@@ -1147,58 +1147,127 @@
       `;
     }
 
-    function renderCOBillingTable(coScheduleOfValues, drawStatus) {
+    function renderCOBillingTable(coScheduleOfValues, drawStatus, unlinkedCOAllocations) {
       const tbody = document.getElementById('coBillingBody');
       const tfoot = document.getElementById('coBillingFooter');
       const section = document.getElementById('coBillingSection');
 
-      if (!coScheduleOfValues || coScheduleOfValues.length === 0) {
+      const hasLinkedCOs = coScheduleOfValues && coScheduleOfValues.length > 0;
+      const hasUnlinkedCO = unlinkedCOAllocations &&
+        (unlinkedCOAllocations.totalThisPeriod > 0 || unlinkedCOAllocations.totalPrevious > 0);
+
+      if (!hasLinkedCOs && !hasUnlinkedCO) {
         tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No change order billings in this draw</td></tr>';
         tfoot.innerHTML = '';
         return;
       }
 
       const isDraft = drawStatus === 'draft';
+      let rowHtml = '';
+      let itemNum = 0;
 
-      tbody.innerHTML = coScheduleOfValues.map((item, idx) => {
-        const coAmount = parseFloat(item.coAmount) || 0;
-        const daysAdded = parseInt(item.daysAdded) || 0;
-        const previous = parseFloat(item.previousBilled) || 0;
-        const current = parseFloat(item.thisPeriod) || 0;
-        const total = parseFloat(item.totalBilled) || 0;
-        const balance = coAmount - total;
-        const percent = coAmount > 0 ? (total / coAmount) * 100 : 0;
+      // Render linked CO rows
+      if (hasLinkedCOs) {
+        rowHtml += coScheduleOfValues.map((item) => {
+          itemNum++;
+          const coAmount = parseFloat(item.coAmount) || 0;
+          const daysAdded = parseInt(item.daysAdded) || 0;
+          const previous = parseFloat(item.previousBilled) || 0;
+          const current = parseFloat(item.thisPeriod) || 0;
+          const total = parseFloat(item.totalBilled) || 0;
+          const balance = coAmount - total;
+          const percent = coAmount > 0 ? (total / coAmount) * 100 : 0;
 
-        const daysDisplay = daysAdded > 0 ? `+${daysAdded}` : daysAdded.toString();
-        const daysColor = daysAdded > 0 ? 'var(--accent-orange)' : (daysAdded < 0 ? 'var(--accent-green)' : 'var(--text-secondary)');
+          const daysDisplay = daysAdded > 0 ? `+${daysAdded}` : daysAdded.toString();
+          const daysColor = daysAdded > 0 ? 'var(--accent-orange)' : (daysAdded < 0 ? 'var(--accent-green)' : 'var(--text-secondary)');
 
-        return `
-          <tr>
-            <td>${idx + 1}</td>
-            <td>
-              <strong>CO-${String(item.changeOrderNumber).padStart(3, '0')}</strong>
-              <br><span class="text-muted">${item.title || ''}</span>
-            </td>
-            <td class="amount">${formatMoneyDecimal(coAmount)}</td>
-            <td style="text-align: center; color: ${daysColor}; font-weight: 500;">${daysDisplay}</td>
-            <td class="amount">${formatMoneyDecimal(previous)}</td>
-            <td class="amount highlight-current">${formatMoneyDecimal(current)}</td>
-            <td class="amount">${formatMoneyDecimal(total)}</td>
-            <td class="percent">${percent.toFixed(1)}%</td>
-            <td class="amount">${formatMoneyDecimal(balance)}</td>
-            <td>
-              ${isDraft && current > 0 ? `
-                <button class="btn btn-sm btn-danger" onclick="removeCOBilling('${item.changeOrderId}')" title="Remove from draw">
-                  <i class="fas fa-times"></i>
-                </button>
-              ` : '-'}
-            </td>
-          </tr>
-        `;
-      }).join('');
+          return `
+            <tr>
+              <td>${itemNum}</td>
+              <td>
+                <strong>CO-${String(item.changeOrderNumber).padStart(3, '0')}</strong>
+                <br><span class="text-muted">${item.title || ''}</span>
+              </td>
+              <td class="amount">${formatMoneyDecimal(coAmount)}</td>
+              <td style="text-align: center; color: ${daysColor}; font-weight: 500;">${daysDisplay}</td>
+              <td class="amount">${formatMoneyDecimal(previous)}</td>
+              <td class="amount highlight-current">${formatMoneyDecimal(current)}</td>
+              <td class="amount">${formatMoneyDecimal(total)}</td>
+              <td class="percent">${percent.toFixed(1)}%</td>
+              <td class="amount">${formatMoneyDecimal(balance)}</td>
+              <td>
+                ${isDraft && current > 0 ? `
+                  <button class="btn btn-sm btn-danger" onclick="removeCOBilling('${item.changeOrderId}')" title="Remove from draw">
+                    <i class="fas fa-times"></i>
+                  </button>
+                ` : '-'}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
 
-      // Totals row
-      const totals = coScheduleOfValues.reduce((acc, item) => ({
+      // Render unlinked CO cost code allocations (grouped by cost code)
+      if (hasUnlinkedCO) {
+        const unlinkedAllocations = unlinkedCOAllocations.thisPeriod?.allocations || [];
+        const previousUnlinked = unlinkedCOAllocations.previous?.allocations || [];
+
+        // Group by cost code
+        const byCostCode = {};
+        unlinkedAllocations.forEach(alloc => {
+          const code = alloc.cost_code?.code || 'Unknown';
+          if (!byCostCode[code]) {
+            byCostCode[code] = {
+              code,
+              name: alloc.cost_code?.name || 'Unknown',
+              thisPeriod: 0,
+              previous: 0
+            };
+          }
+          byCostCode[code].thisPeriod += parseFloat(alloc.amount) || 0;
+        });
+        previousUnlinked.forEach(alloc => {
+          const code = alloc.cost_code?.code || 'Unknown';
+          if (!byCostCode[code]) {
+            byCostCode[code] = {
+              code,
+              name: alloc.cost_code?.name || 'Unknown',
+              thisPeriod: 0,
+              previous: 0
+            };
+          }
+          byCostCode[code].previous += parseFloat(alloc.amount) || 0;
+        });
+
+        // Render each unlinked CO cost code as a row
+        Object.values(byCostCode).forEach(cc => {
+          itemNum++;
+          const total = cc.previous + cc.thisPeriod;
+          rowHtml += `
+            <tr class="unlinked-co-row">
+              <td>${itemNum}</td>
+              <td>
+                <strong>${cc.code}</strong>
+                <span class="badge badge-secondary" style="margin-left: 8px; font-size: 10px;">No CO</span>
+                <br><span class="text-muted">${cc.name}</span>
+              </td>
+              <td class="amount" style="color: var(--text-secondary);">-</td>
+              <td style="text-align: center; color: var(--text-secondary);">-</td>
+              <td class="amount">${formatMoneyDecimal(cc.previous)}</td>
+              <td class="amount highlight-current">${formatMoneyDecimal(cc.thisPeriod)}</td>
+              <td class="amount">${formatMoneyDecimal(total)}</td>
+              <td class="percent">-</td>
+              <td class="amount">-</td>
+              <td>-</td>
+            </tr>
+          `;
+        });
+      }
+
+      tbody.innerHTML = rowHtml;
+
+      // Calculate totals (linked COs + unlinked)
+      const linkedTotals = (coScheduleOfValues || []).reduce((acc, item) => ({
         coAmount: acc.coAmount + (parseFloat(item.coAmount) || 0),
         days: acc.days + (parseInt(item.daysAdded) || 0),
         previous: acc.previous + (parseFloat(item.previousBilled) || 0),
@@ -1206,8 +1275,19 @@
         total: acc.total + (parseFloat(item.totalBilled) || 0)
       }), { coAmount: 0, days: 0, previous: 0, current: 0, total: 0 });
 
-      const overallPercent = totals.coAmount > 0 ? (totals.total / totals.coAmount) * 100 : 0;
-      const totalBalance = totals.coAmount - totals.total;
+      const unlinkedPrev = unlinkedCOAllocations?.totalPrevious || 0;
+      const unlinkedCurr = unlinkedCOAllocations?.totalThisPeriod || 0;
+
+      const totals = {
+        coAmount: linkedTotals.coAmount, // Only count linked CO amounts as scheduled
+        days: linkedTotals.days,
+        previous: linkedTotals.previous + unlinkedPrev,
+        current: linkedTotals.current + unlinkedCurr,
+        total: linkedTotals.total + unlinkedPrev + unlinkedCurr
+      };
+
+      const overallPercent = totals.coAmount > 0 ? (linkedTotals.total / totals.coAmount) * 100 : 0;
+      const totalBalance = totals.coAmount - linkedTotals.total;
       const totalDaysDisplay = totals.days > 0 ? `+${totals.days}` : totals.days.toString();
 
       tfoot.innerHTML = `

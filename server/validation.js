@@ -48,14 +48,15 @@ const VALIDATION_RULES = {
 // 5. paid            - Draw funded, archived
 
 const STATUS_TRANSITIONS = {
-  needs_review: ['ready_for_approval', 'denied', 'deleted'],
-  ready_for_approval: ['approved', 'needs_review', 'denied'],
-  approved: ['in_draw', 'ready_for_approval'],
+  needs_review: ['ready_for_approval', 'denied', 'deleted', 'split'],
+  ready_for_approval: ['approved', 'needs_review', 'denied', 'split'],
+  approved: ['in_draw', 'ready_for_approval', 'needs_review'],
   in_draw: ['paid', 'approved'],
   paid: [],     // Archived - read only
+  split: [],    // Split parent - container only, children are processed
   denied: ['needs_review', 'deleted'],  // Can resubmit or delete
   // Legacy statuses - map to new flow
-  received: ['needs_review', 'ready_for_approval', 'denied', 'deleted'],
+  received: ['needs_review', 'ready_for_approval', 'denied', 'deleted', 'split'],
   needs_approval: ['approved', 'ready_for_approval', 'denied', 'needs_review']
 };
 
@@ -72,7 +73,7 @@ const PRE_TRANSITION_REQUIREMENTS = {
 };
 
 // Statuses where editing is locked by default (need unlock button)
-const LOCKED_STATUSES = ['ready_for_approval', 'approved', 'in_draw', 'paid'];
+const LOCKED_STATUSES = ['ready_for_approval', 'approved', 'in_draw', 'paid', 'split'];
 
 // ============================================================
 // VALIDATION FUNCTIONS

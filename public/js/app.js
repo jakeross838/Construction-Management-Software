@@ -234,115 +234,97 @@ function renderInvoiceList() {
 }
 
 function renderInvoiceCard(inv) {
-    // Draw badge for invoices in a draw
-    let drawBadge = '';
-    if (inv.status === 'in_draw' && inv.draw) {
-      drawBadge = `<span class="draw-badge" title="In Draw #${inv.draw.draw_number}">Draw #${inv.draw.draw_number}</span>`;
-    } else if (inv.status === 'in_draw') {
-      drawBadge = `<span class="draw-badge">In Draw</span>`;
-    }
-
-    // Build PO info - show linked PO or "No PO" warning
-    let poInfo = '';
-    if (inv.po) {
-      poInfo = `<span class="po-badge" title="PO #${inv.po.po_number}">${inv.po.po_number}</span>`;
-    } else {
-      poInfo = `<span class="po-badge no-po" title="No Purchase Order linked">No PO</span>`;
-    }
-
-    // Build cost code info from allocations
-    let costCodeInfo = '';
-    const allocations = inv.allocations || [];
-    if (allocations.length > 0) {
-      // Get unique cost codes with their info (dedupe by code)
-      const seenCodes = new Set();
-      const costCodes = allocations
-        .filter(a => a.cost_code && !seenCodes.has(a.cost_code.code) && seenCodes.add(a.cost_code.code))
-        .map(a => ({
-          code: a.cost_code.code,
-          name: a.cost_code.name
-        }));
-
-      // Show all cost codes as separate badges
-      if (costCodes.length > 0) {
-        costCodeInfo = costCodes.map(cc =>
-          `<span class="cost-code-badge" title="${cc.code} - ${cc.name}">${cc.code} ${cc.name}</span>`
-        ).join('');
-      }
-    }
-
-    // Calculate allocation info
-    const totalAllocated = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
     const invoiceAmount = parseFloat(inv.amount || 0);
-    const allocationPct = invoiceAmount > 0 ? Math.round((totalAllocated / invoiceAmount) * 100) : 0;
-    const isPartialAlloc = totalAllocated > 0 && totalAllocated < invoiceAmount - 0.01;
-
-    // Calculate payment info
     const paidAmount = parseFloat(inv.paid_amount || 0);
-    const remainingAmount = invoiceAmount - paidAmount;
-    const hasPartialPayment = paidAmount > 0 && remainingAmount > 0.01;
+    const billedAmount = parseFloat(inv.billed_amount || 0);
     const isClosedOut = !!inv.closed_out_at;
 
-    // Calculate billing info (for partial billing cycle)
-    const billedAmount = parseFloat(inv.billed_amount || 0);
-    const remainingToBill = invoiceAmount - billedAmount;
-    const hasPartialBilling = billedAmount > 0 && remainingToBill > 0.01;
-    const billedPct = invoiceAmount > 0 ? Math.round((billedAmount / invoiceAmount) * 100) : 0;
-
-    // Build status badges
-    let allocationInfo = '';
+    // Determine display amount and any subtext for special cases
     let displayAmount = invoiceAmount;
     let amountSubtext = '';
 
-    // Priority 1: Show payment status for partially paid invoices
-    if (hasPartialPayment && !isClosedOut) {
-      const paidPct = invoiceAmount > 0 ? Math.round((paidAmount / invoiceAmount) * 100) : 0;
-      allocationInfo = `<span class="payment-badge partial" title="Partially paid - ${formatMoney(remainingAmount)} remaining">Paid: ${formatMoney(paidAmount)} / ${formatMoney(invoiceAmount)} (${paidPct}%) - ${formatMoney(remainingAmount)} remaining</span>`;
-    }
-    // Priority 2: Show closed-out status
-    else if (isClosedOut) {
-      allocationInfo = `<span class="payment-badge closed-out" title="Closed out: ${inv.closed_out_reason || 'N/A'}">Closed Out - ${formatMoney(inv.write_off_amount || 0)} written off</span>`;
-    }
-    // Priority 3: Show partially billed invoices that cycled back for remaining
-    else if (hasPartialBilling && inv.status === 'needs_approval') {
+    // For partial billing cycle - show remaining amount
+    const remainingToBill = invoiceAmount - billedAmount;
+    const hasPartialBilling = billedAmount > 0 && remainingToBill > 0.01;
+    if (hasPartialBilling && ['needs_review', 'ready_for_approval'].includes(inv.status)) {
       displayAmount = remainingToBill;
-      amountSubtext = `<div class="amount-subtext">remaining of ${formatMoney(invoiceAmount)}</div>`;
-      allocationInfo = `<span class="billing-badge partial" title="${formatMoney(billedAmount)} already billed (${billedPct}%)">${formatMoney(remainingToBill)} to bill</span>`;
-    }
-    // Priority 4: For approved/in_draw with partial allocation - show allocated amount prominently
-    else if (['approved', 'in_draw'].includes(inv.status) && isPartialAlloc) {
-      displayAmount = totalAllocated;
       amountSubtext = `<div class="amount-subtext">of ${formatMoney(invoiceAmount)}</div>`;
-      allocationInfo = `<span class="allocation-badge partial" title="${formatMoney(invoiceAmount - totalAllocated)} remaining">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
-    }
-    // Priority 5: Show allocation info for needs_approval status or full allocations
-    else if (['needs_approval', 'approved', 'in_draw'].includes(inv.status) && totalAllocated > 0) {
-      const allocClass = isPartialAlloc ? 'partial' : 'full';
-      allocationInfo = `<span class="allocation-badge ${allocClass}" title="Allocated: ${formatMoney(totalAllocated)} of ${formatMoney(invoiceAmount)}">${formatMoney(totalAllocated)} / ${formatMoney(invoiceAmount)} (${allocationPct}%)</span>`;
     }
 
-    // Paid to Vendor badge
-    let paidToVendorBadge = '';
+    // For partial payment - show remaining
+    const remainingAmount = invoiceAmount - paidAmount;
+    const hasPartialPayment = paidAmount > 0 && remainingAmount > 0.01;
+    if (hasPartialPayment && !isClosedOut) {
+      amountSubtext = `<div class="amount-subtext">${formatMoney(paidAmount)} paid</div>`;
+    }
+
+    // Build metadata line (job, invoice#, date)
+    const metaItems = [];
+    metaItems.push(`<span class="meta-job">${inv.job?.name || 'No Job'}</span>`);
+    metaItems.push(`<span class="meta-number">#${inv.invoice_number || 'N/A'}</span>`);
+    metaItems.push(`<span class="meta-date">${formatDate(inv.invoice_date)}</span>`);
+
+    // Draw badge - only for in_draw status
+    if (inv.status === 'in_draw' && inv.draw) {
+      metaItems.push(`<span class="meta-draw">Draw #${inv.draw.draw_number}</span>`);
+    }
+
+    // Closed out indicator
+    if (isClosedOut) {
+      metaItems.push(`<span class="meta-closed" title="Closed out: ${inv.closed_out_reason || 'N/A'}">Closed Out</span>`);
+    }
+
+    // Paid to vendor indicator
     if (inv.paid_to_vendor) {
-      const paidDate = inv.paid_to_vendor_date ? formatDate(inv.paid_to_vendor_date) : '';
-      const paidRef = inv.paid_to_vendor_ref ? ` - ${inv.paid_to_vendor_ref}` : '';
-      paidToVendorBadge = `<span class="paid-vendor-badge" title="Paid to vendor${paidDate ? ' on ' + paidDate : ''}${paidRef}">✓ Paid to Vendor</span>`;
+      metaItems.push(`<span class="meta-paid-vendor" title="Paid to vendor">Paid</span>`);
+    }
+
+    // Build badges line (PO + Cost Codes)
+    const badges = [];
+
+    // PO badge
+    if (inv.po) {
+      badges.push(`<span class="badge badge-po" title="Linked to ${inv.po.po_number}">${inv.po.po_number}</span>`);
+    } else {
+      badges.push(`<span class="badge badge-no-po">No PO</span>`);
+    }
+
+    // Cost code badges
+    const allocations = inv.allocations || [];
+    if (allocations.length > 0) {
+      const seenCodes = new Set();
+      const costCodes = allocations
+        .filter(a => a.cost_code && !seenCodes.has(a.cost_code.code) && seenCodes.add(a.cost_code.code))
+        .map(a => ({ code: a.cost_code.code, name: a.cost_code.name }));
+
+      if (costCodes.length > 0) {
+        costCodes.forEach(cc => {
+          badges.push(`<span class="badge badge-cost-code" title="${cc.code} - ${cc.name}">${cc.code} ${cc.name}</span>`);
+        });
+      } else {
+        badges.push(`<span class="badge badge-no-cost-code">No Cost Codes</span>`);
+      }
+    } else {
+      badges.push(`<span class="badge badge-no-cost-code">No Cost Codes</span>`);
+    }
+
+    // Split badge - clear indicator
+    let splitBadge = '';
+    if (inv.is_split_parent) {
+      splitBadge = `<span class="badge badge-split-parent" title="This invoice was split into multiple parts">Split Parent</span>`;
+    } else if (inv.parent_invoice_id) {
+      splitBadge = `<span class="badge badge-split-child" title="Split from parent invoice">Split</span>`;
     }
 
     return `
     <div class="invoice-card status-${inv.status}" onclick="openEditModal('${inv.id}')">
       <div class="invoice-main">
-        <div class="invoice-vendor">${inv.vendor?.name || 'Unknown Vendor'}</div>
-        <div class="invoice-meta">
-          <span>${inv.job?.name || 'No Job'}</span>
-          <span>#${inv.invoice_number || 'N/A'}</span>
-          <span>${formatDate(inv.invoice_date)}</span>
-          ${poInfo}
-          ${costCodeInfo}
-          ${allocationInfo}
-          ${drawBadge}
-          ${paidToVendorBadge}
+        <div class="invoice-header">
+          <span class="invoice-vendor">${inv.vendor?.name || 'Unknown Vendor'}</span>
+          ${splitBadge}
         </div>
+        <div class="invoice-meta">${metaItems.join('<span class="meta-sep">•</span>')}</div>
+        <div class="invoice-badges">${badges.join('')}</div>
       </div>
       <div class="invoice-amount">${formatMoney(displayAmount)}${amountSubtext}</div>
       <div class="invoice-status">
@@ -1118,7 +1100,8 @@ function formatStatus(status, invoice = null) {
     approved: 'Approved',
     in_draw: 'In Draw',
     paid: 'Paid',
-    denied: 'Denied'
+    denied: 'Denied',
+    split: 'Split'  // Parent invoice that was split
   };
   return labels[status] || status;
 }

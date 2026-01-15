@@ -7,8 +7,17 @@ const multer = require('multer');
 // PID file for safe server restarts (won't kill other node processes)
 const PID_FILE = path.join(__dirname, '..', 'server.pid');
 const { supabase, port } = require('../config');
-const { uploadPDF, uploadStampedPDF, downloadPDF } = require('./storage');
-const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid, stampPartiallyBilled } = require('./pdf-stamper');
+const {
+  uploadPDF,
+  uploadStampedPDF,
+  uploadStampedPDFById,
+  downloadPDF,
+  deleteByUrl,
+  extractStoragePath,
+  acquireStampLock,
+  releaseStampLock
+} = require('./storage');
+const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid, stampPartiallyBilled, stampSplit, stampNeedsReview, stampReadyForApproval } = require('./pdf-stamper');
 const { processInvoice, processDocument, processLienRelease, processMultiPageDocument, splitPDF, DOCUMENT_TYPES, extractInvoiceFromImage, extractInvoiceFromText } = require('./ai-processor');
 const { convertDocument, isSupported, getSupportedExtensions, FILE_TYPES } = require('./document-converter');
 const standards = require('./standards');
@@ -77,6 +86,15 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Disable caching for JS files during development
+app.use('/js', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Multer for file uploads (memory storage)
@@ -248,6 +266,313 @@ async function updateCOInvoicedAmounts(allocations) {
       .from('v2_job_change_orders')
       .update({ invoiced_amount: totalInvoiced })
       .eq('id', coId);
+  }
+}
+
+/**
+ * UNIFIED STAMP INVOICE FUNCTION
+ *
+ * This is the single source of truth for all PDF stamping.
+ * - Always stamps from ORIGINAL pdf_url (never accumulates)
+ * - Uses fixed path: {job_id}/{invoice_id}_stamped.pdf
+ * - Includes locking to prevent concurrent stamp operations
+ * - Updates pdf_stamped_url in database
+ *
+ * @param {string} invoiceId - Invoice ID to stamp
+ * @param {object} options - Optional overrides
+ * @param {boolean} options.force - Force stamp even if locked
+ * @returns {Promise<string|null>} - Stamped URL or null
+ */
+async function stampInvoice(invoiceId, options = {}) {
+  const { force = false } = options;
+
+  // Acquire lock to prevent concurrent stamping
+  if (!force && !acquireStampLock(invoiceId)) {
+    console.log('[STAMP] Skipping - already being stamped:', invoiceId);
+    return null;
+  }
+
+  try {
+    // Fetch full invoice data
+    const { data: invoice, error: fetchError } = await supabase
+      .from('v2_invoices')
+      .select(`
+        *,
+        vendor:v2_vendors(id, name),
+        job:v2_jobs(id, name),
+        po:v2_purchase_orders(id, po_number, description, total_amount),
+        allocations:v2_invoice_allocations(
+          amount,
+          cost_code_id,
+          po_id,
+          po_line_item_id,
+          cost_code:v2_cost_codes(code, name)
+        )
+      `)
+      .eq('id', invoiceId)
+      .single();
+
+    if (fetchError || !invoice) {
+      console.error('[STAMP] Invoice not found:', invoiceId);
+      return null;
+    }
+
+    if (!invoice.pdf_url) {
+      console.log('[STAMP] No PDF to stamp:', invoiceId);
+      return null;
+    }
+
+    // Extract storage path from ORIGINAL pdf_url (never use pdf_stamped_url)
+    const storagePath = extractStoragePath(invoice.pdf_url);
+    if (!storagePath) {
+      console.error('[STAMP] Could not extract path from pdf_url:', invoice.pdf_url);
+      return null;
+    }
+
+    // Download ORIGINAL PDF
+    let pdfBuffer;
+    try {
+      pdfBuffer = await downloadPDF(storagePath);
+    } catch (downloadErr) {
+      console.error('[STAMP] Failed to download original PDF:', downloadErr.message);
+      return null;
+    }
+
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    // Get cost codes formatted for stamp
+    const costCodesForStamp = (invoice.allocations || []).map(a => ({
+      code: a.cost_code?.code || '',
+      name: a.cost_code?.name || '',
+      amount: parseFloat(a.amount) || 0
+    })).filter(cc => cc.code);
+
+    let stampedBuffer = null;
+
+    // Apply stamp based on current status
+    switch (invoice.status) {
+      case 'needs_review':
+        stampedBuffer = await stampNeedsReview(pdfBuffer, {
+          date: dateStr,
+          vendorName: invoice.vendor?.name,
+          invoiceNumber: invoice.invoice_number,
+          amount: invoice.amount,
+          flags: invoice.review_flags || []
+        });
+        break;
+
+      case 'ready_for_approval':
+        stampedBuffer = await stampReadyForApproval(pdfBuffer, {
+          date: dateStr,
+          codedBy: invoice.coded_by,
+          jobName: invoice.job?.name,
+          vendorName: invoice.vendor?.name,
+          amount: invoice.amount,
+          costCodes: costCodesForStamp
+        });
+        break;
+
+      case 'approved':
+      case 'in_draw':
+      case 'paid': {
+        // Get PO billing info
+        let poTotal = null;
+        let poBilledToDate = 0;
+        let poLinkedAmount = null; // Amount of THIS invoice allocated to the PO
+
+        // Helper to check if cost code is a CO code (ends with 'C')
+        const isCOCostCode = (code) => code && /C$/i.test(code.trim());
+
+        if (invoice.po?.id) {
+          poTotal = parseFloat(invoice.po.total_amount);
+
+          // Calculate how much of THIS invoice is linked to the PO
+          // CO cost code allocations NEVER count toward PO billing (they're CO work)
+          poLinkedAmount = (invoice.allocations || []).reduce((sum, alloc) => {
+            const costCode = alloc.cost_code?.code;
+            const isCO = isCOCostCode(costCode);
+
+            // CO allocations never count toward PO billing, regardless of po_id
+            if (isCO) {
+              return sum;
+            }
+            // Non-CO allocations count if explicitly PO-linked OR invoice is PO-linked
+            if (alloc.po_id === invoice.po.id || alloc.po_line_item_id || true) {
+              return sum + parseFloat(alloc.amount || 0);
+            }
+            return sum;
+          }, 0);
+
+          // Get prior invoices billed against this PO (need to sum their PO-linked allocations too)
+          const { data: priorInvoices } = await supabase
+            .from('v2_invoices')
+            .select(`
+              id,
+              amount,
+              allocations:v2_invoice_allocations(
+                amount,
+                po_id,
+                po_line_item_id,
+                cost_code:v2_cost_codes(code)
+              )
+            `)
+            .eq('po_id', invoice.po.id)
+            .neq('id', invoiceId)
+            .in('status', ['approved', 'in_draw', 'paid']);
+
+          if (priorInvoices) {
+            // Sum the PO-linked allocations from prior invoices (exclude CO allocations)
+            poBilledToDate = priorInvoices.reduce((sum, inv) => {
+              if (inv.allocations && inv.allocations.length > 0) {
+                // Count only non-CO allocations (CO work doesn't bill against PO)
+                return sum + inv.allocations.reduce((s, a) => {
+                  const costCode = a.cost_code?.code;
+                  const isCO = isCOCostCode(costCode);
+                  // CO allocations never count toward PO billing
+                  if (isCO) {
+                    return s;
+                  }
+                  return s + parseFloat(a.amount || 0);
+                }, 0);
+              }
+              // Fall back to full invoice amount if no allocations (legacy data)
+              return sum + parseFloat(inv.amount || 0);
+            }, 0);
+          }
+        }
+
+        stampedBuffer = await stampApproval(pdfBuffer, {
+          status: 'APPROVED',
+          date: invoice.approved_at ? new Date(invoice.approved_at).toLocaleDateString() : dateStr,
+          approvedBy: invoice.approved_by,
+          vendorName: invoice.vendor?.name,
+          invoiceNumber: invoice.invoice_number,
+          jobName: invoice.job?.name,
+          costCodes: costCodesForStamp,
+          amount: parseFloat(invoice.amount),
+          poNumber: invoice.po?.po_number,
+          poDescription: invoice.po?.description,
+          poTotal,
+          poBilledToDate,
+          poLinkedAmount
+        });
+
+        // Add IN DRAW stamp if applicable
+        if (invoice.status === 'in_draw') {
+          const { data: drawInvoice } = await supabase
+            .from('v2_draw_invoices')
+            .select('draw:v2_draws(draw_number)')
+            .eq('invoice_id', invoiceId)
+            .single();
+
+          if (drawInvoice?.draw?.draw_number) {
+            stampedBuffer = await stampInDraw(stampedBuffer, drawInvoice.draw.draw_number);
+          }
+        }
+
+        // Add PAID stamp if applicable
+        if (invoice.status === 'paid' && invoice.paid_at) {
+          const paidDate = new Date(invoice.paid_at).toLocaleDateString();
+          stampedBuffer = await stampPaid(stampedBuffer, paidDate);
+        }
+        break;
+      }
+
+      default:
+        // No stamp for other statuses (received, denied, split, etc.)
+        console.log('[STAMP] No stamp for status:', invoice.status);
+        return null;
+    }
+
+    if (!stampedBuffer) {
+      return null;
+    }
+
+    // Upload to FIXED path: {job_id}/{invoice_id}_stamped.pdf
+    const uploadResult = await uploadStampedPDFById(
+      stampedBuffer,
+      invoiceId,
+      invoice.job_id
+    );
+
+    if (uploadResult?.url) {
+      // Update invoice with new stamped URL
+      await supabase
+        .from('v2_invoices')
+        .update({ pdf_stamped_url: uploadResult.url })
+        .eq('id', invoiceId);
+
+      console.log('[STAMP] Success:', invoiceId, '->', uploadResult.url);
+      return uploadResult.url;
+    }
+
+    return null;
+  } catch (err) {
+    console.error('[STAMP] Error stamping invoice:', invoiceId, err.message);
+    return null;
+  } finally {
+    // Always release lock
+    releaseStampLock(invoiceId);
+  }
+}
+
+// Alias for backwards compatibility
+const restampInvoice = stampInvoice;
+
+/**
+ * Check if all children of a split parent have reached terminal states
+ * If so, mark the parent as 'reconciled'
+ *
+ * Terminal states: paid, denied, deleted (via deleted_at)
+ *
+ * @param {string} parentInvoiceId - Parent invoice ID to check
+ */
+async function checkSplitReconciliation(parentInvoiceId) {
+  if (!parentInvoiceId) return;
+
+  try {
+    // Get parent to verify it's a split parent
+    const { data: parent } = await supabase
+      .from('v2_invoices')
+      .select('id, is_split_parent, status')
+      .eq('id', parentInvoiceId)
+      .single();
+
+    if (!parent || !parent.is_split_parent) return;
+    if (parent.status === 'reconciled') return; // Already reconciled
+
+    // Get all children (including soft-deleted ones)
+    const { data: children } = await supabase
+      .from('v2_invoices')
+      .select('id, status, deleted_at')
+      .eq('parent_invoice_id', parentInvoiceId);
+
+    if (!children || children.length === 0) return;
+
+    // Check if all children are in terminal states
+    const terminalStatuses = ['paid', 'denied'];
+    const allTerminal = children.every(child =>
+      child.deleted_at !== null || terminalStatuses.includes(child.status)
+    );
+
+    if (allTerminal) {
+      // Calculate summary stats
+      const paidCount = children.filter(c => c.status === 'paid' && !c.deleted_at).length;
+      const deniedCount = children.filter(c => c.status === 'denied' && !c.deleted_at).length;
+      const deletedCount = children.filter(c => c.deleted_at !== null).length;
+
+      await supabase
+        .from('v2_invoices')
+        .update({
+          status: 'reconciled',
+          notes: `Split reconciled on ${new Date().toLocaleDateString()}\nPaid: ${paidCount}, Denied: ${deniedCount}, Deleted: ${deletedCount}`
+        })
+        .eq('id', parentInvoiceId);
+
+      console.log('[SPLIT] Reconciled parent invoice:', parentInvoiceId, { paidCount, deniedCount, deletedCount });
+    }
+  } catch (err) {
+    console.error('[SPLIT] Reconciliation check failed:', parentInvoiceId, err.message);
   }
 }
 
@@ -777,6 +1102,7 @@ app.get('/api/purchase-orders', async (req, res) => {
         *,
         vendor:v2_vendors(id, name),
         job:v2_jobs(id, name),
+        job_change_order:v2_job_change_orders(id, change_order_number, title, amount, status),
         line_items:v2_po_line_items(
           id, description, amount, invoiced_amount, cost_type, title, change_order_id,
           cost_code:v2_cost_codes(id, code, name),
@@ -895,6 +1221,28 @@ app.post('/api/purchase-orders', async (req, res) => {
     // Set status to draft by default
     if (!poData.status_detail) {
       poData.status_detail = 'draft';
+    }
+
+    // Validate CO linkage if provided
+    if (poData.job_change_order_id) {
+      const { data: co, error: coError } = await supabase
+        .from('v2_job_change_orders')
+        .select('id, job_id, status, change_order_number, title')
+        .eq('id', poData.job_change_order_id)
+        .single();
+
+      if (coError || !co) {
+        return res.status(400).json({ error: 'Invalid change order' });
+      }
+
+      if (poData.job_id && co.job_id !== poData.job_id) {
+        return res.status(400).json({ error: 'Change order must be for the same job as the PO' });
+      }
+
+      // If job not set on PO, inherit from CO
+      if (!poData.job_id) {
+        poData.job_id = co.job_id;
+      }
     }
 
     // Auto-generate PO number if not provided
@@ -2054,7 +2402,7 @@ app.get('/api/invoices', async (req, res) => {
         job:v2_jobs(id, name),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
-          id, amount, notes, job_id,
+          id, amount, notes, job_id, change_order_id,
           cost_code:v2_cost_codes(id, code, name)
         ),
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
@@ -2186,7 +2534,7 @@ app.get('/api/invoices/:id/activity', async (req, res) => {
   }
 });
 
-// Get invoice approval context (budget + PO status for decision-making)
+// Get invoice approval context (budget + PO status + CO status for decision-making)
 app.get('/api/invoices/:id/approval-context', async (req, res) => {
   try {
     // Get the invoice with allocations, job, and PO
@@ -2199,7 +2547,7 @@ app.get('/api/invoices/:id/approval-context', async (req, res) => {
           cost_code:v2_cost_codes(id, code, name)
         ),
         po:v2_purchase_orders(
-          id, po_number, total_amount, status,
+          id, po_number, total_amount, status, job_change_order_id,
           line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount)
         )
       `)
@@ -2264,33 +2612,121 @@ app.get('/api/invoices/:id/approval-context', async (req, res) => {
       });
     }
 
-    // Get PO context if invoice is linked to a PO
-    if (invoice.po) {
-      const poTotal = parseFloat(invoice.po.total_amount) || 0;
+    // Get PO context - either from invoice.po_id OR from allocation po_line_item links
+    let linkedPO = invoice.po;
+    let linkedPOId = invoice.po_id;
+
+    // If no direct PO link, check allocation line item links
+    if (!linkedPO && invoice.allocations?.length > 0) {
+      const poLineItemIds = invoice.allocations
+        .map(a => a.po_line_item_id)
+        .filter(Boolean);
+
+      if (poLineItemIds.length > 0) {
+        // Get the PO from the first linked line item
+        const { data: poLineItem } = await supabase
+          .from('v2_po_line_items')
+          .select(`
+            po_id,
+            po:v2_purchase_orders(
+              id, po_number, total_amount, status, job_change_order_id,
+              line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount)
+            )
+          `)
+          .eq('id', poLineItemIds[0])
+          .single();
+
+        if (poLineItem?.po) {
+          linkedPO = poLineItem.po;
+          linkedPOId = poLineItem.po_id;
+        }
+      }
+    }
+
+    if (linkedPO) {
+      const poTotal = parseFloat(linkedPO.total_amount) || 0;
 
       // Get all invoices already billed against this PO (excluding current invoice)
+      // Check both invoice.po_id and allocations linked to PO line items
       const { data: poInvoices } = await supabase
         .from('v2_invoices')
         .select('id, amount, status')
-        .eq('po_id', invoice.po_id)
+        .eq('po_id', linkedPOId)
         .neq('id', invoice.id)
         .in('status', ['approved', 'in_draw', 'paid']);
 
-      const previouslyBilled = poInvoices?.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0) || 0;
-      const thisInvoice = parseFloat(invoice.amount) || 0;
+      // Also get invoices linked via po_line_item_id
+      const { data: lineItemAllocations } = await supabase
+        .from('v2_invoice_allocations')
+        .select(`
+          amount,
+          po_line_item:v2_po_line_items!inner(po_id),
+          invoice:v2_invoices!inner(id, status)
+        `)
+        .eq('po_line_item.po_id', linkedPOId)
+        .neq('invoice.id', invoice.id)
+        .in('invoice.status', ['approved', 'in_draw', 'paid']);
+
+      const previouslyBilledDirect = poInvoices?.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0) || 0;
+      const previouslyBilledLineItems = lineItemAllocations?.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || 0;
+
+      // Get this invoice's amount linked to this PO (could be partial if split across POs)
+      const thisInvoiceLinkedAmount = invoice.allocations
+        ?.filter(a => {
+          if (!a.po_line_item_id) return false;
+          // Check if this line item belongs to our PO
+          const lineItem = linkedPO.line_items?.find(li => li.id === a.po_line_item_id);
+          return !!lineItem;
+        })
+        .reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || parseFloat(invoice.amount) || 0;
+
+      const previouslyBilled = Math.max(previouslyBilledDirect, previouslyBilledLineItems);
+      const thisInvoice = invoice.po_id === linkedPOId ? (parseFloat(invoice.amount) || 0) : thisInvoiceLinkedAmount;
       const afterApproval = previouslyBilled + thisInvoice;
 
       result.po = {
-        po_number: invoice.po.po_number,
-        po_status: invoice.po.status,
+        id: linkedPO.id,
+        po_number: linkedPO.po_number,
+        po_status: linkedPO.status,
         total_amount: poTotal,
         previously_billed: previouslyBilled,
         this_invoice: thisInvoice,
         after_approval: afterApproval,
         remaining: poTotal - afterApproval,
         percent_used: poTotal > 0 ? Math.round((afterApproval / poTotal) * 100) : 0,
-        over_po: afterApproval > poTotal
+        over_po: afterApproval > poTotal,
+        job_change_order_id: linkedPO.job_change_order_id
       };
+
+      // Get CO context if PO is linked to a Change Order
+      if (linkedPO.job_change_order_id) {
+        const { data: co } = await supabase
+          .from('v2_job_change_orders')
+          .select('id, change_order_number, title, amount, invoiced_amount, status')
+          .eq('id', linkedPO.job_change_order_id)
+          .single();
+
+        if (co) {
+          const coTotal = parseFloat(co.amount) || 0;
+          const coPreviouslyBilled = parseFloat(co.invoiced_amount) || 0;
+          const coThisInvoice = thisInvoice;
+          const coAfterApproval = coPreviouslyBilled + coThisInvoice;
+
+          result.change_order = {
+            id: co.id,
+            change_order_number: co.change_order_number,
+            title: co.title,
+            status: co.status,
+            total_amount: coTotal,
+            previously_billed: coPreviouslyBilled,
+            this_invoice: coThisInvoice,
+            after_approval: coAfterApproval,
+            remaining: coTotal - coAfterApproval,
+            percent_used: coTotal > 0 ? Math.round((coAfterApproval / coTotal) * 100) : 0,
+            over_co: coAfterApproval > coTotal
+          };
+        }
+      }
     }
 
     res.json(result);
@@ -2708,6 +3144,35 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       allocationsCreated = true;
     }
 
+    // Stamp PDF with "Needs Review" for new invoice
+    if (pdf_url) {
+      try {
+        let storagePath = null;
+        if (pdf_url.includes('/storage/v1/object/public/invoices/')) {
+          const urlParts = pdf_url.split('/storage/v1/object/public/invoices/');
+          storagePath = urlParts[1] ? decodeURIComponent(urlParts[1].split('?')[0]) : null;
+        }
+        if (storagePath) {
+          const pdfBuffer = await downloadPDF(storagePath);
+          const stampedBuffer = await stampNeedsReview(pdfBuffer, {
+            date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            vendorName: result.vendor?.name,
+            invoiceNumber: result.extracted?.invoiceNumber,
+            amount: result.extracted?.totalAmount,
+            flags: result.review_flags || []
+          });
+          // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+          const uploadResult = await uploadStampedPDFById(stampedBuffer, invoice.id, invoice.job_id);
+          if (uploadResult?.url) {
+            await supabase.from('v2_invoices').update({ pdf_stamped_url: uploadResult.url }).eq('id', invoice.id);
+            invoice.pdf_stamped_url = uploadResult.url;
+          }
+        }
+      } catch (stampErr) {
+        console.error('[STAMP] Initial needs review stamp error:', stampErr.message);
+      }
+    }
+
     // Log activity
     await logActivity(invoice.id, 'uploaded', 'AI Processor', {
       originalFilename,
@@ -3002,6 +3467,35 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
         await supabase.from('v2_invoice_allocations').insert(allocs);
       }
 
+      // Stamp PDF with "Needs Review" for new invoice
+      if (pdf_url) {
+        try {
+          let storagePath = null;
+          if (pdf_url.includes('/storage/v1/object/public/invoices/')) {
+            const urlParts = pdf_url.split('/storage/v1/object/public/invoices/');
+            storagePath = urlParts[1] ? decodeURIComponent(urlParts[1].split('?')[0]) : null;
+          }
+          if (storagePath) {
+            const pdfBuffer2 = await downloadPDF(storagePath);
+            const stampedBuffer = await stampNeedsReview(pdfBuffer2, {
+              date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+              vendorName: invoiceData.vendor?.name,
+              invoiceNumber: invoiceData.extracted?.invoiceNumber,
+              amount: invoiceData.extracted?.totalAmount,
+              flags: invoiceData.review_flags || []
+            });
+            // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+            const uploadResult = await uploadStampedPDFById(stampedBuffer, invoice.id, invoice.job_id);
+            if (uploadResult?.url) {
+              await supabase.from('v2_invoices').update({ pdf_stamped_url: uploadResult.url }).eq('id', invoice.id);
+              invoice.pdf_stamped_url = uploadResult.url;
+            }
+          }
+        } catch (stampErr) {
+          console.error('[STAMP] Initial needs review stamp error:', stampErr.message);
+        }
+      }
+
       savedRecord = invoice;
       result.redirect.id = invoice.id;
 
@@ -3293,6 +3787,11 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
       allocations: allocs
     });
 
+    // Re-stamp PDF with "Ready for Approval" (run in background)
+    restampInvoice(invoiceId).catch(err => {
+      console.error('[RESTAMP] Background re-stamp failed:', err.message);
+    });
+
     res.json(invoice);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3325,6 +3824,38 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
     if (getError) throw getError;
 
     // ==========================================
+    // CO AUTO-INHERITANCE FROM PO
+    // If invoice is linked to a PO that's linked to a CO, inherit the CO
+    // ==========================================
+    let linkedChangeOrder = null;
+    if (invoice.po_id) {
+      const { data: po } = await supabase
+        .from('v2_purchase_orders')
+        .select('id, job_change_order_id, job_change_order:v2_job_change_orders(id, change_order_number, title)')
+        .eq('id', invoice.po_id)
+        .single();
+
+      if (po?.job_change_order_id) {
+        linkedChangeOrder = po.job_change_order;
+        // Update all allocations to link to this CO
+        const { error: allocUpdateError } = await supabase
+          .from('v2_invoice_allocations')
+          .update({ change_order_id: po.job_change_order_id })
+          .eq('invoice_id', invoiceId)
+          .is('change_order_id', null); // Only update allocations not already linked
+
+        if (!allocUpdateError) {
+          // Log the auto-linking
+          await logActivity(invoiceId, 'co_auto_linked', 'System', {
+            change_order_id: po.job_change_order_id,
+            change_order_number: linkedChangeOrder?.change_order_number,
+            from_po: po.id
+          });
+        }
+      }
+    }
+
+    // ==========================================
     // GET/CREATE DRAFT DRAW FIRST (before stamping)
     // ==========================================
 
@@ -3342,13 +3873,22 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
 
     let pdf_stamped_url = null;
 
-    // Stamp PDF if exists
-    if (invoice.pdf_url) {
+    // Stamp PDF if exists - use existing stamped PDF if available (progressive stamping)
+    const pdfSourceUrl = invoice.pdf_stamped_url || invoice.pdf_url;
+    if (pdfSourceUrl) {
       try {
-        // Extract storage path from URL
-        const urlParts = invoice.pdf_url.split('/storage/v1/object/public/invoices/');
-        if (urlParts[1]) {
-          const storagePath = decodeURIComponent(urlParts[1]);
+        // Extract storage path from URL - handle both storage URL formats
+        let storagePath = null;
+        if (pdfSourceUrl.includes('/storage/v1/object/public/invoices/')) {
+          const urlParts = pdfSourceUrl.split('/storage/v1/object/public/invoices/');
+          storagePath = urlParts[1] ? decodeURIComponent(urlParts[1].split('?')[0]) : null;
+        } else if (pdfSourceUrl.includes('/invoices/')) {
+          const urlParts = pdfSourceUrl.split('/invoices/');
+          storagePath = urlParts[1] ? decodeURIComponent(urlParts[1].split('?')[0]) : null;
+        }
+
+        if (storagePath) {
+          console.log('[APPROVAL STAMP] Using PDF:', invoice.pdf_stamped_url ? 'pdf_stamped_url (progressive)' : 'pdf_url (original)');
           const pdfBuffer = await downloadPDF(storagePath);
 
           // Get PO billing info if PO is linked
@@ -3385,6 +3925,28 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
             stampStatus += ` - Draw #${draftDraw.draw_number}`;
           }
 
+          // Get split info if this is a split child
+          let splitInfo = null;
+          if (invoice.parent_invoice_id && invoice.split_index) {
+            // Count total siblings
+            const { count } = await supabase
+              .from('v2_invoices')
+              .select('*', { count: 'exact', head: true })
+              .eq('parent_invoice_id', invoice.parent_invoice_id);
+
+            splitInfo = {
+              isSplit: true,
+              index: invoice.split_index,
+              total: count || 1
+            };
+          }
+
+          // Build CO info from linked change order (if any)
+          const coInfo = linkedChangeOrder ? {
+            number: linkedChangeOrder.change_order_number,
+            title: linkedChangeOrder.title
+          } : null;
+
           const stampedBuffer = await stampApproval(pdfBuffer, {
             status: stampStatus,
             date: new Date().toLocaleDateString(),
@@ -3407,10 +3969,15 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
             previouslyBilled: alreadyBilled,
             remainingAfterThis: invoiceTotal - alreadyBilled - (invoice.allocations?.reduce((s, a) => s + parseFloat(a.amount || 0), 0) || 0),
             // Draw info
-            drawNumber: draftDraw?.draw_number
+            drawNumber: draftDraw?.draw_number,
+            // Split invoice info
+            splitInfo,
+            // Change Order info (from PO linkage)
+            coInfo
           });
 
-          const result = await uploadStampedPDF(stampedBuffer, storagePath);
+          // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+          const result = await uploadStampedPDFById(stampedBuffer, invoiceId, invoice.job?.id);
           pdf_stamped_url = result.url;
         }
       } catch (stampErr) {
@@ -3614,7 +4181,7 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
     // Get current invoice
     const { data: invoice, error: getError } = await supabase
       .from('v2_invoices')
-      .select('id, status, amount, paid_amount')
+      .select('id, status, amount, paid_amount, parent_invoice_id')
       .eq('id', invoiceId)
       .single();
 
@@ -3676,8 +4243,428 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
       notes: notes || null
     });
 
+    // Check if this completes a split (all children in terminal state)
+    if (invoice.parent_invoice_id) {
+      checkSplitReconciliation(invoice.parent_invoice_id).catch(err => {
+        console.error('[RECONCILE] Check failed:', err.message);
+      });
+    }
+
     res.json(updated);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// SPLIT INVOICE ENDPOINTS
+// ============================================================
+
+/**
+ * Split an invoice into multiple child invoices
+ * POST /api/invoices/:id/split
+ */
+app.post('/api/invoices/:id/split', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { splits, performed_by = 'System' } = req.body;
+
+    // Validation: need at least 2 splits
+    if (!splits || !Array.isArray(splits) || splits.length < 2) {
+      return res.status(400).json({ error: 'At least 2 splits required' });
+    }
+
+    // Fetch parent invoice
+    const { data: parent, error: fetchError } = await supabase
+      .from('v2_invoices')
+      .select('*, vendor:v2_vendors(id, name)')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (fetchError || !parent) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Cannot split already-split invoice
+    if (parent.parent_invoice_id || parent.is_split_parent) {
+      return res.status(400).json({ error: 'Invoice is already part of a split' });
+    }
+
+    // Only split invoices in early statuses
+    const splittableStatuses = ['received', 'needs_review', 'needs_approval', 'ready_for_approval'];
+    if (!splittableStatuses.includes(parent.status)) {
+      return res.status(400).json({ error: `Cannot split invoice in ${parent.status} status` });
+    }
+
+    // Validate amounts sum to original
+    const totalSplit = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
+    const parentAmount = parseFloat(parent.amount || 0);
+    if (Math.abs(totalSplit - parentAmount) > 0.01) {
+      return res.status(400).json({
+        error: `Split amounts ($${totalSplit.toFixed(2)}) must equal original amount ($${parentAmount.toFixed(2)})`
+      });
+    }
+
+    // Validate each split has required fields (just amount, job/PO assigned later)
+    for (let i = 0; i < splits.length; i++) {
+      const split = splits[i];
+      if (parseFloat(split.amount) <= 0) {
+        return res.status(400).json({ error: `Split ${i + 1}: Amount must be positive` });
+      }
+    }
+
+    // Get sibling count for invoice numbers
+    const childInvoices = [];
+    let splitIndex = 1;
+
+    for (const split of splits) {
+      // Generate child invoice number
+      const baseNumber = parent.invoice_number || 'INV';
+      const childInvoiceNumber = `${baseNumber}-${splitIndex}`;
+
+      // Get job name if job_id provided
+      let jobName = null;
+      if (split.job_id) {
+        const { data: job } = await supabase
+          .from('v2_jobs')
+          .select('name')
+          .eq('id', split.job_id)
+          .single();
+        jobName = job?.name;
+      }
+
+      // Create child invoice (job optional, assigned now or during review)
+      const { data: child, error: insertError } = await supabase
+        .from('v2_invoices')
+        .insert({
+          parent_invoice_id: id,
+          split_index: splitIndex,
+          invoice_number: childInvoiceNumber,
+          invoice_date: parent.invoice_date,
+          due_date: parent.due_date,
+          vendor_id: parent.vendor_id,
+          job_id: split.job_id || null, // Optional - can assign now or during review
+          po_id: null,  // Assigned during review
+          amount: split.amount,
+          original_amount: split.amount,
+          status: 'needs_review', // Children start fresh in pipeline
+          pdf_url: parent.pdf_url, // Share same PDF
+          pdf_stamped_url: null, // Will get stamped
+          notes: split.notes || `Split ${splitIndex} of ${splits.length} from ${parent.invoice_number}`,
+          ai_processed: false,
+          needs_review: true,
+          review_flags: split.job_id ? ['split_child'] : ['split_child', 'no_job'],
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error creating split child:', insertError);
+        return res.status(500).json({ error: `Failed to create split ${splitIndex}: ${insertError.message}` });
+      }
+
+      // Log activity on child
+      await logActivity(child.id, 'created_from_split', performed_by, {
+        parent_invoice_id: id,
+        parent_invoice_number: parent.invoice_number,
+        split_index: splitIndex,
+        total_splits: splits.length,
+        amount: split.amount,
+        job_id: split.job_id || null,
+        job_name: jobName
+      });
+
+      // === STAMP THE CHILD PDF ===
+      try {
+        if (parent.pdf_url) {
+          // Extract storage path from URL
+          const urlParts = parent.pdf_url.split('/invoices/');
+          if (urlParts.length > 1) {
+            const storagePath = urlParts[1].split('?')[0]; // Remove query params
+
+            const pdfBuffer = await downloadPDF(storagePath);
+
+            // Stamp with split info (include job if provided)
+            const stampedBuffer = await stampSplit(pdfBuffer, {
+              splitIndex: splitIndex,
+              splitTotal: splits.length,
+              splitDate: new Date().toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric'
+              }),
+              originalInvoiceNumber: parent.invoice_number,
+              originalAmount: parent.amount,
+              thisAmount: split.amount,
+              notes: split.notes || null,
+              jobName: jobName  // Include job if assigned
+            });
+
+            // Upload stamped PDF (to job folder if assigned, otherwise unassigned)
+            const stampedFileName = `${split.job_id || 'unassigned'}/${Date.now()}_${childInvoiceNumber.replace(/[^a-zA-Z0-9.-]/g, '_')}_split.pdf`;
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from('invoices')
+              .upload(stampedFileName, stampedBuffer, {
+                contentType: 'application/pdf',
+                upsert: true
+              });
+
+            if (!uploadError) {
+              const { data: urlData } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(stampedFileName);
+
+              const stampedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+              // Update child with stamped URL
+              await supabase
+                .from('v2_invoices')
+                .update({ pdf_stamped_url: stampedUrl })
+                .eq('id', child.id);
+
+              child.pdf_stamped_url = stampedUrl;
+              console.log(`[SPLIT] Stamped PDF for split ${splitIndex}: ${stampedUrl}`);
+            } else {
+              console.error(`[SPLIT] Failed to upload stamped PDF for split ${splitIndex}:`, uploadError);
+            }
+          }
+        }
+      } catch (stampError) {
+        console.error(`[SPLIT] Error stamping split ${splitIndex}:`, stampError);
+        // Continue even if stamping fails - invoice is still valid
+      }
+
+      childInvoices.push(child);
+      splitIndex++;
+    }
+
+    // Update parent to be a container
+    const { error: updateError } = await supabase
+      .from('v2_invoices')
+      .update({
+        is_split_parent: true,
+        original_amount: parent.amount,
+        status: 'split',
+        notes: `Split into ${splits.length} invoices on ${new Date().toLocaleDateString()}`
+      })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('Error updating parent:', updateError);
+    }
+
+    // Log activity on parent
+    await logActivity(id, 'split', performed_by, {
+      child_count: splits.length,
+      child_ids: childInvoices.map(c => c.id),
+      child_numbers: childInvoices.map(c => c.invoice_number),
+      amounts: splits.map(s => s.amount)
+    });
+
+    // Broadcast update
+    broadcast('invoice_split', {
+      parent_id: id,
+      parent_number: parent.invoice_number,
+      children: childInvoices.map(c => ({ id: c.id, invoice_number: c.invoice_number, amount: c.amount }))
+    });
+
+    res.json({
+      success: true,
+      parent_id: id,
+      children: childInvoices,
+      message: `Invoice split into ${childInvoices.length} parts`
+    });
+  } catch (err) {
+    console.error('Error splitting invoice:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Unsplit an invoice - delete children and restore parent
+ * POST /api/invoices/:id/unsplit
+ */
+app.post('/api/invoices/:id/unsplit', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { performed_by = 'System' } = req.body;
+
+    // Fetch parent invoice
+    const { data: parent, error: fetchError } = await supabase
+      .from('v2_invoices')
+      .select('*')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (fetchError || !parent) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Must be a split parent
+    if (!parent.is_split_parent) {
+      return res.status(400).json({ error: 'Invoice is not a split parent' });
+    }
+
+    // Get all children
+    const { data: children, error: childError } = await supabase
+      .from('v2_invoices')
+      .select('id, invoice_number, status, pdf_stamped_url')
+      .eq('parent_invoice_id', id)
+      .is('deleted_at', null);
+
+    if (childError) {
+      return res.status(500).json({ error: 'Failed to fetch child invoices' });
+    }
+
+    // Check if any children have progressed too far (approved, in_draw, paid)
+    const blockedStatuses = ['approved', 'in_draw', 'paid'];
+    const blockedChildren = children.filter(c => blockedStatuses.includes(c.status));
+    if (blockedChildren.length > 0) {
+      return res.status(400).json({
+        error: `Cannot unsplit: ${blockedChildren.length} child invoice(s) have already been approved or added to a draw`,
+        blocked_children: blockedChildren.map(c => ({ id: c.id, invoice_number: c.invoice_number, status: c.status }))
+      });
+    }
+
+    // Delete all children (soft delete) and clean up their stamped PDFs
+    const childIds = children.map(c => c.id);
+    if (childIds.length > 0) {
+      // First, delete stamped PDFs from storage to prevent orphaned files
+      for (const child of children) {
+        if (child.pdf_stamped_url) {
+          try {
+            await deleteByUrl(child.pdf_stamped_url);
+            console.log('[UNSPLIT] Deleted stamped PDF for child:', child.id);
+          } catch (err) {
+            console.error('[UNSPLIT] Failed to delete stamped PDF for child:', child.id, err.message);
+            // Continue even if delete fails
+          }
+        }
+      }
+
+      // Soft delete the child invoices
+      const { error: deleteError } = await supabase
+        .from('v2_invoices')
+        .update({ deleted_at: new Date().toISOString() })
+        .in('id', childIds);
+
+      if (deleteError) {
+        console.error('Error deleting children:', deleteError);
+        return res.status(500).json({ error: 'Failed to delete child invoices' });
+      }
+
+      // Log activity on each child
+      for (const child of children) {
+        await logActivity(child.id, 'deleted_unsplit', performed_by, {
+          parent_invoice_id: id,
+          reason: 'Parent invoice unsplit'
+        });
+      }
+    }
+
+    // Restore parent to original state
+    const { error: updateError } = await supabase
+      .from('v2_invoices')
+      .update({
+        is_split_parent: false,
+        status: 'needs_review', // Back to review
+        notes: parent.notes ? `${parent.notes}\n\nUnsplit on ${new Date().toLocaleDateString()}` : `Unsplit on ${new Date().toLocaleDateString()}`
+      })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('Error restoring parent:', updateError);
+      return res.status(500).json({ error: 'Failed to restore parent invoice' });
+    }
+
+    // Log activity on parent
+    await logActivity(id, 'unsplit', performed_by, {
+      deleted_child_count: children.length,
+      deleted_child_ids: childIds,
+      deleted_child_numbers: children.map(c => c.invoice_number)
+    });
+
+    // Broadcast update
+    broadcast('invoice_unsplit', {
+      parent_id: id,
+      deleted_children: childIds
+    });
+
+    res.json({
+      success: true,
+      parent_id: id,
+      deleted_children: childIds.length,
+      message: `Invoice unsplit - ${childIds.length} child invoice(s) removed`
+    });
+  } catch (err) {
+    console.error('Error unsplitting invoice:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Get all invoices in a family (parent + children)
+ * GET /api/invoices/:id/family
+ */
+app.get('/api/invoices/:id/family', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get the invoice to determine family structure
+    const { data: invoice, error: invError } = await supabase
+      .from('v2_invoices')
+      .select('id, parent_invoice_id, is_split_parent')
+      .eq('id', id)
+      .single();
+
+    if (invError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Determine family root
+    const rootId = invoice.is_split_parent ? id : (invoice.parent_invoice_id || id);
+
+    // If no parent and not a split parent, this is a standalone invoice
+    if (!invoice.parent_invoice_id && !invoice.is_split_parent) {
+      return res.json({
+        is_split: false,
+        parent: null,
+        children: []
+      });
+    }
+
+    // Get parent
+    const { data: parent } = await supabase
+      .from('v2_invoices')
+      .select(`
+        *,
+        vendor:v2_vendors(id, name),
+        job:v2_jobs(id, name)
+      `)
+      .eq('id', rootId)
+      .single();
+
+    // Get children
+    const { data: children } = await supabase
+      .from('v2_invoices')
+      .select(`
+        *,
+        vendor:v2_vendors(id, name),
+        job:v2_jobs(id, name),
+        po:v2_purchase_orders(id, po_number, job_change_order_id)
+      `)
+      .eq('parent_invoice_id', rootId)
+      .is('deleted_at', null)
+      .order('split_index');
+
+    res.json({
+      is_split: true,
+      parent,
+      children: children || []
+    });
+  } catch (err) {
+    console.error('Error fetching invoice family:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -4788,7 +5775,7 @@ app.get('/api/draws/:id', async (req, res) => {
           id, invoice_number, invoice_date, amount, status, pdf_url, pdf_stamped_url,
           vendor:v2_vendors(id, name),
           allocations:v2_invoice_allocations(
-            id, amount, notes,
+            id, amount, notes, change_order_id,
             cost_code:v2_cost_codes(id, code, name)
           )
         )
@@ -4818,8 +5805,18 @@ app.get('/api/draws/:id', async (req, res) => {
 
     if (prevError) throw prevError;
 
+    // Helper to detect CO cost codes (ending in "C" like "26102C")
+    const isCOCostCode = (code) => {
+      if (!code) return false;
+      // Check if code ends with "C" (case insensitive)
+      return /C$/i.test(code.trim());
+    };
+
     // Get all previous draw invoices to calculate previous period totals by cost code
+    // Exclude allocations linked to Change Orders OR to CO cost codes (they go to CO schedule)
     let previousByCode = {};
+    let previousCOByAlloc = {}; // Track CO allocations separately (linked to specific CO)
+    let previousUnlinkedCO = { amount: 0, allocations: [] }; // Track CO cost code allocations without CO link
     if (previousDraws && previousDraws.length > 0) {
       const prevDrawIds = previousDraws.map(d => d.id);
       const { data: prevInvoices } = await supabase
@@ -4828,7 +5825,9 @@ app.get('/api/draws/:id', async (req, res) => {
           invoice:v2_invoices(
             allocations:v2_invoice_allocations(
               amount,
-              cost_code_id
+              cost_code_id,
+              change_order_id,
+              cost_code:v2_cost_codes(id, code, name)
             )
           )
         `)
@@ -4838,6 +5837,25 @@ app.get('/api/draws/:id', async (req, res) => {
         prevInvoices.forEach(di => {
           if (di.invoice?.allocations) {
             di.invoice.allocations.forEach(alloc => {
+              const costCode = alloc.cost_code?.code;
+              const isCOCode = isCOCostCode(costCode);
+
+              // Skip CO-linked allocations for G703 - they go to CO schedule
+              if (alloc.change_order_id) {
+                if (!previousCOByAlloc[alloc.change_order_id]) {
+                  previousCOByAlloc[alloc.change_order_id] = 0;
+                }
+                previousCOByAlloc[alloc.change_order_id] += parseFloat(alloc.amount) || 0;
+                return;
+              }
+
+              // Skip CO cost codes even without change_order_id - they go to unlinked CO section
+              if (isCOCode) {
+                previousUnlinkedCO.amount += parseFloat(alloc.amount) || 0;
+                previousUnlinkedCO.allocations.push(alloc);
+                return;
+              }
+
               if (!previousByCode[alloc.cost_code_id]) {
                 previousByCode[alloc.cost_code_id] = 0;
               }
@@ -4849,12 +5867,35 @@ app.get('/api/draws/:id', async (req, res) => {
     }
 
     // Calculate this period totals by cost code
+    // Exclude CO-linked allocations AND CO cost codes - track them separately
     let thisPeriodByCode = {};
+    let thisPeriodCOByAlloc = {}; // Track CO allocations for this draw (linked to specific CO)
+    let thisPeriodUnlinkedCO = { amount: 0, allocations: [] }; // Track CO cost code allocations without CO link
     const invoices = drawInvoices?.map(di => di.invoice).filter(Boolean) || [];
     invoices.forEach(inv => {
       if (inv.allocations) {
         inv.allocations.forEach(alloc => {
           const codeId = alloc.cost_code?.id;
+          const costCode = alloc.cost_code?.code;
+          const isCOCode = isCOCostCode(costCode);
+
+          // Skip CO-linked allocations for G703 - they go to CO schedule
+          if (alloc.change_order_id) {
+            if (!thisPeriodCOByAlloc[alloc.change_order_id]) {
+              thisPeriodCOByAlloc[alloc.change_order_id] = { amount: 0, allocations: [] };
+            }
+            thisPeriodCOByAlloc[alloc.change_order_id].amount += parseFloat(alloc.amount) || 0;
+            thisPeriodCOByAlloc[alloc.change_order_id].allocations.push(alloc);
+            return;
+          }
+
+          // Skip CO cost codes even without change_order_id - they go to unlinked CO section
+          if (isCOCode) {
+            thisPeriodUnlinkedCO.amount += parseFloat(alloc.amount) || 0;
+            thisPeriodUnlinkedCO.allocations.push(alloc);
+            return;
+          }
+
           if (codeId) {
             if (!thisPeriodByCode[codeId]) {
               thisPeriodByCode[codeId] = 0;
@@ -4949,35 +5990,64 @@ app.get('/api/draws/:id', async (req, res) => {
 
     const changeOrderTotal = (jobChangeOrders || []).reduce((sum, co) => sum + parseFloat(co.amount || 0), 0);
 
+    // Get manual CO billings from the CO billing table
     const { data: thisDrawCOBillings } = await supabase
       .from('v2_job_co_draw_billings')
       .select('*, change_order:v2_job_change_orders(id, change_order_number, title, amount)')
       .eq('draw_id', drawId);
 
-    let previousCOBillings = [];
+    let previousCOBillingsManual = [];
     if (previousDraws && previousDraws.length > 0) {
       const prevDrawIds = previousDraws.map(d => d.id);
       const { data: prevCO } = await supabase
         .from('v2_job_co_draw_billings')
         .select('amount, draw_id, change_order_id')
         .in('draw_id', prevDrawIds);
-      previousCOBillings = prevCO || [];
+      previousCOBillingsManual = prevCO || [];
     }
 
-    const coBilledThisPeriod = (thisDrawCOBillings || []).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
-    const coBilledPreviously = previousCOBillings.reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+    // Combine manual CO billings with invoice allocation-based CO billings
+    // Manual billings (from v2_job_co_draw_billings)
+    const manualCOThisPeriod = (thisDrawCOBillings || []).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+    const manualCOPrevious = previousCOBillingsManual.reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
 
-    // Only include COs that have billings on THIS draw (not previous draws)
-    const cosWithBillings = (jobChangeOrders || []).filter(co => {
-      const hasThisPeriodBilling = (thisDrawCOBillings || []).some(b => b.change_order_id === co.id);
-      return hasThisPeriodBilling;
+    // Invoice allocation-based CO billings (from thisPeriodCOByAlloc and previousCOByAlloc)
+    const allocCOThisPeriod = Object.values(thisPeriodCOByAlloc).reduce((sum, co) => sum + co.amount, 0);
+    const allocCOPrevious = Object.values(previousCOByAlloc).reduce((sum, amt) => sum + amt, 0);
+
+    // Unlinked CO cost code billings (CO cost codes without change_order_id link)
+    const unlinkedCOThisPeriod = thisPeriodUnlinkedCO.amount;
+    const unlinkedCOPrevious = previousUnlinkedCO.amount;
+
+    const coBilledThisPeriod = manualCOThisPeriod + allocCOThisPeriod + unlinkedCOThisPeriod;
+    const coBilledPreviously = manualCOPrevious + allocCOPrevious + unlinkedCOPrevious;
+
+    // Build unified CO set - include COs with either manual billings OR invoice allocation billings this period
+    const cosWithBillingsSet = new Set();
+    (jobChangeOrders || []).forEach(co => {
+      const hasManualBilling = (thisDrawCOBillings || []).some(b => b.change_order_id === co.id);
+      const hasAllocBilling = thisPeriodCOByAlloc[co.id]?.amount > 0;
+      if (hasManualBilling || hasAllocBilling) {
+        cosWithBillingsSet.add(co.id);
+      }
     });
 
+    const cosWithBillings = (jobChangeOrders || []).filter(co => cosWithBillingsSet.has(co.id));
+
     const coScheduleOfValues = cosWithBillings.map((co, idx) => {
-      const prevBillings = previousCOBillings.filter(b => b.change_order_id === co.id).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
-      const thisPeriodBilling = (thisDrawCOBillings || []).filter(b => b.change_order_id === co.id).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+      // Manual billings
+      const prevManual = previousCOBillingsManual.filter(b => b.change_order_id === co.id).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+      const thisPeriodManual = (thisDrawCOBillings || []).filter(b => b.change_order_id === co.id).reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+
+      // Invoice allocation billings
+      const prevAlloc = previousCOByAlloc[co.id] || 0;
+      const thisPeriodAlloc = thisPeriodCOByAlloc[co.id]?.amount || 0;
+
+      const prevBillings = prevManual + prevAlloc;
+      const thisPeriodBilling = thisPeriodManual + thisPeriodAlloc;
       const totalBilled = prevBillings + thisPeriodBilling;
       const coAmount = parseFloat(co.amount || 0);
+
       return {
         itemNumber: idx + 1,
         changeOrderId: co.id,
@@ -4993,7 +6063,9 @@ app.get('/api/draws/:id', async (req, res) => {
         totalBilled: totalBilled,
         percentComplete: coAmount > 0 ? Math.min((totalBilled / coAmount) * 100, 100) : 0,
         balance: coAmount - totalBilled,
-        clientApproved: !!co.client_approved_at || co.client_approval_bypassed
+        clientApproved: !!co.client_approved_at || co.client_approval_bypassed,
+        // Include allocation details for reference
+        allocations: thisPeriodCOByAlloc[co.id]?.allocations || []
       };
     });
 
@@ -5031,6 +6103,13 @@ app.get('/api/draws/:id', async (req, res) => {
       coBillings: thisDrawCOBillings || [],
       coBilledThisPeriod,
       coBilledPreviously,
+      // Unlinked CO cost code allocations (CO cost codes without change_order_id)
+      unlinkedCOAllocations: {
+        thisPeriod: thisPeriodUnlinkedCO,
+        previous: previousUnlinkedCO,
+        totalThisPeriod: unlinkedCOThisPeriod,
+        totalPrevious: unlinkedCOPrevious
+      },
       attachments: attachments || [],
       activity: activity || [],
       g702: {
@@ -5346,15 +6425,16 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
           }, { onConflict: 'draw_id,invoice_id,cost_code_id' });
       }
 
-      // Stamp PDF with "IN DRAW"
-      if (inv.pdf_stamped_url) {
+      // Stamp PDF with "IN DRAW" using fixed path
+      if (inv.pdf_url) {
         try {
-          const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
-          if (urlParts[1]) {
-            const storagePath = decodeURIComponent(urlParts[1]).replace('_stamped.pdf', '.pdf');
-            const pdfBuffer = await downloadPDF(storagePath.replace('.pdf', '_stamped.pdf'));
+          // Always stamp from original PDF
+          const storagePath = extractStoragePath(inv.pdf_url);
+          if (storagePath) {
+            const pdfBuffer = await downloadPDF(storagePath);
             const stampedBuffer = await stampInDraw(pdfBuffer, draw?.draw_number || 1);
-            await uploadStampedPDF(stampedBuffer, storagePath);
+            // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+            await uploadStampedPDFById(stampedBuffer, inv.id, inv.job_id);
           }
         } catch (stampErr) {
           console.error('IN DRAW stamp failed for invoice:', inv.id, stampErr.message);
@@ -5492,13 +6572,13 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
       .eq('id', invoice_id)
       .single();
 
-    // Re-stamp with just APPROVED (remove IN DRAW stamp)
+    // Re-stamp with just APPROVED (remove IN DRAW stamp) using fixed path
     let newStampedUrl = null;
     if (invoice?.pdf_url) {
       try {
-        const urlParts = invoice.pdf_url.split('/storage/v1/object/public/invoices/');
-        if (urlParts[1]) {
-          const storagePath = decodeURIComponent(urlParts[1].split('?')[0]);
+        // Always stamp from original PDF
+        const storagePath = extractStoragePath(invoice.pdf_url);
+        if (storagePath) {
           const pdfBuffer = await downloadPDF(storagePath);
 
           // Get PO billing info
@@ -5536,7 +6616,8 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
             poBilledToDate: poBilledToDate
           });
 
-          const result = await uploadStampedPDF(stampedBuffer, storagePath);
+          // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+          const result = await uploadStampedPDFById(stampedBuffer, invoice_id, invoice.job?.id);
           newStampedUrl = result.url;
         }
       } catch (stampErr) {
@@ -5911,7 +6992,7 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
       // Get invoices that are still in_draw
       const { data: invoices } = await supabase
         .from('v2_invoices')
-        .select('id, amount, billed_amount, paid_amount, pdf_stamped_url, job_id, status')
+        .select('id, amount, billed_amount, paid_amount, pdf_stamped_url, job_id, status, parent_invoice_id')
         .in('id', invoiceIds)
         .eq('status', 'in_draw');
 
@@ -5949,15 +7030,16 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
           }
         }
 
-        // Stamp and update invoice as PAID
-        if (inv.pdf_stamped_url) {
+        // Stamp and update invoice as PAID using fixed path
+        if (inv.pdf_url) {
           try {
-            const urlParts = inv.pdf_stamped_url.split('/storage/v1/object/public/invoices/');
-            if (urlParts[1]) {
-              const storagePath = decodeURIComponent(urlParts[1]).replace('_stamped.pdf', '.pdf');
-              const pdfBuffer = await downloadPDF(storagePath.replace('.pdf', '_stamped.pdf'));
+            // Always stamp from original PDF
+            const storagePath = extractStoragePath(inv.pdf_url);
+            if (storagePath) {
+              const pdfBuffer = await downloadPDF(storagePath);
               const stampedBuffer = await stampPaid(pdfBuffer, paidDate);
-              await uploadStampedPDF(stampedBuffer, storagePath);
+              // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+              await uploadStampedPDFById(stampedBuffer, inv.id, inv.job_id);
             }
           } catch (stampErr) {
             console.error('PAID stamp failed for invoice:', inv.id, stampErr.message);
@@ -5985,6 +7067,13 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
           cumulative_paid: newPaidAmount,
           fully_billed: isFullyBilled
         });
+
+        // Check if this completes a split (all children in terminal state)
+        if (inv.parent_invoice_id) {
+          checkSplitReconciliation(inv.parent_invoice_id).catch(err => {
+            console.error('[RECONCILE] Check failed:', err.message);
+          });
+        }
       }
     }
 
@@ -7938,6 +9027,24 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         updateFields.approved_at = null;
         updateFields.approved_by = null;
       },
+      // Send back from approved: approved → needs_review (clear approval, record reason)
+      'approved_to_needs_review': () => {
+        updateFields.approved_at = null;
+        updateFields.approved_by = null;
+        updateFields.sent_back_at = new Date().toISOString();
+        updateFields.sent_back_by = performedBy;
+        if (updates.sendback_reason) {
+          updateFields.sent_back_reason = updates.sendback_reason;
+        }
+      },
+      // Send back from ready_for_approval: ready_for_approval → needs_review (record reason)
+      'ready_for_approval_to_needs_review': () => {
+        updateFields.sent_back_at = new Date().toISOString();
+        updateFields.sent_back_by = performedBy;
+        if (updates.sendback_reason) {
+          updateFields.sent_back_reason = updates.sendback_reason;
+        }
+      },
       // Remove from draw: in_draw → approved
       'in_draw_to_approved': () => {
         // Keep approval info
@@ -7948,10 +9055,13 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         updateFields.denied_by = null;
         updateFields.denial_reason = null;
       },
-      // Submit for approval: needs_review → ready_for_approval
+      // Submit for approval: needs_review → ready_for_approval (clear send back)
       'needs_review_to_ready_for_approval': () => {
         updateFields.coded_at = new Date().toISOString();
         updateFields.coded_by = performedBy;
+        updateFields.sent_back_at = null;
+        updateFields.sent_back_by = null;
+        updateFields.sent_back_reason = null;
       },
       // Approve: ready_for_approval → approved (stamping handled below)
       'ready_for_approval_to_approved': () => {
@@ -8076,19 +9186,16 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
       // Log activity
       await logActivity(invoiceId, 'added_to_draw', performedBy, { draw_number: drawNumber });
 
-      // Add IN DRAW stamp to the PDF
+      // Add IN DRAW stamp to the PDF using fixed path
       try {
-        const pdfUrl = existing.pdf_stamped_url || existing.pdf_url;
-        if (pdfUrl) {
-          const urlParts = pdfUrl.split('/storage/v1/object/public/invoices/');
-          if (urlParts[1]) {
-            let storagePath = decodeURIComponent(urlParts[1].split('?')[0]); // Remove query params
+        if (existing.pdf_url) {
+          // Always stamp from original PDF
+          const storagePath = extractStoragePath(existing.pdf_url);
+          if (storagePath) {
             const pdfBuffer = await downloadPDF(storagePath);
             const stampedBuffer = await stampInDraw(pdfBuffer, drawNumber);
-
-            // Upload to stamped path
-            const basePath = storagePath.replace('_stamped.pdf', '.pdf');
-            const result = await uploadStampedPDF(stampedBuffer, basePath);
+            // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+            const result = await uploadStampedPDFById(stampedBuffer, invoiceId, existing.job_id);
             updateFields.pdf_stamped_url = result.url;
           }
         }
@@ -8118,31 +9225,20 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
           .single();
 
         if (fullInvoice?.pdf_url) {
-          const urlParts = fullInvoice.pdf_url.split('/storage/v1/object/public/invoices/');
-          if (urlParts[1]) {
-            const storagePath = decodeURIComponent(urlParts[1]);
+          // Always stamp from original PDF
+          const storagePath = extractStoragePath(fullInvoice.pdf_url);
+          if (storagePath) {
             const pdfBuffer = await downloadPDF(storagePath);
 
-            // Get PO billing info
+            // Get PO billing info with CO cost code exclusion
             let poTotal = null;
             let poBilledToDate = 0;
+            let poLinkedAmount = null;
+            const isCOCostCode = (code) => code && /C$/i.test(code.trim());
 
-            if (fullInvoice.po?.id) {
-              poTotal = fullInvoice.po.total_amount;
-              const { data: priorInvoices } = await supabase
-                .from('v2_invoices')
-                .select('amount')
-                .eq('po_id', fullInvoice.po.id)
-                .neq('id', invoiceId)
-                .in('status', ['approved', 'in_draw', 'paid']);
-
-              if (priorInvoices) {
-                poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
-              }
-            }
-
-            // Build allocations with cost code details for stamping
+            // Build allocations with cost code details for stamping (do this first so we have cost codes)
             let allocationsForStamp = [];
+            let ccMap = new Map();
 
             if (updates.allocations && updates.allocations.length > 0) {
               // Allocations from request - need to fetch cost code details
@@ -8156,7 +9252,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
                   .select('id, code, name')
                   .in('id', costCodeIds);
 
-                const ccMap = new Map((costCodes || []).map(cc => [cc.id, cc]));
+                ccMap = new Map((costCodes || []).map(cc => [cc.id, cc]));
 
                 allocationsForStamp = updates.allocations
                   .filter(a => a.cost_code_id && ccMap.has(a.cost_code_id))
@@ -8170,10 +9266,43 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
               allocationsForStamp = fullInvoice.allocations || [];
             }
 
-            console.log('=== STAMP DEBUG (PATCH) ===');
-            console.log('Allocations for stamp:', JSON.stringify(allocationsForStamp, null, 2));
-            console.log('PO:', JSON.stringify(fullInvoice.po, null, 2));
-            console.log('===========================');
+            if (fullInvoice.po?.id) {
+              poTotal = fullInvoice.po.total_amount;
+
+              // Calculate how much of THIS invoice links to PO (exclude CO allocations)
+              poLinkedAmount = allocationsForStamp.reduce((sum, a) => {
+                const code = a.cost_code?.code;
+                if (code && isCOCostCode(code)) return sum;
+                return sum + parseFloat(a.amount || 0);
+              }, 0);
+
+              // Get prior invoices with allocations to exclude CO work
+              const { data: priorInvoices } = await supabase
+                .from('v2_invoices')
+                .select(`
+                  id,
+                  amount,
+                  allocations:v2_invoice_allocations(
+                    amount,
+                    cost_code:v2_cost_codes(code)
+                  )
+                `)
+                .eq('po_id', fullInvoice.po.id)
+                .neq('id', invoiceId)
+                .in('status', ['approved', 'in_draw', 'paid']);
+
+              if (priorInvoices) {
+                poBilledToDate = priorInvoices.reduce((sum, inv) => {
+                  if (inv.allocations && inv.allocations.length > 0) {
+                    return sum + inv.allocations.reduce((s, a) => {
+                      if (a.cost_code?.code && isCOCostCode(a.cost_code.code)) return s;
+                      return s + parseFloat(a.amount || 0);
+                    }, 0);
+                  }
+                  return sum + parseFloat(inv.amount || 0);
+                }, 0);
+              }
+            }
 
             const stampedBuffer = await stampApproval(pdfBuffer, {
               status: 'APPROVED',
@@ -8191,10 +9320,12 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
               poNumber: fullInvoice.po?.po_number,
               poDescription: fullInvoice.po?.description,
               poTotal: poTotal,
-              poBilledToDate: poBilledToDate
+              poBilledToDate: poBilledToDate,
+              poLinkedAmount: poLinkedAmount
             });
 
-            const result = await uploadStampedPDF(stampedBuffer, storagePath);
+            // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+            const result = await uploadStampedPDFById(stampedBuffer, invoiceId, fullInvoice.job?.id);
             updateFields.pdf_stamped_url = result.url;
           }
         }
@@ -8232,25 +9363,53 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
           .single();
 
         if (fullInvoice?.pdf_url) {
-          const urlParts = fullInvoice.pdf_url.split('/storage/v1/object/public/invoices/');
-          if (urlParts[1]) {
-            const storagePath = decodeURIComponent(urlParts[1].split('?')[0]);
+          // Always stamp from original PDF
+          const storagePath = extractStoragePath(fullInvoice.pdf_url);
+          if (storagePath) {
             // Download ORIGINAL PDF (not stamped) to re-stamp fresh
             const pdfBuffer = await downloadPDF(storagePath);
 
-            // Get PO billing info
+            // Get PO billing info with CO cost code exclusion
             let poTotal = null;
             let poBilledToDate = 0;
+            let poLinkedAmount = null;
+            const isCOCostCode = (code) => code && /C$/i.test(code.trim());
+
             if (fullInvoice.po?.id) {
               poTotal = fullInvoice.po.total_amount;
+
+              // Calculate how much of THIS invoice links to PO (exclude CO allocations)
+              const allocs = fullInvoice.allocations || [];
+              poLinkedAmount = allocs.reduce((sum, a) => {
+                if (a.cost_code?.code && isCOCostCode(a.cost_code.code)) return sum;
+                return sum + parseFloat(a.amount || 0);
+              }, 0);
+
+              // Get prior invoices with allocations to exclude CO work
               const { data: priorInvoices } = await supabase
                 .from('v2_invoices')
-                .select('amount')
+                .select(`
+                  id,
+                  amount,
+                  allocations:v2_invoice_allocations(
+                    amount,
+                    cost_code:v2_cost_codes(code)
+                  )
+                `)
                 .eq('po_id', fullInvoice.po.id)
                 .neq('id', invoiceId)
                 .in('status', ['approved', 'in_draw', 'paid']);
+
               if (priorInvoices) {
-                poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+                poBilledToDate = priorInvoices.reduce((sum, inv) => {
+                  if (inv.allocations && inv.allocations.length > 0) {
+                    return sum + inv.allocations.reduce((s, a) => {
+                      if (a.cost_code?.code && isCOCostCode(a.cost_code.code)) return s;
+                      return s + parseFloat(a.amount || 0);
+                    }, 0);
+                  }
+                  return sum + parseFloat(inv.amount || 0);
+                }, 0);
               }
             }
 
@@ -8270,10 +9429,12 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
               poNumber: fullInvoice.po?.po_number,
               poDescription: fullInvoice.po?.description,
               poTotal: poTotal,
-              poBilledToDate: poBilledToDate
+              poBilledToDate: poBilledToDate,
+              poLinkedAmount: poLinkedAmount
             });
 
-            const result = await uploadStampedPDF(stampedBuffer, storagePath);
+            // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+            const result = await uploadStampedPDFById(stampedBuffer, invoiceId, fullInvoice.job?.id);
             updateFields.pdf_stamped_url = result.url;
           }
         }
@@ -8331,6 +9492,19 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     changes.allocations = { from: existing.allocations?.length || 0, to: allocsToInsert.length };
   }
 
+  // Re-stamp PDF if there were changes that affect the stamp
+  // (but skip if status transition already handled stamping)
+  const stampAffectingFields = ['job_id', 'vendor_id', 'amount', 'invoice_number', 'po_id'];
+  const hasStampAffectingChanges = stampAffectingFields.some(f => changes[f]) || changes.allocations;
+  const statusAlreadyStamped = changes.status && ['needs_review', 'ready_for_approval', 'approved', 'in_draw', 'paid'].includes(changes.status.to);
+
+  if (hasStampAffectingChanges && !statusAlreadyStamped) {
+    // Re-stamp in background (don't block response)
+    restampInvoice(invoiceId).catch(err => {
+      console.error('[RESTAMP] Background re-stamp failed:', err.message);
+    });
+  }
+
   // Log activity
   if (Object.keys(changes).length > 0) {
     // Check for partial approval
@@ -8342,6 +9516,22 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
       });
     } else if (changes.status?.to === 'approved') {
       await logActivity(invoiceId, 'approved', performedBy, { changes });
+    } else if (changes.status?.to === 'needs_review' && updates.sendback_reason) {
+      // Send back with reason
+      await logActivity(invoiceId, 'sent_back', performedBy, {
+        changes,
+        reason: updates.sendback_reason,
+        from_status: changes.status?.from
+      });
+    } else if (changes.status?.to === 'denied') {
+      // Denial
+      await logActivity(invoiceId, 'denied', performedBy, {
+        changes,
+        reason: updates.denial_reason
+      });
+    } else if (changes.status?.to === 'ready_for_approval') {
+      // Submitted for approval
+      await logActivity(invoiceId, 'ready_for_approval', performedBy, { changes });
     } else {
       await logActivity(invoiceId, 'edited', performedBy, { changes });
     }
@@ -8445,6 +9635,11 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
     }
   }
 
+  // Re-stamp PDF with updated information (run in background)
+  restampInvoice(invoiceId).catch(err => {
+    console.error('[RESTAMP] Background re-stamp failed:', err.message);
+  });
+
   await logActivity(invoiceId, 'full_edit', performedBy, { updates });
   broadcastInvoiceUpdate(updated, 'full_edit', performedBy);
 
@@ -8529,8 +9724,6 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
     case 'ready_for_approval':
       updateData.coded_at = new Date().toISOString();
       updateData.coded_by = performedBy;
-      // Clear stamp when moving back to ready_for_approval
-      updateData.pdf_stamped_url = null;
       updateData.approved_at = null;
       updateData.approved_by = null;
 
@@ -8540,9 +9733,70 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
           await updatePOLineItemsForAllocations(invoice.po.id, invoice.allocations, false);
         }
       }
+
+      // Stamp PDF with "Ready for Approval" (progressive stamping) using fixed path
+      {
+        if (invoice.pdf_url) {
+          try {
+            // Always stamp from original PDF
+            const storagePath = extractStoragePath(invoice.pdf_url);
+            if (storagePath) {
+              const pdfBuffer = await downloadPDF(storagePath);
+
+              // Get cost codes for stamp
+              const allocsForStamp = invoice.allocations || [];
+              let costCodesForStamp = [];
+              if (allocsForStamp.length > 0) {
+                const costCodeIds = allocsForStamp.map(a => a.cost_code_id).filter(id => id);
+                if (costCodeIds.length > 0) {
+                  const { data: costCodes } = await supabase
+                    .from('v2_cost_codes')
+                    .select('id, code, name')
+                    .in('id', costCodeIds);
+                  const codeMap = {};
+                  (costCodes || []).forEach(cc => { codeMap[cc.id] = cc; });
+                  costCodesForStamp = allocsForStamp.map(a => ({
+                    code: codeMap[a.cost_code_id]?.code || '',
+                    name: codeMap[a.cost_code_id]?.name || '',
+                    amount: parseFloat(a.amount) || 0
+                  }));
+                }
+              }
+
+              const stampedBuffer = await stampReadyForApproval(pdfBuffer, {
+                date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                codedBy: performedBy,
+                jobName: invoice.job?.name,
+                vendorName: invoice.vendor?.name,
+                amount: invoice.amount,
+                costCodes: costCodesForStamp
+              });
+
+              // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+              const uploadResult = await uploadStampedPDFById(stampedBuffer, invoiceId, invoice.job?.id);
+              if (uploadResult?.url) {
+                updateData.pdf_stamped_url = uploadResult.url;
+                pdf_stamped_url = uploadResult.url;
+              }
+            }
+          } catch (stampErr) {
+            console.error('[STAMP] Ready for approval stamp error:', stampErr.message);
+          }
+        }
+      }
       break;
 
     case 'approved':
+      // Split children must have a job assigned before approval
+      if (invoice.parent_invoice_id && !invoice.job_id) {
+        return res.status(400).json({
+          error: true,
+          code: 'SPLIT_REQUIRES_JOB',
+          message: 'Split invoices must be assigned to a job before approval',
+          details: { invoice_id: invoiceId }
+        });
+      }
+
       updateData.approved_at = new Date().toISOString();
       updateData.approved_by = performedBy;
 
@@ -8562,88 +9816,143 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
         await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
       }
 
-      // Stamp PDF
-      if (invoice.pdf_url) {
-        try {
-          const urlParts = invoice.pdf_url.split('/storage/v1/object/public/invoices/');
-          if (urlParts[1]) {
-            const storagePath = decodeURIComponent(urlParts[1]);
-            const pdfBuffer = await downloadPDF(storagePath);
-
-            // Get PO info
-            let poTotal = null, poBilledToDate = 0;
-            if (invoice.po?.id) {
-              poTotal = parseFloat(invoice.po.total_amount);
-              const { data: priorInvoices } = await supabase
-                .from('v2_invoices')
-                .select('amount')
-                .eq('po_id', invoice.po.id)
-                .neq('id', invoiceId)
-                .in('status', ['approved', 'in_draw', 'paid']);
-              if (priorInvoices) {
-                poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
-              }
+      // Stamp PDF (progressive stamping - use existing stamp if available)
+      {
+        const pdfSourceUrl = invoice.pdf_stamped_url || invoice.pdf_url;
+        if (pdfSourceUrl) {
+          try {
+            let storagePath = null;
+            if (pdfSourceUrl.includes('/storage/v1/object/public/invoices/')) {
+              const urlParts = pdfSourceUrl.split('/storage/v1/object/public/invoices/');
+              storagePath = urlParts[1] ? decodeURIComponent(urlParts[1].split('?')[0]) : null;
             }
+            if (storagePath) {
+              const pdfBuffer = await downloadPDF(storagePath);
 
-            // Get cost code details for stamping
-            const allocsForStamp = allocations || invoice.allocations || [];
-            let costCodesForStamp = [];
+              // Get PO info with CO cost code exclusion
+              let poTotal = null, poBilledToDate = 0, poLinkedAmount = null;
+              const isCOCostCode = (code) => code && /C$/i.test(code.trim());
 
-            if (allocsForStamp.length > 0) {
-              // If allocations don't have cost_code details, fetch them
-              const needsFetch = allocsForStamp.some(a => !a.cost_code?.code);
+              if (invoice.po?.id) {
+                poTotal = parseFloat(invoice.po.total_amount);
 
-              if (needsFetch) {
-                const costCodeIds = allocsForStamp.map(a => a.cost_code_id).filter(id => id);
-                if (costCodeIds.length > 0) {
-                  const { data: costCodes } = await supabase
-                    .from('v2_cost_codes')
-                    .select('id, code, name')
-                    .in('id', costCodeIds);
+                // Get allocations with cost codes for this invoice
+                const allocsForPO = allocations || invoice.allocations || [];
 
-                  const codeMap = {};
-                  (costCodes || []).forEach(cc => { codeMap[cc.id] = cc; });
+                // Calculate how much of THIS invoice links to PO (exclude CO allocations)
+                poLinkedAmount = allocsForPO.reduce((sum, alloc) => {
+                  const costCode = alloc.cost_code?.code || alloc.cost_code_id;
+                  // Try to get code if we only have ID
+                  let codeStr = costCode;
+                  if (!codeStr && alloc.cost_code_id) {
+                    // Will be checked later after cost code fetch
+                    return sum + parseFloat(alloc.amount || 0); // Temporarily count
+                  }
+                  const isCO = typeof codeStr === 'string' && isCOCostCode(codeStr);
+                  if (isCO) return sum;
+                  return sum + parseFloat(alloc.amount || 0);
+                }, 0);
 
-                  costCodesForStamp = allocsForStamp.map(a => {
-                    const cc = codeMap[a.cost_code_id] || {};
-                    return {
-                      code: cc.code || 'N/A',
-                      name: cc.name || 'Unknown',
-                      amount: parseFloat(a.amount)
-                    };
-                  });
+                // Get prior invoices with allocations to exclude CO work
+                const { data: priorInvoices } = await supabase
+                  .from('v2_invoices')
+                  .select(`
+                    id,
+                    amount,
+                    allocations:v2_invoice_allocations(
+                      amount,
+                      cost_code:v2_cost_codes(code)
+                    )
+                  `)
+                  .eq('po_id', invoice.po.id)
+                  .neq('id', invoiceId)
+                  .in('status', ['approved', 'in_draw', 'paid']);
+
+                if (priorInvoices) {
+                  poBilledToDate = priorInvoices.reduce((sum, inv) => {
+                    if (inv.allocations && inv.allocations.length > 0) {
+                      return sum + inv.allocations.reduce((s, a) => {
+                        const isCO = isCOCostCode(a.cost_code?.code);
+                        if (isCO) return s;
+                        return s + parseFloat(a.amount || 0);
+                      }, 0);
+                    }
+                    return sum + parseFloat(inv.amount || 0);
+                  }, 0);
                 }
-              } else {
-                costCodesForStamp = allocsForStamp.map(a => ({
-                  code: a.cost_code?.code || 'N/A',
-                  name: a.cost_code?.name || 'Unknown',
-                  amount: parseFloat(a.amount)
-                }));
               }
+
+              // Get cost code details for stamping
+              const allocsForStamp = allocations || invoice.allocations || [];
+              let costCodesForStamp = [];
+              let codeMap = {};
+
+              if (allocsForStamp.length > 0) {
+                // If allocations don't have cost_code details, fetch them
+                const needsFetch = allocsForStamp.some(a => !a.cost_code?.code);
+
+                if (needsFetch) {
+                  const costCodeIds = allocsForStamp.map(a => a.cost_code_id).filter(id => id);
+                  if (costCodeIds.length > 0) {
+                    const { data: costCodes } = await supabase
+                      .from('v2_cost_codes')
+                      .select('id, code, name')
+                      .in('id', costCodeIds);
+
+                    (costCodes || []).forEach(cc => { codeMap[cc.id] = cc; });
+
+                    costCodesForStamp = allocsForStamp.map(a => {
+                      const cc = codeMap[a.cost_code_id] || {};
+                      return {
+                        code: cc.code || 'N/A',
+                        name: cc.name || 'Unknown',
+                        amount: parseFloat(a.amount)
+                      };
+                    });
+                  }
+                } else {
+                  costCodesForStamp = allocsForStamp.map(a => ({
+                    code: a.cost_code?.code || 'N/A',
+                    name: a.cost_code?.name || 'Unknown',
+                    amount: parseFloat(a.amount)
+                  }));
+                }
+              }
+
+              // Recalculate poLinkedAmount now that we have cost codes
+              if (invoice.po?.id) {
+                poLinkedAmount = allocsForStamp.reduce((sum, alloc) => {
+                  const cc = alloc.cost_code?.code || (codeMap[alloc.cost_code_id]?.code);
+                  if (cc && isCOCostCode(cc)) return sum;
+                  return sum + parseFloat(alloc.amount || 0);
+                }, 0);
+              }
+
+              const stampedBuffer = await stampApproval(pdfBuffer, {
+                status: 'APPROVED',
+                date: new Date().toLocaleDateString(),
+                approvedBy: performedBy,
+                vendorName: invoice.vendor?.name,
+                invoiceNumber: invoice.invoice_number,
+                jobName: invoice.job?.name,
+                costCodes: costCodesForStamp,
+                amount: parseFloat(invoice.amount),
+                poNumber: invoice.po?.po_number,
+                poDescription: invoice.po?.description,
+                poTotal,
+                poBilledToDate,
+                poLinkedAmount
+              });
+
+              // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+              const result = await uploadStampedPDFById(stampedBuffer, invoiceId, invoice.job_id);
+              pdf_stamped_url = result.url;
+              updateData.pdf_stamped_url = pdf_stamped_url;
             }
-
-            const stampedBuffer = await stampApproval(pdfBuffer, {
-              status: 'APPROVED',
-              date: new Date().toLocaleDateString(),
-              approvedBy: performedBy,
-              vendorName: invoice.vendor?.name,
-              invoiceNumber: invoice.invoice_number,
-              jobName: invoice.job?.name,
-              costCodes: costCodesForStamp,
-              amount: parseFloat(invoice.amount),
-              poNumber: invoice.po?.po_number,
-              poDescription: invoice.po?.description,
-              poTotal,
-              poBilledToDate
-            });
-
-            const result = await uploadStampedPDF(stampedBuffer, storagePath);
-            pdf_stamped_url = result.url;
-            updateData.pdf_stamped_url = pdf_stamped_url;
+          } catch (stampErr) {
+            console.error('PDF stamping failed:', stampErr.message);
+            // Continue without stamp but flag it
           }
-        } catch (stampErr) {
-          console.error('PDF stamping failed:', stampErr.message);
-          // Continue without stamp but flag it
         }
       }
 
@@ -8728,6 +10037,36 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
         updateData.denied_by = null;
         updateData.denial_reason = null;
       }
+
+      // Stamp PDF with "Needs Review" (progressive stamping) using fixed path
+      {
+        if (invoice.pdf_url) {
+          try {
+            // Always stamp from original PDF
+            const storagePath = extractStoragePath(invoice.pdf_url);
+            if (storagePath) {
+              const pdfBuffer = await downloadPDF(storagePath);
+
+              const stampedBuffer = await stampNeedsReview(pdfBuffer, {
+                date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                vendorName: invoice.vendor?.name,
+                invoiceNumber: invoice.invoice_number,
+                amount: invoice.amount,
+                flags: invoice.review_flags || []
+              });
+
+              // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+              const uploadResult = await uploadStampedPDFById(stampedBuffer, invoiceId, invoice.job?.id);
+              if (uploadResult?.url) {
+                updateData.pdf_stamped_url = uploadResult.url;
+                pdf_stamped_url = uploadResult.url;
+              }
+            }
+          } catch (stampErr) {
+            console.error('[STAMP] Needs review stamp error:', stampErr.message);
+          }
+        }
+      }
       break;
   }
 
@@ -8751,6 +10090,13 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
     stamped: !!pdf_stamped_url
   });
 
+  // Check if this completes a split (terminal states: paid, denied)
+  if (invoice.parent_invoice_id && ['paid', 'denied'].includes(new_status)) {
+    checkSplitReconciliation(invoice.parent_invoice_id).catch(err => {
+      console.error('[RECONCILE] Check failed:', err.message);
+    });
+  }
+
   broadcastInvoiceUpdate(updated, `status_${new_status}`, performedBy);
 
   res.json({
@@ -8759,6 +10105,186 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
     warnings: preCheck.warnings || [],
     undoAvailable: true,
     undoExpiresIn: UNDO_WINDOW_SECONDS * 1000
+  });
+}));
+
+// ============================================================
+// BATCH RE-STAMP ENDPOINT
+// ============================================================
+
+// Re-stamp all invoices that are missing stamps or need re-stamping
+app.post('/api/invoices/batch-restamp', asyncHandler(async (req, res) => {
+  const { status, force = false } = req.body;
+
+  // Build query - get invoices that need stamping
+  let query = supabase
+    .from('v2_invoices')
+    .select(`
+      id, status, job_id, po_id, pdf_url, pdf_stamped_url, invoice_number, amount, review_flags,
+      approved_at, approved_by,
+      vendor:v2_vendors(id, name),
+      job:v2_jobs(id, name),
+      po:v2_purchase_orders(id, po_number, total_amount),
+      allocations:v2_invoice_allocations(amount, cost_code_id)
+    `)
+    .is('deleted_at', null);
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  if (!force) {
+    // Only get invoices without stamps
+    query = query.is('pdf_stamped_url', null);
+  }
+
+  const { data: invoices, error } = await query;
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', 'Failed to fetch invoices');
+  }
+
+  const results = { stamped: 0, failed: 0, errors: [] };
+
+  for (const invoice of invoices) {
+    if (!invoice.pdf_url) {
+      results.failed++;
+      results.errors.push({ id: invoice.id, error: 'No PDF URL' });
+      continue;
+    }
+
+    try {
+      const storagePath = extractStoragePath(invoice.pdf_url);
+      if (!storagePath) {
+        results.failed++;
+        results.errors.push({ id: invoice.id, error: 'Invalid PDF URL' });
+        continue;
+      }
+
+      const pdfBuffer = await downloadPDF(storagePath);
+      let stampedBuffer;
+
+      // Choose stamp based on status
+      if (invoice.status === 'needs_review') {
+        stampedBuffer = await stampNeedsReview(pdfBuffer, {
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          vendorName: invoice.vendor?.name,
+          invoiceNumber: invoice.invoice_number,
+          amount: invoice.amount,
+          flags: invoice.review_flags || []
+        });
+      } else if (invoice.status === 'ready_for_approval') {
+        // Get cost codes for stamp
+        let costCodesForStamp = [];
+        if (invoice.allocations?.length > 0) {
+          const costCodeIds = invoice.allocations.map(a => a.cost_code_id).filter(id => id);
+          if (costCodeIds.length > 0) {
+            const { data: costCodes } = await supabase
+              .from('v2_cost_codes')
+              .select('id, code, name')
+              .in('id', costCodeIds);
+            const codeMap = {};
+            (costCodes || []).forEach(cc => { codeMap[cc.id] = cc; });
+            costCodesForStamp = invoice.allocations.map(a => ({
+              code: codeMap[a.cost_code_id]?.code || '',
+              name: codeMap[a.cost_code_id]?.name || '',
+              amount: parseFloat(a.amount) || 0
+            }));
+          }
+        }
+        stampedBuffer = await stampReadyForApproval(pdfBuffer, {
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          codedBy: 'System',
+          jobName: invoice.job?.name,
+          vendorName: invoice.vendor?.name,
+          amount: invoice.amount,
+          costCodes: costCodesForStamp
+        });
+      } else if (invoice.status === 'approved' || invoice.status === 'in_draw') {
+        // Get cost codes for stamp
+        let costCodesForStamp = [];
+        if (invoice.allocations?.length > 0) {
+          const costCodeIds = invoice.allocations.map(a => a.cost_code_id).filter(id => id);
+          if (costCodeIds.length > 0) {
+            const { data: costCodes } = await supabase
+              .from('v2_cost_codes')
+              .select('id, code, name')
+              .in('id', costCodeIds);
+            const codeMap = {};
+            (costCodes || []).forEach(cc => { codeMap[cc.id] = cc; });
+            costCodesForStamp = invoice.allocations.map(a => ({
+              code: codeMap[a.cost_code_id]?.code || '',
+              name: codeMap[a.cost_code_id]?.name || '',
+              amount: parseFloat(a.amount) || 0
+            }));
+          }
+        }
+
+        // Get PO billing info if available
+        let poTotal = null;
+        let poBilledToDate = 0;
+        if (invoice.po_id) {
+          const { data: po } = await supabase
+            .from('v2_purchase_orders')
+            .select('total_amount')
+            .eq('id', invoice.po_id)
+            .single();
+          if (po) {
+            poTotal = po.total_amount;
+            const { data: priorInvoices } = await supabase
+              .from('v2_invoices')
+              .select('amount')
+              .eq('po_id', invoice.po_id)
+              .neq('id', invoice.id)
+              .in('status', ['approved', 'in_draw', 'paid']);
+            if (priorInvoices) {
+              poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+            }
+          }
+        }
+
+        const stampStatus = invoice.status === 'in_draw' ? 'IN DRAW' : 'APPROVED';
+        stampedBuffer = await stampApproval(pdfBuffer, {
+          status: stampStatus,
+          date: invoice.approved_at ? new Date(invoice.approved_at).toLocaleDateString() : new Date().toLocaleDateString(),
+          approvedBy: invoice.approved_by || 'System',
+          vendorName: invoice.vendor?.name,
+          invoiceNumber: invoice.invoice_number,
+          jobName: invoice.job?.name,
+          costCodes: costCodesForStamp,
+          amount: invoice.amount,
+          poNumber: invoice.po?.po_number,
+          poTotal: poTotal,
+          poBilledToDate: poBilledToDate
+        });
+      } else {
+        // Skip other statuses for now
+        continue;
+      }
+
+      // Upload using fixed path
+      const uploadResult = await uploadStampedPDFById(stampedBuffer, invoice.id, invoice.job_id);
+
+      // Update invoice
+      await supabase
+        .from('v2_invoices')
+        .update({ pdf_stamped_url: uploadResult.url })
+        .eq('id', invoice.id);
+
+      results.stamped++;
+      console.log('[BATCH-STAMP] Stamped:', invoice.id);
+
+    } catch (err) {
+      results.failed++;
+      results.errors.push({ id: invoice.id, error: err.message });
+      console.error('[BATCH-STAMP] Failed:', invoice.id, err.message);
+    }
+  }
+
+  res.json({
+    success: true,
+    total: invoices.length,
+    ...results
   });
 }));
 
@@ -9281,6 +10807,14 @@ app.delete('/api/invoices/:id', asyncHandler(async (req, res) => {
   }
 
   await logActivity(invoiceId, 'deleted', performedBy, {});
+
+  // Check if this completes a split (deleted is a terminal state)
+  if (invoice.parent_invoice_id) {
+    checkSplitReconciliation(invoice.parent_invoice_id).catch(err => {
+      console.error('[RECONCILE] Check failed:', err.message);
+    });
+  }
+
   broadcastInvoiceUpdate({ id: invoiceId }, 'deleted', performedBy);
 
   res.json({

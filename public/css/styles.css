@@ -521,9 +521,9 @@ body {
   border-radius: var(--radius-sm);
   padding: 0.875rem 1rem;
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 1.25rem;
+  gap: 1.5rem;
   cursor: pointer;
   transition: var(--transition);
   border-left: 3px solid transparent;
@@ -560,122 +560,126 @@ body {
   font-size: 1rem;
 }
 
+/* Invoice header - vendor name + split badge */
+.invoice-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Invoice meta line - clean layout with dot separators */
 .invoice-meta {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   display: flex;
-  gap: 1rem;
+  align-items: center;
   flex-wrap: wrap;
+  gap: 0;
+  margin-top: 0.125rem;
 }
 
-.po-badge {
-  background: var(--bg-hover);
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
+.invoice-meta .meta-sep {
+  color: var(--text-muted);
+  opacity: 0.5;
+  margin: 0 0.5rem;
+}
+
+.invoice-meta .meta-job {
   color: var(--text-secondary);
+}
+
+.invoice-meta .meta-number {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 0.75rem;
+}
+
+.invoice-meta .meta-date {
+  color: var(--text-muted);
+}
+
+/* Draw badge */
+.invoice-meta .meta-draw {
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+/* Closed out indicator */
+.invoice-meta .meta-closed {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Paid to vendor indicator */
+.invoice-meta .meta-paid-vendor {
+  color: var(--approved);
+}
+
+/* Invoice badges row */
+.invoice-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+}
+
+/* Base badge style */
+.invoice-badges .badge {
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
   border: 1px solid var(--border);
+  background: var(--bg-hover);
 }
 
-.po-badge.po-low {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: var(--danger);
-  color: var(--danger);
+/* PO badge */
+.invoice-badges .badge-po {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text-secondary);
+  font-family: 'SF Mono', Monaco, monospace;
 }
 
-.po-badge.no-po {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: var(--accent-orange);
+.invoice-badges .badge-no-po {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
   color: var(--accent-orange);
   font-style: italic;
 }
 
-.cost-code-badge {
+/* Cost code badge */
+.invoice-badges .badge-cost-code {
   background: rgba(88, 166, 255, 0.1);
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
+  border-color: rgba(88, 166, 255, 0.3);
   color: var(--accent-blue);
-  border: 1px solid rgba(88, 166, 255, 0.3);
   font-family: 'SF Mono', Monaco, monospace;
 }
 
-.allocation-badge {
-  background: var(--bg-hover);
-  padding: 0.15rem 0.5rem;
+.invoice-badges .badge-no-cost-code {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: var(--accent-orange);
+  font-style: italic;
+}
+
+/* Split badges */
+.invoice-header .badge-split-parent {
+  padding: 0.125rem 0.5rem;
   border-radius: 4px;
-  font-size: 0.75rem;
-  font-family: 'SF Mono', Monaco, monospace;
-  border: 1px solid var(--border);
-}
-
-.allocation-badge.full {
-  background: rgba(34, 197, 94, 0.15);
-  border-color: var(--approved);
-  color: var(--approved);
-}
-
-.allocation-badge.partial {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: var(--needs-approval);
-  color: var(--needs-approval);
-}
-
-.billing-badge {
-  background: var(--bg-hover);
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-family: 'SF Mono', Monaco, monospace;
-  border: 1px solid var(--border);
-}
-
-.billing-badge.partial {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: var(--in-draw);
-  color: var(--in-draw);
+  font-size: 0.65rem;
   font-weight: 500;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #a78bfa;
 }
 
-.payment-badge {
-  background: var(--bg-hover);
-  padding: 0.15rem 0.5rem;
+.invoice-header .badge-split-child {
+  padding: 0.125rem 0.5rem;
   border-radius: 4px;
-  font-size: 0.75rem;
-  font-family: 'SF Mono', Monaco, monospace;
-  border: 1px solid var(--border);
-}
-
-.payment-badge.partial {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: var(--needs-approval);
-  color: var(--needs-approval);
-}
-
-.payment-badge.closed-out {
-  background: rgba(100, 116, 139, 0.15);
-  border-color: var(--text-secondary);
-  color: var(--text-secondary);
-}
-
-.paid-vendor-badge {
-  background: rgba(34, 197, 94, 0.15);
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  border: 1px solid var(--approved);
-  color: var(--approved);
-}
-
-/* Draw badge for invoices in a draw */
-.draw-badge {
-  background: rgba(88, 166, 255, 0.15);
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  border: 1px solid var(--accent-blue);
-  color: var(--accent-blue);
+  font-size: 0.65rem;
   font-weight: 500;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #a78bfa;
 }
 
 .invoice-amount {
@@ -763,6 +767,7 @@ body {
 .status-pill.denied { background: rgba(239,68,68,0.15); color: var(--denied); }
 .status-pill.in_draw { background: rgba(139,92,246,0.15); color: var(--in-draw); }
 .status-pill.paid { background: rgba(59,130,246,0.15); color: var(--paid); }
+.status-pill.split { background: rgba(139,148,158,0.2); color: var(--text-secondary); }
 
 /* ============================================================
    MODALS
@@ -2049,23 +2054,25 @@ body.modal-open {
   background: var(--background);
   border-right: 1px solid var(--border);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   overflow: hidden;
 }
 
 .pdf-panel iframe.pdf-iframe {
+  flex: 1;
   width: 100%;
-  height: 100%;
+  min-height: 0;
   border: none;
 }
 
 .pdf-placeholder {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
+  min-height: 0;
   color: var(--text-secondary);
   padding: 2rem;
 }
@@ -2432,10 +2439,30 @@ body.modal-open {
   background: #d97706;
 }
 
-/* Activity Section - Monday.com Style */
+/* Activity Section - Clean Timeline Style */
 .activity-section {
-  max-height: 400px;
+  max-height: 450px;
   overflow-y: auto;
+  background: var(--card);
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid var(--border);
+}
+
+.activity-section .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-section .section-header h3 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
 }
 
 /* Status Pipeline - Horizontal workflow indicator */
@@ -2566,8 +2593,8 @@ body.modal-open {
 /* Full activity view */
 .activity-full {
   border-top: 1px solid var(--border);
-  padding-top: 0.75rem;
-  margin-top: 0.5rem;
+  padding-top: 1rem;
+  margin-top: 0.75rem;
 }
 
 /* Activity Feed */
@@ -2575,19 +2602,36 @@ body.modal-open {
   display: flex;
   flex-direction: column;
   gap: 0;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+  position: relative;
+}
+
+/* Timeline line */
+.activity-feed::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 28px;
+  bottom: 12px;
+  width: 2px;
+  background: var(--border);
+  border-radius: 1px;
 }
 
 .activity-event {
   display: flex;
-  gap: 0.625rem;
-  padding: 0.625rem 0;
-  border-bottom: 1px solid var(--border);
+  gap: 0.75rem;
+  padding: 0.75rem 0;
   position: relative;
+  z-index: 1;
+}
+
+.activity-event:first-child {
+  padding-top: 0;
 }
 
 .activity-event:last-child {
-  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .activity-icon {
@@ -2596,34 +2640,73 @@ body.modal-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
-  background: var(--card-elevated);
+  font-size: 0.8rem;
+  background: var(--card);
+  border: 2px solid var(--border);
   border-radius: 50%;
   flex-shrink: 0;
+  z-index: 2;
 }
 
+/* Activity icon colors by action type */
 .activity-approved .activity-icon {
-  background: rgba(0, 200, 117, 0.15);
+  background: rgba(0, 200, 117, 0.2);
+  border-color: rgba(0, 200, 117, 0.4);
 }
 
 .activity-denied .activity-icon {
-  background: rgba(216, 58, 82, 0.15);
+  background: rgba(216, 58, 82, 0.2);
+  border-color: rgba(216, 58, 82, 0.4);
 }
 
-.activity-needs_approval .activity-icon {
+.activity-sent_back .activity-icon {
+  background: rgba(255, 171, 0, 0.2);
+  border-color: rgba(255, 171, 0, 0.4);
+}
+
+.activity-needs_review .activity-icon,
+.activity-needs_approval .activity-icon,
+.activity-ready_for_approval .activity-icon {
   background: rgba(0, 115, 234, 0.15);
+  border-color: rgba(0, 115, 234, 0.3);
 }
 
-.activity-uploaded .activity-icon {
-  background: rgba(196, 196, 196, 0.3);
+.activity-uploaded .activity-icon,
+.activity-created .activity-icon {
+  background: rgba(196, 196, 196, 0.15);
+  border-color: rgba(196, 196, 196, 0.3);
 }
 
-.activity-added_to_draw .activity-icon {
-  background: rgba(162, 93, 220, 0.15);
+.activity-added_to_draw .activity-icon,
+.activity-removed_from_draw .activity-icon {
+  background: rgba(162, 93, 220, 0.2);
+  border-color: rgba(162, 93, 220, 0.4);
 }
 
-.activity-paid .activity-icon {
-  background: rgba(87, 155, 252, 0.15);
+.activity-paid .activity-icon,
+.activity-paid_to_vendor .activity-icon,
+.activity-partial_payment .activity-icon {
+  background: rgba(87, 155, 252, 0.2);
+  border-color: rgba(87, 155, 252, 0.4);
+}
+
+.activity-split .activity-icon,
+.activity-unsplit .activity-icon,
+.activity-created_from_split .activity-icon {
+  background: rgba(162, 93, 220, 0.2);
+  border-color: rgba(162, 93, 220, 0.4);
+}
+
+.activity-ai_override .activity-icon,
+.activity-co_auto_linked .activity-icon {
+  background: rgba(0, 180, 216, 0.15);
+  border-color: rgba(0, 180, 216, 0.3);
+}
+
+.activity-edited .activity-icon,
+.activity-full_edit .activity-icon {
+  background: rgba(255, 171, 0, 0.1);
+  border-color: rgba(255, 171, 0, 0.25);
 }
 
 .activity-content {
@@ -2669,6 +2752,17 @@ body.modal-open {
 .activity-denied .activity-detail {
   border-left-color: #d83a52;
   background: rgba(216, 58, 82, 0.05);
+}
+
+.activity-sent_back .activity-detail {
+  border-left-color: #ffab00;
+  background: rgba(255, 171, 0, 0.05);
+}
+
+.activity-split .activity-detail,
+.activity-unsplit .activity-detail {
+  border-left-color: #a25ddc;
+  background: rgba(162, 93, 220, 0.05);
 }
 
 .activity-empty {
@@ -11544,6 +11638,31 @@ textarea.form-control {
 }
 
 /* Budget Standing Section - Simple table view */
+/* CO Standing section */
+.co-standing-section {
+  background: var(--card);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.co-standing-section h3 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #a78bfa;
+  margin: 0 0 0.75rem 0;
+}
+
+.co-standing-section .budget-table th {
+  color: var(--text-secondary);
+}
+
+.co-standing-section .code {
+  color: #a78bfa;
+  font-weight: 600;
+}
+
 .budget-standing-section {
   background: var(--card);
   border: 1px solid var(--border);
@@ -11712,30 +11831,16 @@ textarea.form-control {
 }
 
 /* Activity section fixes for form-panel */
-.form-panel .activity-section h3 {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--foreground);
-  margin: 0 0 0.75rem 0;
-}
-
-/* Activity section should not clip expanded content */
+/* Activity section within form panel - allow scroll for long histories */
 .form-panel .activity-section {
-  max-height: none;
-  overflow: visible;
+  max-height: 350px;
+  overflow-y: auto;
 }
 
 /* Status pipeline container - ensure labels visible */
 .activity-full .status-pipeline {
   padding: 1rem 0.5rem 1.5rem;
   margin-bottom: 1rem;
-}
-
-/* Fix activity section title visibility */
-.activity-section .section-header h3,
-.form-section.activity-section h3 {
-  color: var(--foreground) !important;
-  font-weight: 600;
 }
 
 /* Override dark theme activity content in form panel */
@@ -16179,3 +16284,449 @@ textarea.form-control {
     font-size: 0.8125rem;
   }
 }
+
+/* ============================================
+   SPLIT INVOICE MODAL
+   ============================================ */
+
+.split-original-info {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.split-original-info .original-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.5px;
+}
+
+.split-original-info .original-details {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.split-original-info .invoice-number {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.split-original-info .vendor-name {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.split-original-info .amount {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--accent-green);
+  margin-left: auto;
+}
+
+/* Split Sections */
+.split-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.split-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  position: relative;
+}
+
+.split-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.split-section-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.split-section-title .split-icon {
+  color: var(--accent-blue);
+}
+
+.split-section-remove {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 1.25rem;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.split-section-remove:hover {
+  color: var(--accent-red);
+  background: rgba(248, 81, 73, 0.1);
+}
+
+/* Simplified split row layout */
+.split-section-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.5fr;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.split-section-row .form-group {
+  margin-bottom: 0;
+}
+
+.split-section-row .form-group label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+
+.split-section-row .form-control {
+  padding: 0.5rem 0.625rem;
+  font-size: 0.875rem;
+}
+
+/* Make header more compact */
+.split-section-header {
+  margin-bottom: 0.625rem;
+}
+
+.split-section-title {
+  font-size: 0.8rem;
+}
+
+/* Legacy grid layout - keep for backwards compatibility */
+.split-section-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 150px;
+  gap: 1rem;
+  align-items: end;
+}
+
+.split-section-fields .form-group {
+  margin-bottom: 0;
+}
+
+.split-section-fields .form-group label {
+  font-size: 0.75rem;
+  margin-bottom: 0.375rem;
+  display: block;
+}
+
+.split-section-fields .form-control {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* CO Badge in split */
+.split-co-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent-blue);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: 0.5rem;
+}
+
+.split-co-badge .co-icon {
+  font-size: 0.875rem;
+}
+
+/* Split Totals */
+.split-totals {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1.5rem;
+}
+
+.split-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.split-total-row span {
+  color: var(--text-secondary);
+}
+
+.split-total-row strong {
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.split-total-row .remaining {
+  color: var(--accent-green);
+}
+
+.split-total-row .remaining.error {
+  color: var(--accent-red);
+}
+
+.split-total-row .remaining.balanced {
+  color: var(--accent-green);
+}
+
+/* Split badge on invoice cards */
+.split-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent-blue);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.split-badge.parent {
+  background: rgba(139, 148, 158, 0.2);
+  color: var(--text-secondary);
+}
+
+.split-badge.unassigned {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--accent-orange);
+}
+
+.co-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--accent-orange);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+/* Modal responsiveness for split */
+@media (max-width: 768px) {
+  .split-section-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .split-section-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .split-original-info .original-details {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .split-original-info .amount {
+    margin-left: 0;
+  }
+}
+
+/* ============================================================
+   SPLIT INFO BANNER & PDF TOOLBAR
+   ============================================================ */
+
+/* Split Info Banner */
+.split-info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.split-info-banner.split-parent {
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.3);
+}
+
+.split-info-banner.split-child {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.split-info-banner .split-indicator {
+  padding: 0.25rem 0.5rem;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #a78bfa;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.split-info-banner .split-content {
+  flex: 1;
+}
+
+.split-info-banner .split-content strong {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.split-info-banner .split-content p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.split-info-banner .split-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.split-info-banner .btn-link {
+  background: none;
+  border: none;
+  color: var(--accent-blue);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.split-info-banner .btn-link:hover {
+  color: #93c5fd;
+}
+
+/* PDF Toolbar */
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  min-height: 40px;
+}
+
+.pdf-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pdf-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Stamp Indicator */
+.stamp-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stamp-indicator.stamp-none {
+  background: rgba(107, 114, 128, 0.2);
+  color: #9ca3af;
+}
+
+.stamp-indicator.stamp-needs_review {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--accent-orange);
+}
+
+.stamp-indicator.stamp-ready_for_approval {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+}
+
+.stamp-indicator.stamp-approved {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--accent-green);
+}
+
+.stamp-indicator.stamp-in_draw {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+
+.stamp-indicator.stamp-paid {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.stamp-indicator.stamp-denied {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-red);
+}
+
+.stamp-indicator.stamp-split {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+}
+
+/* PDF Toggle Button */
+.btn-pdf-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-pdf-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+
+#pdf-toggle-label {
+  font-weight: 500;
+}
+
+/* PDF toolbar - flexbox handles sizing automatically */

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Invoice Approval</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260114">
+  <link rel="stylesheet" href="css/styles.css?v=20260115i">
 </head>
 <body>
   <div class="app">
@@ -179,6 +179,47 @@
     </div>
   </div>
 
+  <!-- Split Invoice Modal -->
+  <div id="splitInvoiceModal" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2>Split Invoice</h2>
+        <button class="close-btn" onclick="closeSplitModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="split-original-info">
+          <div class="original-label">Original Invoice</div>
+          <div class="original-details">
+            <span id="splitOriginalNumber" class="invoice-number"></span>
+            <span id="splitOriginalVendor" class="vendor-name"></span>
+            <span id="splitOriginalAmount" class="amount"></span>
+          </div>
+        </div>
+
+        <div class="split-sections" id="splitSections">
+          <!-- Split sections added dynamically -->
+        </div>
+
+        <button class="btn btn-secondary btn-sm" onclick="addSplitSection()">+ Add Split</button>
+
+        <div class="split-totals">
+          <div class="split-total-row">
+            <span>Total Allocated:</span>
+            <strong id="splitAllocatedAmount">$0.00</strong>
+          </div>
+          <div class="split-total-row">
+            <span>Remaining:</span>
+            <strong id="splitRemainingAmount" class="remaining">$0.00</strong>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeSplitModal()">Cancel</button>
+        <button class="btn btn-primary" id="confirmSplitBtn" onclick="confirmSplit()" disabled>Split Invoice</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Container (for edit/job selection modals) -->
   <div id="modal-container"></div>
 
@@ -190,11 +231,11 @@
   <script src="js/nav-sidebar.js?v=20260114b"></script>
   <script src="js/validation.js?v=20260114b"></script>
   <script src="js/cost-code-picker.js?v=20260114b"></script>
-  <script src="js/searchable-picker.js?v=20260114b"></script>
-  <script src="js/realtime.js?v=20260114b"></script>
-  <script src="js/modals.js?v=20260114b"></script>
-  <script src="js/sidebar.js?v=20260114b"></script>
-  <script src="js/app.js?v=20260114b"></script>
+  <script src="js/searchable-picker.js?v=20260114f"></script>
+  <script src="js/realtime.js?v=20260114f"></script>
+  <script src="js/modals.js?v=20260115d"></script>
+  <script src="js/sidebar.js?v=20260114f"></script>
+  <script src="js/app.js?v=20260115-split-fix"></script>
 
   <!-- Simple Upload Script -->
   <script>

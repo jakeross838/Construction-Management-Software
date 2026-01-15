@@ -1,9 +1,9 @@
 /**
  * Modal Management Module
  * Handles invoice edit modal, job selection modal, and other UI dialogs
- * LAST UPDATED: 2026-01-06 - Searchable dropdowns for Job/Vendor/PO
+ * LAST UPDATED: 2026-01-15 - Only use billed_amount for in_draw status
  */
-console.log('[MODALS] Script loaded - version 2026-01-06 - SEARCHABLE DROPDOWNS');
+console.log('[MODALS] Script loaded - version 2026-01-15d - BILLED AMOUNT FIX');
 
 const Modals = {
   // Current state
@@ -212,6 +212,142 @@ const Modals = {
   },
 
   /**
+   * Get stamp label for status
+   */
+  getStampLabel(status) {
+    const labels = {
+      'needs_review': 'NEEDS REVIEW',
+      'ready_for_approval': 'READY FOR APPROVAL',
+      'approved': 'APPROVED',
+      'in_draw': 'IN DRAW',
+      'paid': 'PAID',
+      'denied': 'DENIED',
+      'split': 'SPLIT PARENT'
+    };
+    return labels[status] || status.toUpperCase();
+  },
+
+  /**
+   * Build split invoice info banner
+   */
+  buildSplitInfoBanner(invoice) {
+    // Split parent - show children info
+    if (invoice.is_split_parent) {
+      return `
+        <div class="split-info-banner split-parent">
+          <div class="split-indicator">SPLIT</div>
+          <div class="split-content">
+            <strong>Split Parent Invoice</strong>
+            <p>This invoice has been split into multiple parts. The children are processed independently.</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Split child - show parent and sibling info
+    if (invoice.parent_invoice_id) {
+      return `
+        <div class="split-info-banner split-child">
+          <div class="split-indicator">SPLIT</div>
+          <div class="split-content">
+            <strong>Split Invoice</strong>
+            <p>This is part of a split invoice. Amount: <strong>${window.Validation?.formatCurrency(invoice.amount)}</strong></p>
+            <div class="split-actions">
+              <button type="button" class="btn-link" onclick="Modals.viewParentInvoice('${invoice.parent_invoice_id}')">
+                View Parent Invoice
+              </button>
+              <button type="button" class="btn-link" onclick="Modals.viewSplitSiblings('${invoice.parent_invoice_id}', '${invoice.id}')">
+                View All Splits
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    return '';
+  },
+
+  /**
+   * Toggle PDF view between original and stamped
+   */
+  togglePdfView() {
+    const iframe = document.getElementById('pdf-viewer-iframe');
+    const label = document.getElementById('pdf-toggle-label');
+    if (!iframe) return;
+
+    const stamped = iframe.dataset.stamped;
+    const original = iframe.dataset.original;
+    const currentSrc = iframe.src.split('?')[0]; // Remove cache buster
+
+    // Toggle between views
+    if (currentSrc.includes('_stamped') || iframe.dataset.viewing === 'stamped') {
+      iframe.src = original;
+      iframe.dataset.viewing = 'original';
+      if (label) label.textContent = 'Viewing: Original';
+    } else {
+      iframe.src = stamped;
+      iframe.dataset.viewing = 'stamped';
+      if (label) label.textContent = 'Viewing: Stamped';
+    }
+  },
+
+  /**
+   * View parent invoice (for split children)
+   */
+  async viewParentInvoice(parentId) {
+    this.closeActiveModal();
+    setTimeout(() => {
+      this.showEditModal(parentId);
+    }, 300);
+  },
+
+  /**
+   * View all split siblings
+   */
+  async viewSplitSiblings(parentId, currentId) {
+    try {
+      const response = await fetch(`/api/invoices/${parentId}/family`);
+      if (!response.ok) throw new Error('Failed to fetch split family');
+      const family = await response.json();
+
+      // Show a simple list of siblings
+      const siblings = family.children || [];
+      if (siblings.length === 0) {
+        window.toasts?.info('No other splits found');
+        return;
+      }
+
+      const siblingList = siblings.map(s => `
+        <div class="sibling-item ${s.id === currentId ? 'current' : ''}" onclick="Modals.viewSiblingInvoice('${s.id}')">
+          <span class="sibling-amount">${window.Validation?.formatCurrency(s.amount)}</span>
+          <span class="sibling-status status-badge status-${s.status}">${s.status}</span>
+          ${s.id === currentId ? '<span class="current-marker">(current)</span>' : ''}
+        </div>
+      `).join('');
+
+      // Show in a popover or simple modal
+      window.toasts?.info(`Split Family: ${siblings.length} parts`, {
+        details: `Parent: ${family.parent?.invoice_number || parentId}`
+      });
+
+    } catch (err) {
+      console.error('Error fetching split siblings:', err);
+      window.toasts?.error('Failed to load split family');
+    }
+  },
+
+  /**
+   * View a sibling invoice
+   */
+  async viewSiblingInvoice(invoiceId) {
+    this.closeActiveModal();
+    setTimeout(() => {
+      this.showEditModal(invoiceId);
+    }, 300);
+  },
+
+  /**
    * Build the edit modal HTML with PDF split-view
    */
   buildEditModal(invoice, allocations, activity = [], approvalContext = {}) {
@@ -225,12 +361,10 @@ const Modals = {
     const isEditableStatus = editableStatuses.includes(invoice.status);
     // Can edit if: editable status OR (locked status AND explicitly unlocked)
     const canEdit = !isArchived && (isEditableStatus || (isLockedStatus && this.isEditMode));
-    // Show original PDF for needs_review/ready_for_approval, stamped for approved+
-    const showOriginal = ['needs_review', 'ready_for_approval'].includes(invoice.status);
-
     // Store for use in field locking
     this.canEdit = canEdit;
-    const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
+    // Always show stamped PDF if available, fall back to original
+    const pdfUrl = invoice.pdf_stamped_url || invoice.pdf_url;
 
     // Payment tracking info - use max of billed_amount and paid_amount
     const invoiceAmount = parseFloat(invoice.amount || 0);
@@ -257,20 +391,26 @@ const Modals = {
           </div>
 
           <div class="modal-body modal-split-view">
-            ${hasPartialPayment && invoice.status === 'ready_for_approval' ? `
-            <div class="partial-billing-banner">
-              <div class="banner-icon">⚠️</div>
-              <div class="banner-content">
-                <strong>Partial Invoice - Remaining Balance</strong>
-                <p>This invoice has already been billed <strong>${window.Validation?.formatCurrency(alreadyProcessed)}</strong>.
-                   Only <strong>${window.Validation?.formatCurrency(remainingAmount)}</strong> remains to be allocated and approved.</p>
-              </div>
-            </div>
-            ` : ''}
             <!-- PDF Viewer (Left) -->
             <div class="pdf-panel">
+              <div class="pdf-toolbar">
+                <div class="pdf-toolbar-left">
+                  ${invoice.pdf_stamped_url ? `
+                    <span class="stamp-indicator stamp-${invoice.status}">
+                      ${this.getStampLabel(invoice.status)}
+                    </span>
+                  ` : '<span class="stamp-indicator stamp-none">No Stamp</span>'}
+                </div>
+                <div class="pdf-toolbar-right">
+                  ${invoice.pdf_url && invoice.pdf_stamped_url ? `
+                    <button type="button" class="btn-pdf-toggle" onclick="Modals.togglePdfView()" title="Toggle between original and stamped PDF">
+                      <span id="pdf-toggle-label">Viewing: Stamped</span>
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
               ${pdfUrl ? `
-                <iframe src="${pdfUrl}" class="pdf-iframe"></iframe>
+                <iframe id="pdf-viewer-iframe" src="${pdfUrl}" class="pdf-iframe" data-stamped="${invoice.pdf_stamped_url || ''}" data-original="${invoice.pdf_url || ''}"></iframe>
               ` : `
                 <div class="pdf-placeholder">
                   <div class="pdf-icon">📄</div>
@@ -281,6 +421,17 @@ const Modals = {
 
             <!-- Form Panel (Right) -->
             <div class="form-panel">
+              ${this.buildSplitInfoBanner(invoice)}
+              ${hasPartialPayment && invoice.status === 'ready_for_approval' ? `
+              <div class="partial-billing-banner">
+                <div class="banner-icon">⚠️</div>
+                <div class="banner-content">
+                  <strong>Partial Invoice - Remaining Balance</strong>
+                  <p>This invoice has already been billed <strong>${window.Validation?.formatCurrency(alreadyProcessed)}</strong>.
+                     Only <strong>${window.Validation?.formatCurrency(remainingAmount)}</strong> remains to be allocated and approved.</p>
+                </div>
+              </div>
+              ` : ''}
               <form id="invoice-edit-form" onsubmit="return false;">
                 <!-- Invoice Details Section -->
                 <div class="form-section">
@@ -780,6 +931,46 @@ const Modals = {
   },
 
   /**
+   * Build CO Standing section - shows impact on linked Change Order
+   */
+  buildCOStandingSection(approvalContext) {
+    if (!approvalContext?.change_order) return '';
+
+    const co = approvalContext.change_order;
+    const isOver = co.over_co;
+
+    return `
+      <div class="form-section co-standing-section">
+        <h3>Change Order Standing</h3>
+        <table class="budget-table co-table">
+          <thead>
+            <tr>
+              <th>Change Order</th>
+              <th class="num">CO Total</th>
+              <th class="num">Billed</th>
+              <th class="num">This Inv</th>
+              <th class="num">Remaining</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="${isOver ? 'over-budget' : ''}" data-co-id="${co.id || ''}">
+              <td>
+                <span class="code">CO #${co.change_order_number}</span>
+                <span class="name">${co.title || ''}</span>
+                ${isOver ? '<span class="over-badge-inline">OVER</span>' : ''}
+              </td>
+              <td class="num co-total">${this.formatCurrency(co.total_amount)}</td>
+              <td class="num co-prev-billed">${this.formatCurrency(co.previously_billed)}</td>
+              <td class="num this-inv">${this.formatCurrency(co.this_invoice)}</td>
+              <td class="num co-remaining ${isOver ? 'over' : ''}">${isOver ? '(' + this.formatCurrency(Math.abs(co.remaining)) + ')' : this.formatCurrency(co.remaining)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  },
+
+  /**
    * Build Budget Standing section - shows impact on cost code budgets
    */
   buildBudgetStandingSection(approvalContext) {
@@ -820,15 +1011,18 @@ const Modals = {
   },
 
   /**
-   * Build approval impact sections (PO Balance + Budget Standing)
+   * Build approval impact sections (PO Balance + CO Standing + Budget Standing)
    */
   buildApprovalImpactSection(approvalContext, status) {
     if (!approvalContext) return '';
 
     let html = '';
 
-    // PO Balance section (separate from budget)
+    // PO Balance section
     html += this.buildPOBalanceSection(approvalContext);
+
+    // CO Standing section (only when PO is linked to a CO)
+    html += this.buildCOStandingSection(approvalContext);
 
     // Budget Standing section
     html += this.buildBudgetStandingSection(approvalContext);
@@ -938,28 +1132,58 @@ const Modals = {
       });
     }
 
-    // Process activity log - filter out noise
+    // Process activity log - show all meaningful events
     if (activity && activity.length) {
-      // Status actions we care about (not "edited" which is redundant)
-      const statusActions = ['uploaded', 'needs_review', 'ready_for_approval', 'needs_approval', 'approved', 'denied', 'paid', 'added_to_draw', 'removed_from_draw'];
+      // All action types we want to display (expanded list)
+      const importantActions = [
+        // Core workflow
+        'uploaded', 'needs_review', 'ready_for_approval', 'needs_approval',
+        'approved', 'denied', 'sent_back',
+        // Payment & Draw
+        'paid', 'paid_to_vendor', 'unpaid', 'partial_payment',
+        'added_to_draw', 'removed_from_draw', 'partial_billed', 'partial_approval',
+        'closed_out',
+        // Split operations
+        'split', 'unsplit', 'created_from_split', 'deleted_unsplit',
+        // Edits & AI
+        'ai_override', 'co_auto_linked', 'full_edit',
+        // Other
+        'note', 'deleted'
+      ];
 
       activity.forEach(a => {
         const action = a.action || 'note';
 
-        // Skip "edited" entries - they're redundant with status-specific entries
-        // Exception: keep edits that have actual notes/comments
-        if (action === 'edited') {
-          // Only show edit if it has a user note
-          if (!a.notes) return;
-        }
+        // Skip minor "edited" entries unless they have notes
+        if (action === 'edited' && !a.notes) return;
 
         // Skip "uploaded" if we already have "created"
         if (action === 'uploaded' && invoice.created_at) return;
 
-        // Format details
+        // Skip actions we don't care about
+        if (!importantActions.includes(action) && action !== 'edited') return;
+
+        // Extract detail from various sources
         let detail = null;
-        if (a.notes && typeof a.notes === 'string') {
+
+        // Check for reason (sent_back, denied)
+        if (a.details?.reason) {
+          detail = a.details.reason;
+        } else if (a.notes && typeof a.notes === 'string') {
           detail = a.notes;
+        }
+
+        // Add context for specific actions
+        if (action === 'added_to_draw' && a.details?.draw_number) {
+          detail = `Draw #${a.details.draw_number}`;
+        } else if (action === 'removed_from_draw' && a.details?.draw_number) {
+          detail = `Removed from Draw #${a.details.draw_number}`;
+        } else if (action === 'split' && a.details?.split_count) {
+          detail = `Split into ${a.details.split_count} invoices`;
+        } else if (action === 'co_auto_linked' && a.details?.change_order_id) {
+          detail = 'Linked to Change Order via PO';
+        } else if (action === 'partial_billed' && a.details?.amount) {
+          detail = `Amount: $${Number(a.details.amount).toLocaleString()}`;
         }
 
         events.push({
@@ -987,8 +1211,8 @@ const Modals = {
       const timeDiff = Math.abs(new Date(prev.at) - new Date(e.at));
       const sameType = prev.type === e.type && prev.by === e.by;
 
-      // Skip if same type, same user, within 1 minute
-      if (sameType && timeDiff < 60000) return;
+      // Skip if same type, same user, within 1 minute (unless it has a detail)
+      if (sameType && timeDiff < 60000 && !e.detail) return;
 
       deduped.push(e);
     });
@@ -997,8 +1221,8 @@ const Modals = {
       return '<div class="activity-empty">No activity yet</div>';
     }
 
-    // Limit to most recent 8 events
-    const limited = deduped.slice(0, 8);
+    // Limit to most recent 12 events (increased from 8)
+    const limited = deduped.slice(0, 12);
 
     return limited.map(e => `
       <div class="activity-event activity-${e.type}">
@@ -1060,19 +1284,42 @@ const Modals = {
    */
   getActivityIcon(action) {
     const icons = {
+      // Core workflow
       'uploaded': '📥',
+      'created': '📄',
       'needs_review': '📝',
-      'ready_for_approval': '🏷️',
-      'needs_approval': '🏷️', // Legacy
+      'ready_for_approval': '👁️',
+      'needs_approval': '👁️', // Legacy
       'approved': '✅',
       'denied': '❌',
+      'sent_back': '↩️',
+
+      // Payment & Draw
       'paid': '💰',
+      'paid_to_vendor': '💵',
       'partial_payment': '💵',
-      'closed_out': '📕',
+      'unpaid': '↩️',
       'added_to_draw': '📋',
       'removed_from_draw': '📤',
+      'partial_billed': '📊',
+      'partial_approval': '⚡',
+      'closed_out': '📕',
+
+      // Split operations
+      'split': '✂️',
+      'unsplit': '🔗',
+      'created_from_split': '📑',
+      'deleted_unsplit': '🗑️',
+
+      // Edits & AI
+      'edited': '✏️',
+      'full_edit': '✏️',
+      'ai_override': '🤖',
+      'co_auto_linked': '🔗',
+
+      // Other
       'note': '💬',
-      'edited': '✏️'
+      'deleted': '🗑️'
     };
     return icons[action] || '📝';
   },
@@ -1082,21 +1329,44 @@ const Modals = {
    */
   formatActivityAction(action) {
     const labels = {
+      // Core workflow
       'uploaded': 'Uploaded',
-      'needs_review': 'Needs Review',
+      'created': 'Created',
+      'needs_review': 'Sent to Review',
       'ready_for_approval': 'Ready for Approval',
       'needs_approval': 'Ready for Approval', // Legacy
       'approved': 'Approved',
       'denied': 'Denied',
-      'paid': 'Marked as paid',
-      'partial_payment': 'Partial payment',
-      'closed_out': 'Closed out',
-      'added_to_draw': 'Added to draw',
-      'removed_from_draw': 'Removed from draw',
-      'note': 'Note added',
-      'edited': 'Edited'
+      'sent_back': 'Sent Back',
+
+      // Payment & Draw
+      'paid': 'Marked Paid',
+      'paid_to_vendor': 'Paid to Vendor',
+      'partial_payment': 'Partial Payment',
+      'unpaid': 'Payment Reversed',
+      'added_to_draw': 'Added to Draw',
+      'removed_from_draw': 'Removed from Draw',
+      'partial_billed': 'Partial Billing',
+      'partial_approval': 'Partial Approval',
+      'closed_out': 'Closed Out',
+
+      // Split operations
+      'split': 'Invoice Split',
+      'unsplit': 'Split Reversed',
+      'created_from_split': 'Created from Split',
+      'deleted_unsplit': 'Split Child Removed',
+
+      // Edits & AI
+      'edited': 'Edited',
+      'full_edit': 'Full Edit',
+      'ai_override': 'AI Override',
+      'co_auto_linked': 'CO Auto-Linked',
+
+      // Other
+      'note': 'Note Added',
+      'deleted': 'Deleted'
     };
-    return labels[action] || action;
+    return labels[action] || action.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   },
 
   /**
@@ -1138,6 +1408,12 @@ const Modals = {
     const paidAmount = parseFloat(invoice.paid_amount || 0);
     const hasRemainingBalance = invoiceAmount - paidAmount > 0.01;
 
+    // Check if invoice can be split (only in needs_review, not already split, has amount)
+    const canSplit = status === 'needs_review'
+      && !invoice.is_split_parent
+      && !invoice.parent_invoice_id
+      && invoiceAmount > 0;
+
     // For archived invoices, just show Close button
     if (isArchived) {
       buttons.push(`<button type="button" class="btn btn-secondary" onclick="console.log('[MODALS] Close clicked'); Modals.closeActiveModal()">Close</button>`);
@@ -1146,6 +1422,16 @@ const Modals = {
 
     // Always have Cancel for editable invoices
     buttons.push(`<button type="button" class="btn btn-secondary" onclick="console.log('[MODALS] Cancel clicked'); Modals.closeActiveModal()">Cancel</button>`);
+
+    // Add Split button if applicable
+    if (canSplit) {
+      buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="console.log('[SPLIT BTN] clicked, invoice:', window.Modals?.currentInvoice?.id); window.showSplitModal(window.Modals?.currentInvoice)" title="Split this invoice across multiple jobs">Split</button>`);
+    }
+
+    // Add Unsplit button for split parent invoices
+    if (invoice.is_split_parent && status === 'split') {
+      buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="window.Modals.unsplitInvoice()" title="Undo the split and restore original invoice">&#8634; Unsplit</button>`);
+    }
 
     switch (status) {
       case 'needs_review':
@@ -1157,6 +1443,7 @@ const Modals = {
 
       case 'ready_for_approval':
         // PM Review - read-only by default, can unlock to edit
+        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.sendBackInvoice()">Send Back</button>`);
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="Modals.denyInvoice()">Deny</button>`);
         if (this.isEditMode) {
           // Unlocked - show Save button
@@ -1170,7 +1457,7 @@ const Modals = {
 
       case 'approved':
         // Approved - waiting to be added to a draw
-        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.unapproveInvoice()">Send Back</button>`);
+        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.sendBackInvoice()">Send Back</button>`);
         if (this.isEditMode) {
           // Unlocked - show Save button
           buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
@@ -2176,14 +2463,25 @@ const Modals = {
    * Get effective allocation target amount (remaining for partial invoices)
    */
   getEffectiveAllocationAmount() {
-    const invoiceAmount = window.Validation?.parseCurrency(this.getFormValue('amount')) || 0;
-    const alreadyBilled = Math.max(
-      parseFloat(this.currentInvoice?.billed_amount || 0),
-      parseFloat(this.currentInvoice?.paid_amount || 0)
-    );
-    // If there's already been billing, return remaining amount
-    if (alreadyBilled > 0) {
-      return Math.max(0, invoiceAmount - alreadyBilled);
+    // Use stored invoice amount as primary source (more reliable than form)
+    let invoiceAmount = parseFloat(this.currentInvoice?.amount) || 0;
+
+    // If user edited the amount in the form, use that instead
+    const formAmount = window.Validation?.parseCurrency(this.getFormValue('amount'));
+    if (formAmount && formAmount > 0) {
+      invoiceAmount = formAmount;
+    }
+
+    // Only consider billed_amount for in_draw invoices (partial billing scenario)
+    // For all other statuses, use full invoice amount
+    if (this.currentInvoice?.status === 'in_draw') {
+      const alreadyBilled = Math.max(
+        parseFloat(this.currentInvoice?.billed_amount || 0),
+        parseFloat(this.currentInvoice?.paid_amount || 0)
+      );
+      if (alreadyBilled > 0 && alreadyBilled < invoiceAmount) {
+        return Math.max(0, invoiceAmount - alreadyBilled);
+      }
     }
     return invoiceAmount;
   },
@@ -2337,9 +2635,21 @@ const Modals = {
       }
     }
 
+    // Derive invoice po_id from allocations if not explicitly set
+    // If any allocation has a po_id, use the first one as the invoice's PO
+    let derivedPOId = formData.po_id || this.currentInvoice?.po_id;
+    if (!derivedPOId && this.currentAllocations.length > 0) {
+      const allocWithPO = this.currentAllocations.find(a => a.po_id);
+      if (allocWithPO) {
+        derivedPOId = allocWithPO.po_id;
+        formData.po_id = derivedPOId;
+        console.log('[saveInvoice] Derived po_id from allocation:', derivedPOId);
+      }
+    }
+
     // Apply default funding source: If invoice has a PO and allocation doesn't have explicit funding,
     // set the allocation's po_id to the invoice's PO (unless user explicitly chose "No PO/CO")
-    const invoicePOId = formData.po_id || this.currentInvoice?.po_id;
+    const invoicePOId = derivedPOId;
     const allocationsToSave = this.currentAllocations.map(alloc => {
       // If allocation has no explicit funding source and invoice has a PO, use invoice PO
       if (!alloc.po_id && !alloc.change_order_id && !alloc._explicitBase && invoicePOId) {
@@ -2437,12 +2747,250 @@ const Modals = {
     console.log('[APPROVE] invoiceAmount:', invoiceAmount);
     console.log('[APPROVE] isPartial:', isPartial);
 
+    // Check for CO cost code allocations without CO link
+    const unlinkedCOAllocations = allocations.filter(a => {
+      const isCO = this.isCOCostCode(a.cost_code || a.cost_code_id);
+      return isCO && !a.change_order_id;
+    });
+
+    if (unlinkedCOAllocations.length > 0) {
+      console.log('[APPROVE] Found unlinked CO allocations:', unlinkedCOAllocations);
+      // Show CO link prompt before approval
+      this.showCOLinkPrompt(unlinkedCOAllocations, isPartial, totalAllocated, invoiceAmount);
+      return;
+    }
+
     if (isPartial) {
       console.log('[APPROVE] Showing partial approval dialog');
       // Partial approval requires a note
       this.showPartialApprovalDialog(totalAllocated, invoiceAmount);
     } else {
       console.log('[APPROVE] Showing regular confirm dialog');
+      this.showConfirmDialog({
+        title: 'Approve Invoice',
+        message: `Approve invoice #${this.currentInvoice?.invoice_number || 'N/A'} for ${window.Validation?.formatCurrency(this.currentInvoice?.amount)}?`,
+        confirmText: 'Approve',
+        type: 'info',
+        onConfirm: async () => {
+          await this.saveWithStatus('approved', 'Invoice approved');
+        }
+      });
+    }
+  },
+
+  /**
+   * Show prompt for CO cost code allocations that need CO linking
+   */
+  showCOLinkPrompt(unlinkedCOAllocations, isPartial, totalAllocated, invoiceAmount) {
+    const totalUnlinked = unlinkedCOAllocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const costCodes = unlinkedCOAllocations.map(a => {
+      const cc = a.cost_code || this.findCostCodeById(a.cost_code_id);
+      return cc ? `${cc.code} - ${cc.name}` : 'Unknown';
+    }).join(', ');
+
+    // Build CO options list
+    const coOptions = (this.cachedChangeOrders || []).map(co => {
+      const coNum = `CO-${String(co.change_order_number).padStart(3, '0')}`;
+      const remaining = parseFloat(co.remaining || co.amount || 0);
+      return `<option value="${co.id}">${coNum}: ${co.title} ($${remaining.toLocaleString()} remaining)</option>`;
+    }).join('');
+
+    const hasExistingCOs = (this.cachedChangeOrders || []).length > 0;
+
+    const modal = `
+      <div class="confirm-modal co-link-prompt-modal" style="max-width: 600px;">
+        <div class="modal-header">
+          <h2>Change Order Required</h2>
+          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="confirm-message">
+            <p>This invoice has <strong>${window.Validation?.formatCurrency(totalUnlinked)}</strong> allocated to CO cost codes:</p>
+            <div style="background: var(--bg-card-elevated); padding: 12px; border-radius: 6px; margin: 12px 0;">
+              <code style="color: var(--accent-orange);">${costCodes}</code>
+            </div>
+            <p>To properly track in draws, this must be linked to a Change Order.</p>
+
+            <div class="form-group" style="margin-top: 16px;">
+              <label><input type="radio" name="coLinkOption" value="existing" ${hasExistingCOs ? 'checked' : ''} onchange="window.Modals.toggleCOLinkOption()"> Link to Existing Change Order</label>
+            </div>
+
+            <div id="existingCOSection" style="margin-left: 24px; ${hasExistingCOs ? '' : 'display: none;'}">
+              <select id="coLinkSelect" class="form-control" style="margin-top: 8px;">
+                <option value="">Select a Change Order...</option>
+                ${coOptions}
+              </select>
+            </div>
+
+            <div class="form-group" style="margin-top: 12px;">
+              <label><input type="radio" name="coLinkOption" value="create" ${!hasExistingCOs ? 'checked' : ''} onchange="window.Modals.toggleCOLinkOption()"> Create New Change Order</label>
+            </div>
+
+            <div id="newCOSection" style="margin-left: 24px; display: ${!hasExistingCOs ? 'block' : 'none'};">
+              <div class="form-group" style="margin-top: 8px;">
+                <label>Title <span style="color: var(--accent-red);">*</span></label>
+                <input type="text" id="newCOTitle" class="form-control" placeholder="e.g., Kitchen cabinet upgrade">
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                  <label>CO Amount <span style="color: var(--accent-red);">*</span></label>
+                  <input type="text" id="newCOAmount" class="form-control" value="${window.Validation?.formatCurrency(totalUnlinked)}" placeholder="$0.00">
+                </div>
+                <div class="form-group">
+                  <label>Days Added</label>
+                  <input type="number" id="newCODays" class="form-control" value="0" min="0">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Description</label>
+                <textarea id="newCODescription" class="form-control" rows="2" placeholder="Optional description..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="window.Modals.closeConfirmDialog()">Cancel</button>
+          <button class="btn btn-primary" onclick="window.Modals.applyCOLinkAndApprove(${isPartial}, ${totalAllocated}, ${invoiceAmount})">
+            Continue to Approve
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Show in confirm dialog container
+    let container = document.getElementById('confirm-dialog-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'confirm-dialog-container';
+      document.body.appendChild(container);
+    }
+    container.innerHTML = `<div class="confirm-overlay" onclick="window.Modals.closeConfirmDialog()">${modal}</div>`;
+    container.style.display = 'flex';
+
+    // Stop propagation on modal click
+    container.querySelector('.confirm-modal').addEventListener('click', e => e.stopPropagation());
+  },
+
+  /**
+   * Toggle between existing CO and new CO sections
+   */
+  toggleCOLinkOption() {
+    const option = document.querySelector('input[name="coLinkOption"]:checked')?.value;
+    const existingSection = document.getElementById('existingCOSection');
+    const newSection = document.getElementById('newCOSection');
+
+    if (option === 'existing') {
+      existingSection.style.display = 'block';
+      newSection.style.display = 'none';
+    } else {
+      existingSection.style.display = 'none';
+      newSection.style.display = 'block';
+    }
+  },
+
+  /**
+   * Apply CO link selection and continue with approval
+   */
+  async applyCOLinkAndApprove(isPartial, totalAllocated, invoiceAmount) {
+    const option = document.querySelector('input[name="coLinkOption"]:checked')?.value;
+
+    if (option === 'existing') {
+      const select = document.getElementById('coLinkSelect');
+      const selectedCO = select?.value;
+
+      if (!selectedCO) {
+        window.toasts?.error('Please select a Change Order');
+        return;
+      }
+
+      // Apply CO link to all unlinked CO allocations
+      this.currentAllocations.forEach(a => {
+        const isCO = this.isCOCostCode(a.cost_code || a.cost_code_id);
+        if (isCO && !a.change_order_id) {
+          a.change_order_id = selectedCO;
+        }
+      });
+      this.markDirty();
+      this.closeConfirmDialog();
+
+    } else {
+      // Create new CO
+      const title = document.getElementById('newCOTitle')?.value?.trim();
+      const amountStr = document.getElementById('newCOAmount')?.value;
+      const amount = window.Validation?.parseCurrency(amountStr) || 0;
+      const days = parseInt(document.getElementById('newCODays')?.value) || 0;
+      const description = document.getElementById('newCODescription')?.value?.trim();
+
+      if (!title) {
+        window.toasts?.error('Please enter a title for the Change Order');
+        return;
+      }
+      if (amount <= 0) {
+        window.toasts?.error('Please enter a valid CO amount');
+        return;
+      }
+
+      // Create the CO via API
+      try {
+        const jobId = this.currentInvoice?.job_id;
+        if (!jobId) {
+          window.toasts?.error('No job selected');
+          return;
+        }
+
+        const response = await fetch(`/api/jobs/${jobId}/change-orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            description: description || title,
+            amount,
+            days_added: days,
+            reason: 'scope_change',
+            status: 'approved',
+            internal_approved_by: 'Auto-approved on invoice',
+            client_approval_bypassed: true,
+            bypass_reason: 'Created during invoice approval'
+          })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to create Change Order');
+        }
+
+        const newCO = await response.json();
+        window.toasts?.success(`Created CO-${String(newCO.change_order_number).padStart(3, '0')}: ${title}`);
+
+        // Apply CO link to all unlinked CO allocations
+        this.currentAllocations.forEach(a => {
+          const isCO = this.isCOCostCode(a.cost_code || a.cost_code_id);
+          if (isCO && !a.change_order_id) {
+            a.change_order_id = newCO.id;
+          }
+        });
+        this.markDirty();
+
+        // Refresh cached COs
+        if (this.currentInvoice?.job_id) {
+          this.loadFundingSources(this.currentInvoice.job_id);
+        }
+
+        this.closeConfirmDialog();
+
+      } catch (err) {
+        console.error('Failed to create CO:', err);
+        window.toasts?.error('Failed to create Change Order', { details: err.message });
+        return;
+      }
+    }
+
+    // Continue with approval flow
+    if (isPartial) {
+      this.showPartialApprovalDialog(totalAllocated, invoiceAmount);
+    } else {
       this.showConfirmDialog({
         title: 'Approve Invoice',
         message: `Approve invoice #${this.currentInvoice?.invoice_number || 'N/A'} for ${window.Validation?.formatCurrency(this.currentInvoice?.amount)}?`,
@@ -2538,18 +3086,65 @@ const Modals = {
   },
 
   /**
-   * Unapprove (revert to needs_approval)
+   * Send back invoice - requires a reason
+   * Used for both approved → needs_review and ready_for_approval → needs_review
    */
-  async unapproveInvoice() {
-    this.showConfirmDialog({
-      title: 'Unapprove Invoice',
-      message: 'Are you sure you want to unapprove this invoice? It will return to "Needs Approval" status.',
-      confirmText: 'Unapprove',
-      type: 'warning',
-      onConfirm: async () => {
-        await this.saveWithStatus('needs_approval', 'Invoice unapproved');
-      }
-    });
+  sendBackInvoice() {
+    const currentStatus = this.currentInvoice?.status;
+    const statusLabel = currentStatus === 'approved' ? 'approved' : 'ready for approval';
+
+    const modal = `
+      <div class="confirm-modal sendback-modal">
+        <div class="modal-header">
+          <h2>Send Back for Review</h2>
+          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="confirm-icon confirm-warning">↩️</div>
+          <div class="confirm-message">
+            <p>Sending invoice <strong>#${this.currentInvoice?.invoice_number || 'N/A'}</strong> back for review.</p>
+            <p>This will return it to "Needs Review" status for the accountant to make corrections.</p>
+            <p style="margin-top: 12px;"><strong>Reason for sending back: *</strong></p>
+            <textarea id="sendBackReasonInput" class="sendback-reason-input" rows="3"
+              placeholder="Explain why this invoice needs to be reviewed again..."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="window.Modals.closeConfirmDialog()">Cancel</button>
+          <button class="btn btn-warning" onclick="window.Modals.submitSendBack()">Send Back</button>
+        </div>
+      </div>
+    `;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'confirm-overlay';
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = modal;
+    document.body.appendChild(overlay);
+
+    // Focus the textarea
+    setTimeout(() => {
+      document.getElementById('sendBackReasonInput')?.focus();
+    }, 100);
+  },
+
+  /**
+   * Submit send back with reason
+   */
+  async submitSendBack() {
+    const reasonInput = document.getElementById('sendBackReasonInput');
+    const reason = reasonInput?.value?.trim();
+
+    if (!reason) {
+      window.toasts?.error('Please provide a reason for sending back');
+      reasonInput?.focus();
+      return;
+    }
+
+    this.closeConfirmDialog();
+    await this.saveWithStatus('needs_review', 'Invoice sent back for review', { sendback_reason: reason });
   },
 
   /**
@@ -2936,6 +3531,67 @@ const Modals = {
     } catch (err) {
       console.error('[DELETE] Synchronous Error:', err);
       alert('Delete error: ' + err.message);
+    }
+  },
+
+  /**
+   * Unsplit invoice - delete children and restore parent
+   */
+  unsplitInvoice() {
+    try {
+      if (!this.currentInvoice?.id) {
+        window.toasts?.error('No invoice selected');
+        return;
+      }
+
+      if (!this.currentInvoice.is_split_parent) {
+        window.toasts?.error('This invoice is not a split parent');
+        return;
+      }
+
+      const invoiceNumber = this.currentInvoice.invoice_number || 'Unknown';
+
+      // Confirm with user
+      if (!confirm(`Unsplit invoice #${invoiceNumber}?\n\nThis will delete all child invoices and restore the original invoice.\n\nNote: This cannot be done if any children have been approved.`)) {
+        return;
+      }
+
+      const loadingToast = window.toasts?.showLoading('Unsplitting invoice...');
+
+      fetch(`/api/invoices/${this.currentInvoice.id}/unsplit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          performed_by: window.currentUser || 'User'
+        })
+      })
+      .then(response => {
+        window.toasts?.dismiss(loadingToast);
+        if (!response.ok) {
+          return response.json().then(err => {
+            throw new Error(err.error || 'Unsplit failed');
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        window.toasts?.success(data.message || 'Invoice unsplit successfully');
+        this.isDirty = false;
+
+        if (this.onSaveCallback) {
+          this.onSaveCallback(null);
+        }
+
+        this.closeActiveModal();
+      })
+      .catch(err => {
+        console.error('[UNSPLIT] Error:', err);
+        window.toasts?.error('Unsplit failed', { details: err.message });
+      });
+
+    } catch (err) {
+      console.error('[UNSPLIT] Synchronous Error:', err);
+      window.toasts?.error('Unsplit error: ' + err.message);
     }
   },
 
@@ -3903,3 +4559,269 @@ window.debugModals = function() {
 
   return 'Debug complete - check console';
 };
+
+// ============================================
+// SPLIT INVOICE MODAL
+// ============================================
+
+const SplitModal = {
+  invoice: null,
+  splits: [],
+  jobs: [],
+
+  async show(invoice) {
+    console.log('[SplitModal] show() called with invoice:', invoice);
+
+    if (!invoice) {
+      console.error('[SplitModal] No invoice provided');
+      window.toasts?.error('No invoice selected');
+      return;
+    }
+
+    this.invoice = invoice;
+    this.splits = [];
+    this.jobs = [];
+
+    // Fetch jobs for optional assignment
+    try {
+      const res = await fetch('/api/jobs');
+      if (res.ok) {
+        this.jobs = await res.json();
+        console.log('[SplitModal] Loaded', this.jobs.length, 'jobs');
+      }
+    } catch (err) {
+      console.error('[SplitModal] Error fetching jobs:', err);
+    }
+
+    // Set original invoice info
+    document.getElementById('splitOriginalNumber').textContent = invoice.invoice_number || 'N/A';
+    document.getElementById('splitOriginalVendor').textContent = invoice.vendor?.name || 'Unknown Vendor';
+    document.getElementById('splitOriginalAmount').textContent = this.formatMoney(invoice.amount);
+
+    // Clear existing splits and add two default
+    document.getElementById('splitSections').innerHTML = '';
+    this.addSplit();
+    this.addSplit();
+
+    // Show modal - need to add 'show' class for CSS transitions
+    const modal = document.getElementById('splitInvoiceModal');
+    modal.style.display = 'flex';
+    // Force reflow for transition
+    modal.offsetHeight;
+    modal.classList.add('show');
+  },
+
+  close() {
+    const modal = document.getElementById('splitInvoiceModal');
+    modal.classList.remove('show');
+    // Allow transition to complete before hiding
+    setTimeout(() => {
+      modal.style.display = 'none';
+    }, 150);
+    this.invoice = null;
+    this.splits = [];
+  },
+
+  addSplit() {
+    const index = this.splits.length;
+    this.splits.push({ amount: 0, job_id: '', notes: '' });
+
+    const container = document.getElementById('splitSections');
+    const section = document.createElement('div');
+    section.className = 'split-section';
+    section.id = `split-section-${index}`;
+
+    // Build job options - filter to active jobs only
+    const jobOptions = this.jobs
+      .filter(j => j.status === 'active')
+      .map(j => `<option value="${j.id}">${this.escapeHtml(j.name)}</option>`)
+      .join('');
+
+    section.innerHTML = `
+      <div class="split-section-header">
+        <div class="split-section-title" id="split-title-${index}">Split - $0.00</div>
+        ${index >= 2 ? `<button class="split-section-remove" onclick="SplitModal.removeSplit(${index})" title="Remove">&times;</button>` : ''}
+      </div>
+      <div class="split-section-row">
+        <div class="form-group split-job">
+          <label>Job *</label>
+          <select id="split-job-${index}" class="form-control" onchange="SplitModal.updateTotals()">
+            <option value="">Select job...</option>
+            ${jobOptions}
+          </select>
+        </div>
+        <div class="form-group split-amount">
+          <label>Amount *</label>
+          <input type="number" id="split-amount-${index}" class="form-control" step="0.01" min="0.01" placeholder="0.00" oninput="SplitModal.updateTotals()">
+        </div>
+        <div class="form-group split-notes">
+          <label>Notes</label>
+          <input type="text" id="split-notes-${index}" class="form-control" placeholder="Optional...">
+        </div>
+      </div>
+    `;
+
+    container.appendChild(section);
+    this.updateTotals();
+  },
+
+  removeSplit(index) {
+    // Don't allow removing if only 2 active splits left
+    const activeSplits = this.splits.filter(s => s !== null).length;
+    if (activeSplits <= 2) {
+      window.toasts?.warning('Must have at least 2 splits');
+      return;
+    }
+
+    // Remove from DOM
+    const section = document.getElementById(`split-section-${index}`);
+    if (section) {
+      section.remove();
+    }
+
+    // Mark as removed (don't reindex to avoid confusion)
+    this.splits[index] = null;
+    this.updateTotals();
+  },
+
+  updateTotals() {
+    let total = 0;
+
+    // Collect amounts and jobs from active splits
+    this.splits.forEach((split, index) => {
+      if (split === null) return; // Skip removed
+
+      const amountInput = document.getElementById(`split-amount-${index}`);
+      const jobSelect = document.getElementById(`split-job-${index}`);
+      const titleEl = document.getElementById(`split-title-${index}`);
+
+      if (amountInput) {
+        const amount = parseFloat(amountInput.value) || 0;
+        split.amount = amount;
+        total += amount;
+
+        // Update title with amount
+        if (titleEl) {
+          titleEl.textContent = `Split - ${this.formatMoney(amount)}`;
+        }
+      }
+      if (jobSelect) {
+        split.job_id = jobSelect.value;
+      }
+    });
+
+    const invoiceAmount = parseFloat(this.invoice?.amount) || 0;
+    const remaining = invoiceAmount - total;
+
+    document.getElementById('splitAllocatedAmount').textContent = this.formatMoney(total);
+
+    const remainingEl = document.getElementById('splitRemainingAmount');
+    remainingEl.textContent = this.formatMoney(remaining);
+    remainingEl.className = 'remaining';
+
+    if (Math.abs(remaining) < 0.01) {
+      remainingEl.classList.add('balanced');
+      remainingEl.textContent = '$0.00 ✓';
+    } else if (remaining < 0) {
+      remainingEl.classList.add('error');
+    }
+
+    // Validate: each split needs job + amount, amounts must balance
+    const validSplits = this.splits.filter(s => s !== null && s.amount > 0 && s.job_id);
+    const amountsBalance = Math.abs(remaining) < 0.01;
+    const canSplit = validSplits.length >= 2 && amountsBalance;
+
+    document.getElementById('confirmSplitBtn').disabled = !canSplit;
+  },
+
+  async confirm() {
+    // Collect valid splits - both amount and job required
+    const validSplits = this.splits
+      .map((split, index) => {
+        if (split === null) return null;
+
+        const amountInput = document.getElementById(`split-amount-${index}`);
+        const jobSelect = document.getElementById(`split-job-${index}`);
+        const notesInput = document.getElementById(`split-notes-${index}`);
+
+        return {
+          amount: parseFloat(amountInput?.value) || 0,
+          job_id: jobSelect?.value || null,
+          notes: notesInput?.value || ''
+        };
+      })
+      .filter(s => s && s.amount > 0 && s.job_id);
+
+    // Validate - need 2+ splits with amounts and jobs
+    if (validSplits.length < 2) {
+      window.toasts?.error('Each split needs a job and amount');
+      return;
+    }
+
+    const totalAmount = validSplits.reduce((sum, s) => sum + s.amount, 0);
+    const invoiceAmount = parseFloat(this.invoice?.amount) || 0;
+    if (Math.abs(totalAmount - invoiceAmount) > 0.01) {
+      window.toasts?.error('Split amounts must equal invoice total');
+      return;
+    }
+
+    // Call API
+    try {
+      const res = await fetch(`/api/invoices/${this.invoice.id}/split`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          splits: validSplits,
+          performed_by: 'User' // TODO: Get actual user name
+        })
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || 'Split failed');
+      }
+
+      window.toasts?.success(`Invoice split into ${result.children?.length || 0} parts`);
+      this.close();
+
+      // Refresh invoice list
+      if (typeof loadInvoices === 'function') {
+        loadInvoices();
+      }
+    } catch (err) {
+      console.error('Split error:', err);
+      window.toasts?.error('Failed to split invoice', { details: err.message });
+    }
+  },
+
+  formatMoney(amount) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount || 0);
+  },
+
+  escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+};
+
+// Global functions for onclick handlers
+window.showSplitModal = async (invoice) => {
+  console.log('[showSplitModal] Called with:', invoice);
+  try {
+    await SplitModal.show(invoice);
+    console.log('[showSplitModal] Completed successfully');
+  } catch (err) {
+    console.error('[showSplitModal] Error:', err);
+    window.toasts?.error('Failed to open split modal: ' + err.message);
+  }
+};
+window.closeSplitModal = () => SplitModal.close();
+window.addSplitSection = () => SplitModal.addSplit();
+window.confirmSplit = () => SplitModal.confirm();
+window.SplitModal = SplitModal;
