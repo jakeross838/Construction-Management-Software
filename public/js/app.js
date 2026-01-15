@@ -245,12 +245,22 @@ function renderInvoiceCard(inv) {
     let amountSubtext = '';
     let amountClass = isCredit ? 'credit-amount' : '';
 
-    // For partial billing cycle - show remaining amount
+    // Calculate allocation total for partial approvals
+    const allocations = inv.allocations || [];
+    const allocatedAmount = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const isPartialApproval = inv.review_flags?.includes('partial_approval');
+
+    // For partial billing cycle - show remaining amount (after some has been billed to draws)
     const remainingToBill = invoiceAmount - billedAmount;
     const hasPartialBilling = billedAmount > 0 && remainingToBill > 0.01;
     if (hasPartialBilling && ['needs_review', 'ready_for_approval'].includes(inv.status)) {
       displayAmount = remainingToBill;
       amountSubtext = `<div class="amount-subtext">of ${formatMoney(invoiceAmount)}</div>`;
+    }
+    // For partial approval awaiting draw - show allocated amount
+    else if (isPartialApproval && inv.status === 'approved' && allocatedAmount < invoiceAmount - 0.01) {
+      displayAmount = allocatedAmount;
+      amountSubtext = `<div class="amount-subtext">of ${formatMoney(invoiceAmount)} approved</div>`;
     }
 
     // For partial payment - show remaining
@@ -321,12 +331,17 @@ function renderInvoiceCard(inv) {
     // Credit badge for negative amounts
     const creditBadge = isCredit ? `<span class="badge badge-credit" title="Credit memo / refund">CREDIT</span>` : '';
 
+    // Partial approval badge
+    const isPartialApproval = inv.review_flags?.includes('partial_approval');
+    const partialBadge = isPartialApproval ? `<span class="badge badge-partial" title="Partially allocated approval">Partial</span>` : '';
+
     return `
     <div class="invoice-card status-${inv.status}${isCredit ? ' is-credit' : ''}" onclick="openEditModal('${inv.id}')">
       <div class="invoice-main">
         <div class="invoice-header">
           <span class="invoice-vendor">${inv.vendor?.name || 'Unknown Vendor'}</span>
           ${creditBadge}
+          ${partialBadge}
           ${splitBadge}
         </div>
         <div class="invoice-meta">${metaItems.join('<span class="meta-sep">•</span>')}</div>
@@ -686,7 +701,31 @@ async function approveInvoice(invoiceId) {
       return;
     }
 
-    // No CO allocations - proceed with simple approval
+    // Check for partial allocation - must use modal flow for note
+    const totalAllocated = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const isPartial = totalAllocated < invoiceAmount - 0.01;
+
+    if (isPartial) {
+      // Partial approval requires a note - must use modal flow
+      closeModal('invoiceModal');
+      window.toasts?.info('Partial allocation detected - a note is required');
+      const success = await Modals.showEditModal(invoiceId, {
+        onSave: () => loadInvoices(),
+        onClose: () => {}
+      });
+      if (success) {
+        // Trigger the approve flow in the edit modal (which handles partial)
+        setTimeout(() => {
+          if (window.Modals?.approveInvoice) {
+            window.Modals.approveInvoice();
+          }
+        }, 500);
+      }
+      return;
+    }
+
+    // Full allocation, no CO issues - proceed with simple approval
     if (!confirm('Approve this invoice?')) return;
 
     const approveRes = await fetch(`/api/invoices/${invoiceId}/approve`, {

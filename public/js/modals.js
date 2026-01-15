@@ -3,7 +3,7 @@
  * Handles invoice edit modal, job selection modal, and other UI dialogs
  * LAST UPDATED: 2026-01-15 - Only use billed_amount for in_draw status
  */
-console.log('[MODALS] Script loaded - version 2026-01-15f - DUPLICATE OVERRIDE');
+console.log('[MODALS] Script loaded - version 2026-01-15-partial');
 
 const Modals = {
   // Current state

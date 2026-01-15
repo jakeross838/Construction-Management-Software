@@ -724,6 +724,19 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Partial approval badge */
+.invoice-header .badge-partial,
+.badge-partial {
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: rgba(249, 115, 22, 0.15);
+  border: 1px solid rgba(249, 115, 22, 0.5);
+  color: #fb923c;
+  letter-spacing: 0.5px;
+}
+
 /* Credit invoice styling */
 .invoice-card.is-credit {
   border-left-color: #3fb950 !important;

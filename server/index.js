@@ -6669,8 +6669,8 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
           fully_billed: true
         });
       } else {
-        // Partially billed - cycle back to ready_for_approval for remaining
-        updateData.status = 'ready_for_approval';
+        // Partially billed - cycle back to needs_review for remaining allocation
+        updateData.status = 'needs_review';
         partialInvoices.push({
           id: inv.id,
           billed: currentAllocationSum,
@@ -9193,7 +9193,9 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
   }
 
   // Append partial approval note to invoice notes and add flag
+  console.log('[PATCH] partial_approval_note:', updates.partial_approval_note);
   if (updates.partial_approval_note) {
+    console.log('[PATCH] Adding partial_approval flag');
     const existingNotes = existing.notes || '';
     const separator = existingNotes ? '\n\n' : '';
     updateFields.notes = existingNotes + separator + updates.partial_approval_note;
@@ -9202,6 +9204,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     const existingFlags = existing.review_flags || [];
     if (!existingFlags.includes('partial_approval')) {
       updateFields.review_flags = [...existingFlags, 'partial_approval'];
+      console.log('[PATCH] New review_flags:', updateFields.review_flags);
     }
   }
 
