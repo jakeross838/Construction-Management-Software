@@ -253,10 +253,10 @@ const Modals = {
             <strong>Split Invoice</strong>
             <p>This is part of a split invoice. Amount: <strong>${window.Validation?.formatCurrency(invoice.amount)}</strong></p>
             <div class="split-actions">
-              <button type="button" class="btn-link" onclick="Modals.viewParentInvoice('${invoice.parent_invoice_id}')">
+              <button type="button" class="btn-link" onclick="window.Modals.viewParentInvoice('${invoice.parent_invoice_id}')">
                 View Parent Invoice
               </button>
-              <button type="button" class="btn-link" onclick="Modals.viewSplitSiblings('${invoice.parent_invoice_id}', '${invoice.id}')">
+              <button type="button" class="btn-link" onclick="window.Modals.viewSplitSiblings('${invoice.parent_invoice_id}', '${invoice.id}')">
                 View All Splits
               </button>
             </div>
@@ -319,7 +319,7 @@ const Modals = {
       }
 
       const siblingList = siblings.map(s => `
-        <div class="sibling-item ${s.id === currentId ? 'current' : ''}" onclick="Modals.viewSiblingInvoice('${s.id}')">
+        <div class="sibling-item ${s.id === currentId ? 'current' : ''}" onclick="window.Modals.viewSiblingInvoice('${s.id}')">
           <span class="sibling-amount">${window.Validation?.formatCurrency(s.amount)}</span>
           <span class="sibling-status status-badge status-${s.status}">${s.status}</span>
           ${s.id === currentId ? '<span class="current-marker">(current)</span>' : ''}
@@ -387,7 +387,7 @@ const Modals = {
               <span class="status-badge status-${invoice.status}">${statusInfo.label || invoice.status}</span>
               ${showReadOnlyBadge ? '<span class="readonly-badge">Read Only</span>' : ''}
             </div>
-            <button class="modal-close" onclick="Modals.closeActiveModal()">&times;</button>
+            <button class="modal-close" onclick="window.Modals.closeActiveModal()">&times;</button>
           </div>
 
           <div class="modal-body modal-split-view">
@@ -403,7 +403,7 @@ const Modals = {
                 </div>
                 <div class="pdf-toolbar-right">
                   ${invoice.pdf_url && invoice.pdf_stamped_url ? `
-                    <button type="button" class="btn-pdf-toggle" onclick="Modals.togglePdfView()" title="Toggle between original and stamped PDF">
+                    <button type="button" class="btn-pdf-toggle" onclick="window.Modals.togglePdfView()" title="Toggle between original and stamped PDF">
                       <span id="pdf-toggle-label">Viewing: Stamped</span>
                     </button>
                   ` : ''}
@@ -500,7 +500,7 @@ const Modals = {
                       <h3>Line Items</h3>
                       ${canEdit ? `
                         <div class="section-header-actions" id="line-items-actions">
-                          <button type="button" class="btn-add-line" onclick="Modals.addAllocation()">
+                          <button type="button" class="btn-add-line" onclick="window.Modals.addAllocation()">
                             + Add Line
                           </button>
                         </div>
@@ -595,7 +595,7 @@ const Modals = {
                   <div class="form-section activity-section">
                     <div class="section-header">
                       <h3>Activity</h3>
-                      <button type="button" class="btn-link" onclick="Modals.toggleActivityExpand()">
+                      <button type="button" class="btn-link" onclick="window.Modals.toggleActivityExpand()">
                         View history
                       </button>
                     </div>
@@ -623,7 +623,7 @@ const Modals = {
                     <div class="form-section review-flags">
                       <div class="review-flags-header">
                         <h3>⚠️ Review Required</h3>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="Modals.clearReviewFlags('${invoice.id}')">Clear Flags</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="window.Modals.clearReviewFlags('${invoice.id}')">Clear Flags</button>
                       </div>
                       <ul>
                         ${(invoice.review_flags || []).map(f => `<li>${this.getReviewFlagLabel(f)}</li>`).join('')}
@@ -688,19 +688,19 @@ const Modals = {
                   value="${this.formatAmountInput(alloc.amount)}"
                   oninput="Modals.updateAllocation(${index}, 'amount', this.value)"
                   ${isReadOnly ? 'readonly' : ''}>
-                ${!isReadOnly ? `<button type="button" class="btn-fill-remaining" onclick="Modals.fillRemaining(${index})" title="Fill with remaining unallocated amount">Fill</button>` : ''}
+                ${!isReadOnly ? `<button type="button" class="btn-fill-remaining" onclick="window.Modals.fillRemaining(${index})" title="Fill with remaining unallocated amount">Fill</button>` : ''}
               </div>
             </div>
             <div class="line-item-field linked-to-field">
               <label class="field-label">Linked To ${isAiLinked ? '<span class="ai-linked-badge" title="AI auto-matched">AI</span>' : ''}</label>
               <div class="linked-to-display">
                 <span class="linked-to-text ${linkDisplay.type}">${linkDisplay.text}</span>
-                ${canEdit && hasFundingSources ? `<button type="button" class="btn-change-link" onclick="Modals.showLinkPicker(${index}, event)" title="Change linked PO/CO">Link</button>` : ''}
+                ${canEdit && hasFundingSources ? `<button type="button" class="btn-change-link" onclick="window.Modals.showLinkPicker(${index}, event)" title="Change linked PO/CO">Link</button>` : ''}
               </div>
               <div class="link-picker-popover" id="link-picker-${index}" style="display: none;"></div>
             </div>
             ${canEdit && allocations.length > 1 ? `
-              <button type="button" class="btn-delete-row" onclick="Modals.removeAllocation(${index})" title="Delete">
+              <button type="button" class="btn-delete-row" onclick="window.Modals.removeAllocation(${index})" title="Delete">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 6L6 18M6 6l12 12"/>
                 </svg>
@@ -864,7 +864,7 @@ const Modals = {
         <div class="summary-header">
           <span class="status-indicator ${statusClass}">${statusIcon} ${statusText}</span>
           ${!isReadOnly && hasAllocations && allAllocations.length > 1 ? `
-            <button type="button" class="btn btn-xs btn-outline" onclick="Modals.splitEvenly()" title="Divide total evenly across all lines">
+            <button type="button" class="btn btn-xs btn-outline" onclick="window.Modals.splitEvenly()" title="Divide total evenly across all lines">
               ⚖ Split Evenly
             </button>
           ` : ''}
@@ -1437,74 +1437,74 @@ const Modals = {
       case 'needs_review':
         // Accountant review - full editing, job optional
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
-        buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice(true)">Save</button>`);
-        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveAndSubmit()">Submit for Approval</button>`);
+        buttons.push(`<button type="button" class="btn btn-secondary" onclick="window.Modals.saveInvoice(true)">Save</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="window.Modals.saveAndSubmit()">Submit for Approval</button>`);
         break;
 
       case 'ready_for_approval':
         // PM Review - read-only by default, can unlock to edit
-        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.sendBackInvoice()">Send Back</button>`);
-        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="Modals.denyInvoice()">Deny</button>`);
+        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="window.Modals.sendBackInvoice()">Send Back</button>`);
+        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.denyInvoice()">Deny</button>`);
         if (this.isEditMode) {
           // Unlocked - show Save button
-          buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
+          buttons.push(`<button type="button" class="btn btn-secondary" onclick="window.Modals.saveInvoice()">Save</button>`);
         } else {
           // Locked - show Unlock button
-          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
+          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="window.Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
         }
-        buttons.push(`<button type="button" class="btn btn-success" onclick="Modals.approveInvoice()">Approve</button>`);
+        buttons.push(`<button type="button" class="btn btn-success" onclick="window.Modals.approveInvoice()">Approve</button>`);
         break;
 
       case 'approved':
         // Approved - waiting to be added to a draw
-        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.sendBackInvoice()">Send Back</button>`);
+        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="window.Modals.sendBackInvoice()">Send Back</button>`);
         if (this.isEditMode) {
           // Unlocked - show Save button
-          buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
+          buttons.push(`<button type="button" class="btn btn-secondary" onclick="window.Modals.saveInvoice()">Save</button>`);
         } else {
           // Locked - show Unlock button
-          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
+          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="window.Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
         }
         // Show Close Out button if there's a remaining balance to write off
         if (hasRemainingBalance) {
-          buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.showCloseOutDialog()">Close Out</button>`);
+          buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="window.Modals.showCloseOutDialog()">Close Out</button>`);
         }
-        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.addToDraw()">Add to Draw</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="window.Modals.addToDraw()">Add to Draw</button>`);
         break;
 
       case 'in_draw':
         // In draw - can only be removed if draw is in draft status
-        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="Modals.removeFromDraw()">Remove from Draw</button>`);
+        buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="window.Modals.removeFromDraw()">Remove from Draw</button>`);
         break;
 
       case 'denied':
         // Denied - can be edited and resubmitted, or deleted
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
-        buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice(true)">Save</button>`);
-        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.resubmitInvoice()">Resubmit</button>`);
+        buttons.push(`<button type="button" class="btn btn-secondary" onclick="window.Modals.saveInvoice(true)">Save</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="window.Modals.resubmitInvoice()">Resubmit</button>`);
         break;
 
       // Legacy status support
       case 'received':
         buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.deleteInvoice()">Delete</button>`);
-        buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice(true)">Save</button>`);
-        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveAndSubmit()">Submit</button>`);
+        buttons.push(`<button type="button" class="btn btn-secondary" onclick="window.Modals.saveInvoice(true)">Save</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="window.Modals.saveAndSubmit()">Submit</button>`);
         break;
 
       case 'needs_approval':
         // Legacy - same as ready_for_approval
-        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="Modals.denyInvoice()">Deny</button>`);
+        buttons.push(`<button type="button" class="btn btn-danger-outline" onclick="window.Modals.denyInvoice()">Deny</button>`);
         if (this.isEditMode) {
-          buttons.push(`<button type="button" class="btn btn-secondary" onclick="Modals.saveInvoice()">Save</button>`);
+          buttons.push(`<button type="button" class="btn btn-secondary" onclick="window.Modals.saveInvoice()">Save</button>`);
         } else {
-          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
+          buttons.push(`<button type="button" class="btn btn-outline-primary" onclick="window.Modals.enterEditMode()">🔓 Unlock to Edit</button>`);
         }
-        buttons.push(`<button type="button" class="btn btn-success" onclick="Modals.approveInvoice()">Approve</button>`);
+        buttons.push(`<button type="button" class="btn btn-success" onclick="window.Modals.approveInvoice()">Approve</button>`);
         break;
 
       default:
         // Unknown status - just save
-        buttons.push(`<button type="button" class="btn btn-primary" onclick="Modals.saveInvoice()">Save</button>`);
+        buttons.push(`<button type="button" class="btn btn-primary" onclick="window.Modals.saveInvoice()">Save</button>`);
     }
 
     return buttons.join('');
@@ -1711,12 +1711,12 @@ const Modals = {
     // Build modal HTML with separate PO and CO selection
     let html = `
       <div id="link-picker-modal" class="link-picker-overlay">
-        <div class="link-picker-backdrop" onclick="Modals.closeLinkPicker()"></div>
+        <div class="link-picker-backdrop" onclick="window.Modals.closeLinkPicker()"></div>
         <div class="link-picker-dialog">
           <div class="link-picker-header">
             <h2>Link Funding Source</h2>
             <p class="link-picker-subtitle">Select a Purchase Order and/or Change Order for this allocation${isCOCostCode ? ' <span class="co-code-hint">(CO cost code detected)</span>' : ''}</p>
-            <button class="modal-close" onclick="Modals.closeLinkPicker()">&times;</button>
+            <button class="modal-close" onclick="window.Modals.closeLinkPicker()">&times;</button>
           </div>
           <div class="link-picker-body">
     `;
@@ -1873,8 +1873,8 @@ const Modals = {
     html += `
           </div>
           <div class="link-picker-footer">
-            <button type="button" class="btn btn-secondary" onclick="Modals.closeLinkPicker()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="Modals.applyLinkSelection(${index})">Link Selected</button>
+            <button type="button" class="btn btn-secondary" onclick="window.Modals.closeLinkPicker()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="window.Modals.applyLinkSelection(${index})">Link Selected</button>
           </div>
         </div>
       </div>
@@ -2021,7 +2021,7 @@ const Modals = {
         <div class="modal-content" style="max-width: 500px; opacity: 1;">
           <div class="modal-header">
             <h2>Create Change Order</h2>
-            <button class="modal-close" onclick="Modals.closeCreateCOModal()">&times;</button>
+            <button class="modal-close" onclick="window.Modals.closeCreateCOModal()">&times;</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
@@ -2041,8 +2041,8 @@ const Modals = {
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn-secondary" onclick="Modals.closeCreateCOModal()">Cancel</button>
-            <button type="button" class="btn-primary" onclick="Modals.submitCreateCO(${allocationIndex})">Create & Link</button>
+            <button type="button" class="btn-secondary" onclick="window.Modals.closeCreateCOModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="window.Modals.submitCreateCO(${allocationIndex})">Create & Link</button>
           </div>
         </div>
       </div>
@@ -2151,7 +2151,7 @@ const Modals = {
         <div class="modal-content" style="max-width: 500px; opacity: 1;">
           <div class="modal-header">
             <h2>Create Purchase Order</h2>
-            <button class="modal-close" onclick="Modals.closeCreatePOModal()">&times;</button>
+            <button class="modal-close" onclick="window.Modals.closeCreatePOModal()">&times;</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
@@ -2176,8 +2176,8 @@ const Modals = {
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn-secondary" onclick="Modals.closeCreatePOModal()">Cancel</button>
-            <button type="button" class="btn-primary" onclick="Modals.submitCreatePO(${allocationIndex})">Create & Link</button>
+            <button type="button" class="btn-secondary" onclick="window.Modals.closeCreatePOModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="window.Modals.submitCreatePO(${allocationIndex})">Create & Link</button>
           </div>
         </div>
       </div>
@@ -2866,8 +2866,8 @@ const Modals = {
       container.id = 'confirm-dialog-container';
       document.body.appendChild(container);
     }
-    container.innerHTML = `<div class="confirm-overlay" onclick="window.Modals.closeConfirmDialog()">${modal}</div>`;
-    container.style.display = 'flex';
+    container.innerHTML = `<div id="confirm-overlay" onclick="window.Modals.closeConfirmDialog()">${modal}</div>`;
+    container.style.display = 'block';
 
     // Stop propagation on modal click
     container.querySelector('.confirm-modal').addEventListener('click', e => e.stopPropagation());
@@ -3339,7 +3339,7 @@ const Modals = {
       <div class="modal modal-medium close-out-modal">
         <div class="modal-header">
           <h2>Close Out Invoice</h2>
-          <button class="modal-close" onclick="Modals.closeCloseOutDialog()">&times;</button>
+          <button class="modal-close" onclick="window.Modals.closeCloseOutDialog()">&times;</button>
         </div>
 
         <div class="modal-body">
@@ -3378,10 +3378,10 @@ const Modals = {
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="Modals.closeCloseOutDialog()">
+          <button type="button" class="btn btn-secondary" onclick="window.Modals.closeCloseOutDialog()">
             Cancel
           </button>
-          <button type="button" class="btn btn-warning" onclick="Modals.executeCloseOut()">
+          <button type="button" class="btn btn-warning" onclick="window.Modals.executeCloseOut()">
             Close Out Invoice
           </button>
         </div>
@@ -3743,7 +3743,7 @@ const Modals = {
           <div class="modal modal-medium">
             <div class="modal-header">
               <h2>${title}</h2>
-              <button class="modal-close" onclick="Modals.closeActiveModal()">&times;</button>
+              <button class="modal-close" onclick="window.Modals.closeActiveModal()">&times;</button>
             </div>
 
             <div class="modal-body">
@@ -3758,7 +3758,7 @@ const Modals = {
                   <div class="job-list" id="suggested-jobs">
                     ${suggestions.map(s => `
                       <div class="job-item ${s.job?.id === currentJobId ? 'selected' : ''}"
-                        data-id="${s.job?.id}" onclick="Modals.selectJob('${s.job?.id}')">
+                        data-id="${s.job?.id}" onclick="window.Modals.selectJob('${s.job?.id}')">
                         <div class="job-name">${this.escapeHtml(s.job?.name || 'Unknown')}</div>
                         <div class="job-meta">
                           <span class="confidence ${this.getConfidenceClass(s.confidence)}">
@@ -3778,7 +3778,7 @@ const Modals = {
                   ${jobs.map(job => `
                     <div class="job-item ${job.id === currentJobId ? 'selected' : ''}"
                       data-id="${job.id}" data-name="${job.name.toLowerCase()}"
-                      onclick="Modals.selectJob('${job.id}')">
+                      onclick="window.Modals.selectJob('${job.id}')">
                       <div class="job-name">${this.escapeHtml(job.name)}</div>
                       <div class="job-address">${this.escapeHtml(job.address || '')}</div>
                     </div>
@@ -3788,7 +3788,7 @@ const Modals = {
             </div>
 
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" onclick="Modals.closeActiveModal()">
+              <button type="button" class="btn btn-secondary" onclick="window.Modals.closeActiveModal()">
                 Cancel
               </button>
             </div>
@@ -3846,7 +3846,7 @@ const Modals = {
       <div class="confirm-modal">
         <div class="modal-header">
           <h2>${title}</h2>
-          <button class="modal-close" onclick="Modals.closeConfirmDialog()">&times;</button>
+          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
         </div>
 
         <div class="modal-body">
@@ -3858,11 +3858,11 @@ const Modals = {
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary"
-            onclick="Modals.handleConfirmCancel()">
+            onclick="window.Modals.handleConfirmCancel()">
             ${cancelText}
           </button>
           <button type="button" class="btn btn-${type === 'danger' ? 'danger' : 'primary'}"
-            onclick="Modals.handleConfirmOk()">
+            onclick="window.Modals.handleConfirmOk()">
             ${confirmText}
           </button>
         </div>

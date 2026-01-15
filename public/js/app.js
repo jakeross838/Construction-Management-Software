@@ -646,19 +646,54 @@ async function openEditModal(invoiceId) {
 // ============================================================
 
 async function approveInvoice(invoiceId) {
-  if (!confirm('Approve this invoice?')) return;
-
   try {
-    const res = await fetch(`/api/invoices/${invoiceId}/approve`, {
+    // Fetch invoice with allocations to check for CO cost codes
+    const res = await fetch(`/api/invoices/${invoiceId}`);
+    if (!res.ok) throw new Error('Failed to fetch invoice');
+    const invoice = await res.json();
+
+    // Check for CO cost code allocations without CO link
+    const isCOCostCode = (code) => code && /C$/i.test(code.trim());
+    const allocations = invoice.allocations || [];
+    const unlinkedCOAllocations = allocations.filter(a => {
+      const code = a.cost_code?.code;
+      return code && isCOCostCode(code) && !a.change_order_id;
+    });
+
+    if (unlinkedCOAllocations.length > 0) {
+      // Close view modal and open edit modal for CO linking
+      closeModal('invoiceModal');
+      window.toasts?.info('CO cost codes detected - please link to a Change Order');
+      // Open edit modal which has full CO link functionality
+      const success = await Modals.showEditModal(invoiceId, {
+        onSave: () => loadInvoices(),
+        onClose: () => {}
+      });
+      if (success) {
+        // Trigger the approve flow in the edit modal
+        setTimeout(() => {
+          if (window.Modals?.approveInvoice) {
+            window.Modals.approveInvoice();
+          }
+        }, 500);
+      }
+      return;
+    }
+
+    // No CO allocations - proceed with simple approval
+    if (!confirm('Approve this invoice?')) return;
+
+    const approveRes = await fetch(`/api/invoices/${invoiceId}/approve`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approved_by: 'Jake Ross' })
     });
 
-    if (!res.ok) throw new Error('Approval failed');
+    if (!approveRes.ok) throw new Error('Approval failed');
 
     closeModal('invoiceModal');
     loadInvoices();
+    window.toasts?.success('Invoice approved');
   } catch (err) {
     console.error('Failed to approve:', err);
     alert('Failed to approve invoice');
