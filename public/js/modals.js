@@ -410,6 +410,11 @@ const Modals = {
     // Show read-only badge for locked statuses that haven't been unlocked
     const showReadOnlyBadge = isArchived || (isLockedStatus && !this.isEditMode);
 
+    // Check if this is a partial allocation (either flagged or current allocations < amount)
+    const allocationSum = (allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const isPartialAllocation = invoice.review_flags?.includes('partial_approval') ||
+                                (allocationSum > 0 && allocationSum < invoiceAmount - 0.01);
+
     return `
       <div class="modal-backdrop">
         <div class="modal modal-fullscreen">
@@ -417,7 +422,7 @@ const Modals = {
             <div class="modal-title">
               <h2>${this.isEditMode ? 'Edit Invoice' : 'View Invoice'}</h2>
               <span class="status-badge status-${invoice.status}">${statusInfo.label || invoice.status}</span>
-              ${invoice.review_flags?.includes('partial_approval') ? '<span class="status-badge status-partial">Partial</span>' : ''}
+              ${isPartialAllocation ? '<span class="status-badge status-partial">Partial</span>' : ''}
               ${showReadOnlyBadge ? '<span class="readonly-badge">Read Only</span>' : ''}
             </div>
             <button class="modal-close" onclick="window.Modals.closeActiveModal()">&times;</button>
