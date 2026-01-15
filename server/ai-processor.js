@@ -80,6 +80,9 @@ const DESCRIPTION_COST_CODE_MAP = {
   
   // Plumbing
   'plumbing labor': '12101',
+  'plumbing rough': '12101',
+  'rough-in': '12101',
+  'plumbing': '12101',
   'pipe': '12101',
   'drain': '12101',
   'water heater': '12101',
