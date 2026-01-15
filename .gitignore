@@ -28,3 +28,14 @@ test-*.png
 
 # Auto Claude data directory
 .auto-claude/
+
+# Claude temp files
+tmpclaude-*
+.claude_settings.json
+
+# Git worktrees
+.worktrees/
+
+# Runtime files
+server.pid
+test-results/
