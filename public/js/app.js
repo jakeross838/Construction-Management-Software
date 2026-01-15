@@ -301,8 +301,7 @@ function renderInvoiceCard(inv) {
       badges.push(`<span class="badge badge-no-po">No PO</span>`);
     }
 
-    // Cost code badges
-    const allocations = inv.allocations || [];
+    // Cost code badges (uses allocations from above)
     if (allocations.length > 0) {
       const seenCodes = new Set();
       const costCodes = allocations
