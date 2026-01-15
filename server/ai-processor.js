@@ -21,6 +21,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { supabase } = require('../config');
 const standards = require('./standards');
 const aiLearning = require('./ai-learning');
+const ocrProcessor = require('./ocr-processor');
 
 // Consolidated duplicate detection
 const {
@@ -1308,17 +1309,38 @@ async function processInvoice(pdfBuffer, originalFilename) {
   try {
     // 1. Extract text from PDF
     const pdfText = await extractTextFromPDF(pdfBuffer);
-    if (!pdfText || pdfText.length < 50) {
-      results.messages.push('Could not extract text from PDF - may be scanned/image');
-      results.review_flags.push('low_text_quality');
-    }
+    const isScannedPDF = ocrProcessor.isLikelyScannedPDF(pdfText);
 
     // Store raw text for audit
     results.ai_extracted_data = { raw_text: pdfText?.substring(0, 5000) || '' };
 
-    // 2. AI extraction
-    results.messages.push('Extracting invoice data with AI...');
-    const extracted = await extractInvoiceData(pdfText || '', originalFilename);
+    let extracted;
+
+    // 2. AI extraction - use OCR for scanned PDFs
+    if (isScannedPDF) {
+      results.messages.push('Scanned PDF detected - using OCR...');
+      results.review_flags.push('ocr_processed');
+
+      try {
+        // Use Vision API for OCR extraction
+        extracted = await ocrProcessor.processWithOCR(pdfBuffer, originalFilename);
+        results.messages.push('Successfully extracted data via OCR');
+        results.ai_extracted_data.extraction_method = 'vision_ocr';
+      } catch (ocrErr) {
+        // OCR failed - fall back to standard extraction with whatever text we have
+        console.error('[OCR] Failed:', ocrErr.message);
+        results.messages.push(`OCR failed: ${ocrErr.message} - falling back to text extraction`);
+        results.review_flags.push('low_text_quality');
+        extracted = await extractInvoiceData(pdfText || '', originalFilename);
+        results.ai_extracted_data.extraction_method = 'text_fallback';
+      }
+    } else {
+      // Normal text-based extraction
+      results.messages.push('Extracting invoice data with AI...');
+      extracted = await extractInvoiceData(pdfText || '', originalFilename);
+      results.ai_extracted_data.extraction_method = 'text';
+    }
+
     results.extracted = extracted;
     results.ai_extracted_data = {
       ...results.ai_extracted_data,
