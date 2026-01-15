@@ -2494,7 +2494,7 @@ app.get('/api/invoices/:id', async (req, res) => {
         job:v2_jobs(id, name, address),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
-          id, amount, notes, job_id, po_id, po_line_item_id, change_order_id,
+          id, amount, notes, job_id, po_id, po_line_item_id, change_order_id, pending_co,
           cost_code:v2_cost_codes(id, code, name, category),
           purchase_order:v2_purchase_orders(id, po_number),
           change_order:v2_job_change_orders(id, change_order_number, title)
@@ -2836,6 +2836,10 @@ app.post('/api/invoices/upload', upload.single('pdf'), async (req, res) => {
       pdf_url = result.url;
     }
 
+    // Determine invoice type based on amount
+    const parsedAmount = parseFloat(amount) || 0;
+    const invoice_type = parsedAmount < 0 ? 'credit_memo' : 'standard';
+
     // Create invoice
     const { data: invoice, error } = await supabase
       .from('v2_invoices')
@@ -2848,7 +2852,8 @@ app.post('/api/invoices/upload', upload.single('pdf'), async (req, res) => {
         amount,
         notes: notes || null,
         pdf_url,
-        status: 'needs_review'
+        status: 'needs_review',
+        invoice_type
       })
       .select()
       .single();
@@ -2941,7 +2946,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       };
 
       // Run matching logic (vendor, job, PO)
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates, storePDFHash } = require('./ai-processor');
 
       if (extracted.vendor?.companyName) {
         result.vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
@@ -3000,7 +3005,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       };
 
       // Run matching logic
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates, storePDFHash } = require('./ai-processor');
 
       if (extracted.vendor?.companyName) {
         result.vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
@@ -3265,7 +3270,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       );
 
       // Build result similar to processDocument output
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates, storePDFHash } = require('./ai-processor');
 
       let vendor = null;
       let matchedJob = null;
@@ -3323,7 +3328,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       const documentText = converted.data.text;
       const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
 
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates, storePDFHash } = require('./ai-processor');
 
       let vendor = null;
       let matchedJob = null;
@@ -3457,6 +3462,13 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
         .single();
 
       if (invError) throw invError;
+
+      // Store PDF hash for duplicate detection
+      if (pdfBuffer && invoice.id) {
+        storePDFHash(invoice.id, pdfBuffer).catch(err => {
+          console.error('[HASH] Failed to store PDF hash:', err.message);
+        });
+      }
 
       // Create allocations if available
       if (invoiceData.suggested_allocations?.length > 0) {
@@ -3716,6 +3728,13 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
           } else {
             page.savedRecord = invoice;
             page.redirect = { page: 'index.html', id: invoice.id };
+
+            // Store PDF hash for duplicate detection
+            if (pageBuffer && invoice.id) {
+              storePDFHash(invoice.id, pageBuffer).catch(err => {
+                console.error('[HASH] Failed to store PDF hash for page:', err.message);
+              });
+            }
           }
         }
       } catch (saveErr) {
@@ -3781,7 +3800,8 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
           job_id: a.job_id || null,
           po_id: a.po_id || null,
           po_line_item_id: a.po_line_item_id || null,
-          change_order_id: a.change_order_id || null
+          change_order_id: a.change_order_id || null,
+          pending_co: a.pending_co || false
         })));
     }
 
@@ -3821,6 +3841,8 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
         allocations:v2_invoice_allocations(
           amount,
           cost_code_id,
+          pending_co,
+          change_order_id,
           cost_code:v2_cost_codes(code, name)
         )
       `)
@@ -3828,6 +3850,27 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
       .single();
 
     if (getError) throw getError;
+
+    // Check for pending CO allocations - block approval
+    const pendingCOAllocations = (invoice.allocations || []).filter(a => a.pending_co);
+    if (pendingCOAllocations.length > 0) {
+      return res.status(400).json({
+        error: 'Cannot approve invoice with pending CO allocations. Please link all CO cost codes to Change Orders first.'
+      });
+    }
+
+    // Check for CO cost codes without CO link - block approval
+    const unlinkedCOAllocations = (invoice.allocations || []).filter(a => {
+      const costCode = a.cost_code?.code || '';
+      const isCOCostCode = costCode.endsWith('C') && /\d+C$/.test(costCode);
+      return isCOCostCode && !a.change_order_id && !a.pending_co;
+    });
+    if (unlinkedCOAllocations.length > 0) {
+      const codes = unlinkedCOAllocations.map(a => a.cost_code?.code).join(', ');
+      return res.status(400).json({
+        error: `Cannot approve invoice with unlinked CO cost codes: ${codes}. Please link to a Change Order or mark as Pending CO.`
+      });
+    }
 
     // ==========================================
     // CO AUTO-INHERITANCE FROM PO
@@ -4306,6 +4349,8 @@ app.post('/api/invoices/:id/split', async (req, res) => {
     // Validate amounts sum to original
     const totalSplit = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
     const parentAmount = parseFloat(parent.amount || 0);
+    const isCredit = parentAmount < 0;
+
     if (Math.abs(totalSplit - parentAmount) > 0.01) {
       return res.status(400).json({
         error: `Split amounts ($${totalSplit.toFixed(2)}) must equal original amount ($${parentAmount.toFixed(2)})`
@@ -4315,7 +4360,19 @@ app.post('/api/invoices/:id/split', async (req, res) => {
     // Validate each split has required fields (just amount, job/PO assigned later)
     for (let i = 0; i < splits.length; i++) {
       const split = splits[i];
-      if (parseFloat(split.amount) <= 0) {
+      const splitAmount = parseFloat(split.amount);
+
+      // Amount cannot be zero
+      if (splitAmount === 0) {
+        return res.status(400).json({ error: `Split ${i + 1}: Amount cannot be zero` });
+      }
+
+      // For credit invoices: splits must be negative
+      // For standard invoices: splits must be positive
+      if (isCredit && splitAmount > 0) {
+        return res.status(400).json({ error: `Split ${i + 1}: Credit split amounts must be negative` });
+      }
+      if (!isCredit && splitAmount < 0) {
         return res.status(400).json({ error: `Split ${i + 1}: Amount must be positive` });
       }
     }
@@ -4870,7 +4927,8 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
           job_id: a.job_id || null,
           po_id: a.po_id || null,
           po_line_item_id: a.po_line_item_id || null,
-          change_order_id: a.change_order_id || null
+          change_order_id: a.change_order_id || null,
+          pending_co: a.pending_co || false
         })));
 
       if (error) throw error;
@@ -6415,7 +6473,12 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
       const previouslyBilled = parseFloat(inv.billed_amount || 0);
       const currentAllocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
       const newBilledTotal = previouslyBilled + currentAllocationSum;
-      const isFullyBilled = newBilledTotal >= invoiceAmount - 0.01;
+      const isCredit = invoiceAmount < 0;
+      // For credits: fully billed when newBilledTotal <= invoiceAmount (more negative)
+      // For standard: fully billed when newBilledTotal >= invoiceAmount
+      const isFullyBilled = isCredit
+        ? newBilledTotal <= invoiceAmount + 0.01  // e.g., -100 <= -100.01 means fully billed
+        : newBilledTotal >= invoiceAmount - 0.01;
 
       // Copy allocations to draw_allocations before potentially clearing them
       for (const alloc of (inv.allocations || [])) {
@@ -6448,7 +6511,11 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
       }
 
       // Update invoice billed_amount (cap at invoice amount to prevent overbilling)
-      const cappedBilledTotal = Math.min(newBilledTotal, invoiceAmount);
+      // For credits: use Math.max (cap at most negative value)
+      // For standard: use Math.min (cap at invoice amount)
+      const cappedBilledTotal = isCredit
+        ? Math.max(newBilledTotal, invoiceAmount)  // e.g., max(-150, -100) = -100
+        : Math.min(newBilledTotal, invoiceAmount);
       const updateData = {
         billed_amount: cappedBilledTotal
       };
@@ -8937,7 +9004,8 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
   }
 
   // Check for duplicate if changing invoice_number or vendor_id
-  if (updates.invoice_number || updates.vendor_id) {
+  // Allow override with overrideDuplicate flag
+  if ((updates.invoice_number || updates.vendor_id) && !updates.overrideDuplicate) {
     const dupCheck = await checkDuplicate(
       updates.vendor_id || existing.vendor_id,
       updates.invoice_number || existing.invoice_number,
@@ -8945,9 +9013,19 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
       invoiceId
     );
     if (dupCheck.isDuplicate) {
-      throw new AppError('DUPLICATE_INVOICE', dupCheck.message, { existingInvoice: dupCheck.existingInvoice });
+      // Return soft-block that can be overridden (like PO_OVERAGE)
+      return res.status(409).json({
+        error: 'DUPLICATE_INVOICE',
+        code: 'DUPLICATE_INVOICE',
+        message: dupCheck.message,
+        existingInvoice: dupCheck.existingInvoice,
+        existingId: dupCheck.existingInvoice?.id,
+        existingStatus: dupCheck.existingInvoice?.status,
+        existingAmount: dupCheck.existingInvoice?.amount
+      });
     }
   }
+  delete updates.overrideDuplicate;
 
   // If amount is changing, check that existing allocations would still balance
   if (updates.amount && parseFloat(updates.amount) !== parseFloat(existing.amount)) {
@@ -9658,7 +9736,8 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
         job_id: a.job_id || null,
         po_id: a.po_id || null,
         po_line_item_id: a.po_line_item_id || null,
-        change_order_id: a.change_order_id || null
+        change_order_id: a.change_order_id || null,
+        pending_co: a.pending_co || false
       }));
       await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
     }
@@ -9691,7 +9770,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       vendor:v2_vendors(id, name),
       po:v2_purchase_orders(id, po_number, description, total_amount),
-      allocations:v2_invoice_allocations(id, amount, cost_code_id, po_line_item_id, cost_code:v2_cost_codes(code, name))
+      allocations:v2_invoice_allocations(id, amount, cost_code_id, po_line_item_id, change_order_id, pending_co, cost_code:v2_cost_codes(code, name))
     `)
     .eq('id', invoiceId)
     .is('deleted_at', null)
@@ -9826,6 +9905,24 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
         });
       }
 
+      // Check for CO cost codes without CO link - block approval
+      {
+        const allocsToCheck = allocations || invoice.allocations || [];
+        const unlinkedCOAllocs = allocsToCheck.filter(a => {
+          const costCode = a.cost_code?.code || '';
+          const isCOCostCode = costCode.endsWith('C') && /\d+C$/.test(costCode);
+          return isCOCostCode && !a.change_order_id && !a.pending_co;
+        });
+        if (unlinkedCOAllocs.length > 0) {
+          const codes = unlinkedCOAllocs.map(a => a.cost_code?.code).filter(Boolean).join(', ');
+          return res.status(400).json({
+            error: true,
+            code: 'UNLINKED_CO_COST_CODES',
+            message: `Cannot approve invoice with unlinked CO cost codes: ${codes || 'unknown'}. Please link to a Change Order or mark as Pending CO.`
+          });
+        }
+      }
+
       updateData.approved_at = new Date().toISOString();
       updateData.approved_by = performedBy;
 
@@ -9840,7 +9937,8 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
           job_id: a.job_id || null,
           po_id: a.po_id || null,
           po_line_item_id: a.po_line_item_id || null,
-          change_order_id: a.change_order_id || null
+          change_order_id: a.change_order_id || null,
+          pending_co: a.pending_co || false
         }));
         await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
       }

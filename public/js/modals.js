@@ -3,7 +3,7 @@
  * Handles invoice edit modal, job selection modal, and other UI dialogs
  * LAST UPDATED: 2026-01-15 - Only use billed_amount for in_draw status
  */
-console.log('[MODALS] Script loaded - version 2026-01-15d - BILLED AMOUNT FIX');
+console.log('[MODALS] Script loaded - version 2026-01-15f - DUPLICATE OVERRIDE');
 
 const Modals = {
   // Current state
@@ -17,6 +17,38 @@ const Modals = {
   isDirty: false,
   isEditMode: false,  // Start in view mode, click Edit to enable editing
   activeLinkPicker: null, // Currently open link picker popover index
+  _savingInProgress: false, // Prevent double-clicks during save
+
+  /**
+   * Set footer buttons to loading/disabled state
+   * @param {boolean} loading - Whether buttons should be disabled
+   * @param {string} loadingText - Optional text for primary button during loading
+   */
+  setFooterLoading(loading, loadingText = 'Saving...') {
+    this._savingInProgress = loading;
+    const footer = document.querySelector('.invoice-modal .modal-footer-right');
+    if (!footer) return;
+
+    const buttons = footer.querySelectorAll('button');
+    buttons.forEach(btn => {
+      btn.disabled = loading;
+      if (loading) {
+        btn.classList.add('btn-loading');
+        // Store original text and show loading text for primary/success buttons
+        if (btn.classList.contains('btn-primary') || btn.classList.contains('btn-success')) {
+          btn.dataset.originalText = btn.textContent;
+          btn.textContent = loadingText;
+        }
+      } else {
+        btn.classList.remove('btn-loading');
+        // Restore original text
+        if (btn.dataset.originalText) {
+          btn.textContent = btn.dataset.originalText;
+          delete btn.dataset.originalText;
+        }
+      }
+    });
+  },
 
   /**
    * Initialize modal system
@@ -724,77 +756,50 @@ const Modals = {
   getLinkDisplay(alloc) {
     const isCOCostCode = this.isCOCostCode(alloc.cost_code || alloc.cost_code_id);
 
-    // Get PO info if linked
-    let poInfo = null;
-    if (alloc.po_id) {
-      const po = (this.cachedPurchaseOrders || []).find(p => p.id === alloc.po_id);
-      if (po) {
-        poInfo = {
-          number: po.po_number,
-          remaining: parseFloat(po.remaining || 0)
-        };
-      }
-    }
+    // SIMPLIFIED: Cost code type determines what to show
+    // CO cost codes -> show CO link status
+    // Base cost codes -> show PO link status
 
-    // Get CO info if linked
-    let coInfo = null;
-    if (alloc.change_order_id) {
-      const co = (this.cachedChangeOrders || []).find(c => c.id === alloc.change_order_id);
-      if (co) {
-        coInfo = {
-          number: `CO-${String(co.change_order_number).padStart(3, '0')}`,
-          remaining: parseFloat(co.remaining || 0)
-        };
-      }
-    }
-
-    // Both PO and CO linked (dual link)
-    if (poInfo && coInfo) {
-      return {
-        type: 'dual',
-        text: `${poInfo.number} → ${coInfo.number}`,
-        poNumber: poInfo.number,
-        coNumber: coInfo.number
-      };
-    }
-
-    // Only PO linked
-    if (poInfo) {
-      // If CO cost code but no CO linked, show warning
-      if (isCOCostCode) {
-        return {
-          type: 'po-needs-co',
-          text: `${poInfo.number} (Needs CO)`,
-          poNumber: poInfo.number
-        };
-      }
-      return {
-        type: 'po',
-        text: `${poInfo.number} ($${poInfo.remaining.toLocaleString('en-US', {maximumFractionDigits: 0})} left)`
-      };
-    }
-
-    // Only CO linked
-    if (coInfo) {
-      return {
-        type: 'co',
-        text: `${coInfo.number} ($${coInfo.remaining.toLocaleString('en-US', {maximumFractionDigits: 0})} left)`
-      };
-    }
-
-    // No links - check if CO cost code needs linking
     if (isCOCostCode) {
+      // CO cost code - show CO link status only
+      if (alloc.pending_co) {
+        return {
+          type: 'pending-co',
+          text: 'Pending CO'
+        };
+      }
+      if (alloc.change_order_id) {
+        const co = (this.cachedChangeOrders || []).find(c => c.id === alloc.change_order_id);
+        if (co) {
+          const coNum = `CO-${String(co.change_order_number).padStart(3, '0')}`;
+          const remaining = parseFloat(co.remaining || 0);
+          return {
+            type: 'co',
+            text: `${coNum} ($${remaining.toLocaleString('en-US', {maximumFractionDigits: 0})} left)`
+          };
+        }
+      }
       return {
         type: 'needs-co',
-        text: 'Needs CO Link'
+        text: 'Link to CO'
+      };
+    } else {
+      // Base cost code - show PO link status only
+      if (alloc.po_id) {
+        const po = (this.cachedPurchaseOrders || []).find(p => p.id === alloc.po_id);
+        if (po) {
+          const remaining = parseFloat(po.remaining || 0);
+          return {
+            type: 'po',
+            text: `${po.po_number} ($${remaining.toLocaleString('en-US', {maximumFractionDigits: 0})} left)`
+          };
+        }
+      }
+      return {
+        type: 'base',
+        text: 'No PO'
       };
     }
-
-    // No link - base budget
-    return {
-      type: 'base',
-      text: 'No PO/CO'
-    };
   },
 
   /**
@@ -1696,7 +1701,9 @@ const Modals = {
   },
 
   /**
-   * Show link picker modal for allocation - supports dual PO+CO linking
+   * Show link picker modal - CONTEXT-AWARE based on cost code type
+   * Base cost codes -> PO picker only
+   * CO cost codes -> CO picker only
    */
   showLinkPicker(index, event) {
     event?.stopPropagation();
@@ -1708,83 +1715,74 @@ const Modals = {
     const isCOCostCode = this.isCOCostCode(alloc.cost_code || alloc.cost_code_id);
     this.activeLinkPicker = index;
 
-    // Build modal HTML with separate PO and CO selection
+    // Route to appropriate picker based on cost code type
+    if (isCOCostCode) {
+      this.showCOLinkPicker(index, alloc);
+    } else {
+      this.showPOLinkPicker(index, alloc);
+    }
+  },
+
+  /**
+   * Show PO link picker for base cost codes
+   */
+  showPOLinkPicker(index, alloc) {
     let html = `
       <div id="link-picker-modal" class="link-picker-overlay">
         <div class="link-picker-backdrop" onclick="window.Modals.closeLinkPicker()"></div>
         <div class="link-picker-dialog">
           <div class="link-picker-header">
-            <h2>Link Funding Source</h2>
-            <p class="link-picker-subtitle">Select a Purchase Order and/or Change Order for this allocation${isCOCostCode ? ' <span class="co-code-hint">(CO cost code detected)</span>' : ''}</p>
+            <h2>Link to Purchase Order</h2>
+            <p class="link-picker-subtitle">Select a PO for this allocation</p>
             <button class="modal-close" onclick="window.Modals.closeLinkPicker()">&times;</button>
           </div>
           <div class="link-picker-body">
+            <div class="link-section">
+              <div class="link-cards">
     `;
-
-    // Purchase Orders section - separate radio group
-    html += '<div class="link-section">';
-    html += '<h3 class="link-section-title"><span class="section-icon po-icon">PO</span> Purchase Order</h3>';
-    html += '<div class="link-cards">';
 
     // "No PO" option
     const noPOSelected = !alloc.po_id;
     html += `
       <label class="link-card link-card-none ${noPOSelected ? 'selected' : ''}">
-        <input type="radio" name="link-po" value="none" ${noPOSelected ? 'checked' : ''}>
+        <input type="radio" name="link-selection" value="none" ${noPOSelected ? 'checked' : ''}>
         <div class="none-card-content">
           <span class="none-icon">—</span>
-          <span class="none-text">No PO</span>
+          <span class="none-text">No Purchase Order</span>
         </div>
       </label>
     `;
 
+    // PO cards
     if (this.cachedPurchaseOrders?.length > 0) {
       for (const po of this.cachedPurchaseOrders) {
         const total = parseFloat(po.total_amount || 0);
         const remaining = parseFloat(po.remaining || 0);
-        const used = total - remaining;
-        const pctUsed = total > 0 ? Math.round((used / total) * 100) : 0;
+        const pctUsed = total > 0 ? Math.round(((total - remaining) / total) * 100) : 0;
         const isSelected = alloc.po_id === po.id;
         const vendorName = po.vendor?.name || 'Unknown Vendor';
-        const description = po.description || '';
-
-        // Get cost codes from line items
-        const costCodes = (po.line_items || [])
-          .map(li => li.cost_code?.code)
-          .filter(Boolean)
-          .filter((v, i, a) => a.indexOf(v) === i) // unique
-          .slice(0, 3); // max 3
-        const costCodeText = costCodes.length > 0
-          ? costCodes.join(', ') + (po.line_items?.length > 3 ? '...' : '')
-          : '';
-
-        // Format date
-        const createdDate = po.created_at ? new Date(po.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 
         html += `
           <label class="link-card ${isSelected ? 'selected' : ''}">
-            <input type="radio" name="link-po" value="${po.id}" ${isSelected ? 'checked' : ''}>
+            <input type="radio" name="link-selection" value="po:${po.id}" ${isSelected ? 'checked' : ''}>
             <div class="link-card-header">
               <span class="link-card-number">${po.po_number}</span>
               <span class="link-card-status ${po.status}">${po.status}</span>
             </div>
             <div class="link-card-vendor">${this.escapeHtml(vendorName)}</div>
-            ${description ? `<div class="link-card-desc">${this.escapeHtml(description)}</div>` : ''}
-            ${costCodeText ? `<div class="link-card-costcodes"><span class="cc-label">Cost Codes:</span> ${costCodeText}</div>` : ''}
             <div class="link-card-amounts">
               <div class="link-card-amount-row">
                 <span class="label">Total:</span>
-                <span class="value">$${total.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span class="value">$${total.toLocaleString('en-US', {minimumFractionDigits: 0})}</span>
               </div>
               <div class="link-card-amount-row remaining">
                 <span class="label">Remaining:</span>
-                <span class="value highlight">$${remaining.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span class="value highlight">$${remaining.toLocaleString('en-US', {minimumFractionDigits: 0})}</span>
               </div>
             </div>
             <div class="link-card-progress">
               <div class="progress-bar" style="width: ${pctUsed}%"></div>
             </div>
-            ${createdDate ? `<div class="link-card-date">Created ${createdDate}</div>` : ''}
           </label>
         `;
       }
@@ -1793,7 +1791,7 @@ const Modals = {
     // Create New PO option
     html += `
       <label class="link-card create-card">
-        <input type="radio" name="link-po" value="create-po">
+        <input type="radio" name="link-selection" value="create-po">
         <div class="create-card-content">
           <span class="create-icon">+</span>
           <span class="create-text">Create New PO</span>
@@ -1801,39 +1799,52 @@ const Modals = {
       </label>
     `;
 
-    html += '</div></div>'; // link-cards, link-section
-
-    // Change Orders section - separate radio group
-    html += '<div class="link-section">';
-    html += `<h3 class="link-section-title"><span class="section-icon co-icon">CO</span> Change Order ${isCOCostCode ? '<span class="required-hint">(Required for CO cost codes)</span>' : ''}</h3>`;
-    html += '<div class="link-cards">';
-
-    // "No CO" option
-    const noCOSelected = !alloc.change_order_id;
     html += `
-      <label class="link-card link-card-none ${noCOSelected ? 'selected' : ''} ${isCOCostCode ? 'not-recommended' : ''}">
-        <input type="radio" name="link-co" value="none" ${noCOSelected ? 'checked' : ''}>
-        <div class="none-card-content">
-          <span class="none-icon">—</span>
-          <span class="none-text">No CO</span>
-          ${isCOCostCode ? '<span class="none-warning">Not recommended for CO cost codes</span>' : ''}
+              </div>
+            </div>
+          </div>
+          <div class="link-picker-footer">
+            <button type="button" class="btn btn-secondary" onclick="window.Modals.closeLinkPicker()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="window.Modals.applyLinkSelection(${index})">Link Selected</button>
+          </div>
         </div>
-      </label>
+      </div>
     `;
 
+    this.renderLinkPickerModal(html, index);
+  },
+
+  /**
+   * Show CO link picker for CO cost codes
+   */
+  showCOLinkPicker(index, alloc) {
+    let html = `
+      <div id="link-picker-modal" class="link-picker-overlay">
+        <div class="link-picker-backdrop" onclick="window.Modals.closeLinkPicker()"></div>
+        <div class="link-picker-dialog">
+          <div class="link-picker-header">
+            <h2>Link to Change Order</h2>
+            <p class="link-picker-subtitle">CO cost code requires a Change Order link</p>
+            <button class="modal-close" onclick="window.Modals.closeLinkPicker()">&times;</button>
+          </div>
+          <div class="link-picker-body">
+            <div class="link-section">
+              <div class="link-cards">
+    `;
+
+    // CO cards
     if (this.cachedChangeOrders?.length > 0) {
       for (const co of this.cachedChangeOrders) {
         const total = parseFloat(co.amount || co.total_amount || 0);
         const remaining = parseFloat(co.remaining || 0);
-        const used = total - remaining;
-        const pctUsed = total > 0 ? Math.round((used / total) * 100) : 0;
+        const pctUsed = total > 0 ? Math.round(((total - remaining) / total) * 100) : 0;
         const isSelected = alloc.change_order_id === co.id;
         const coNumber = `CO-${String(co.change_order_number).padStart(3, '0')}`;
         const statusLabel = co.status === 'pending_approval' ? 'pending' : (co.status || 'approved');
 
         html += `
           <label class="link-card co-card ${isSelected ? 'selected' : ''}">
-            <input type="radio" name="link-co" value="${co.id}" ${isSelected ? 'checked' : ''}>
+            <input type="radio" name="link-selection" value="co:${co.id}" ${isSelected ? 'checked' : ''}>
             <div class="link-card-header">
               <span class="link-card-number">${coNumber}</span>
               <span class="link-card-status ${statusLabel}">${statusLabel}</span>
@@ -1842,11 +1853,11 @@ const Modals = {
             <div class="link-card-amounts">
               <div class="link-card-amount-row">
                 <span class="label">Total:</span>
-                <span class="value">$${total.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span class="value">$${total.toLocaleString('en-US', {minimumFractionDigits: 0})}</span>
               </div>
               <div class="link-card-amount-row remaining">
                 <span class="label">Remaining:</span>
-                <span class="value highlight">$${remaining.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span class="value highlight">$${remaining.toLocaleString('en-US', {minimumFractionDigits: 0})}</span>
               </div>
             </div>
             <div class="link-card-progress co-progress">
@@ -1857,10 +1868,23 @@ const Modals = {
       }
     }
 
+    // "Pending CO" option for T&M work
+    const isPending = alloc.pending_co;
+    html += `
+      <label class="link-card link-card-pending ${isPending ? 'selected' : ''}">
+        <input type="radio" name="link-selection" value="pending-co" ${isPending ? 'checked' : ''}>
+        <div class="pending-card-content">
+          <span class="pending-icon">⏳</span>
+          <span class="pending-text">Pending - Create CO Later</span>
+          <span class="pending-warning">Invoice cannot be approved until CO is linked</span>
+        </div>
+      </label>
+    `;
+
     // Create New CO option
     html += `
       <label class="link-card create-card co-create">
-        <input type="radio" name="link-co" value="create-co">
+        <input type="radio" name="link-selection" value="create-co">
         <div class="create-card-content">
           <span class="create-icon">+</span>
           <span class="create-text">Create New Change Order</span>
@@ -1868,9 +1892,9 @@ const Modals = {
       </label>
     `;
 
-    html += '</div></div>'; // link-cards, link-section
-
     html += `
+              </div>
+            </div>
           </div>
           <div class="link-picker-footer">
             <button type="button" class="btn btn-secondary" onclick="window.Modals.closeLinkPicker()">Cancel</button>
@@ -1880,110 +1904,64 @@ const Modals = {
       </div>
     `;
 
-    // Add modal to body
+    this.renderLinkPickerModal(html, index);
+  },
+
+  /**
+   * Render link picker modal and add click handlers
+   */
+  renderLinkPickerModal(html, index) {
     const modalContainer = document.createElement('div');
     modalContainer.id = 'link-picker-modal-container';
     modalContainer.innerHTML = html;
     document.body.appendChild(modalContainer);
 
-    // Add click handlers to cards for better reliability
+    // Add click handlers to cards
     modalContainer.querySelectorAll('.link-card').forEach(card => {
       card.addEventListener('click', (e) => {
         const radio = card.querySelector('input[type="radio"]');
         if (radio) {
           radio.checked = true;
-          // Update selected state visually
-          const name = radio.name;
-          modalContainer.querySelectorAll(`input[name="${name}"]`).forEach(r => {
-            r.closest('.link-card')?.classList.remove('selected');
-          });
+          modalContainer.querySelectorAll('.link-card').forEach(c => c.classList.remove('selected'));
           card.classList.add('selected');
-
-          // Auto-suggest CO from PO when a PO is selected
-          if (name === 'link-po' && radio.value && radio.value !== 'none' && radio.value !== 'create-po') {
-            this.autoSuggestCOFromPO(index, radio.value, modalContainer);
-          }
         }
       });
     });
   },
 
   /**
-   * Auto-suggest CO based on selected PO's line item change_order_id
-   * When a PO is selected, check if a line item matches the allocation's cost code
-   * and has a change_order_id - if so, auto-select that CO
-   */
-  autoSuggestCOFromPO(allocIndex, poId, modalContainer) {
-    const alloc = this.currentAllocations[allocIndex];
-    const allocCostCodeId = alloc.cost_code?.id || alloc.cost_code_id;
-
-    if (!allocCostCodeId) return;
-
-    // Find the selected PO
-    const po = this.cachedPurchaseOrders?.find(p => p.id === poId);
-    if (!po?.line_items) return;
-
-    // Find a line item with matching cost code that has a change_order_id
-    const matchingLineItem = po.line_items.find(li => {
-      const liCostCodeId = li.cost_code?.id || li.cost_code_id;
-      return liCostCodeId === allocCostCodeId && li.change_order_id;
-    });
-
-    if (!matchingLineItem?.change_order_id) return;
-
-    // Check if there's a matching CO in cached COs
-    const matchingCO = this.cachedChangeOrders?.find(co => co.id === matchingLineItem.change_order_id);
-    if (!matchingCO) return;
-
-    // Auto-select the CO
-    const coRadio = modalContainer.querySelector(`input[name="link-co"][value="${matchingCO.id}"]`);
-    if (coRadio) {
-      coRadio.checked = true;
-      // Update selected state visually
-      modalContainer.querySelectorAll('input[name="link-co"]').forEach(r => {
-        r.closest('.link-card')?.classList.remove('selected');
-      });
-      coRadio.closest('.link-card')?.classList.add('selected');
-
-      // Show toast notification
-      const coNumber = `CO-${String(matchingCO.change_order_number).padStart(3, '0')}`;
-      window.toasts?.info(`Auto-linked to ${coNumber} from PO line item`, { duration: 3000 });
-    }
-  },
-
-  /**
-   * Apply the selected link options (supports dual PO+CO selection)
+   * Apply the selected link - SIMPLIFIED for mutual exclusivity
    */
   applyLinkSelection(index) {
-    const selectedPO = document.querySelector('input[name="link-po"]:checked');
-    const selectedCO = document.querySelector('input[name="link-co"]:checked');
-
-    const poValue = selectedPO?.value || 'none';
-    const coValue = selectedCO?.value || 'none';
+    const selected = document.querySelector('input[name="link-selection"]:checked');
+    const value = selected?.value || 'none';
     const alloc = this.currentAllocations[index];
 
-    // Handle create actions first (these need special modal flow)
-    if (poValue === 'create-po') {
-      // Store the CO selection to apply after PO creation
-      this._pendingCOSelection = coValue !== 'none' && coValue !== 'create-co' ? coValue : null;
+    // Clear all link fields first (mutual exclusivity)
+    alloc.po_id = null;
+    alloc.change_order_id = null;
+    alloc.pending_co = false;
+    alloc.po_line_item_id = null;
+    alloc._aiLinked = false;
+
+    // Handle different selection types
+    if (value === 'none') {
+      // No link - leave all null
+    } else if (value.startsWith('po:')) {
+      alloc.po_id = value.substring(3);
+    } else if (value.startsWith('co:')) {
+      alloc.change_order_id = value.substring(3);
+    } else if (value === 'pending-co') {
+      alloc.pending_co = true;
+    } else if (value === 'create-po') {
       this.closeLinkPicker();
       this.showCreatePOModal(index);
       return;
-    }
-
-    if (coValue === 'create-co') {
-      // Store the PO selection to apply after CO creation
-      this._pendingPOSelection = poValue !== 'none' ? poValue : null;
+    } else if (value === 'create-co') {
       this.closeLinkPicker();
       this.showCreateCOModal(index);
       return;
     }
-
-    // Apply selections
-    alloc.po_id = (poValue !== 'none') ? poValue : null;
-    alloc.change_order_id = (coValue !== 'none') ? coValue : null;
-    alloc.po_line_item_id = null;
-    alloc._aiLinked = false; // User manually changed, no longer AI-linked
 
     this.closeLinkPicker();
     this.refreshAllocationsUI();
@@ -2015,29 +1993,76 @@ const Modals = {
       return;
     }
 
-    // Create modal HTML
+    // Create modal HTML - Full CO form matching Change Orders tab
     const modalHtml = `
       <div id="create-co-modal" class="modal" style="display: flex; opacity: 1; z-index: 10002;">
-        <div class="modal-content" style="max-width: 500px; opacity: 1;">
+        <div class="modal-content" style="max-width: 600px; opacity: 1;">
           <div class="modal-header">
             <h2>Create Change Order</h2>
             <button class="modal-close" onclick="window.Modals.closeCreateCOModal()">&times;</button>
           </div>
           <div class="modal-body">
-            <div class="form-group">
-              <label>Title <span class="required">*</span></label>
-              <input type="text" id="co-title" class="field-input" placeholder="e.g., Kitchen upgrade">
-            </div>
-            <div class="form-group">
-              <label>Amount</label>
-              <div class="amount-input-group">
-                <span class="amount-prefix">$</span>
-                <input type="text" id="co-amount" class="field-input" value="${this.formatAmountInput(amount)}">
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+              <div class="form-group">
+                <label>Title <span class="required">*</span></label>
+                <input type="text" id="co-title" class="field-input" placeholder="e.g., Kitchen cabinet upgrade">
+              </div>
+              <div class="form-group">
+                <label>Days Added <span class="required">*</span></label>
+                <input type="number" id="co-days" class="field-input" value="0" placeholder="0">
               </div>
             </div>
+
             <div class="form-group">
               <label>Description</label>
-              <textarea id="co-description" class="field-input" rows="3" placeholder="Optional description..."></textarea>
+              <textarea id="co-description" class="field-input" rows="2" placeholder="Describe the change..."></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Reason</label>
+              <select id="co-reason" class="field-input" onchange="window.Modals.updateCOReasonHint()">
+                <option value="owner_request">Owner Request</option>
+                <option value="design_change">Design Change</option>
+                <option value="scope_change" selected>Scope Change</option>
+                <option value="unforeseen_conditions">Unforeseen Conditions</option>
+                <option value="other">Other</option>
+              </select>
+              <div id="co-reason-hint" class="hint-text" style="margin-top: 4px; font-size: 12px; color: var(--text-secondary);">
+                Scope change - standard markup applies
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 16px;">
+              <div class="form-group">
+                <label>Base Amount <span class="required">*</span></label>
+                <div class="amount-input-group">
+                  <span class="amount-prefix">$</span>
+                  <input type="text" id="co-base-amount" class="field-input" value="${this.formatAmountInput(amount)}" oninput="window.Modals.calculateCOTotal()">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>GC Fee %</label>
+                <div class="amount-input-group">
+                  <input type="number" id="co-gc-percent" class="field-input" value="20" min="0" max="100" oninput="window.Modals.calculateCOTotal()">
+                  <span class="amount-suffix">%</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Total Amount</label>
+                <div class="amount-input-group">
+                  <span class="amount-prefix">$</span>
+                  <input type="text" id="co-total-amount" class="field-input" value="${this.formatAmountInput(amount * 1.2)}" readonly style="background: var(--bg-card-elevated); font-weight: 600;">
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 16px;">
+              <label>Status</label>
+              <select id="co-status" class="field-input">
+                <option value="approved" selected>Approved (ready to bill)</option>
+                <option value="pending_approval">Pending Approval</option>
+                <option value="draft">Draft</option>
+              </select>
             </div>
           </div>
           <div class="modal-footer">
@@ -2054,6 +2079,37 @@ const Modals = {
     wrapper.id = 'create-co-modal-wrapper';
     wrapper.innerHTML = modalHtml;
     container.appendChild(wrapper);
+
+    // Focus on title field
+    setTimeout(() => document.getElementById('co-title')?.focus(), 100);
+  },
+
+  /**
+   * Calculate CO total from base amount + GC fee
+   */
+  calculateCOTotal() {
+    const baseAmount = window.Validation?.parseCurrency(document.getElementById('co-base-amount')?.value) || 0;
+    const gcPercent = parseFloat(document.getElementById('co-gc-percent')?.value) || 0;
+    const total = baseAmount * (1 + gcPercent / 100);
+    document.getElementById('co-total-amount').value = this.formatAmountInput(total);
+  },
+
+  /**
+   * Update the reason hint text based on selection
+   */
+  updateCOReasonHint() {
+    const reason = document.getElementById('co-reason')?.value;
+    const hintEl = document.getElementById('co-reason-hint');
+    if (!hintEl) return;
+
+    const hints = {
+      'owner_request': 'Owner-initiated change - higher markup justified due to workflow disruption',
+      'design_change': 'Design change - standard markup applies',
+      'scope_change': 'Scope change - standard markup applies',
+      'unforeseen_conditions': 'Unforeseen conditions - may justify additional contingency',
+      'other': 'Other reason - document thoroughly'
+    };
+    hintEl.textContent = hints[reason] || '';
   },
 
   /**
@@ -2071,15 +2127,20 @@ const Modals = {
    */
   async submitCreateCO(allocationIndex) {
     const title = document.getElementById('co-title')?.value?.trim();
-    const amountStr = document.getElementById('co-amount')?.value;
     const description = document.getElementById('co-description')?.value?.trim();
+    const reason = document.getElementById('co-reason')?.value || 'scope_change';
+    const status = document.getElementById('co-status')?.value || 'approved';
+    const daysAdded = parseInt(document.getElementById('co-days')?.value) || 0;
+    const baseAmount = window.Validation?.parseCurrency(document.getElementById('co-base-amount')?.value) || 0;
+    const gcPercent = parseFloat(document.getElementById('co-gc-percent')?.value) || 0;
+    const gcFee = baseAmount * (gcPercent / 100);
+    const totalAmount = baseAmount + gcFee;
 
     if (!title) {
       window.toasts?.error('Please enter a title for the Change Order');
       return;
     }
 
-    const amount = window.Validation?.parseCurrency(amountStr) || 0;
     const jobId = this.currentInvoice?.job_id;
 
     try {
@@ -2089,9 +2150,14 @@ const Modals = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          amount,
           description,
-          status: 'approved' // Auto-approve since it's being created for an invoice
+          reason,
+          status,
+          days_added: daysAdded,
+          base_amount: baseAmount,
+          gc_fee_percent: gcPercent,
+          gc_fee_amount: gcFee,
+          amount: totalAmount
         })
       });
 
@@ -2105,19 +2171,13 @@ const Modals = {
       // Add to cached COs
       this.cachedChangeOrders.push({
         ...newCO,
-        remaining: amount
+        remaining: totalAmount
       });
 
       // Link allocation to new CO
       const alloc = this.currentAllocations[allocationIndex];
       alloc.change_order_id = newCO.id;
-      alloc.po_line_item_id = null;
-
-      // Apply pending PO selection from dual picker (if any)
-      if (this._pendingPOSelection) {
-        alloc.po_id = this._pendingPOSelection;
-        this._pendingPOSelection = null;
-      }
+      alloc.pending_co = false;
 
       this.closeCreateCOModal();
       this.refreshAllocationsUI();
@@ -2589,8 +2649,10 @@ const Modals = {
 
   /**
    * Save invoice changes
+   * @param {boolean} skipValidation - Skip client-side validation
+   * @param {Object} overrides - Override flags like { overrideDuplicate: true }
    */
-  async saveInvoice(skipValidation = false) {
+  async saveInvoice(skipValidation = false, overrides = {}) {
     const form = document.getElementById('invoice-edit-form');
     if (!form) return;
 
@@ -2658,8 +2720,12 @@ const Modals = {
       return alloc;
     });
 
+    // Prevent double-clicks
+    if (this._savingInProgress) return;
+
     // Save to server
     try {
+      this.setFooterLoading(true, 'Saving...');
       const loadingToast = window.toasts?.showLoading('Saving invoice...');
 
       const response = await fetch(`/api/invoices/${this.currentInvoice.id}`, {
@@ -2667,6 +2733,7 @@ const Modals = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          ...overrides,
           allocations: allocationsToSave,
           version: this.currentInvoice.version,
           performed_by: window.currentUser || 'unknown'
@@ -2675,12 +2742,35 @@ const Modals = {
 
       window.toasts?.dismiss(loadingToast);
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to save');
+      const result = await response.json();
+
+      // Handle duplicate invoice soft-block
+      if (!response.ok && result.error === 'DUPLICATE_INVOICE') {
+        this.setFooterLoading(false); // Reset buttons before showing dialog
+        const existingStatus = result.existingStatus || 'unknown';
+        const existingAmount = window.Validation?.formatCurrency(result.existingAmount) || 'unknown';
+        this.showConfirmDialog({
+          title: 'Duplicate Invoice Found',
+          message: `An invoice with this number already exists.\n\n` +
+            `Existing Invoice Status: ${existingStatus}\n` +
+            `Existing Invoice Amount: ${existingAmount}\n\n` +
+            `Are you sure this is a different invoice?`,
+          confirmText: 'Save Anyway',
+          cancelText: 'Cancel',
+          type: 'warning',
+          onConfirm: async () => {
+            await this.saveInvoice(skipValidation, { overrideDuplicate: true });
+          }
+        });
+        return;
       }
 
-      const result = await response.json();
+      if (!response.ok) {
+        // Throw error with full API response for smart error handling
+        const err = new Error(result.message || 'Failed to save');
+        err.apiError = result;
+        throw err;
+      }
 
       // Show undo toast if available
       if (result.undo) {
@@ -2705,7 +2795,14 @@ const Modals = {
       this.closeActiveModal();
     } catch (err) {
       console.error('Save failed:', err);
-      window.toasts?.error('Save failed', { details: err.message });
+      // Use smart error handler if API error available, fallback to generic message
+      if (window.toasts?.showApiError && err.apiError) {
+        window.toasts.showApiError(err.apiError);
+      } else {
+        window.toasts?.error('Save failed', { details: err.message });
+      }
+    } finally {
+      this.setFooterLoading(false);
     }
   },
 
@@ -2788,63 +2885,120 @@ const Modals = {
       return cc ? `${cc.code} - ${cc.name}` : 'Unknown';
     }).join(', ');
 
-    // Build CO options list
-    const coOptions = (this.cachedChangeOrders || []).map(co => {
+    // Build CO options list with cards like the link picker
+    const coCards = (this.cachedChangeOrders || []).map(co => {
       const coNum = `CO-${String(co.change_order_number).padStart(3, '0')}`;
       const remaining = parseFloat(co.remaining || co.amount || 0);
-      return `<option value="${co.id}">${coNum}: ${co.title} ($${remaining.toLocaleString()} remaining)</option>`;
+      const status = co.status || 'draft';
+      const statusClass = status === 'approved' ? 'approved' : status === 'pending_approval' ? 'pending' : 'draft';
+      return `
+        <label class="link-card ${statusClass}">
+          <input type="radio" name="coLinkOption" value="existing:${co.id}">
+          <div class="link-card-content">
+            <span class="link-card-title">${coNum}: ${this.escapeHtml(co.title || 'Untitled')}</span>
+            <span class="link-card-subtitle">$${remaining.toLocaleString()} remaining</span>
+          </div>
+        </label>
+      `;
     }).join('');
 
     const hasExistingCOs = (this.cachedChangeOrders || []).length > 0;
+    const defaultAmount = this.formatAmountInput(totalUnlinked);
+    const defaultTotal = this.formatAmountInput(totalUnlinked * 1.2);
 
     const modal = `
-      <div class="confirm-modal co-link-prompt-modal" style="max-width: 600px;">
+      <div class="confirm-modal co-link-prompt-modal" style="max-width: 650px;">
         <div class="modal-header">
-          <h2>Change Order Required</h2>
+          <h2>Link to Change Order</h2>
           <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
         </div>
 
-        <div class="modal-body">
+        <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
           <div class="confirm-message">
-            <p>This invoice has <strong>${window.Validation?.formatCurrency(totalUnlinked)}</strong> allocated to CO cost codes:</p>
-            <div style="background: var(--bg-card-elevated); padding: 12px; border-radius: 6px; margin: 12px 0;">
-              <code style="color: var(--accent-orange);">${costCodes}</code>
-            </div>
-            <p>To properly track in draws, this must be linked to a Change Order.</p>
-
-            <div class="form-group" style="margin-top: 16px;">
-              <label><input type="radio" name="coLinkOption" value="existing" ${hasExistingCOs ? 'checked' : ''} onchange="window.Modals.toggleCOLinkOption()"> Link to Existing Change Order</label>
+            <p style="margin-bottom: 8px;">This invoice has <strong>${window.Validation?.formatCurrency(totalUnlinked)}</strong> allocated to CO cost codes:</p>
+            <div style="background: var(--bg-card-elevated); padding: 8px 12px; border-radius: 6px; margin-bottom: 16px;">
+              <code style="color: var(--accent-orange); font-size: 13px;">${costCodes}</code>
             </div>
 
-            <div id="existingCOSection" style="margin-left: 24px; ${hasExistingCOs ? '' : 'display: none;'}">
-              <select id="coLinkSelect" class="form-control" style="margin-top: 8px;">
-                <option value="">Select a Change Order...</option>
-                ${coOptions}
-              </select>
-            </div>
-
-            <div class="form-group" style="margin-top: 12px;">
-              <label><input type="radio" name="coLinkOption" value="create" ${!hasExistingCOs ? 'checked' : ''} onchange="window.Modals.toggleCOLinkOption()"> Create New Change Order</label>
-            </div>
-
-            <div id="newCOSection" style="margin-left: 24px; display: ${!hasExistingCOs ? 'block' : 'none'};">
-              <div class="form-group" style="margin-top: 8px;">
-                <label>Title <span style="color: var(--accent-red);">*</span></label>
-                <input type="text" id="newCOTitle" class="form-control" placeholder="e.g., Kitchen cabinet upgrade">
+            ${hasExistingCOs ? `
+              <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--text-secondary);">Select Existing Change Order</h4>
+              <div class="link-cards-grid" style="display: grid; gap: 8px; margin-bottom: 16px;">
+                ${coCards}
               </div>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div style="text-align: center; margin: 16px 0; color: var(--text-secondary); font-size: 13px;">— or —</div>
+            ` : ''}
+
+            <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--text-secondary);">Create New Change Order</h4>
+            <label class="link-card create-card co-create" style="margin-bottom: 16px;">
+              <input type="radio" name="coLinkOption" value="create" ${!hasExistingCOs ? 'checked' : ''}>
+              <div class="create-card-content">
+                <span class="create-icon">+</span>
+                <span class="create-text">Create New Change Order</span>
+              </div>
+            </label>
+
+            <div id="newCOSection" style="display: ${!hasExistingCOs ? 'block' : 'none'}; background: var(--bg-card-elevated); padding: 16px; border-radius: 8px; margin-top: 8px;">
+              <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
                 <div class="form-group">
-                  <label>CO Amount <span style="color: var(--accent-red);">*</span></label>
-                  <input type="text" id="newCOAmount" class="form-control" value="${window.Validation?.formatCurrency(totalUnlinked)}" placeholder="$0.00">
+                  <label>Title <span class="required">*</span></label>
+                  <input type="text" id="newCOTitle" class="field-input" placeholder="e.g., Kitchen cabinet upgrade">
                 </div>
                 <div class="form-group">
-                  <label>Days Added</label>
-                  <input type="number" id="newCODays" class="form-control" value="0" min="0">
+                  <label>Days Added <span class="required">*</span></label>
+                  <input type="number" id="newCODays" class="field-input" value="0" placeholder="0">
                 </div>
               </div>
+
               <div class="form-group">
                 <label>Description</label>
-                <textarea id="newCODescription" class="form-control" rows="2" placeholder="Optional description..."></textarea>
+                <textarea id="newCODescription" class="field-input" rows="2" placeholder="Describe the change..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Reason</label>
+                <select id="newCOReason" class="field-input" onchange="window.Modals.updateCOPromptReasonHint()">
+                  <option value="owner_request">Owner Request</option>
+                  <option value="design_change">Design Change</option>
+                  <option value="scope_change" selected>Scope Change</option>
+                  <option value="unforeseen_conditions">Unforeseen Conditions</option>
+                  <option value="other">Other</option>
+                </select>
+                <div id="co-prompt-reason-hint" class="hint-text" style="margin-top: 4px; font-size: 12px; color: var(--text-secondary);">
+                  Scope change - standard markup applies
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 12px;">
+                <div class="form-group">
+                  <label>Base Amount <span class="required">*</span></label>
+                  <div class="amount-input-group">
+                    <span class="amount-prefix">$</span>
+                    <input type="text" id="newCOBaseAmount" class="field-input" value="${defaultAmount}" oninput="window.Modals.calculateCOPromptTotal()">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>GC Fee %</label>
+                  <div class="amount-input-group">
+                    <input type="number" id="newCOGCPercent" class="field-input" value="20" min="0" max="100" oninput="window.Modals.calculateCOPromptTotal()">
+                    <span class="amount-suffix">%</span>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Total Amount</label>
+                  <div class="amount-input-group">
+                    <span class="amount-prefix">$</span>
+                    <input type="text" id="newCOTotalAmount" class="field-input" value="${defaultTotal}" readonly style="background: var(--bg-primary); font-weight: 600;">
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-top: 12px;">
+                <label>Status</label>
+                <select id="newCOStatus" class="field-input">
+                  <option value="approved" selected>Approved (ready to bill)</option>
+                  <option value="pending_approval">Pending Approval</option>
+                  <option value="draft">Draft</option>
+                </select>
               </div>
             </div>
           </div>
@@ -2853,7 +3007,7 @@ const Modals = {
         <div class="modal-footer">
           <button class="btn btn-secondary" onclick="window.Modals.closeConfirmDialog()">Cancel</button>
           <button class="btn btn-primary" onclick="window.Modals.applyCOLinkAndApprove(${isPartial}, ${totalAllocated}, ${invoiceAmount})">
-            Continue to Approve
+            Link & Approve
           </button>
         </div>
       </div>
@@ -2871,6 +3025,46 @@ const Modals = {
 
     // Stop propagation on modal click
     container.querySelector('.confirm-modal').addEventListener('click', e => e.stopPropagation());
+
+    // Add event listener for radio buttons to show/hide new CO section
+    container.querySelectorAll('input[name="coLinkOption"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        const newSection = document.getElementById('newCOSection');
+        if (radio.value === 'create') {
+          newSection.style.display = 'block';
+        } else {
+          newSection.style.display = 'none';
+        }
+      });
+    });
+  },
+
+  /**
+   * Calculate CO total in the approval prompt
+   */
+  calculateCOPromptTotal() {
+    const baseAmount = window.Validation?.parseCurrency(document.getElementById('newCOBaseAmount')?.value) || 0;
+    const gcPercent = parseFloat(document.getElementById('newCOGCPercent')?.value) || 0;
+    const total = baseAmount * (1 + gcPercent / 100);
+    document.getElementById('newCOTotalAmount').value = this.formatAmountInput(total);
+  },
+
+  /**
+   * Update the reason hint in the approval prompt
+   */
+  updateCOPromptReasonHint() {
+    const reason = document.getElementById('newCOReason')?.value;
+    const hintEl = document.getElementById('co-prompt-reason-hint');
+    if (!hintEl) return;
+
+    const hints = {
+      'owner_request': 'Owner-initiated change - higher markup justified',
+      'design_change': 'Design change - standard markup applies',
+      'scope_change': 'Scope change - standard markup applies',
+      'unforeseen_conditions': 'Unforeseen conditions - may justify additional contingency',
+      'other': 'Other reason - document thoroughly'
+    };
+    hintEl.textContent = hints[reason] || '';
   },
 
   /**
@@ -2905,23 +3099,23 @@ const Modals = {
     const continueBtn = document.querySelector('.co-link-prompt-modal .btn-primary');
     if (continueBtn) {
       continueBtn.disabled = true;
-      continueBtn.textContent = 'Creating...';
+      continueBtn.textContent = 'Linking...';
     }
 
     const resetButton = () => {
       this._coLinkInProgress = false;
       if (continueBtn) {
         continueBtn.disabled = false;
-        continueBtn.textContent = 'Continue to Approve';
+        continueBtn.textContent = 'Link & Approve';
       }
     };
 
     try {
       const option = document.querySelector('input[name="coLinkOption"]:checked')?.value;
 
-      if (option === 'existing') {
-        const select = document.getElementById('coLinkSelect');
-        const selectedCO = select?.value;
+      // Check if user selected an existing CO (format: "existing:uuid")
+      if (option && option.startsWith('existing:')) {
+        const selectedCO = option.replace('existing:', '');
 
         if (!selectedCO) {
           window.toasts?.error('Please select a Change Order');
@@ -2939,21 +3133,27 @@ const Modals = {
         this.markDirty();
         this.closeConfirmDialog();
 
-      } else {
-        // Create new CO
+      } else if (option === 'create') {
+        // Create new CO with full form fields
         const title = document.getElementById('newCOTitle')?.value?.trim();
-        const amountStr = document.getElementById('newCOAmount')?.value;
-        const amount = window.Validation?.parseCurrency(amountStr) || 0;
-        const days = parseInt(document.getElementById('newCODays')?.value) || 0;
         const description = document.getElementById('newCODescription')?.value?.trim();
+        const reason = document.getElementById('newCOReason')?.value || 'scope_change';
+        const status = document.getElementById('newCOStatus')?.value || 'approved';
+        const days = parseInt(document.getElementById('newCODays')?.value) || 0;
+
+        // Get amounts from new fields
+        const baseAmount = window.Validation?.parseCurrency(document.getElementById('newCOBaseAmount')?.value) || 0;
+        const gcPercent = parseFloat(document.getElementById('newCOGCPercent')?.value) || 0;
+        const gcFee = baseAmount * (gcPercent / 100);
+        const totalAmount = baseAmount + gcFee;
 
         if (!title) {
           window.toasts?.error('Please enter a title for the Change Order');
           resetButton();
           return;
         }
-        if (amount <= 0) {
-          window.toasts?.error('Please enter a valid CO amount');
+        if (baseAmount <= 0) {
+          window.toasts?.error('Please enter a valid base amount');
           resetButton();
           return;
         }
@@ -2971,13 +3171,16 @@ const Modals = {
           body: JSON.stringify({
             title,
             description: description || title,
-            amount,
+            reason,
+            status,
             days_added: days,
-            reason: 'scope_change',
-            status: 'approved',
-            internal_approved_by: 'Auto-approved on invoice',
-            client_approval_bypassed: true,
-            bypass_reason: 'Created during invoice approval'
+            base_amount: baseAmount,
+            gc_fee_percent: gcPercent,
+            gc_fee_amount: gcFee,
+            amount: totalAmount,
+            internal_approved_by: status === 'approved' ? 'Auto-approved on invoice' : null,
+            client_approval_bypassed: status === 'approved',
+            bypass_reason: status === 'approved' ? 'Created during invoice approval' : null
           })
         });
 
@@ -3004,6 +3207,11 @@ const Modals = {
         }
 
         this.closeConfirmDialog();
+      } else {
+        // No option selected
+        window.toasts?.error('Please select a Change Order or create a new one');
+        resetButton();
+        return;
       }
 
       // Continue with approval flow (only reached if no errors)
@@ -3623,10 +3831,16 @@ const Modals = {
 
   /**
    * Save invoice with status transition
+   * @param {string} newStatus - Target status
+   * @param {string} successMessage - Message to show on success
+   * @param {Object} extraData - Additional data including override flags like overridePoOverage, overrideDuplicate
    */
-  async saveWithStatus(newStatus, successMessage, extraData = {}, retryWithOverride = false) {
+  async saveWithStatus(newStatus, successMessage, extraData = {}) {
     const form = document.getElementById('invoice-edit-form');
     if (!form) return;
+
+    // Prevent double-clicks
+    if (this._savingInProgress) return;
 
     const formData = {
       invoice_number: this.getFormValue('invoice_number'),
@@ -3641,14 +3855,14 @@ const Modals = {
       ...extraData
     };
 
-    // Add override flag if retrying after PO overage confirmation
-    if (retryWithOverride) {
-      formData.overridePoOverage = true;
-    }
-
     this.clearFieldErrors();
 
+    // Determine button text based on action
+    const loadingText = newStatus === 'approved' ? 'Approving...' :
+                        newStatus === 'ready_for_approval' ? 'Submitting...' : 'Saving...';
+
     try {
+      this.setFooterLoading(true, loadingText);
       const loadingToast = window.toasts?.showLoading('Saving...');
 
       const response = await fetch(`/api/invoices/${this.currentInvoice.id}`, {
@@ -3668,6 +3882,7 @@ const Modals = {
 
       // Handle PO overage soft-block
       if (!response.ok && result.error === 'PO_OVERAGE') {
+        this.setFooterLoading(false); // Reset buttons before showing dialog
         this.showConfirmDialog({
           title: 'PO Balance Exceeded',
           message: `This invoice exceeds the PO remaining balance.\n\n` +
@@ -3679,14 +3894,38 @@ const Modals = {
           cancelText: 'Cancel',
           type: 'warning',
           onConfirm: async () => {
-            await this.saveWithStatus(newStatus, successMessage, extraData, true);
+            await this.saveWithStatus(newStatus, successMessage, { ...extraData, overridePoOverage: true }, false);
+          }
+        });
+        return;
+      }
+
+      // Handle duplicate invoice soft-block
+      if (!response.ok && result.error === 'DUPLICATE_INVOICE') {
+        this.setFooterLoading(false); // Reset buttons before showing dialog
+        const existingStatus = result.existingStatus || 'unknown';
+        const existingAmount = window.Validation?.formatCurrency(result.existingAmount) || 'unknown';
+        this.showConfirmDialog({
+          title: 'Duplicate Invoice Found',
+          message: `An invoice with this number already exists.\n\n` +
+            `Existing Invoice Status: ${existingStatus}\n` +
+            `Existing Invoice Amount: ${existingAmount}\n\n` +
+            `Are you sure this is a different invoice?`,
+          confirmText: 'Save Anyway',
+          cancelText: 'Cancel',
+          type: 'warning',
+          onConfirm: async () => {
+            await this.saveWithStatus(newStatus, successMessage, { ...extraData, overrideDuplicate: true }, false);
           }
         });
         return;
       }
 
       if (!response.ok) {
-        throw new Error(result.message || 'Failed to save');
+        // Throw error with full API response for smart error handling
+        const err = new Error(result.message || 'Failed to save');
+        err.apiError = result;
+        throw err;
       }
 
       if (result.undo) {
@@ -3711,7 +3950,14 @@ const Modals = {
       this.closeActiveModal();
     } catch (err) {
       console.error('Save failed:', err);
-      window.toasts?.error('Save failed', { details: err.message });
+      // Use smart error handler if API error available, fallback to generic message
+      if (window.toasts?.showApiError && err.apiError) {
+        window.toasts.showApiError(err.apiError);
+      } else {
+        window.toasts?.error('Save failed', { details: err.message });
+      }
+    } finally {
+      this.setFooterLoading(false);
     }
   },
 
@@ -4620,9 +4866,17 @@ const SplitModal = {
     }
 
     // Set original invoice info
+    const isCredit = parseFloat(invoice.amount || 0) < 0;
     document.getElementById('splitOriginalNumber').textContent = invoice.invoice_number || 'N/A';
     document.getElementById('splitOriginalVendor').textContent = invoice.vendor?.name || 'Unknown Vendor';
     document.getElementById('splitOriginalAmount').textContent = this.formatMoney(invoice.amount);
+    document.getElementById('splitOriginalAmount').className = isCredit ? 'credit-amount' : '';
+
+    // Add credit indicator badge if needed
+    const creditBadge = document.getElementById('splitCreditBadge');
+    if (creditBadge) {
+      creditBadge.style.display = isCredit ? 'inline-block' : 'none';
+    }
 
     // Clear existing splits and add two default
     document.getElementById('splitSections').innerHTML = '';
@@ -4678,7 +4932,7 @@ const SplitModal = {
         </div>
         <div class="form-group split-amount">
           <label>Amount *</label>
-          <input type="number" id="split-amount-${index}" class="form-control" step="0.01" min="0.01" placeholder="0.00" oninput="SplitModal.updateTotals()">
+          <input type="number" id="split-amount-${index}" class="form-control" step="0.01" placeholder="0.00" oninput="SplitModal.updateTotals()">
         </div>
         <div class="form-group split-notes">
           <label>Notes</label>
@@ -4737,9 +4991,11 @@ const SplitModal = {
     });
 
     const invoiceAmount = parseFloat(this.invoice?.amount) || 0;
+    const isCredit = invoiceAmount < 0;
     const remaining = invoiceAmount - total;
 
     document.getElementById('splitAllocatedAmount').textContent = this.formatMoney(total);
+    document.getElementById('splitAllocatedAmount').className = isCredit ? 'credit-amount' : '';
 
     const remainingEl = document.getElementById('splitRemainingAmount');
     remainingEl.textContent = this.formatMoney(remaining);
@@ -4748,12 +5004,19 @@ const SplitModal = {
     if (Math.abs(remaining) < 0.01) {
       remainingEl.classList.add('balanced');
       remainingEl.textContent = '$0.00 ✓';
-    } else if (remaining < 0) {
+    } else if (isCredit ? remaining > 0 : remaining < 0) {
+      // For standard invoices: error if remaining is negative (over-allocated)
+      // For credits: error if remaining is positive (under-allocated toward negative)
       remainingEl.classList.add('error');
     }
 
-    // Validate: each split needs job + amount, amounts must balance
-    const validSplits = this.splits.filter(s => s !== null && s.amount > 0 && s.job_id);
+    // Validate: each split needs job + amount (sign must match invoice), amounts must balance
+    // For credits: amounts should be negative. For standard: amounts should be positive.
+    const validSplits = this.splits.filter(s => {
+      if (s === null || !s.job_id) return false;
+      if (isCredit) return s.amount < 0;  // Credit splits must be negative
+      return s.amount > 0;  // Standard splits must be positive
+    });
     const amountsBalance = Math.abs(remaining) < 0.01;
     const canSplit = validSplits.length >= 2 && amountsBalance;
 

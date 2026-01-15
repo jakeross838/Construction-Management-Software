@@ -13,9 +13,10 @@ const VALIDATION_RULES = {
   invoice: {
     amount: {
       required: true,
-      min: 0.01,
+      min: -10000000,  // Allow negative amounts for credit invoices/memos
       max: 10000000,
-      type: 'number'
+      type: 'number',
+      notZero: true    // Amount cannot be exactly zero
     },
     invoice_number: {
       required: true,
@@ -110,6 +111,9 @@ function validateInvoice(data, isPartial = false) {
         continue;
       }
 
+      if (rule.notZero && numValue === 0) {
+        errors.push({ field, message: `${field} cannot be zero` });
+      }
       if (rule.min !== undefined && numValue < rule.min) {
         errors.push({ field, message: `${field} must be at least ${rule.min}` });
       }
@@ -219,15 +223,27 @@ async function validatePreTransition(invoice, newStatus, context = {}) {
         const allocations = context.allocations || invoice.allocations || [];
         const allocSum = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
         const invoiceAmount = parseFloat(invoice.amount);
+        const isCredit = invoiceAmount < 0;
 
         if (allocations.length === 0) {
           errors.push({ requirement: req, message: 'Invoice must have at least one cost code allocation' });
-        } else if (allocSum > invoiceAmount + 0.01) {
-          // Only block over-allocation; under-allocation is allowed for partial work
-          errors.push({
-            requirement: req,
-            message: `Allocation total ($${allocSum.toFixed(2)}) cannot exceed invoice amount ($${invoiceAmount.toFixed(2)})`
-          });
+        } else if (isCredit) {
+          // For credit invoices: allocations sum should not be MORE negative than invoice
+          // e.g., invoice = -$100, allocations can be -$100 or -$50, but not -$150
+          if (allocSum < invoiceAmount - 0.01) {
+            errors.push({
+              requirement: req,
+              message: `Credit allocation total ($${allocSum.toFixed(2)}) cannot exceed credit amount ($${invoiceAmount.toFixed(2)})`
+            });
+          }
+        } else {
+          // For standard invoices: only block over-allocation; under-allocation allowed for partial work
+          if (allocSum > invoiceAmount + 0.01) {
+            errors.push({
+              requirement: req,
+              message: `Allocation total ($${allocSum.toFixed(2)}) cannot exceed invoice amount ($${invoiceAmount.toFixed(2)})`
+            });
+          }
         }
         break;
 
@@ -329,16 +345,19 @@ async function checkDuplicate(vendorId, invoiceNumber, amount, excludeId = null)
 /**
  * Validate allocation totals match invoice amount
  * @param {Array} allocations - Array of { cost_code_id, amount }
- * @param {number} invoiceAmount - Total invoice amount
- * @returns {Object} { valid: boolean, total: number, difference: number, error?: string }
+ * @param {number} invoiceAmount - Total invoice amount (can be negative for credits)
+ * @returns {Object} { valid: boolean, total: number, difference: number, error?: string, isCredit: boolean }
  */
 function validateAllocations(allocations, invoiceAmount) {
+  const isCredit = invoiceAmount < 0;
+
   if (!allocations || allocations.length === 0) {
     return {
       valid: false,
       total: 0,
-      difference: invoiceAmount,
-      error: 'At least one allocation is required'
+      difference: Math.abs(invoiceAmount),
+      error: 'At least one allocation is required',
+      isCredit
     };
   }
 
@@ -352,18 +371,41 @@ function validateAllocations(allocations, invoiceAmount) {
       return {
         valid: false,
         total: 0,
-        difference: invoiceAmount,
-        error: `Allocation ${i + 1} is missing a cost code`
+        difference: Math.abs(invoiceAmount),
+        error: `Allocation ${i + 1} is missing a cost code`,
+        isCredit
       };
     }
 
-    // Check for positive amount
-    if (isNaN(amount) || amount <= 0) {
+    // Check for zero amount (not allowed)
+    if (isNaN(amount) || amount === 0) {
       return {
         valid: false,
         total: 0,
-        difference: invoiceAmount,
-        error: `Allocation amounts must be greater than zero (allocation ${i + 1}: $${amount})`
+        difference: Math.abs(invoiceAmount),
+        error: `Allocation ${i + 1} cannot have zero amount`,
+        isCredit
+      };
+    }
+
+    // For standard invoices: allocations must be positive
+    // For credit invoices: allocations must be negative
+    if (isCredit && amount > 0) {
+      return {
+        valid: false,
+        total: 0,
+        difference: Math.abs(invoiceAmount),
+        error: `Credit invoice allocations must be negative (allocation ${i + 1}: $${amount})`,
+        isCredit
+      };
+    }
+    if (!isCredit && amount < 0) {
+      return {
+        valid: false,
+        total: 0,
+        difference: Math.abs(invoiceAmount),
+        error: `Standard invoice allocations must be positive (allocation ${i + 1}: $${amount})`,
+        isCredit
       };
     }
   }
@@ -376,6 +418,7 @@ function validateAllocations(allocations, invoiceAmount) {
     valid,
     total,
     difference,
+    isCredit,
     error: valid ? null : `Allocations total $${total.toFixed(2)} but invoice is $${invoiceAmount.toFixed(2)} (difference: $${difference.toFixed(2)})`
   };
 }

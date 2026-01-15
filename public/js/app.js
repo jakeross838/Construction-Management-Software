@@ -238,10 +238,12 @@ function renderInvoiceCard(inv) {
     const paidAmount = parseFloat(inv.paid_amount || 0);
     const billedAmount = parseFloat(inv.billed_amount || 0);
     const isClosedOut = !!inv.closed_out_at;
+    const isCredit = invoiceAmount < 0;
 
     // Determine display amount and any subtext for special cases
     let displayAmount = invoiceAmount;
     let amountSubtext = '';
+    let amountClass = isCredit ? 'credit-amount' : '';
 
     // For partial billing cycle - show remaining amount
     const remainingToBill = invoiceAmount - billedAmount;
@@ -316,17 +318,21 @@ function renderInvoiceCard(inv) {
       splitBadge = `<span class="badge badge-split-child" title="Split from parent invoice">Split</span>`;
     }
 
+    // Credit badge for negative amounts
+    const creditBadge = isCredit ? `<span class="badge badge-credit" title="Credit memo / refund">CREDIT</span>` : '';
+
     return `
-    <div class="invoice-card status-${inv.status}" onclick="openEditModal('${inv.id}')">
+    <div class="invoice-card status-${inv.status}${isCredit ? ' is-credit' : ''}" onclick="openEditModal('${inv.id}')">
       <div class="invoice-main">
         <div class="invoice-header">
           <span class="invoice-vendor">${inv.vendor?.name || 'Unknown Vendor'}</span>
+          ${creditBadge}
           ${splitBadge}
         </div>
         <div class="invoice-meta">${metaItems.join('<span class="meta-sep">•</span>')}</div>
         <div class="invoice-badges">${badges.join('')}</div>
       </div>
-      <div class="invoice-amount">${formatMoney(displayAmount)}${amountSubtext}</div>
+      <div class="invoice-amount ${amountClass}">${formatMoney(displayAmount)}${amountSubtext}</div>
       <div class="invoice-status">
         <span class="status-pill ${inv.status}">${formatStatus(inv.status, inv)}</span>
       </div>
@@ -811,133 +817,6 @@ async function unmarkPaid(invoiceId) {
 }
 
 // ============================================================
-// AI PROCESSING OVERLAY
-// ============================================================
-
-const AIProcessingUI = {
-  overlay: null,
-  steps: ['extract', 'analyze', 'match', 'save'],
-  currentStep: 0,
-
-  show() {
-    this.overlay = document.getElementById('aiProcessingOverlay');
-    if (!this.overlay) return;
-
-    this.currentStep = 0;
-    this.resetSteps();
-    this.updateProgress(0, 'Starting...');
-    this.overlay.classList.add('show');
-
-    // Auto-advance through initial step
-    setTimeout(() => this.setStep('extract', 'active'), 300);
-  },
-
-  hide() {
-    if (this.overlay) {
-      this.overlay.classList.remove('show');
-    }
-  },
-
-  resetSteps() {
-    this.steps.forEach(step => {
-      const el = this.overlay.querySelector(`[data-step="${step}"]`);
-      if (el) {
-        el.classList.remove('active', 'completed');
-        const status = el.querySelector('.ai-step-status');
-        if (status) status.textContent = this.getDefaultStatus(step);
-      }
-    });
-  },
-
-  getDefaultStatus(step) {
-    const defaults = {
-      extract: 'Reading PDF content...',
-      analyze: 'Claude is reading the invoice...',
-      match: 'Finding vendor & job matches...',
-      save: 'Creating invoice record...'
-    };
-    return defaults[step] || '';
-  },
-
-  setStep(stepName, state, statusText) {
-    const el = this.overlay?.querySelector(`[data-step="${stepName}"]`);
-    if (!el) return;
-
-    if (state === 'active') {
-      el.classList.add('active');
-      el.classList.remove('completed');
-      this.currentStep = this.steps.indexOf(stepName);
-
-      // Update progress based on step
-      const progress = ((this.currentStep + 0.5) / this.steps.length) * 100;
-      this.updateProgress(progress, statusText || this.getDefaultStatus(stepName));
-    } else if (state === 'completed') {
-      el.classList.remove('active');
-      el.classList.add('completed');
-
-      const status = el.querySelector('.ai-step-status');
-      if (status) status.textContent = statusText || 'Complete';
-
-      // Update progress
-      const progress = ((this.currentStep + 1) / this.steps.length) * 100;
-      this.updateProgress(progress);
-    }
-  },
-
-  updateProgress(percent, text) {
-    const fill = this.overlay?.querySelector('.ai-progress-fill');
-    const textEl = this.overlay?.querySelector('.ai-progress-text');
-
-    if (fill) fill.style.width = `${percent}%`;
-    if (textEl && text) textEl.textContent = text;
-  },
-
-  // Simulate the AI processing steps with realistic timing
-  async simulateProcessing() {
-    // Step 1: Extract text
-    this.setStep('extract', 'active', 'Extracting text from PDF...');
-    await this.delay(800);
-    this.setStep('extract', 'completed', 'Text extracted');
-
-    // Step 2: AI Analysis
-    this.setStep('analyze', 'active', 'Claude is analyzing invoice data...');
-    // This step takes longer - AI processing
-    await this.delay(2000);
-    this.setStep('analyze', 'completed', 'Analysis complete');
-
-    // Step 3: Match data
-    this.setStep('match', 'active', 'Matching vendor and job...');
-    await this.delay(1000);
-    this.setStep('match', 'completed', 'Matches found');
-
-    // Step 4: Save
-    this.setStep('save', 'active', 'Saving invoice record...');
-    await this.delay(600);
-    this.setStep('save', 'completed', 'Saved successfully');
-
-    this.updateProgress(100, 'Processing complete!');
-  },
-
-  delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  },
-
-  // Show error state
-  showError(message) {
-    const currentStepEl = this.overlay?.querySelector('.ai-step.active');
-    if (currentStepEl) {
-      currentStepEl.classList.remove('active');
-      currentStepEl.classList.add('error');
-      const status = currentStepEl.querySelector('.ai-step-status');
-      if (status) status.textContent = message || 'Error occurred';
-      const check = currentStepEl.querySelector('.ai-step-check');
-      if (check) check.textContent = '✕';
-    }
-    this.updateProgress(this.currentStep * 25, 'Processing failed');
-  }
-};
-
-// ============================================================
 // UPLOAD (Legacy - now handled by inline script in HTML)
 // ============================================================
 
@@ -957,130 +836,10 @@ function toggleAIMode(useAI) {
 }
 
 async function submitUploadInvoice() {
-  // Legacy function - upload is now handled by universal upload modal
-  // Redirect to new upload
+  // Legacy function - upload is now handled by universal upload modal in index.html
+  // Just redirect to new upload button
   const uploadBtn = document.getElementById('uploadBtn');
   if (uploadBtn) uploadBtn.click();
-  return;
-
-  // === OLD CODE BELOW (kept for reference) ===
-  const fileInput = document.getElementById('invoicePdfFile');
-  if (!fileInput) return;
-  const useAI = document.getElementById('useAIProcessing')?.checked !== false;
-
-  if (!fileInput.files.length) {
-    alert('Please select a PDF');
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append('pdf', fileInput.files[0]);
-
-  // Show processing state
-  const uploadBtnOld = document.querySelector('#uploadInvoiceModal .btn-primary');
-  if (!uploadBtnOld) return;
-  const originalText = uploadBtnOld.textContent;
-  uploadBtnOld.textContent = useAI ? 'Processing with AI...' : 'Uploading...';
-  uploadBtnOld.disabled = true;
-
-  try {
-    if (useAI) {
-      // Close upload modal and show AI processing overlay
-      closeModal('uploadInvoiceModal');
-      AIProcessingUI.show();
-
-      // Start the API call and the animation concurrently
-      const apiPromise = fetch('/api/invoices/process', {
-        method: 'POST',
-        body: formData
-      });
-
-      // Run animation while waiting for API
-      const animationPromise = AIProcessingUI.simulateProcessing();
-
-      // Wait for API response
-      const res = await apiPromise;
-      const result = await res.json();
-
-      // Wait for animation to complete (if API was faster)
-      await animationPromise;
-
-      if (!res.ok) {
-        // Handle duplicate invoice error specifically
-        if (res.status === 409 && result.duplicate) {
-          const dupe = result.duplicate;
-          AIProcessingUI.showError('Duplicate detected');
-          await AIProcessingUI.delay(1500);
-          AIProcessingUI.hide();
-          window.toasts?.error('Duplicate Invoice Detected', {
-            details: `This appears to be a duplicate of Invoice #${dupe.invoice_number} ($${parseFloat(dupe.amount).toLocaleString()}) - Status: ${dupe.status}`,
-            duration: 8000
-          });
-          uploadBtn.textContent = originalText;
-          uploadBtn.disabled = false;
-          return;
-        }
-        AIProcessingUI.showError('Processing failed');
-        await AIProcessingUI.delay(1500);
-        AIProcessingUI.hide();
-        throw new Error(result.error || 'Processing failed');
-      }
-
-      // Show success state briefly
-      await AIProcessingUI.delay(800);
-      AIProcessingUI.hide();
-
-      // Show success with AI results
-      const processing = result.processing;
-      window.toasts?.success('Invoice Processed Successfully', {
-        details: processing ? `${processing.vendor?.name || 'Unknown Vendor'} - ${formatMoney(processing.extracted?.totalAmount || 0)}` : null,
-        duration: 5000
-      });
-
-    } else {
-      // Use basic upload - requires job selection
-      const jobId = document.getElementById('uploadJobId').value;
-      if (!jobId) {
-        alert('Please select a job (or enable AI processing)');
-        uploadBtn.textContent = originalText;
-        uploadBtn.disabled = false;
-        return;
-      }
-
-      formData.append('job_id', jobId);
-
-      const vendorId = document.getElementById('uploadVendorId').value;
-      const amount = document.getElementById('uploadAmount').value;
-      const invoiceNumber = document.getElementById('uploadInvoiceNumber').value;
-      const invoiceDate = document.getElementById('uploadInvoiceDate').value;
-
-      if (vendorId) formData.append('vendor_id', vendorId);
-      if (amount) formData.append('amount', amount);
-      if (invoiceNumber) formData.append('invoice_number', invoiceNumber);
-      if (invoiceDate) formData.append('invoice_date', invoiceDate);
-
-      const res = await fetch('/api/invoices/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!res.ok) throw new Error('Upload failed');
-
-      closeModal('uploadInvoiceModal');
-      window.toasts?.success('Invoice uploaded');
-    }
-
-    loadInvoices();
-    loadVendors(); // Reload in case new vendor was created
-
-  } catch (err) {
-    console.error('Failed to upload:', err);
-    AIProcessingUI.hide(); // Ensure overlay is hidden on error
-    window.toasts?.error('Failed to process invoice', { details: err.message });
-  } finally {
-    uploadBtn.textContent = originalText;
-    uploadBtn.disabled = false;
-  }
 }
 
 // ============================================================

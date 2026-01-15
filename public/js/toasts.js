@@ -270,6 +270,106 @@ class ToastManager {
   info(message, options = {}) {
     return this.show('info', message, options);
   }
+
+  /**
+   * Smart error handler with actionable suggestions
+   * @param {Object} errorData - Error response from API (with code, message, details)
+   * @param {string} fallbackMessage - Fallback message if error structure is unknown
+   */
+  showApiError(errorData, fallbackMessage = 'An error occurred') {
+    // Map error codes to user-friendly messages with suggestions
+    const errorSuggestions = {
+      VALIDATION_FAILED: {
+        title: 'Validation Error',
+        suggestion: 'Check highlighted fields and correct any issues.'
+      },
+      INVALID_TRANSITION: {
+        title: 'Status Change Not Allowed',
+        suggestion: 'Refresh the page to see the current status.'
+      },
+      DUPLICATE_INVOICE: {
+        title: 'Duplicate Invoice Found',
+        suggestion: 'An invoice with this number already exists for this vendor. Check if this is the same invoice.'
+      },
+      ALLOCATIONS_UNBALANCED: {
+        title: 'Allocations Don\'t Match',
+        suggestion: 'Make sure your cost code allocations add up to the invoice total.'
+      },
+      MISSING_REQUIRED_FIELD: {
+        title: 'Missing Information',
+        suggestion: 'Fill in all required fields marked with *.'
+      },
+      PRE_TRANSITION_FAILED: {
+        title: 'Cannot Complete Action',
+        suggestion: 'Some requirements are not met. Check the invoice details.'
+      },
+      INVOICE_NOT_FOUND: {
+        title: 'Invoice Not Found',
+        suggestion: 'This invoice may have been deleted. Refresh the list.'
+      },
+      ENTITY_LOCKED: {
+        title: 'Currently Being Edited',
+        suggestion: 'Someone else is editing this. Try again in a few seconds.'
+      },
+      VERSION_CONFLICT: {
+        title: 'Data Changed',
+        suggestion: 'Someone else modified this. Refresh to see their changes, then make yours.'
+      },
+      ALREADY_IN_DRAW: {
+        title: 'Already in Draw',
+        suggestion: 'This invoice is already in a draw. Remove it from the existing draw first.'
+      },
+      DRAW_FUNDED: {
+        title: 'Draw is Funded',
+        suggestion: 'Cannot modify a draw that has been marked as funded.'
+      },
+      AI_EXTRACTION_FAILED: {
+        title: 'AI Processing Failed',
+        suggestion: 'The document could not be processed. Try uploading a clearer image or PDF.'
+      },
+      PDF_STAMP_FAILED: {
+        title: 'PDF Stamping Failed',
+        suggestion: 'Could not stamp the PDF. Try approving again.'
+      },
+      DATABASE_ERROR: {
+        title: 'Server Error',
+        suggestion: 'A temporary error occurred. Please try again.'
+      },
+      PO_NOT_FOUND: {
+        title: 'PO Not Found',
+        suggestion: 'The linked PO may have been deleted. Select a different PO or remove the link.'
+      },
+      PO_OVERAGE: {
+        title: 'Over PO Budget',
+        suggestion: 'This invoice exceeds the remaining PO balance. Consider creating a change order.'
+      }
+    };
+
+    const code = errorData?.code || 'UNKNOWN_ERROR';
+    const config = errorSuggestions[code];
+
+    let title = config?.title || 'Error';
+    let details = '';
+
+    // Build details string
+    if (errorData?.message) {
+      details = errorData.message;
+    }
+    if (config?.suggestion) {
+      details += (details ? '<br><br>' : '') + `<strong>Tip:</strong> ${config.suggestion}`;
+    }
+
+    // Add specific field errors if available
+    if (errorData?.details?.fields && Array.isArray(errorData.details.fields)) {
+      const fieldList = errorData.details.fields.map(f => `• ${f}`).join('<br>');
+      details += `<br><br>${fieldList}`;
+    }
+
+    return this.show('error', title, {
+      duration: 10000,
+      details: details || fallbackMessage
+    });
+  }
 }
 
 // Export singleton instance
