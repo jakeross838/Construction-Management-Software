@@ -819,6 +819,33 @@ router.post('/:id/transition', asyncHandler(async (req, res) => {
         pending_co: a.pending_co || false
       })));
     }
+
+    // CO Auto-Inheritance: If invoice PO is linked to a CO, auto-set change_order_id on allocations
+    if (invoice.po_id) {
+      const { data: po } = await supabase
+        .from('v2_purchase_orders')
+        .select('id, job_change_order_id')
+        .eq('id', invoice.po_id)
+        .single();
+
+      if (po?.job_change_order_id) {
+        // Update allocations that don't already have a change_order_id
+        const { data: updatedAllocs, error: coError } = await supabase
+          .from('v2_invoice_allocations')
+          .update({ change_order_id: po.job_change_order_id })
+          .eq('invoice_id', invoiceId)
+          .is('change_order_id', null)
+          .select('id');
+
+        if (!coError && updatedAllocs?.length > 0) {
+          await logActivity(invoiceId, 'co_auto_linked', 'System', {
+            change_order_id: po.job_change_order_id,
+            from_po: po.id,
+            allocations_updated: updatedAllocs.length
+          });
+        }
+      }
+    }
   } else if (new_status === 'denied') {
     updateData.denied_at = new Date().toISOString();
     updateData.denied_by = performedBy;

@@ -139,6 +139,27 @@ router.post('/', async (req, res) => {
   try {
     const { line_items, ...poData } = req.body;
 
+    // Validate PO-CO linkage if job_change_order_id is provided
+    if (poData.job_change_order_id) {
+      const { data: co, error: coError } = await supabase
+        .from('v2_job_change_orders')
+        .select('id, job_id, status')
+        .eq('id', poData.job_change_order_id)
+        .single();
+
+      if (coError || !co) {
+        return res.status(400).json({ error: 'Change order not found' });
+      }
+
+      if (poData.job_id && co.job_id !== poData.job_id) {
+        return res.status(400).json({ error: 'Change order belongs to a different job' });
+      }
+
+      if (co.status !== 'approved') {
+        return res.status(400).json({ error: 'Change order must be approved before linking to PO' });
+      }
+    }
+
     // Create PO
     const { data: po, error: poError } = await supabase
       .from('v2_purchase_orders')
@@ -178,6 +199,28 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
   if (fetchError || !existing) {
     throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Validate PO-CO linkage if job_change_order_id is being updated
+  if (updates.job_change_order_id) {
+    const { data: co, error: coError } = await supabase
+      .from('v2_job_change_orders')
+      .select('id, job_id, status')
+      .eq('id', updates.job_change_order_id)
+      .single();
+
+    if (coError || !co) {
+      throw new AppError('VALIDATION_ERROR', 'Change order not found');
+    }
+
+    const jobId = updates.job_id || existing.job_id;
+    if (jobId && co.job_id !== jobId) {
+      throw new AppError('VALIDATION_ERROR', 'Change order belongs to a different job');
+    }
+
+    if (co.status !== 'approved') {
+      throw new AppError('VALIDATION_ERROR', 'Change order must be approved before linking to PO');
+    }
   }
 
   // Update PO fields
