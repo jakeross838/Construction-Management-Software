@@ -242,9 +242,10 @@ const INVOICE_SCHEMA = `{
   ],
   "notes": "string or null, any special notes",
   "splitSuggestion": {
-    "shouldSplit": "boolean, true if document appears to contain multiple separate invoices",
-    "reason": "string or null, why split is suggested (e.g., 'Multiple invoice numbers found', 'Separate sections with different totals')",
-    "suggestedSplits": "array of objects with invoiceNumber and pageHint if detectable"
+    "shouldSplit": "boolean, true if document appears to contain multiple separate invoices OR covers multiple jobs",
+    "splitType": "string: 'multi_invoice' | 'multi_job' | null - what type of split is needed",
+    "reason": "string or null, why split is suggested",
+    "suggestedSplits": "array of objects describing each split - for multi_invoice: {invoiceNumber, pageHint}, for multi_job: {jobReference, amount, description}"
   },
   "extractionConfidence": {
     "vendor": "number 0-1, confidence in vendor extraction",
@@ -457,12 +458,23 @@ Determine if this is a standard invoice, credit memo, or debit memo:
 - If none of these indicators, use "standard"
 
 SPLIT INVOICE DETECTION:
-Check if this document contains MULTIPLE separate invoices that should be split:
+Check if this document needs to be split for either reason:
+
+A) MULTI-INVOICE (multiple invoices in one document):
 - Look for multiple distinct "Invoice #", "Invoice Number", or "Inv #" values
 - Look for multiple "Total" or "Amount Due" sections with different values
 - Look for section headers like "Invoice 1", "Invoice 2" or page separators
 - Look for repeated vendor header/letterhead appearing multiple times
-Set splitSuggestion.shouldSplit to true if multiple invoices detected.
+If detected: set splitType="multi_invoice", list each invoice in suggestedSplits
+
+B) MULTI-JOB (one invoice covering multiple jobs/projects):
+- Look for multiple different job references, addresses, or client names
+- Look for line items grouped by job (e.g., "Drummond: $5000" then "Crews: $3000")
+- Look for multiple PO numbers referencing different jobs
+- Look for sections labeled with different project names
+If detected: set splitType="multi_job", list each job with amount in suggestedSplits
+
+Set splitSuggestion.shouldSplit to true if EITHER multi-invoice OR multi-job is detected.
 
 TRADE TYPE IDENTIFICATION:
 Determine trade type from line item descriptions:
@@ -1521,13 +1533,23 @@ async function processInvoice(pdfBuffer, originalFilename) {
       }
     }
 
-    // 7b. Check for split invoice suggestion
+    // 7b. Check for split invoice suggestion (multi-invoice or multi-job)
     if (extracted.splitSuggestion?.shouldSplit) {
       results.ai_split_suggested = true;
       results.ai_split_data = extracted.splitSuggestion;
       results.review_flags.push('split_suggested');
       results.needs_review = true;
-      results.messages.push(`NOTICE: This document may contain multiple invoices - ${extracted.splitSuggestion.reason || 'consider splitting'}`);
+
+      const splitType = extracted.splitSuggestion.splitType;
+      if (splitType === 'multi_job') {
+        const jobCount = extracted.splitSuggestion.suggestedSplits?.length || 'multiple';
+        results.review_flags.push('multi_job_detected');
+        results.messages.push(`NOTICE: This invoice covers ${jobCount} different jobs - consider splitting by job`);
+      } else if (splitType === 'multi_invoice') {
+        results.messages.push(`NOTICE: This document contains multiple invoices - ${extracted.splitSuggestion.reason || 'consider splitting'}`);
+      } else {
+        results.messages.push(`NOTICE: This document may need splitting - ${extracted.splitSuggestion.reason || 'review suggested'}`);
+      }
     }
 
     // 8. Find or create PO
