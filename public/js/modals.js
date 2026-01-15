@@ -2894,49 +2894,74 @@ const Modals = {
    * Apply CO link selection and continue with approval
    */
   async applyCOLinkAndApprove(isPartial, totalAllocated, invoiceAmount) {
-    const option = document.querySelector('input[name="coLinkOption"]:checked')?.value;
+    // Prevent double-clicks
+    if (this._coLinkInProgress) {
+      console.log('[CO-LINK] Already in progress, ignoring duplicate click');
+      return;
+    }
+    this._coLinkInProgress = true;
 
-    if (option === 'existing') {
-      const select = document.getElementById('coLinkSelect');
-      const selectedCO = select?.value;
+    // Disable the button visually
+    const continueBtn = document.querySelector('.co-link-prompt-modal .btn-primary');
+    if (continueBtn) {
+      continueBtn.disabled = true;
+      continueBtn.textContent = 'Creating...';
+    }
 
-      if (!selectedCO) {
-        window.toasts?.error('Please select a Change Order');
-        return;
+    const resetButton = () => {
+      this._coLinkInProgress = false;
+      if (continueBtn) {
+        continueBtn.disabled = false;
+        continueBtn.textContent = 'Continue to Approve';
       }
+    };
 
-      // Apply CO link to all unlinked CO allocations
-      this.currentAllocations.forEach(a => {
-        const isCO = this.isCOCostCode(a.cost_code || a.cost_code_id);
-        if (isCO && !a.change_order_id) {
-          a.change_order_id = selectedCO;
+    try {
+      const option = document.querySelector('input[name="coLinkOption"]:checked')?.value;
+
+      if (option === 'existing') {
+        const select = document.getElementById('coLinkSelect');
+        const selectedCO = select?.value;
+
+        if (!selectedCO) {
+          window.toasts?.error('Please select a Change Order');
+          resetButton();
+          return;
         }
-      });
-      this.markDirty();
-      this.closeConfirmDialog();
 
-    } else {
-      // Create new CO
-      const title = document.getElementById('newCOTitle')?.value?.trim();
-      const amountStr = document.getElementById('newCOAmount')?.value;
-      const amount = window.Validation?.parseCurrency(amountStr) || 0;
-      const days = parseInt(document.getElementById('newCODays')?.value) || 0;
-      const description = document.getElementById('newCODescription')?.value?.trim();
+        // Apply CO link to all unlinked CO allocations
+        this.currentAllocations.forEach(a => {
+          const isCO = this.isCOCostCode(a.cost_code || a.cost_code_id);
+          if (isCO && !a.change_order_id) {
+            a.change_order_id = selectedCO;
+          }
+        });
+        this.markDirty();
+        this.closeConfirmDialog();
 
-      if (!title) {
-        window.toasts?.error('Please enter a title for the Change Order');
-        return;
-      }
-      if (amount <= 0) {
-        window.toasts?.error('Please enter a valid CO amount');
-        return;
-      }
+      } else {
+        // Create new CO
+        const title = document.getElementById('newCOTitle')?.value?.trim();
+        const amountStr = document.getElementById('newCOAmount')?.value;
+        const amount = window.Validation?.parseCurrency(amountStr) || 0;
+        const days = parseInt(document.getElementById('newCODays')?.value) || 0;
+        const description = document.getElementById('newCODescription')?.value?.trim();
 
-      // Create the CO via API
-      try {
+        if (!title) {
+          window.toasts?.error('Please enter a title for the Change Order');
+          resetButton();
+          return;
+        }
+        if (amount <= 0) {
+          window.toasts?.error('Please enter a valid CO amount');
+          resetButton();
+          return;
+        }
+
         const jobId = this.currentInvoice?.job_id;
         if (!jobId) {
           window.toasts?.error('No job selected');
+          resetButton();
           return;
         }
 
@@ -2975,31 +3000,32 @@ const Modals = {
 
         // Refresh cached COs
         if (this.currentInvoice?.job_id) {
-          this.loadFundingSources(this.currentInvoice.job_id);
+          this.fetchFundingSources(this.currentInvoice.job_id);
         }
 
         this.closeConfirmDialog();
-
-      } catch (err) {
-        console.error('Failed to create CO:', err);
-        window.toasts?.error('Failed to create Change Order', { details: err.message });
-        return;
       }
-    }
 
-    // Continue with approval flow
-    if (isPartial) {
-      this.showPartialApprovalDialog(totalAllocated, invoiceAmount);
-    } else {
-      this.showConfirmDialog({
-        title: 'Approve Invoice',
-        message: `Approve invoice #${this.currentInvoice?.invoice_number || 'N/A'} for ${window.Validation?.formatCurrency(this.currentInvoice?.amount)}?`,
-        confirmText: 'Approve',
-        type: 'info',
-        onConfirm: async () => {
-          await this.saveWithStatus('approved', 'Invoice approved');
-        }
-      });
+      // Continue with approval flow (only reached if no errors)
+      this._coLinkInProgress = false; // Reset before showing next dialog
+      if (isPartial) {
+        this.showPartialApprovalDialog(totalAllocated, invoiceAmount);
+      } else {
+        this.showConfirmDialog({
+          title: 'Approve Invoice',
+          message: `Approve invoice #${this.currentInvoice?.invoice_number || 'N/A'} for ${window.Validation?.formatCurrency(this.currentInvoice?.amount)}?`,
+          confirmText: 'Approve',
+          type: 'info',
+          onConfirm: async () => {
+            await this.saveWithStatus('approved', 'Invoice approved');
+          }
+        });
+      }
+
+    } catch (err) {
+      console.error('Failed to create CO:', err);
+      window.toasts?.error('Failed to create Change Order', { details: err.message });
+      resetButton();
     }
   },
 

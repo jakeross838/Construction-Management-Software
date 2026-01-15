@@ -7321,19 +7321,29 @@ app.patch('/api/change-orders/:id', async (req, res) => {
   }
 });
 
-// Delete change order (draft only)
+// Delete change order (draft, or approved with no invoices)
 app.delete('/api/change-orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
     const { data: existing } = await supabase
       .from('v2_job_change_orders')
-      .select('status')
+      .select('status, invoiced_amount, billed_amount')
       .eq('id', id)
       .single();
 
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
-    if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only delete draft change orders' });
+
+    // Allow delete if: draft status OR (approved with no invoices/billings)
+    const invoicedAmt = parseFloat(existing.invoiced_amount || 0);
+    const billedAmt = parseFloat(existing.billed_amount || 0);
+    const canDelete = existing.status === 'draft' || (invoicedAmt === 0 && billedAmt === 0);
+
+    if (!canDelete) {
+      return res.status(400).json({
+        error: 'Cannot delete change order with invoices or billings linked to it'
+      });
+    }
 
     const { error } = await supabase.from('v2_job_change_orders').delete().eq('id', id);
     if (error) throw error;
