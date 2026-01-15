@@ -521,8 +521,8 @@ router.post('/:id/reopen', asyncHandler(async (req, res) => {
     throw new AppError('NOT_FOUND', 'Purchase order not found');
   }
 
-  if (po.status_detail !== 'closed') {
-    throw new AppError('VALIDATION_FAILED', 'Only closed POs can be reopened');
+  if (!['closed', 'completed'].includes(po.status_detail)) {
+    throw new AppError('VALIDATION_FAILED', 'Only closed or completed POs can be reopened');
   }
 
   const { data: updated, error } = await supabase
@@ -721,6 +721,533 @@ router.get('/:poId/attachments/:attachmentId/url', asyncHandler(async (req, res)
   if (urlError) throw new AppError('DATABASE_ERROR', urlError.message);
 
   res.json({ url: urlData.signedUrl, fileName: attachment.file_name });
+}));
+
+// ============================================================
+// PO WORKFLOW ACTIONS
+// ============================================================
+
+// Send PO to vendor (draft → sent)
+router.post('/:id/send', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { sent_by } = req.body;
+
+  const { data: po, error: fetchError } = await supabase
+    .from('v2_purchase_orders')
+    .select('*, line_items:v2_po_line_items(id, cost_code_id, amount)')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Only draft POs can be sent
+  const draftStatuses = [null, undefined, 'pending', 'draft'];
+  if (!draftStatuses.includes(po.status_detail)) {
+    throw new AppError('VALIDATION_FAILED', 'Only draft POs can be sent to vendor');
+  }
+
+  // Validate required fields before sending
+  const errors = [];
+  if (!po.job_id) errors.push('Job is required');
+  if (!po.vendor_id) errors.push('Vendor is required');
+  if (!po.line_items || po.line_items.length === 0) {
+    errors.push('At least one line item is required');
+  } else {
+    const itemsWithAmounts = po.line_items.filter(item => parseFloat(item.amount) > 0);
+    if (itemsWithAmounts.length === 0) {
+      errors.push('At least one line item must have an amount');
+    }
+    const missingCostCodes = itemsWithAmounts.filter(item => !item.cost_code_id);
+    if (missingCostCodes.length > 0) {
+      errors.push('All line items with amounts must have a cost code');
+    }
+  }
+  if (errors.length > 0) {
+    throw new AppError('VALIDATION_FAILED', errors.join('. '));
+  }
+
+  // Update PO status to sent
+  const { data: updated, error } = await supabase
+    .from('v2_purchase_orders')
+    .update({
+      status_detail: 'sent',
+      status: 'open'
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Log activity
+  await logPOActivity(id, 'sent', sent_by || 'system', { total_amount: po.total_amount });
+
+  // Broadcast update
+  broadcastInvoiceUpdate(id, 'po_sent', { po: updated });
+
+  res.json({ success: true, po: updated });
+}));
+
+// Complete PO (mark as completed/closed)
+router.post('/:id/complete', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { completed_by } = req.body;
+
+  const { data: po, error: fetchError } = await supabase
+    .from('v2_purchase_orders')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  if (!['approved', 'active', 'sent'].includes(po.status_detail) && po.approval_status !== 'approved') {
+    throw new AppError('VALIDATION_FAILED', 'Only sent or approved POs can be completed');
+  }
+
+  const { data: updated, error } = await supabase
+    .from('v2_purchase_orders')
+    .update({
+      status: 'closed',
+      status_detail: 'completed',
+      closed_at: new Date().toISOString(),
+      closed_by: completed_by || 'system'
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Log activity
+  await logPOActivity(id, 'completed', completed_by || 'system', {});
+
+  broadcastInvoiceUpdate(id, 'po_completed', { po: updated });
+  res.json({ success: true, po: updated });
+}));
+
+// Void PO (cancels PO)
+router.post('/:id/void', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { reason, voided_by } = req.body;
+
+  if (!reason || !reason.trim()) {
+    throw new AppError('VALIDATION_FAILED', 'Reason is required for voiding a PO');
+  }
+
+  const { data: po, error: fetchError } = await supabase
+    .from('v2_purchase_orders')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Can void any PO that's not already voided or completed
+  if (['voided', 'cancelled', 'completed', 'closed'].includes(po.status_detail)) {
+    throw new AppError('VALIDATION_FAILED', 'This PO cannot be voided');
+  }
+
+  const { data: updated, error } = await supabase
+    .from('v2_purchase_orders')
+    .update({
+      status: 'cancelled',
+      status_detail: 'voided',
+      closed_at: new Date().toISOString(),
+      closed_by: voided_by || 'system',
+      closed_reason: reason
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Log activity
+  await logPOActivity(id, 'voided', voided_by || 'system', { reason });
+
+  broadcastInvoiceUpdate(id, 'po_voided', { po: updated });
+  res.json({ success: true, po: updated });
+}));
+
+// ============================================================
+// PO CHANGE ORDERS
+// ============================================================
+
+// List change orders for a PO
+router.get('/:poId/change-orders', asyncHandler(async (req, res) => {
+  const { poId } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_change_orders')
+    .select(`
+      *,
+      line_items:v2_change_order_line_items(
+        id, cost_code_id, description, amount, is_new,
+        cost_code:v2_cost_codes(id, code, name)
+      )
+    `)
+    .eq('po_id', poId)
+    .order('change_order_number', { ascending: true });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data || []);
+}));
+
+// Create a change order for a PO
+router.post('/:poId/change-orders', asyncHandler(async (req, res) => {
+  const { poId } = req.params;
+  const { description, reason, amount_change, line_items } = req.body;
+
+  // Get PO and current highest CO number
+  const { data: po, error: poError } = await supabase
+    .from('v2_purchase_orders')
+    .select('id, total_amount, change_order_total')
+    .eq('id', poId)
+    .single();
+
+  if (poError || !po) throw new AppError('NOT_FOUND', 'Purchase order not found');
+
+  const { data: existingCOs } = await supabase
+    .from('v2_change_orders')
+    .select('change_order_number')
+    .eq('po_id', poId)
+    .order('change_order_number', { ascending: false })
+    .limit(1);
+
+  const nextCONumber = (existingCOs?.[0]?.change_order_number || 0) + 1;
+  const previousTotal = parseFloat(po.total_amount) || 0;
+  const changeAmount = parseFloat(amount_change) || 0;
+  const newTotal = previousTotal + changeAmount;
+
+  // Create change order
+  const { data: co, error: coError } = await supabase
+    .from('v2_change_orders')
+    .insert({
+      po_id: poId,
+      change_order_number: nextCONumber,
+      description,
+      reason,
+      amount_change: changeAmount,
+      previous_total: previousTotal,
+      new_total: newTotal,
+      status: 'pending',
+      created_by: 'system'
+    })
+    .select()
+    .single();
+
+  if (coError) throw new AppError('DATABASE_ERROR', coError.message);
+
+  // Insert line items if provided
+  if (line_items && line_items.length > 0) {
+    const lineItemsToInsert = line_items.map(li => ({
+      change_order_id: co.id,
+      cost_code_id: li.cost_code_id,
+      description: li.description,
+      amount: parseFloat(li.amount) || 0,
+      is_new: li.is_new || false,
+      original_line_item_id: li.original_line_item_id
+    }));
+
+    const { error: liError } = await supabase
+      .from('v2_change_order_line_items')
+      .insert(lineItemsToInsert);
+
+    if (liError) console.error('Error inserting CO line items:', liError);
+  }
+
+  // Log activity
+  await logPOActivity(poId, 'change_order_created', 'system', {
+    change_order_id: co.id,
+    number: nextCONumber,
+    amount: changeAmount
+  });
+
+  res.json(co);
+}));
+
+// Approve a change order
+router.post('/:poId/change-orders/:coId/approve', asyncHandler(async (req, res) => {
+  const { poId, coId } = req.params;
+  const { approved_by } = req.body;
+
+  // Get the change order
+  const { data: co, error: coError } = await supabase
+    .from('v2_change_orders')
+    .select('*')
+    .eq('id', coId)
+    .eq('po_id', poId)
+    .single();
+
+  if (coError || !co) throw new AppError('NOT_FOUND', 'Change order not found');
+  if (co.status === 'approved') throw new AppError('INVALID_STATE', 'Change order already approved');
+
+  // Update change order status
+  const { error: updateCOError } = await supabase
+    .from('v2_change_orders')
+    .update({
+      status: 'approved',
+      approved_at: new Date().toISOString(),
+      approved_by: approved_by || 'Jake Ross'
+    })
+    .eq('id', coId);
+
+  if (updateCOError) throw new AppError('DATABASE_ERROR', updateCOError.message);
+
+  // Update PO total and change_order_total
+  const { data: po } = await supabase
+    .from('v2_purchase_orders')
+    .select('total_amount, change_order_total')
+    .eq('id', poId)
+    .single();
+
+  const newTotal = (parseFloat(po.total_amount) || 0) + (parseFloat(co.amount_change) || 0);
+  const newCOTotal = (parseFloat(po.change_order_total) || 0) + (parseFloat(co.amount_change) || 0);
+
+  await supabase
+    .from('v2_purchase_orders')
+    .update({
+      total_amount: newTotal,
+      change_order_total: newCOTotal
+    })
+    .eq('id', poId);
+
+  // Log activity
+  await logPOActivity(poId, 'change_order_approved', approved_by || 'Jake Ross', {
+    change_order_id: coId,
+    amount: co.amount_change,
+    new_total: newTotal
+  });
+
+  res.json({ success: true, new_total: newTotal });
+}));
+
+// Reject a change order
+router.post('/:poId/change-orders/:coId/reject', asyncHandler(async (req, res) => {
+  const { poId, coId } = req.params;
+  const { reason, rejected_by } = req.body;
+
+  const { error } = await supabase
+    .from('v2_change_orders')
+    .update({
+      status: 'rejected',
+      rejection_reason: reason
+    })
+    .eq('id', coId)
+    .eq('po_id', poId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logPOActivity(poId, 'change_order_rejected', rejected_by || 'Jake Ross', {
+    change_order_id: coId,
+    reason
+  });
+
+  res.json({ success: true });
+}));
+
+// Delete a change order (only pending ones)
+router.delete('/:poId/change-orders/:coId', asyncHandler(async (req, res) => {
+  const { poId, coId } = req.params;
+  const { deleted_by } = req.body;
+
+  // Get the change order
+  const { data: co, error: fetchError } = await supabase
+    .from('v2_change_orders')
+    .select('*')
+    .eq('id', coId)
+    .eq('po_id', poId)
+    .single();
+
+  if (fetchError || !co) {
+    throw new AppError('NOT_FOUND', 'Change order not found');
+  }
+
+  if (co.status !== 'pending') {
+    throw new AppError('VALIDATION_FAILED', 'Only pending change orders can be deleted');
+  }
+
+  // Delete line items first
+  await supabase
+    .from('v2_change_order_line_items')
+    .delete()
+    .eq('change_order_id', coId);
+
+  // Delete change order
+  const { error: deleteError } = await supabase
+    .from('v2_change_orders')
+    .delete()
+    .eq('id', coId);
+
+  if (deleteError) throw new AppError('DATABASE_ERROR', deleteError.message);
+
+  // Log activity
+  await logPOActivity(poId, 'change_order_deleted', deleted_by || 'system', {
+    change_order_number: co.change_order_number
+  });
+
+  res.json({ success: true });
+}));
+
+// ============================================================
+// PO PDF GENERATION
+// ============================================================
+
+router.get('/:id/pdf', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get PO with all related data
+  const { data: po, error } = await supabase
+    .from('v2_purchase_orders')
+    .select(`
+      *,
+      job:v2_jobs(id, name, address, client_name),
+      vendor:v2_vendors(id, name, email, phone, address),
+      line_items:v2_po_line_items(
+        id, description, amount,
+        cost_code:v2_cost_codes(id, code, name)
+      )
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error || !po) throw new AppError('NOT_FOUND', 'Purchase order not found');
+
+  // Get change orders
+  const { data: changeOrders } = await supabase
+    .from('v2_change_orders')
+    .select('*')
+    .eq('po_id', id)
+    .eq('status', 'approved')
+    .order('change_order_number');
+
+  // Generate PDF using pdf-lib
+  const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([612, 792]); // Letter size
+  const { width, height } = page.getSize();
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const drawText = (text, x, y, options = {}) => {
+    page.drawText(text || '', {
+      x,
+      y,
+      size: options.size || 10,
+      font: options.bold ? boldFont : font,
+      color: options.color || rgb(0, 0, 0)
+    });
+  };
+
+  const formatMoney = (amt) => '$' + (parseFloat(amt) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Header
+  drawText('ROSS BUILT CUSTOM HOMES', 50, height - 50, { size: 16, bold: true });
+  drawText('305 67th St West, Bradenton, FL 34209', 50, height - 68, { size: 9, color: rgb(0.4, 0.4, 0.4) });
+
+  drawText('PURCHASE ORDER', width - 200, height - 50, { size: 14, bold: true });
+  drawText(po.po_number || 'Draft', width - 200, height - 68, { size: 12 });
+
+  // Status
+  const status = po.approval_status === 'approved' ? 'APPROVED' : po.status_detail?.toUpperCase() || 'DRAFT';
+  drawText(status, width - 200, height - 85, { size: 10, bold: true, color: po.approval_status === 'approved' ? rgb(0.1, 0.5, 0.1) : rgb(0.5, 0.5, 0.5) });
+
+  // Divider
+  page.drawLine({ start: { x: 50, y: height - 100 }, end: { x: width - 50, y: height - 100 }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+
+  // Vendor and Job info
+  let y = height - 130;
+
+  drawText('VENDOR', 50, y, { size: 8, bold: true, color: rgb(0.4, 0.4, 0.4) });
+  drawText('JOB', 320, y, { size: 8, bold: true, color: rgb(0.4, 0.4, 0.4) });
+
+  y -= 15;
+  drawText(po.vendor?.name || 'Unknown Vendor', 50, y, { size: 11, bold: true });
+  drawText(po.job?.name || 'Unknown Job', 320, y, { size: 11, bold: true });
+
+  if (po.vendor?.address) { y -= 12; drawText(po.vendor.address, 50, y, { size: 9 }); }
+  if (po.job?.address) { y -= 12; drawText(po.job.address, 320, y, { size: 9 }); }
+
+  y -= 25;
+
+  // Description
+  if (po.description) {
+    drawText('DESCRIPTION', 50, y, { size: 8, bold: true, color: rgb(0.4, 0.4, 0.4) });
+    y -= 15;
+    drawText(po.description, 50, y, { size: 10 });
+    y -= 20;
+  }
+
+  // Scope of Work
+  if (po.scope_of_work) {
+    drawText('SCOPE OF WORK', 50, y, { size: 8, bold: true, color: rgb(0.4, 0.4, 0.4) });
+    y -= 15;
+    const lines = po.scope_of_work.split('\n').slice(0, 5);
+    lines.forEach(line => {
+      drawText(line.substring(0, 80), 50, y, { size: 9 });
+      y -= 12;
+    });
+    y -= 10;
+  }
+
+  // Line Items Header
+  page.drawRectangle({ x: 50, y: y - 5, width: width - 100, height: 20, color: rgb(0.95, 0.95, 0.95) });
+  drawText('Cost Code', 55, y, { size: 9, bold: true });
+  drawText('Description', 160, y, { size: 9, bold: true });
+  drawText('Amount', width - 100, y, { size: 9, bold: true });
+  y -= 25;
+
+  // Line Items
+  const lineItems = po.line_items || [];
+  let subtotal = 0;
+  lineItems.forEach(item => {
+    const cc = item.cost_code;
+    drawText(cc?.code || '-', 55, y, { size: 9 });
+    drawText((cc?.name || item.description || '').substring(0, 40), 160, y, { size: 9 });
+    drawText(formatMoney(item.amount), width - 100, y, { size: 9 });
+    subtotal += parseFloat(item.amount) || 0;
+    y -= 15;
+  });
+
+  // Totals
+  y -= 10;
+  page.drawLine({ start: { x: width - 200, y: y + 5 }, end: { x: width - 50, y: y + 5 }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) });
+
+  drawText('Subtotal:', width - 180, y - 10, { size: 9 });
+  drawText(formatMoney(subtotal), width - 100, y - 10, { size: 9 });
+
+  if (changeOrders && changeOrders.length > 0) {
+    const coTotal = changeOrders.reduce((sum, co) => sum + parseFloat(co.amount_change || 0), 0);
+    y -= 15;
+    drawText('Change Orders:', width - 180, y - 10, { size: 9 });
+    drawText(formatMoney(coTotal), width - 100, y - 10, { size: 9 });
+  }
+
+  y -= 20;
+  drawText('TOTAL:', width - 180, y - 10, { size: 10, bold: true });
+  drawText(formatMoney(po.total_amount), width - 100, y - 10, { size: 10, bold: true });
+
+  // Footer
+  drawText(`Generated: ${new Date().toLocaleDateString()}`, 50, 50, { size: 8, color: rgb(0.5, 0.5, 0.5) });
+
+  // Output
+  const pdfBytes = await pdfDoc.save();
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${po.po_number || 'PO'}.pdf"`);
+  res.send(Buffer.from(pdfBytes));
 }));
 
 module.exports = router;

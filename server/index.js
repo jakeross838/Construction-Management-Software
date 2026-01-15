@@ -106,20 +106,35 @@ app.use(express.static(path.join(__dirname, '../public')));
 // ============================================================
 // ROUTE MODULES (Refactored from monolithic index.js)
 // ============================================================
-// Only mounting complete route modules - others still use legacy inline routes
 const invoiceRoutes = require('./routes/invoices');
 const drawRoutes = require('./routes/draws');
 const changeOrderRoutes = require('./routes/change-orders');
+const purchaseOrderRoutes = require('./routes/purchase-orders');
+const jobRoutes = require('./routes/jobs');
+const vendorRoutes = require('./routes/vendors');
+const dashboardRoutes = require('./routes/dashboard');
+const costCodeRoutes = require('./routes/cost-codes');
+const lockRoutes = require('./routes/locks');
+const undoRoutes = require('./routes/undo');
+const aiRoutes = require('./routes/ai');
+const realtimeRoutes = require('./routes/realtime');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/draws', drawRoutes);
 app.use('/api/change-orders', changeOrderRoutes);
+app.use('/api/purchase-orders', purchaseOrderRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/vendors', vendorRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/cost-codes', costCodeRoutes);
+app.use('/api/locks', lockRoutes);
+app.use('/api/undo', undoRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/realtime', realtimeRoutes);
 
-// Note: Other route modules exist but are incomplete:
-// - purchase-orders.js (missing /send, /complete, /void)
-// - jobs.js, vendors.js, dashboard.js, etc.
-// These will be mounted once they're complete and tested
+// Note: Legacy routes below are kept for complex endpoints not yet migrated
+// These will be removed as route modules become complete
 
 // Multer for file uploads (memory storage)
 // Accept all document types for AI processing
