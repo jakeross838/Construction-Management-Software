@@ -106,15 +106,20 @@ app.use(express.static(path.join(__dirname, '../public')));
 // ============================================================
 // ROUTE MODULES (Refactored from monolithic index.js)
 // ============================================================
+// Only mounting complete route modules - others still use legacy inline routes
 const invoiceRoutes = require('./routes/invoices');
 const drawRoutes = require('./routes/draws');
 const changeOrderRoutes = require('./routes/change-orders');
 
-// Mount modular routes
-// These take precedence over the legacy inline routes below
+// Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/draws', drawRoutes);
 app.use('/api/change-orders', changeOrderRoutes);
+
+// Note: Other route modules exist but are incomplete:
+// - purchase-orders.js (missing /send, /complete, /void)
+// - jobs.js, vendors.js, dashboard.js, etc.
+// These will be mounted once they're complete and tested
 
 // Multer for file uploads (memory storage)
 // Accept all document types for AI processing

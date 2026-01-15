@@ -169,11 +169,15 @@ test.describe('Comprehensive App Tests', () => {
 
       await page.screenshot({ path: 'tests/screenshots/upload-modal.png', fullPage: true });
 
-      // Close modal
-      const closeBtn = page.locator('.modal-close, button:has-text("Cancel")').first();
+      // Close modal - look for visible close button only
+      const closeBtn = page.locator('.modal:visible .modal-close, .modal[style*="display: flex"] .modal-close, .modal[style*="display: block"] .modal-close').first();
       if (await closeBtn.count() > 0) {
         await closeBtn.click({ force: true });
+      } else {
+        // Fallback: press Escape to close modal
+        await page.keyboard.press('Escape');
       }
+      await page.waitForTimeout(500);
     }
 
     expect(errors.length).toBe(0);
