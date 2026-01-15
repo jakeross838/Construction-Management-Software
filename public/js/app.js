@@ -330,8 +330,7 @@ function renderInvoiceCard(inv) {
     // Credit badge for negative amounts
     const creditBadge = isCredit ? `<span class="badge badge-credit" title="Credit memo / refund">CREDIT</span>` : '';
 
-    // Partial approval badge
-    const isPartialApproval = inv.review_flags?.includes('partial_approval');
+    // Partial approval badge (uses isPartialApproval from above)
     const partialBadge = isPartialApproval ? `<span class="badge badge-partial" title="Partially allocated approval">Partial</span>` : '';
 
     return `
