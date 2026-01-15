@@ -417,6 +417,7 @@ const Modals = {
             <div class="modal-title">
               <h2>${this.isEditMode ? 'Edit Invoice' : 'View Invoice'}</h2>
               <span class="status-badge status-${invoice.status}">${statusInfo.label || invoice.status}</span>
+              ${invoice.review_flags?.includes('partial_approval') ? '<span class="status-badge status-partial">Partial</span>' : ''}
               ${showReadOnlyBadge ? '<span class="readonly-badge">Read Only</span>' : ''}
             </div>
             <button class="modal-close" onclick="window.Modals.closeActiveModal()">&times;</button>

@@ -1964,6 +1964,11 @@ body.modal-open {
   color: #60a5fa;
   border: 1px solid rgba(59, 130, 246, 0.3);
 }
+.status-badge.status-partial {
+  background: rgba(249, 115, 22, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
 
 /* Partial approval badge */
 .partial-badge {

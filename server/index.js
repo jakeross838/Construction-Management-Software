@@ -447,6 +447,9 @@ async function stampInvoice(invoiceId, options = {}) {
           }
         }
 
+        // Check if this is a partial approval
+        const isPartialApproval = invoice.review_flags?.includes('partial_approval');
+
         stampedBuffer = await stampApproval(pdfBuffer, {
           status: 'APPROVED',
           date: invoice.approved_at ? new Date(invoice.approved_at).toLocaleDateString() : dateStr,
@@ -460,7 +463,8 @@ async function stampInvoice(invoiceId, options = {}) {
           poDescription: invoice.po?.description,
           poTotal,
           poBilledToDate,
-          poLinkedAmount
+          poLinkedAmount,
+          isPartial: isPartialApproval
         });
 
         // Add IN DRAW stamp if applicable
@@ -2802,7 +2806,10 @@ app.get('/api/invoices/:id/approval-context', async (req, res) => {
       const previouslyBilledDirect = poInvoices?.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0) || 0;
       const previouslyBilledLineItems = lineItemAllocations?.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || 0;
 
-      // Get this invoice's amount linked to this PO (could be partial if split across POs)
+      // Get this invoice's allocated amount (for partial approvals, use allocated not full amount)
+      const totalAllocated = invoice.allocations?.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || 0;
+
+      // Get amount linked specifically to this PO (could be partial if split across POs)
       const thisInvoiceLinkedAmount = invoice.allocations
         ?.filter(a => {
           if (!a.po_line_item_id) return false;
@@ -2810,10 +2817,13 @@ app.get('/api/invoices/:id/approval-context', async (req, res) => {
           const lineItem = linkedPO.line_items?.find(li => li.id === a.po_line_item_id);
           return !!lineItem;
         })
-        .reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || parseFloat(invoice.amount) || 0;
+        .reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || 0;
 
       const previouslyBilled = Math.max(previouslyBilledDirect, previouslyBilledLineItems);
-      const thisInvoice = invoice.po_id === linkedPOId ? (parseFloat(invoice.amount) || 0) : thisInvoiceLinkedAmount;
+      // Use allocated amount if available (for partial approvals), otherwise full invoice amount
+      const thisInvoice = invoice.po_id === linkedPOId
+        ? (totalAllocated > 0 ? totalAllocated : (parseFloat(invoice.amount) || 0))
+        : (thisInvoiceLinkedAmount > 0 ? thisInvoiceLinkedAmount : (parseFloat(invoice.amount) || 0));
       const afterApproval = previouslyBilled + thisInvoice;
 
       result.po = {
@@ -6814,7 +6824,8 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
             poNumber: invoice.po?.po_number,
             poDescription: invoice.po?.description,
             poTotal: poTotal,
-            poBilledToDate: poBilledToDate
+            poBilledToDate: poBilledToDate,
+            isPartial: invoice.review_flags?.includes('partial_approval')
           });
 
           // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
@@ -9181,11 +9192,17 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     }
   }
 
-  // Append partial approval note to invoice notes
+  // Append partial approval note to invoice notes and add flag
   if (updates.partial_approval_note) {
     const existingNotes = existing.notes || '';
     const separator = existingNotes ? '\n\n' : '';
     updateFields.notes = existingNotes + separator + updates.partial_approval_note;
+
+    // Add partial_approval flag to review_flags
+    const existingFlags = existing.review_flags || [];
+    if (!existingFlags.includes('partial_approval')) {
+      updateFields.review_flags = [...existingFlags, 'partial_approval'];
+    }
   }
 
   // AI LEARNING: When assigning a job_id, record it so AI can learn for future invoices
@@ -9591,7 +9608,8 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
               poDescription: fullInvoice.po?.description,
               poTotal: poTotal,
               poBilledToDate: poBilledToDate,
-              poLinkedAmount: poLinkedAmount
+              poLinkedAmount: poLinkedAmount,
+              isPartial: fullInvoice.review_flags?.includes('partial_approval')
             });
 
             // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
@@ -9700,7 +9718,8 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
               poDescription: fullInvoice.po?.description,
               poTotal: poTotal,
               poBilledToDate: poBilledToDate,
-              poLinkedAmount: poLinkedAmount
+              poLinkedAmount: poLinkedAmount,
+              isPartial: fullInvoice.review_flags?.includes('partial_approval')
             });
 
             // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
@@ -10231,7 +10250,8 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
                 poDescription: invoice.po?.description,
                 poTotal,
                 poBilledToDate,
-                poLinkedAmount
+                poLinkedAmount,
+                isPartial: invoice.review_flags?.includes('partial_approval')
               });
 
               // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
@@ -10545,7 +10565,8 @@ app.post('/api/invoices/batch-restamp', asyncHandler(async (req, res) => {
           amount: invoice.amount,
           poNumber: invoice.po?.po_number,
           poTotal: poTotal,
-          poBilledToDate: poBilledToDate
+          poBilledToDate: poBilledToDate,
+          isPartial: invoice.review_flags?.includes('partial_approval')
         });
       } else {
         // Skip other statuses for now
