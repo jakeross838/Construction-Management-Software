@@ -631,22 +631,24 @@ app.get('/api/dashboard/stats', async (req, res) => {
       .from('v2_jobs')
       .select('id, name, contract_amount, client_name, status');
 
-    // Calculate billed per job
-    const jobSummaries = await Promise.all((jobs || []).map(async (job) => {
-      const { data: jobInvoices } = await supabase
-        .from('v2_invoices')
-        .select('amount, status')
-        .eq('job_id', job.id)
-        .in('status', ['approved', 'in_draw', 'paid']);
+    // Calculate billed per job using already-fetched invoices (avoid N+1 query)
+    const billedByJob = {};
+    if (invoices) {
+      invoices.forEach(inv => {
+        if (inv.job_id && ['approved', 'in_draw', 'paid'].includes(inv.status)) {
+          billedByJob[inv.job_id] = (billedByJob[inv.job_id] || 0) + parseFloat(inv.amount || 0);
+        }
+      });
+    }
 
-      const billed = (jobInvoices || []).reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
-
+    const jobSummaries = (jobs || []).map(job => {
+      const billed = billedByJob[job.id] || 0;
       return {
         ...job,
         total_billed: billed,
         remaining: (parseFloat(job.contract_amount) || 0) - billed
       };
-    }));
+    });
 
     // Calculate total contract value
     const total_contract = (jobs || []).reduce((sum, job) => sum + (parseFloat(job.contract_amount) || 0), 0);
