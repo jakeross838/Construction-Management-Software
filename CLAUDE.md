@@ -65,8 +65,12 @@ Construction-Management-Software/
 ├── config/
 │   └── index.js              # Supabase client, port config
 ├── server/
-│   ├── index.js              # Express server, all API endpoints (~145KB, ~3000 lines)
+│   ├── index.js              # Express server, all API endpoints
 │   ├── ai-processor.js       # AI invoice extraction & matching
+│   ├── ai-learning.js        # AI learning from corrections
+│   ├── ocr-processor.js      # OCR for scanned PDFs (Claude Vision)
+│   ├── document-converter.js # PDF to image conversion
+│   ├── duplicate-check.js    # Duplicate invoice detection
 │   ├── standards.js          # Naming conventions, normalization
 │   ├── storage.js            # Supabase storage helpers
 │   ├── pdf-stamper.js        # PDF approval stamping
@@ -296,10 +300,18 @@ UNIQUE(job_id, cost_code_id)
 |--------|----------|-------------|
 | GET | `/api/invoices` | List with filters |
 | GET | `/api/invoices/:id` | Get with details |
-| POST | `/api/invoices/process` | AI processing |
+| POST | `/api/invoices/process` | AI processing (supports OCR) |
 | PATCH | `/api/invoices/:id/approve` | Approve + stamp PDF |
 | POST | `/api/invoices/:id/allocate` | Set allocations |
 | POST | `/api/invoices/:id/transition` | Status change |
+| POST | `/api/invoices/:id/split` | Split into children |
+| GET | `/api/invoices/:id/family` | Get parent + children |
+
+### AI & Learning
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/ai/stats` | AI learning statistics |
+| GET | `/api/vendors/duplicates` | Potential duplicate vendors |
 
 ### Purchase Orders
 | Method | Endpoint | Description |
@@ -468,6 +480,20 @@ Status badge colors:
 ---
 
 ## Recent Changes (Jan 2026)
+
+### OCR, AI Learning, and Bug Fixes (Jan 15)
+- **OCR Processing**: Scanned PDFs now auto-detected and processed via Claude Vision
+- **AI Learning System**: Records corrections to improve future matching (90%+ confidence)
+- **Split Invoice Feature**: Divide one invoice into multiple children for different jobs/POs
+- **Credit Invoice Support**: Negative amounts for returns/credits properly tracked in draws
+- **CO Link Prompt**: Approval flow prompts to link CO allocations to Change Orders
+- **Bug Fixes**:
+  - Fixed draw activity endpoint (deleted_at column)
+  - Fixed invoice removal from draw on status change
+  - Fixed billed_amount exceeding invoice amount
+  - Fixed 404 handling for non-existent invoices
+  - Added double-click protection on CO creation
+  - CO deletion now allowed for COs with no linked invoices
 
 ### Draw Modal with G702/G703 (Jan 7)
 - Added fullscreen draw modal with 4 tabs
