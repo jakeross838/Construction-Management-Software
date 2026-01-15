@@ -11,6 +11,7 @@ class POModals {
     this.jobChangeOrders = []; // Job-level COs for linking to line items
     this.pendingFiles = []; // Files to upload after saving new PO
     this.isEditing = false;
+    this.selectedChangeOrderId = null; // PO-level CO link
   }
 
   // Check if a cost code is a CO cost code (ends with 'C')
@@ -39,6 +40,60 @@ class POModals {
     }
   }
 
+  // Update CO dropdown when job changes
+  updateChangeOrderDropdown() {
+    const container = document.getElementById('po-co-link-container');
+    const select = document.getElementById('poChangeOrderSelect');
+    const hint = document.getElementById('poCoHint');
+
+    if (!container || !select) return;
+
+    // Filter to approved COs only
+    const approvedCOs = this.jobChangeOrders.filter(co => co.status === 'approved');
+
+    if (approvedCOs.length === 0) {
+      container.style.display = 'none';
+      this.selectedChangeOrderId = null;
+      return;
+    }
+
+    // Show the container
+    container.style.display = 'block';
+
+    // Build options
+    const options = approvedCOs.map(co => {
+      const coNum = `CO-${String(co.change_order_number).padStart(3, '0')}`;
+      const amount = this.formatMoney(co.approved_amount || co.amount || 0);
+      const selected = this.selectedChangeOrderId === co.id ? 'selected' : '';
+      return `<option value="${co.id}" ${selected}>${coNum}: ${this.escapeHtml(co.title || 'Untitled')} (${amount})</option>`;
+    }).join('');
+
+    select.innerHTML = `<option value="">-- No CO Link (Base Contract Work) --</option>${options}`;
+
+    // Set current value
+    if (this.selectedChangeOrderId) {
+      select.value = this.selectedChangeOrderId;
+    }
+  }
+
+  // Handle CO selection change
+  onChangeOrderSelected(value) {
+    this.selectedChangeOrderId = value || null;
+
+    const hint = document.getElementById('poCoHint');
+    if (hint) {
+      if (value) {
+        const co = this.jobChangeOrders.find(c => c.id === value);
+        if (co) {
+          hint.textContent = `All invoices against this PO will be tracked as CO #${co.change_order_number} work`;
+          hint.style.display = 'block';
+        }
+      } else {
+        hint.style.display = 'none';
+      }
+    }
+  }
+
   // ============================================================
   // MODAL MANAGEMENT
   // ============================================================
@@ -56,6 +111,7 @@ class POModals {
     this.jobChangeOrders = [];
     this.pendingFiles = [];
     this.isEditing = false;
+    this.selectedChangeOrderId = null;
   }
 
   // ============================================================
@@ -242,6 +298,12 @@ class POModals {
           <span class="detail-label">Vendor</span>
           <span class="detail-value">${vendor?.name || '—'}</span>
         </div>
+        ${po.job_change_order_id ? `
+        <div class="detail-row">
+          <span class="detail-label">Change Order</span>
+          <span class="detail-value"><span class="badge badge-co">CO Work</span></span>
+        </div>
+        ` : ''}
         ${po.description ? `
         <div class="detail-row">
           <span class="detail-label">Description</span>
@@ -330,6 +392,13 @@ class POModals {
             <label>Vendor *</label>
             <div id="po-vendor-picker-container"></div>
           </div>
+        </div>
+        <div class="form-group" id="po-co-link-container" style="display: none;">
+          <label>Link to Change Order <span class="optional-label">(optional)</span></label>
+          <select id="poChangeOrderSelect" class="form-input" onchange="window.poModals.onChangeOrderSelected(this.value)">
+            <option value="">-- No CO Link (Base Contract Work) --</option>
+          </select>
+          <p class="form-hint" id="poCoHint" style="display: none;"></p>
         </div>
       </div>
 
@@ -1179,16 +1248,24 @@ class POModals {
         placeholder: 'Search jobs...',
         onChange: async (jobId) => {
           this.selectedJobId = jobId;
+          // Clear CO selection when job changes
+          this.selectedChangeOrderId = null;
           // Fetch change orders for this job
           await this.fetchJobChangeOrders(jobId);
-          // Refresh line items to update CO pickers
+          // Update PO-level CO dropdown
+          this.updateChangeOrderDropdown();
+          // Refresh line items to update line-item CO pickers
           this.refreshLineItems();
         }
       });
       this.selectedJobId = defaultJobId;
+      // Set initial CO if editing existing PO
+      this.selectedChangeOrderId = this.currentPO.job_change_order_id || null;
       // Fetch COs for the default job
       if (defaultJobId) {
-        this.fetchJobChangeOrders(defaultJobId);
+        this.fetchJobChangeOrders(defaultJobId).then(() => {
+          this.updateChangeOrderDropdown();
+        });
       }
     }
 
@@ -1345,6 +1422,7 @@ class POModals {
       description: document.getElementById('poDescription')?.value?.trim(),
       notes: document.getElementById('poNotes')?.value?.trim(),
       total_amount: this.currentLineItems.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0),
+      job_change_order_id: this.selectedChangeOrderId || null,
       line_items: this.currentLineItems.filter(li => li.title || li.cost_code_id || li.description || li.amount || li.cost_type)
     };
 

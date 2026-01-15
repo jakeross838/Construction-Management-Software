@@ -724,6 +724,17 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Change Order badge */
+.badge-co {
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
 /* Partial approval badge */
 .invoice-header .badge-partial,
 .badge-partial {
@@ -11643,6 +11654,12 @@ textarea.form-control {
   display: block;
   margin-top: 0.25rem;
   font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.optional-label {
+  font-weight: normal;
+  font-size: 0.85em;
   color: var(--text-muted);
 }
 
