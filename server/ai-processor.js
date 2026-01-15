@@ -64,6 +64,140 @@ const TRADE_COST_CODE_MAP = {
   general: ['03116']                   // General Labor and Job Site Cleaning
 };
 
+// Line item description keywords → cost codes
+const DESCRIPTION_COST_CODE_MAP = {
+  // Electrical
+  'electrical labor': '13101',
+  'wiring': '13101',
+  'panel': '13101',
+  'circuit': '13101',
+  'outlet': '13101',
+  'switch': '13101',
+  'electrical fixture': '13102',
+  'light fixture': '13102',
+  'lighting': '13102',
+  'chandelier': '13102',
+  
+  // Plumbing
+  'plumbing labor': '12101',
+  'pipe': '12101',
+  'drain': '12101',
+  'water heater': '12101',
+  'plumbing fixture': '12102',
+  'faucet': '12102',
+  'toilet': '12102',
+  'sink': '12102',
+  'shower': '12102',
+  
+  // HVAC
+  'hvac': '14101',
+  'air conditioning': '14101',
+  'ac unit': '14101',
+  'ductwork': '14101',
+  'furnace': '14101',
+  'thermostat': '14101',
+  
+  // Framing/Carpentry
+  'framing labor': '10101',
+  'framing': '10101',
+  'carpentry': '10101',
+  'lumber': '10102',
+  'studs': '10102',
+  'sheathing': '10102',
+  'truss': '10102',
+  
+  // Drywall
+  'drywall': '19101',
+  'sheetrock': '19101',
+  'gypsum': '19101',
+  'taping': '19101',
+  'mud': '19101',
+  
+  // Roofing
+  'roofing': '17101',
+  'roof': '17101',
+  'shingle': '17101',
+  'flashing': '17101',
+  'underlayment': '17101',
+  
+  // Painting
+  'painting': '27101',
+  'paint': '27101',
+  'primer': '27101',
+  'stain': '27101',
+  
+  // Flooring
+  'flooring material': '23101',
+  'hardwood': '23101',
+  'vinyl': '23101',
+  'carpet': '23101',
+  'flooring labor': '23102',
+  'floor installation': '23102',
+  
+  // Tile
+  'tile labor': '24101',
+  'tile installation': '24101',
+  'tile material': '24102',
+  'grout': '24102',
+  'backsplash': '24102',
+  
+  // Concrete
+  'concrete': '08101',
+  'slab': '08101',
+  'foundation': '08101',
+  'rebar': '08101',
+  
+  // Masonry
+  'masonry': '09101',
+  'brick': '09101',
+  'block': '09101',
+  'stone': '09101',
+  
+  // Cabinets/Countertops
+  'cabinet': '21101',
+  'cabinetry': '21101',
+  'cabinet installation': '21102',
+  'countertop': '21103',
+  'granite': '21103',
+  'quartz': '21103',
+  
+  // Windows/Doors
+  'window': '11101',
+  'glass': '11101',
+  'door': '11102',
+  'entry door': '11102',
+  'sliding door': '11102',
+  
+  // Insulation
+  'insulation': '18101',
+  'spray foam': '18101',
+  'batt insulation': '18101',
+  
+  // Exterior
+  'stucco': '26112',
+  'siding': '26101',
+  'siding labor': '26101',
+  'siding material': '26102',
+  
+  // Landscaping
+  'landscaping': '35101',
+  'irrigation': '35101',
+  'sod': '35101',
+  'sprinkler': '35101',
+  
+  // Pool
+  'pool': '34101',
+  'spa': '34101',
+  'hot tub': '34101',
+  
+  // General
+  'labor': '03116',
+  'cleanup': '03116',
+  'debris': '03116',
+  'dumpster': '03116',
+  'permit': '01500'
+};
+
 // ============================================================
 // EXTRACTION SCHEMA
 // ============================================================
@@ -80,6 +214,7 @@ const INVOICE_SCHEMA = `{
   "invoiceNumber": "string, vendor's invoice reference number",
   "invoiceDate": "string, YYYY-MM-DD format",
   "dueDate": "string or null, YYYY-MM-DD format",
+  "invoiceType": "string: 'standard' | 'credit_memo' | 'debit_memo' - detect from document title/header keywords",
   "job": {
     "reference": "string, the job/project reference - could be client name, PO#, project name, or address",
     "address": "string or null, street address if available",
@@ -102,6 +237,11 @@ const INVOICE_SCHEMA = `{
     }
   ],
   "notes": "string or null, any special notes",
+  "splitSuggestion": {
+    "shouldSplit": "boolean, true if document appears to contain multiple separate invoices",
+    "reason": "string or null, why split is suggested (e.g., 'Multiple invoice numbers found', 'Separate sections with different totals')",
+    "suggestedSplits": "array of objects with invoiceNumber and pageHint if detectable"
+  },
   "extractionConfidence": {
     "vendor": "number 0-1, confidence in vendor extraction",
     "amount": "number 0-1, confidence in amount extraction",
@@ -305,6 +445,21 @@ For the job.reference field, extract the BEST identifier found - this could be:
 - A street address like "501 74th St"
 - A project name like "Drummond Change Orders"
 
+INVOICE TYPE DETECTION:
+Determine if this is a standard invoice, credit memo, or debit memo:
+- Look for "Credit Memo", "Credit Note", "CM", "Refund", "Return", "Adjustment" = credit_memo
+- Look for "Debit Memo", "Debit Note", "DM", "Additional Charge" = debit_memo
+- NEGATIVE amounts usually indicate credit_memo
+- If none of these indicators, use "standard"
+
+SPLIT INVOICE DETECTION:
+Check if this document contains MULTIPLE separate invoices that should be split:
+- Look for multiple distinct "Invoice #", "Invoice Number", or "Inv #" values
+- Look for multiple "Total" or "Amount Due" sections with different values
+- Look for section headers like "Invoice 1", "Invoice 2" or page separators
+- Look for repeated vendor header/letterhead appearing multiple times
+Set splitSuggestion.shouldSplit to true if multiple invoices detected.
+
 TRADE TYPE IDENTIFICATION:
 Determine trade type from line item descriptions:
 - "Electrical", "wiring", "panel", "circuit" = electrical
@@ -382,6 +537,17 @@ function normalizeExtractedData(data) {
     normalized.totalAmount = normalized.amounts.totalAmount;
     normalized.subtotal = normalized.amounts.subtotal;
     normalized.taxAmount = normalized.amounts.taxAmount;
+  }
+
+  // Normalize invoice type - detect credits from negative amounts
+  const validInvoiceTypes = ['standard', 'credit_memo', 'debit_memo'];
+  if (!normalized.invoiceType || !validInvoiceTypes.includes(normalized.invoiceType)) {
+    // Auto-detect credit from negative amount
+    if (normalized.totalAmount && parseFloat(normalized.totalAmount) < 0) {
+      normalized.invoiceType = 'credit_memo';
+    } else {
+      normalized.invoiceType = 'standard';
+    }
   }
 
   // Default confidence scores if not provided - calculate based on data quality
@@ -751,6 +917,74 @@ async function suggestCostCodes(tradeType, amount) {
     amount: amount,
     suggested: true
   }];
+}
+
+/**
+ * Suggest cost code for a line item description
+ * Uses keyword matching against DESCRIPTION_COST_CODE_MAP
+ * @param {string} description - Line item description
+ * @param {string} tradeType - Vendor trade type (fallback)
+ * @returns {Promise<Object|null>} Cost code suggestion { id, code, name, confidence }
+ */
+async function suggestCostCodeForDescription(description, tradeType = null) {
+  if (!description) return null;
+
+  const desc = description.toLowerCase();
+  let bestMatch = null;
+  let bestMatchLength = 0;
+
+  // Find longest matching keyword (more specific = better match)
+  for (const [keyword, code] of Object.entries(DESCRIPTION_COST_CODE_MAP)) {
+    if (desc.includes(keyword) && keyword.length > bestMatchLength) {
+      bestMatch = code;
+      bestMatchLength = keyword.length;
+    }
+  }
+
+  // If no description match, fall back to trade type
+  if (!bestMatch && tradeType && TRADE_COST_CODE_MAP[tradeType]) {
+    bestMatch = TRADE_COST_CODE_MAP[tradeType][0]; // Use first code for trade
+  }
+
+  if (!bestMatch) return null;
+
+  // Fetch the actual cost code record
+  const { data: costCode, error } = await supabase
+    .from('v2_cost_codes')
+    .select('id, code, name, category')
+    .eq('code', bestMatch)
+    .single();
+
+  if (error || !costCode) return null;
+
+  return {
+    id: costCode.id,
+    code: costCode.code,
+    name: costCode.name,
+    confidence: bestMatchLength > 10 ? 0.9 : bestMatchLength > 5 ? 0.75 : 0.6
+  };
+}
+
+/**
+ * Suggest cost codes for all line items in an invoice
+ * @param {Array} lineItems - Array of line items with description and amount
+ * @param {string} tradeType - Vendor trade type (fallback)
+ * @returns {Promise<Array>} Line items with suggested cost codes
+ */
+async function suggestCostCodesForLineItems(lineItems, tradeType = null) {
+  if (!lineItems || lineItems.length === 0) return [];
+
+  const results = [];
+
+  for (const item of lineItems) {
+    const suggestion = await suggestCostCodeForDescription(item.description, tradeType);
+    results.push({
+      ...item,
+      suggestedCostCode: suggestion
+    });
+  }
+
+  return results;
 }
 
 /**
@@ -1152,10 +1386,60 @@ async function processInvoice(pdfBuffer, originalFilename) {
       }
     }
 
-    // 6b. Suggest cost codes based on trade type
+    // 6b. Suggest cost codes - first try line items, then fall back to trade type
     const tradeType = extracted.vendor?.tradeType;
     const invoiceAmount = extracted.totalAmount || extracted.amounts?.totalAmount || 0;
-    if (tradeType && invoiceAmount > 0) {
+
+    // First: Try to get cost codes from line item descriptions
+    let lineItemAllocations = [];
+    if (extracted.lineItems?.length > 0) {
+      const lineItemsWithCodes = await suggestCostCodesForLineItems(extracted.lineItems, tradeType);
+
+      // Build allocations from line items that have suggested cost codes
+      for (const item of lineItemsWithCodes) {
+        if (item.suggestedCostCode) {
+          lineItemAllocations.push({
+            cost_code_id: item.suggestedCostCode.id,
+            code: item.suggestedCostCode.code,
+            name: item.suggestedCostCode.name,
+            amount: item.amount || 0,
+            suggested: true,
+            line_item_description: item.description,
+            confidence: item.suggestedCostCode.confidence
+          });
+        }
+      }
+
+      // Store line items with suggestions for reference
+      results.ai_extracted_data.line_items_with_codes = lineItemsWithCodes;
+    }
+
+    if (lineItemAllocations.length > 0) {
+      // Aggregate allocations by cost code (combine same codes)
+      const aggregated = {};
+      for (const alloc of lineItemAllocations) {
+        if (aggregated[alloc.code]) {
+          aggregated[alloc.code].amount += alloc.amount;
+          aggregated[alloc.code].line_item_descriptions.push(alloc.line_item_description);
+        } else {
+          aggregated[alloc.code] = {
+            ...alloc,
+            line_item_descriptions: [alloc.line_item_description]
+          };
+        }
+      }
+
+      results.suggested_allocations = Object.values(aggregated);
+      results.suggestions.cost_codes = results.suggested_allocations;
+
+      // Higher confidence when we matched from line item descriptions
+      const avgConfidence = lineItemAllocations.reduce((sum, a) => sum + a.confidence, 0) / lineItemAllocations.length;
+      results.ai_confidence.costCode = Math.min(avgConfidence + 0.1, 0.95); // Boost for line item match
+
+      const codeList = results.suggested_allocations.map(a => a.code).join(', ');
+      results.messages.push(`Suggested cost codes from line items: ${codeList}`);
+    } else if (tradeType && invoiceAmount > 0) {
+      // Fallback: Use trade type to suggest cost codes (original logic)
       const suggestedCodes = await suggestCostCodes(tradeType, invoiceAmount);
       if (suggestedCodes.length > 0) {
         results.suggested_allocations = suggestedCodes;
@@ -1187,6 +1471,15 @@ async function processInvoice(pdfBuffer, originalFilename) {
         results.needs_review = true;
         results.messages.push('WARNING: Possible duplicate invoice detected');
       }
+    }
+
+    // 7b. Check for split invoice suggestion
+    if (extracted.splitSuggestion?.shouldSplit) {
+      results.ai_split_suggested = true;
+      results.ai_split_data = extracted.splitSuggestion;
+      results.review_flags.push('split_suggested');
+      results.needs_review = true;
+      results.messages.push(`NOTICE: This document may contain multiple invoices - ${extracted.splitSuggestion.reason || 'consider splitting'}`);
     }
 
     // 8. Find or create PO
@@ -2123,6 +2416,8 @@ module.exports = {
   findMatchingJob,
   findOrCreateVendor,
   findOrCreatePO,
+  suggestCostCodeForDescription,
+  suggestCostCodesForLineItems,
   checkForDuplicates,
   storePDFHash,
   generatePDFHash,

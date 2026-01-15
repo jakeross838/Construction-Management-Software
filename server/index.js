@@ -3098,6 +3098,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
         invoice_date: result.extracted.invoiceDate,
         due_date: result.extracted.dueDate || null,
         amount: result.extracted.totalAmount || 0,
+        invoice_type: result.extracted.invoiceType || (parseFloat(result.extracted.totalAmount) < 0 ? 'credit_memo' : 'standard'),
         pdf_url,
         status: 'needs_review',
         notes: result.messages.join('\n'),
