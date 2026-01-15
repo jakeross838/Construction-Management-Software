@@ -309,38 +309,6 @@ async function validatePreTransition(invoice, newStatus, context = {}) {
   return { valid: errors.length === 0, errors, warnings };
 }
 
-/**
- * Check for duplicate invoices
- * @param {string} vendorId - Vendor UUID
- * @param {string} invoiceNumber - Invoice number
- * @param {number} amount - Invoice amount
- * @param {string} excludeId - Invoice ID to exclude (for edits)
- * @returns {Promise<Object>} { isDuplicate: boolean, existingInvoice?: Object }
- */
-async function checkDuplicate(vendorId, invoiceNumber, amount, excludeId = null) {
-  let query = supabase
-    .from('v2_invoices')
-    .select('id, invoice_number, amount, status, created_at')
-    .eq('vendor_id', vendorId)
-    .eq('invoice_number', invoiceNumber)
-    .is('deleted_at', null);
-
-  if (excludeId) {
-    query = query.neq('id', excludeId);
-  }
-
-  const { data: existing } = await query;
-
-  if (existing && existing.length > 0) {
-    return {
-      isDuplicate: true,
-      existingInvoice: existing[0],
-      message: `Duplicate invoice #${invoiceNumber} from this vendor already exists (${existing[0].status})`
-    };
-  }
-
-  return { isDuplicate: false };
-}
 
 /**
  * Validate allocation totals match invoice amount
@@ -533,7 +501,6 @@ module.exports = {
   validateInvoice,
   validateStatusTransition,
   validatePreTransition,
-  checkDuplicate,
   validateAllocations,
   validateCostCodesExist,
   validatePOCapacity,

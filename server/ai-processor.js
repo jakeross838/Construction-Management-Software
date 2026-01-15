@@ -22,6 +22,14 @@ const { supabase } = require('../config');
 const standards = require('./standards');
 const aiLearning = require('./ai-learning');
 
+// Consolidated duplicate detection
+const {
+  checkForDuplicates,
+  storePDFHash,
+  generatePDFHash,
+  normalizeInvoiceNumber
+} = require('./duplicate-check');
+
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -1000,59 +1008,7 @@ async function findOrCreatePO(jobId, vendorId, invoiceData, jobName) {
   // User should create PO manually with cost codes, then link invoice to it
   return null;
 }
-
-// ============================================================
-// DUPLICATE DETECTION
-// ============================================================
-
-/**
- * Check for possible duplicate invoices
- */
-async function checkForDuplicates(vendorId, invoiceNumber, amount) {
-  if (!vendorId) return { isDuplicate: false, possibleDuplicates: [] };
-
-  const { data: existing } = await supabase
-    .from('v2_invoices')
-    .select('id, invoice_number, amount, status, created_at, vendor:v2_vendors(name)')
-    .eq('vendor_id', vendorId)
-    .is('deleted_at', null);
-
-  if (!existing || existing.length === 0) {
-    return { isDuplicate: false, possibleDuplicates: [] };
-  }
-
-  const possibleDuplicates = [];
-
-  for (const inv of existing) {
-    // Exact invoice number match
-    if (inv.invoice_number && inv.invoice_number.toLowerCase() === invoiceNumber?.toLowerCase()) {
-      possibleDuplicates.push({
-        ...inv,
-        matchReason: 'exact_invoice_number',
-        confidence: 0.99
-      });
-      continue;
-    }
-
-    // Same amount (within 1%)
-    const invAmount = parseFloat(inv.amount);
-    const newAmount = parseFloat(amount);
-    if (Math.abs(invAmount - newAmount) / newAmount < 0.01) {
-      possibleDuplicates.push({
-        ...inv,
-        matchReason: 'same_amount',
-        confidence: 0.60
-      });
-    }
-  }
-
-  possibleDuplicates.sort((a, b) => b.confidence - a.confidence);
-
-  return {
-    isDuplicate: possibleDuplicates.some(d => d.confidence > 0.95),
-    possibleDuplicates
-  };
-}
+// Note: Duplicate detection functions moved to ./duplicate-check.js for consolidation
 
 // ============================================================
 // MAIN PROCESSING FUNCTION
@@ -1263,6 +1219,16 @@ async function processInvoice(pdfBuffer, originalFilename) {
         results.messages.push(poResult.isNew
           ? `Created draft PO: ${poResult.poNumber || poResult.po.po_number}`
           : `Matched PO: ${poResult.po.po_number}`);
+
+        // Auto-link suggested allocations to the matched PO
+        if (results.suggested_allocations?.length > 0 && !poResult.isNew) {
+          results.suggested_allocations = results.suggested_allocations.map(alloc => ({
+            ...alloc,
+            po_id: poResult.po.id,
+            _aiLinked: true
+          }));
+          results.messages.push(`Auto-linked allocations to ${poResult.po.po_number}`);
+        }
       }
     }
 
@@ -2158,6 +2124,9 @@ module.exports = {
   findOrCreateVendor,
   findOrCreatePO,
   checkForDuplicates,
+  storePDFHash,
+  generatePDFHash,
+  normalizeInvoiceNumber,
   CONFIDENCE_THRESHOLDS,
   DOCUMENT_TYPES
 };

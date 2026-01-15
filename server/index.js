@@ -30,12 +30,18 @@ const {
   validateInvoice,
   validateStatusTransition,
   validatePreTransition,
-  checkDuplicate,
   validateAllocations,
   validateCostCodesExist,
   validatePOCapacity,
   STATUS_TRANSITIONS
 } = require('./validation');
+
+// Consolidated duplicate detection
+const {
+  checkDuplicate,
+  checkForDuplicates,
+  storePDFHash
+} = require('./duplicate-check');
 
 const {
   AppError,
@@ -2948,7 +2954,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       };
 
       // Run matching logic (vendor, job, PO)
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates, storePDFHash } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai-processor');
 
       if (extracted.vendor?.companyName) {
         result.vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
@@ -3007,7 +3013,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       };
 
       // Run matching logic
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates, storePDFHash } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai-processor');
 
       if (extracted.vendor?.companyName) {
         result.vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
@@ -3272,7 +3278,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       );
 
       // Build result similar to processDocument output
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates, storePDFHash } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai-processor');
 
       let vendor = null;
       let matchedJob = null;
@@ -3330,7 +3336,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       const documentText = converted.data.text;
       const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
 
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO, checkForDuplicates, storePDFHash } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai-processor');
 
       let vendor = null;
       let matchedJob = null;
