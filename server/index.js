@@ -2504,7 +2504,13 @@ app.get('/api/invoices/:id', async (req, res) => {
       .eq('id', req.params.id)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // PGRST116 = no rows found
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      throw error;
+    }
 
     // Flatten draw info for easier access
     if (data.draw_invoices?.length > 0) {
@@ -6441,9 +6447,10 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
         }
       }
 
-      // Update invoice billed_amount
+      // Update invoice billed_amount (cap at invoice amount to prevent overbilling)
+      const cappedBilledTotal = Math.min(newBilledTotal, invoiceAmount);
       const updateData = {
-        billed_amount: newBilledTotal
+        billed_amount: cappedBilledTotal
       };
 
       if (isFullyBilled) {
@@ -7907,7 +7914,6 @@ app.get('/api/draws/:id/activity', async (req, res) => {
       .from('v2_draw_activity')
       .select('*')
       .eq('draw_id', drawId)
-      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -9085,20 +9091,30 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
       statusTransitions['to_denied']();
     }
 
-    // Handle removing invoice from draw when transitioning from in_draw to approved
-    if (existing.status === 'in_draw' && updates.status === 'approved') {
+    // Handle removing invoice from draw when transitioning OUT of in_draw status
+    // This covers: in_draw → approved, in_draw → ready_for_approval (unapprove), etc.
+    if (existing.status === 'in_draw' && updates.status !== 'in_draw') {
       // Find and delete the draw_invoice record
-      const { data: drawInvoice } = await supabase
+      const { data: drawInvoice, error: findError } = await supabase
         .from('v2_draw_invoices')
         .select('draw_id, draw:v2_draws(draw_number)')
         .eq('invoice_id', invoiceId)
         .single();
 
+      if (findError && findError.code !== 'PGRST116') { // PGRST116 = not found
+        console.error('[TRANSITION] Error finding draw link:', findError);
+      }
+
       if (drawInvoice) {
-        await supabase
+        const { error: deleteError } = await supabase
           .from('v2_draw_invoices')
           .delete()
           .eq('invoice_id', invoiceId);
+
+        if (deleteError) {
+          console.error('[TRANSITION] Error deleting draw link:', deleteError);
+          throw new AppError('DATABASE_ERROR', 'Failed to remove invoice from draw');
+        }
 
         // Update draw total
         const { data: remainingInvoices } = await supabase
@@ -9111,8 +9127,11 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
 
         // Log removed from draw activity
         await logActivity(invoiceId, 'removed_from_draw', performedBy, {
-          draw_number: drawInvoice.draw?.draw_number
+          draw_number: drawInvoice.draw?.draw_number,
+          new_status: updates.status
         });
+
+        console.log(`[TRANSITION] Removed invoice ${invoiceId} from draw ${drawInvoice.draw_id}`);
       }
     }
 
