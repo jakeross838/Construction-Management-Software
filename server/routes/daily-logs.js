@@ -188,6 +188,240 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ============================================================
+// SPECIFIC ROUTES (must come BEFORE /:id parameterized route)
+// ============================================================
+
+// Get current weather for a job's location
+router.get('/weather/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+
+    // Get job address
+    const { data: job, error: jobError } = await supabase
+      .from('v2_jobs')
+      .select('id, name, address')
+      .eq('id', jobId)
+      .single();
+
+    if (jobError || !job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (!job.address) {
+      return res.status(400).json({ error: 'Job has no address' });
+    }
+
+    // Geocode the address
+    const location = await geocodeAddress(job.address);
+    if (!location) {
+      return res.status(400).json({ error: 'Could not geocode job address' });
+    }
+
+    // Fetch weather
+    const weather = await fetchWeatherForCoords(location.lat, location.lon);
+    if (!weather) {
+      return res.status(500).json({ error: 'Could not fetch weather data' });
+    }
+
+    res.json({
+      job_id: job.id,
+      job_name: job.name,
+      address: job.address,
+      location: {
+        lat: location.lat,
+        lon: location.lon
+      },
+      weather
+    });
+  } catch (err) {
+    console.error('Weather endpoint error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get daily log statistics
+router.get('/stats/summary', async (req, res) => {
+  try {
+    const { job_id } = req.query;
+
+    let query = supabase
+      .from('v2_daily_logs')
+      .select('id, status, log_date, job_id')
+      .is('deleted_at', null);
+
+    if (job_id) {
+      query = query.eq('job_id', job_id);
+    }
+
+    const { data: logs, error } = await query;
+
+    if (error) throw error;
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const stats = {
+      total: logs.length,
+      draft: logs.filter(l => l.status === 'draft').length,
+      completed: logs.filter(l => l.status === 'completed').length,
+      last_30_days: logs.filter(l => new Date(l.log_date) >= thirtyDaysAgo).length,
+      this_week: logs.filter(l => {
+        const logDate = new Date(l.log_date);
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        weekStart.setHours(0, 0, 0, 0);
+        return logDate >= weekStart;
+      }).length
+    };
+
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get weekly summary report for a job
+router.get('/report/weekly', async (req, res) => {
+  try {
+    const { job_id, week_start } = req.query;
+
+    if (!job_id) {
+      return res.status(400).json({ error: 'job_id is required' });
+    }
+
+    // Calculate week range
+    let startDate;
+    if (week_start) {
+      startDate = new Date(week_start);
+    } else {
+      // Default to current week (Sunday start)
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - startDate.getDay());
+    }
+    startDate.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 6);
+    endDate.setHours(23, 59, 59, 999);
+
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+
+    // Fetch logs for the week
+    const { data: logs, error: logsError } = await supabase
+      .from('v2_daily_logs')
+      .select(`
+        *,
+        job:v2_jobs(id, name, address, client_name),
+        crew:v2_daily_log_crew(
+          id, vendor_id, worker_count, hours_worked, trade, notes,
+          vendor:v2_vendors(id, name)
+        ),
+        deliveries:v2_daily_log_deliveries(
+          id, vendor_id, description, quantity, unit,
+          vendor:v2_vendors(id, name)
+        ),
+        attachments:v2_daily_log_attachments(id, file_url, caption, category)
+      `)
+      .eq('job_id', job_id)
+      .gte('log_date', startStr)
+      .lte('log_date', endStr)
+      .is('deleted_at', null)
+      .order('log_date', { ascending: true });
+
+    if (logsError) throw logsError;
+
+    // Get job info
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('id, name, address, client_name')
+      .eq('id', job_id)
+      .single();
+
+    // Calculate summary statistics
+    const summary = {
+      job,
+      week_start: startStr,
+      week_end: endStr,
+      total_days_logged: logs.length,
+      days_with_logs: logs.map(l => l.log_date),
+
+      // Crew totals
+      total_crew_entries: logs.reduce((sum, l) => sum + (l.crew?.length || 0), 0),
+      total_workers: logs.reduce((sum, l) =>
+        sum + (l.crew?.reduce((s, c) => s + (c.worker_count || 0), 0) || 0), 0),
+      total_hours: logs.reduce((sum, l) =>
+        sum + (l.crew?.reduce((s, c) => s + (c.hours_worked || 0), 0) || 0), 0),
+
+      // Delivery totals
+      total_deliveries: logs.reduce((sum, l) => sum + (l.deliveries?.length || 0), 0),
+
+      // Photo totals
+      total_photos: logs.reduce((sum, l) => sum + (l.attachments?.length || 0), 0),
+
+      // Weather summary
+      weather_days: logs.reduce((acc, l) => {
+        if (l.weather_conditions) {
+          acc[l.weather_conditions] = (acc[l.weather_conditions] || 0) + 1;
+        }
+        return acc;
+      }, {}),
+
+      // Absent crews (from absent_crews JSONB)
+      total_absent: logs.reduce((sum, l) =>
+        sum + (l.absent_crews?.length || 0), 0),
+
+      // Unique vendors on site
+      unique_vendors: [...new Set(
+        logs.flatMap(l => l.crew?.map(c => c.vendor?.name).filter(Boolean) || [])
+      )],
+
+      // Work completed summary
+      work_completed: logs
+        .filter(l => l.work_completed)
+        .map(l => ({ date: l.log_date, work: l.work_completed })),
+
+      // Delays/issues
+      delays_issues: logs
+        .filter(l => l.delays_issues)
+        .map(l => ({ date: l.log_date, issue: l.delays_issues })),
+
+      // Safety notes
+      safety_notes: logs
+        .filter(l => l.safety_notes)
+        .map(l => ({ date: l.log_date, note: l.safety_notes })),
+
+      // Daily breakdown
+      daily_logs: logs.map(l => ({
+        date: l.log_date,
+        status: l.status,
+        weather: l.weather_conditions,
+        temp_high: l.temperature_high,
+        temp_low: l.temperature_low,
+        crew_count: l.crew?.length || 0,
+        worker_count: l.crew?.reduce((s, c) => s + (c.worker_count || 0), 0) || 0,
+        hours: l.crew?.reduce((s, c) => s + (c.hours_worked || 0), 0) || 0,
+        delivery_count: l.deliveries?.length || 0,
+        photo_count: l.attachments?.length || 0,
+        absent_count: l.absent_crews?.length || 0,
+        work_completed: l.work_completed,
+        work_planned: l.work_planned,
+        delays_issues: l.delays_issues
+      }))
+    };
+
+    res.json(summary);
+  } catch (err) {
+    console.error('Weekly report error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// PARAMETERIZED ROUTES (must come AFTER specific routes above)
+// ============================================================
+
 // Get single daily log with all details
 router.get('/:id', async (req, res) => {
   try {
@@ -854,244 +1088,6 @@ router.delete('/:id/deliveries/:deliveryId', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ============================================================
-// WEATHER ENDPOINT
-// ============================================================
-
-// Get current weather for a job's location
-router.get('/weather/:jobId', async (req, res) => {
-  try {
-    const { jobId } = req.params;
-
-    // Get job address
-    const { data: job, error: jobError } = await supabase
-      .from('v2_jobs')
-      .select('id, name, address')
-      .eq('id', jobId)
-      .single();
-
-    if (jobError || !job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
-    if (!job.address) {
-      return res.status(400).json({ error: 'Job has no address' });
-    }
-
-    // Geocode the address
-    const location = await geocodeAddress(job.address);
-    if (!location) {
-      return res.status(400).json({ error: 'Could not geocode job address' });
-    }
-
-    // Fetch weather
-    const weather = await fetchWeatherForCoords(location.lat, location.lon);
-    if (!weather) {
-      return res.status(500).json({ error: 'Could not fetch weather data' });
-    }
-
-    res.json({
-      job_id: job.id,
-      job_name: job.name,
-      address: job.address,
-      location: {
-        lat: location.lat,
-        lon: location.lon
-      },
-      weather
-    });
-  } catch (err) {
-    console.error('Weather endpoint error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ============================================================
-// STATS ENDPOINT
-// ============================================================
-
-// Get daily log statistics
-router.get('/stats/summary', async (req, res) => {
-  try {
-    const { job_id } = req.query;
-
-    let query = supabase
-      .from('v2_daily_logs')
-      .select('id, status, log_date, job_id')
-      .is('deleted_at', null);
-
-    if (job_id) {
-      query = query.eq('job_id', job_id);
-    }
-
-    const { data: logs, error } = await query;
-
-    if (error) throw error;
-
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    const stats = {
-      total: logs.length,
-      draft: logs.filter(l => l.status === 'draft').length,
-      completed: logs.filter(l => l.status === 'completed').length,
-      last_30_days: logs.filter(l => new Date(l.log_date) >= thirtyDaysAgo).length,
-      this_week: logs.filter(l => {
-        const logDate = new Date(l.log_date);
-        const weekStart = new Date(now);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-        weekStart.setHours(0, 0, 0, 0);
-        return logDate >= weekStart;
-      }).length
-    };
-
-    res.json(stats);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ============================================================
-// WEEKLY SUMMARY REPORT
-// ============================================================
-
-// Get weekly summary report for a job
-router.get('/report/weekly', async (req, res) => {
-  try {
-    const { job_id, week_start } = req.query;
-
-    if (!job_id) {
-      return res.status(400).json({ error: 'job_id is required' });
-    }
-
-    // Calculate week range
-    let startDate;
-    if (week_start) {
-      startDate = new Date(week_start);
-    } else {
-      // Default to current week (Sunday start)
-      startDate = new Date();
-      startDate.setDate(startDate.getDate() - startDate.getDay());
-    }
-    startDate.setHours(0, 0, 0, 0);
-
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 6);
-    endDate.setHours(23, 59, 59, 999);
-
-    const startStr = startDate.toISOString().split('T')[0];
-    const endStr = endDate.toISOString().split('T')[0];
-
-    // Fetch logs for the week
-    const { data: logs, error: logsError } = await supabase
-      .from('v2_daily_logs')
-      .select(`
-        *,
-        job:v2_jobs(id, name, address, client_name),
-        crew:v2_daily_log_crew(
-          id, vendor_id, worker_count, hours_worked, trade, notes,
-          vendor:v2_vendors(id, name)
-        ),
-        deliveries:v2_daily_log_deliveries(
-          id, vendor_id, description, quantity, unit,
-          vendor:v2_vendors(id, name)
-        ),
-        attachments:v2_daily_log_attachments(id, file_url, caption, category)
-      `)
-      .eq('job_id', job_id)
-      .gte('log_date', startStr)
-      .lte('log_date', endStr)
-      .is('deleted_at', null)
-      .order('log_date', { ascending: true });
-
-    if (logsError) throw logsError;
-
-    // Get job info
-    const { data: job } = await supabase
-      .from('v2_jobs')
-      .select('id, name, address, client_name')
-      .eq('id', job_id)
-      .single();
-
-    // Calculate summary statistics
-    const summary = {
-      job,
-      week_start: startStr,
-      week_end: endStr,
-      total_days_logged: logs.length,
-      days_with_logs: logs.map(l => l.log_date),
-
-      // Crew totals
-      total_crew_entries: logs.reduce((sum, l) => sum + (l.crew?.length || 0), 0),
-      total_workers: logs.reduce((sum, l) =>
-        sum + (l.crew?.reduce((s, c) => s + (c.worker_count || 0), 0) || 0), 0),
-      total_hours: logs.reduce((sum, l) =>
-        sum + (l.crew?.reduce((s, c) => s + (c.hours_worked || 0), 0) || 0), 0),
-
-      // Delivery totals
-      total_deliveries: logs.reduce((sum, l) => sum + (l.deliveries?.length || 0), 0),
-
-      // Photo totals
-      total_photos: logs.reduce((sum, l) => sum + (l.attachments?.length || 0), 0),
-
-      // Weather summary
-      weather_days: logs.reduce((acc, l) => {
-        if (l.weather_conditions) {
-          acc[l.weather_conditions] = (acc[l.weather_conditions] || 0) + 1;
-        }
-        return acc;
-      }, {}),
-
-      // Absent crews (from absent_crews JSONB)
-      total_absent: logs.reduce((sum, l) =>
-        sum + (l.absent_crews?.length || 0), 0),
-
-      // Unique vendors on site
-      unique_vendors: [...new Set(
-        logs.flatMap(l => l.crew?.map(c => c.vendor?.name).filter(Boolean) || [])
-      )],
-
-      // Work completed summary
-      work_completed: logs
-        .filter(l => l.work_completed)
-        .map(l => ({ date: l.log_date, work: l.work_completed })),
-
-      // Delays/issues
-      delays_issues: logs
-        .filter(l => l.delays_issues)
-        .map(l => ({ date: l.log_date, issue: l.delays_issues })),
-
-      // Safety notes
-      safety_notes: logs
-        .filter(l => l.safety_notes)
-        .map(l => ({ date: l.log_date, note: l.safety_notes })),
-
-      // Daily breakdown
-      daily_logs: logs.map(l => ({
-        date: l.log_date,
-        status: l.status,
-        weather: l.weather_conditions,
-        temp_high: l.temperature_high,
-        temp_low: l.temperature_low,
-        crew_count: l.crew?.length || 0,
-        worker_count: l.crew?.reduce((s, c) => s + (c.worker_count || 0), 0) || 0,
-        hours: l.crew?.reduce((s, c) => s + (c.hours_worked || 0), 0) || 0,
-        delivery_count: l.deliveries?.length || 0,
-        photo_count: l.attachments?.length || 0,
-        absent_count: l.absent_crews?.length || 0,
-        work_completed: l.work_completed,
-        work_planned: l.work_planned,
-        delays_issues: l.delays_issues
-      }))
-    };
-
-    res.json(summary);
-  } catch (err) {
-    console.error('Weekly report error:', err);
     res.status(500).json({ error: err.message });
   }
 });
