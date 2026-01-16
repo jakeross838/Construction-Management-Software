@@ -6,17 +6,8 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { logActivity, checkSplitReconciliation } = require('../services/invoiceHelpers');
-const {
-  uploadStampedPDFById,
-  downloadPDF,
-  extractStoragePath
-} = require('../storage');
-const {
-  stampApproval,
-  stampInDraw,
-  stampPaid
-} = require('../pdf-stamper');
+const { logActivity, checkSplitReconciliation, stampInvoice } = require('../services/invoiceHelpers');
+// Storage and pdf-stamper functions removed - using unified stampInvoice instead
 
 // Helper: Log draw activity
 async function logDrawActivity(drawId, action, performedBy, details = {}) {
@@ -510,18 +501,12 @@ router.post('/:id/add-invoices', async (req, res) => {
         }, { onConflict: 'draw_id,invoice_id,cost_code_id' });
       }
 
-      // Stamp PDF
-      if (inv.pdf_url) {
-        try {
-          const storagePath = extractStoragePath(inv.pdf_url);
-          if (storagePath) {
-            const pdfBuffer = await downloadPDF(storagePath);
-            const stampedBuffer = await stampInDraw(pdfBuffer, draw?.draw_number || 1);
-            await uploadStampedPDFById(stampedBuffer, inv.id, inv.job_id);
-          }
-        } catch (stampErr) {
-          console.error('IN DRAW stamp failed:', inv.id, stampErr.message);
-        }
+      // Re-stamp PDF with full stamp chain (approval + in_draw)
+      // Uses unified stampInvoice which properly layers stamps
+      try {
+        await stampInvoice(inv.id, { force: true });
+      } catch (stampErr) {
+        console.error('IN DRAW stamp failed:', inv.id, stampErr.message);
       }
 
       const cappedBilledTotal = isCredit
@@ -674,31 +659,15 @@ router.post('/:id/remove-invoice', async (req, res) => {
     await supabase.from('v2_draw_allocations').delete().eq('draw_id', drawId).eq('invoice_id', invoice_id);
     await supabase.from('v2_draw_invoices').delete().eq('draw_id', drawId).eq('invoice_id', invoice_id);
 
-    // Re-stamp with just APPROVED
-    if (invoice?.pdf_url) {
-      try {
-        const storagePath = extractStoragePath(invoice.pdf_url);
-        if (storagePath) {
-          const pdfBuffer = await downloadPDF(storagePath);
-          const stampedBuffer = await stampApproval(pdfBuffer, {
-            status: 'APPROVED',
-            date: new Date().toLocaleDateString(),
-            approvedBy: invoice.approved_by || performed_by,
-            vendorName: invoice.vendor?.name,
-            invoiceNumber: invoice.invoice_number,
-            jobName: invoice.job?.name,
-            amount: invoice.amount,
-            poNumber: invoice.po?.po_number,
-            poTotal: invoice.po?.total_amount
-          });
-          await uploadStampedPDFById(stampedBuffer, invoice_id, invoice.job?.id);
-        }
-      } catch (stampErr) {
-        console.error('Re-stamping failed:', stampErr.message);
-      }
-    }
-
+    // Update status first so stampInvoice applies correct stamp
     await supabase.from('v2_invoices').update({ status: 'approved' }).eq('id', invoice_id);
+
+    // Re-stamp with just APPROVED (stampInvoice reads current status)
+    try {
+      await stampInvoice(invoice_id, { force: true });
+    } catch (stampErr) {
+      console.error('Re-stamping failed:', stampErr.message);
+    }
     await logActivity(invoice_id, 'removed_from_draw', performed_by, { draw_number: draw.draw_number });
     await logDrawActivity(drawId, 'invoice_removed', performed_by, { invoice_id, invoice_number: invoice?.invoice_number });
 
@@ -891,24 +860,17 @@ router.patch('/:id/fund', async (req, res) => {
           }
         }
 
-        // Stamp as PAID
-        if (inv.pdf_url) {
-          try {
-            const storagePath = extractStoragePath(inv.pdf_url);
-            if (storagePath) {
-              const pdfBuffer = await downloadPDF(storagePath);
-              const stampedBuffer = await stampPaid(pdfBuffer, paidDate);
-              await uploadStampedPDFById(stampedBuffer, inv.id, inv.job_id);
-            }
-          } catch (stampErr) {
-            console.error('PAID stamp failed:', inv.id, stampErr.message);
-          }
-        }
-
-        const invoiceUpdate = { status: 'paid', paid_amount: newPaidAmount };
+        // Update status first so stampInvoice applies correct stamp chain
+        const invoiceUpdate = { status: 'paid', paid_amount: newPaidAmount, paid_at: now };
         if (isFullyBilled) invoiceUpdate.fully_billed_at = now;
-
         await supabase.from('v2_invoices').update(invoiceUpdate).eq('id', inv.id);
+
+        // Stamp with full chain (approval + in_draw + paid)
+        try {
+          await stampInvoice(inv.id, { force: true });
+        } catch (stampErr) {
+          console.error('PAID stamp failed:', inv.id, stampErr.message);
+        }
         await logActivity(inv.id, 'paid', 'System', { draw_id: drawId, amount_paid_this_draw: billedThisDraw });
 
         if (inv.parent_invoice_id) {
