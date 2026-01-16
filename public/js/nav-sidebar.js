@@ -30,11 +30,8 @@
       id: 'operations',
       label: 'Operations',
       items: [
-        { id: 'schedule', label: 'Schedule', href: 'schedule.html' },
-        { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' },
-        { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' },
-        { id: 'photos', label: 'Photos', href: 'photos.html' },
-        { id: 'inspections', label: 'Inspections', href: 'inspections.html' }
+        { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' }
+        // Future: schedule, punch-lists, photos, inspections
       ]
     },
     {
