@@ -622,7 +622,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
 router.patch('/:id', asyncHandler(async (req, res) => {
   const invoiceId = req.params.id;
   const updates = req.body;
-  const performedBy = updates.updated_by || 'System';
+  const performedBy = updates.performed_by || updates.updated_by || 'System';
 
   // Get existing invoice
   const { data: existing, error: fetchError } = await supabase
@@ -636,8 +636,8 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     throw notFoundError('invoice', invoiceId);
   }
 
-  // Remove non-updateable fields
-  const { id, allocations, updated_by, ...updateFields } = updates;
+  // Remove non-updateable fields (performed_by is used for logging, not stored on invoice)
+  const { id, allocations, updated_by, performed_by, ...updateFields } = updates;
 
   const { data: updated, error: updateError } = await supabase
     .from('v2_invoices')
@@ -647,7 +647,8 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .single();
 
   if (updateError) {
-    throw new AppError('DATABASE_ERROR', 'Failed to update invoice');
+    console.error('[Invoice Update Error]', updateError);
+    throw new AppError('DATABASE_ERROR', `Failed to update invoice: ${updateError.message}`);
   }
 
   await logActivity(invoiceId, 'updated', performedBy, { fields: Object.keys(updateFields) });
