@@ -277,6 +277,13 @@
       if (e.target === modal) closeModal();
     };
 
+    // Escape key to close
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && modal.style.display === 'flex') {
+        closeModal();
+      }
+    });
+
     // Reset modal state
     function resetModal() {
       selectedFile = null;
