@@ -373,10 +373,12 @@ async function openCreateModal() {
   document.getElementById('siteVisitors').value = '';
   document.getElementById('safetyNotes').value = '';
 
-  // Clear crew, absent, and delivery lists
+  // Clear crew, absent, delivery, and photo lists
   document.getElementById('crewList').innerHTML = '';
   document.getElementById('absentList').innerHTML = '';
   document.getElementById('deliveryList').innerHTML = '';
+  document.getElementById('photoGallery').innerHTML = '';
+  currentPhotos = [];
 
   // Add one empty crew entry
   addCrewEntry();
@@ -455,6 +457,9 @@ async function openEditModal(logId) {
     if (currentLog.absent_crews && currentLog.absent_crews.length > 0) {
       currentLog.absent_crews.forEach(absent => addAbsentEntry(absent));
     }
+
+    // Load photos
+    await loadPhotos(currentLog.id);
 
     const modal = document.getElementById('dailyLogModal');
     modal.style.display = 'flex';
@@ -970,6 +975,29 @@ async function viewLog(logId) {
       </div>
     `;
 
+    // Photos section
+    if (currentLog.attachments && currentLog.attachments.length > 0) {
+      content += `
+        <div class="view-section">
+          <h4>Photos (${currentLog.attachments.length})</h4>
+          <div class="view-photo-grid">
+            ${currentLog.attachments.map(photo => {
+              const cat = photoCategories.find(c => c.value === photo.category) || photoCategories[4];
+              return `
+                <div class="view-photo-item" onclick="viewPhotoFull('${photo.file_url}')">
+                  <div class="view-photo-image" style="background-image: url('${photo.file_url}')"></div>
+                  <div class="view-photo-info">
+                    <span class="view-photo-category">${cat.icon} ${cat.label}</span>
+                    ${photo.caption ? `<span class="view-photo-caption">${photo.caption}</span>` : ''}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     content += '</div>';
 
     document.getElementById('viewLogContent').innerHTML = content;
@@ -1027,3 +1055,292 @@ function loadJobVendors() {
   // Could load job-specific vendors if needed
   // For now vendors are global
 }
+
+// ============================================================
+// PHOTO MANAGEMENT
+// ============================================================
+
+const photoCategories = [
+  { value: 'progress', label: 'Progress', icon: '🏗️' },
+  { value: 'delivery', label: 'Delivery', icon: '📦' },
+  { value: 'safety', label: 'Safety', icon: '⚠️' },
+  { value: 'inspection', label: 'Inspection', icon: '📋' },
+  { value: 'other', label: 'Other', icon: '📸' }
+];
+
+let currentPhotos = [];
+let pendingUploads = [];
+
+// Initialize photo upload area
+function initPhotoUpload() {
+  const uploadArea = document.getElementById('photoUploadArea');
+  const photoInput = document.getElementById('photoInput');
+
+  if (!uploadArea || !photoInput) return;
+
+  // Click to browse
+  uploadArea.addEventListener('click', () => {
+    photoInput.click();
+  });
+
+  // File input change
+  photoInput.addEventListener('change', (e) => {
+    handlePhotoFiles(e.target.files);
+    photoInput.value = ''; // Reset input
+  });
+
+  // Drag and drop
+  uploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadArea.classList.add('drag-over');
+  });
+
+  uploadArea.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('drag-over');
+  });
+
+  uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('drag-over');
+    handlePhotoFiles(e.dataTransfer.files);
+  });
+}
+
+// Handle selected/dropped files
+async function handlePhotoFiles(files) {
+  const logId = document.getElementById('editLogId').value;
+
+  // If we don't have a log ID yet, we need to save the log first
+  if (!logId) {
+    showToast('Please save the daily log first before adding photos', 'warning');
+    return;
+  }
+
+  const validFiles = Array.from(files).filter(file => {
+    if (!file.type.startsWith('image/')) {
+      showToast(`${file.name} is not an image`, 'error');
+      return false;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      showToast(`${file.name} is too large (max 20MB)`, 'error');
+      return false;
+    }
+    return true;
+  });
+
+  if (validFiles.length === 0) return;
+
+  // Upload each file
+  for (const file of validFiles) {
+    await uploadPhoto(file, logId);
+  }
+}
+
+// Upload a single photo
+async function uploadPhoto(file, logId, category = 'progress') {
+  const gallery = document.getElementById('photoGallery');
+
+  // Create placeholder with loading state
+  const placeholderId = `upload-${Date.now()}`;
+  const placeholder = document.createElement('div');
+  placeholder.className = 'photo-card photo-uploading';
+  placeholder.id = placeholderId;
+  placeholder.innerHTML = `
+    <div class="photo-loading">
+      <div class="spinner"></div>
+      <span>Uploading...</span>
+    </div>
+    <div class="photo-name">${file.name}</div>
+  `;
+  gallery.appendChild(placeholder);
+
+  try {
+    const formData = new FormData();
+    formData.append('photo', file);
+    formData.append('category', category);
+    formData.append('uploaded_by', 'Jake Ross');
+
+    const res = await fetch(`/api/daily-logs/${logId}/photos`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Upload failed');
+    }
+
+    const photo = await res.json();
+    currentPhotos.push(photo);
+
+    // Replace placeholder with actual photo
+    placeholder.remove();
+    renderPhoto(photo);
+
+    showToast('Photo uploaded', 'success');
+  } catch (err) {
+    console.error('Photo upload failed:', err);
+    placeholder.remove();
+    showToast(`Failed to upload ${file.name}`, 'error');
+  }
+}
+
+// Render a single photo in the gallery
+function renderPhoto(photo) {
+  const gallery = document.getElementById('photoGallery');
+  const category = photoCategories.find(c => c.value === photo.category) || photoCategories[4];
+
+  const card = document.createElement('div');
+  card.className = 'photo-card';
+  card.id = `photo-${photo.id}`;
+  card.innerHTML = `
+    <div class="photo-image" style="background-image: url('${photo.file_url}')">
+      <div class="photo-overlay">
+        <button class="photo-action-btn" onclick="viewPhotoFull('${photo.file_url}')" title="View full size">
+          <span>🔍</span>
+        </button>
+        <button class="photo-action-btn photo-delete-btn" onclick="deletePhoto('${photo.id}')" title="Delete">
+          <span>🗑️</span>
+        </button>
+      </div>
+    </div>
+    <div class="photo-info">
+      <div class="photo-category-badge" data-category="${photo.category}">
+        ${category.icon} ${category.label}
+      </div>
+      <input type="text" class="photo-caption-input" placeholder="Add caption..."
+             value="${photo.caption || ''}"
+             onchange="updatePhotoCaption('${photo.id}', this.value)">
+      <select class="photo-category-select" onchange="updatePhotoCategory('${photo.id}', this.value)">
+        ${photoCategories.map(c => `
+          <option value="${c.value}" ${c.value === photo.category ? 'selected' : ''}>
+            ${c.icon} ${c.label}
+          </option>
+        `).join('')}
+      </select>
+    </div>
+  `;
+
+  gallery.appendChild(card);
+}
+
+// Render all photos in the gallery
+function renderPhotoGallery() {
+  const gallery = document.getElementById('photoGallery');
+  gallery.innerHTML = '';
+
+  if (currentPhotos.length === 0) {
+    return;
+  }
+
+  currentPhotos.forEach(photo => renderPhoto(photo));
+}
+
+// Load photos for a daily log
+async function loadPhotos(logId) {
+  currentPhotos = [];
+
+  if (!logId) {
+    renderPhotoGallery();
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/daily-logs/${logId}/photos`);
+    if (res.ok) {
+      currentPhotos = await res.json();
+    }
+  } catch (err) {
+    console.error('Failed to load photos:', err);
+  }
+
+  renderPhotoGallery();
+}
+
+// Update photo caption
+async function updatePhotoCaption(photoId, caption) {
+  const logId = document.getElementById('editLogId').value;
+  if (!logId) return;
+
+  try {
+    await fetch(`/api/daily-logs/${logId}/photos/${photoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caption })
+    });
+  } catch (err) {
+    console.error('Failed to update caption:', err);
+    showToast('Failed to update caption', 'error');
+  }
+}
+
+// Update photo category
+async function updatePhotoCategory(photoId, category) {
+  const logId = document.getElementById('editLogId').value;
+  if (!logId) return;
+
+  try {
+    await fetch(`/api/daily-logs/${logId}/photos/${photoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category })
+    });
+
+    // Update the badge
+    const card = document.getElementById(`photo-${photoId}`);
+    if (card) {
+      const cat = photoCategories.find(c => c.value === category) || photoCategories[4];
+      const badge = card.querySelector('.photo-category-badge');
+      if (badge) {
+        badge.dataset.category = category;
+        badge.innerHTML = `${cat.icon} ${cat.label}`;
+      }
+    }
+
+    // Update local state
+    const photo = currentPhotos.find(p => p.id === photoId);
+    if (photo) photo.category = category;
+  } catch (err) {
+    console.error('Failed to update category:', err);
+    showToast('Failed to update category', 'error');
+  }
+}
+
+// Delete a photo
+async function deletePhoto(photoId) {
+  if (!confirm('Delete this photo?')) return;
+
+  const logId = document.getElementById('editLogId').value;
+  if (!logId) return;
+
+  try {
+    const res = await fetch(`/api/daily-logs/${logId}/photos/${photoId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleted_by: 'Jake Ross' })
+    });
+
+    if (!res.ok) throw new Error('Delete failed');
+
+    // Remove from DOM and state
+    const card = document.getElementById(`photo-${photoId}`);
+    if (card) card.remove();
+
+    currentPhotos = currentPhotos.filter(p => p.id !== photoId);
+    showToast('Photo deleted', 'success');
+  } catch (err) {
+    console.error('Failed to delete photo:', err);
+    showToast('Failed to delete photo', 'error');
+  }
+}
+
+// View photo in full size (opens in new tab or lightbox)
+function viewPhotoFull(url) {
+  window.open(url, '_blank');
+}
+
+// Initialize on DOM load
+document.addEventListener('DOMContentLoaded', () => {
+  initPhotoUpload();
+});

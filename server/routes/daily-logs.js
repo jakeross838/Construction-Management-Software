@@ -5,7 +5,26 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { supabase } = require('../../config');
+
+// Configure multer for photo uploads
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB limit for photos
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, PNG, WebP, and HEIC images are allowed'), false);
+    }
+  }
+});
+
+// Use existing 'invoices' bucket with subfolder for photos
+const PHOTO_BUCKET = 'invoices';
+const PHOTO_PREFIX = 'daily-log-photos';
 
 // ============================================================
 // WEATHER API HELPER
@@ -927,6 +946,216 @@ router.get('/stats/summary', async (req, res) => {
     };
 
     res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// PHOTO ENDPOINTS
+// ============================================================
+
+// Upload photo to daily log
+router.post('/:id/photos', photoUpload.single('photo'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { caption, category, uploaded_by } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No photo uploaded' });
+    }
+
+    // Check if log exists and is not completed
+    const { data: existingLog, error: checkError } = await supabase
+      .from('v2_daily_logs')
+      .select('id, status, job_id')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (checkError || !existingLog) {
+      return res.status(404).json({ error: 'Daily log not found' });
+    }
+
+    if (existingLog.status === 'completed') {
+      return res.status(400).json({ error: 'Cannot add photos to a completed daily log' });
+    }
+
+    // Upload to Supabase Storage
+    const timestamp = Date.now();
+    const ext = req.file.originalname.split('.').pop() || 'jpg';
+    const fileName = `${PHOTO_PREFIX}/${existingLog.job_id}/${id}/${timestamp}.${ext}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Photo upload error:', uploadError);
+      throw new Error(`Failed to upload photo: ${uploadError.message}`);
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(PHOTO_BUCKET)
+      .getPublicUrl(fileName);
+
+    // Create attachment record
+    const { data: attachment, error: dbError } = await supabase
+      .from('v2_daily_log_attachments')
+      .insert({
+        daily_log_id: id,
+        file_url: urlData.publicUrl,
+        file_name: req.file.originalname,
+        file_type: req.file.mimetype,
+        caption: caption || null,
+        category: category || 'progress',
+        uploaded_by: uploaded_by || 'System'
+      })
+      .select()
+      .single();
+
+    if (dbError) throw dbError;
+
+    // Log activity
+    await logDailyLogActivity(id, 'photo_added', uploaded_by || 'System', {
+      attachment_id: attachment.id,
+      file_name: req.file.originalname,
+      category
+    });
+
+    res.status(201).json(attachment);
+  } catch (err) {
+    console.error('Photo upload failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get all photos for a daily log
+router.get('/:id/photos', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: photos, error } = await supabase
+      .from('v2_daily_log_attachments')
+      .select('*')
+      .eq('daily_log_id', id)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json(photos || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update photo caption/category
+router.patch('/:id/photos/:photoId', async (req, res) => {
+  try {
+    const { id, photoId } = req.params;
+    const { caption, category } = req.body;
+
+    // Check if log exists and is not completed
+    const { data: existingLog, error: checkError } = await supabase
+      .from('v2_daily_logs')
+      .select('id, status')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (checkError || !existingLog) {
+      return res.status(404).json({ error: 'Daily log not found' });
+    }
+
+    if (existingLog.status === 'completed') {
+      return res.status(400).json({ error: 'Cannot modify photos in a completed daily log' });
+    }
+
+    const updateData = {};
+    if (caption !== undefined) updateData.caption = caption;
+    if (category !== undefined) updateData.category = category;
+
+    const { data: updated, error } = await supabase
+      .from('v2_daily_log_attachments')
+      .update(updateData)
+      .eq('id', photoId)
+      .eq('daily_log_id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete photo from daily log
+router.delete('/:id/photos/:photoId', async (req, res) => {
+  try {
+    const { id, photoId } = req.params;
+    const { deleted_by } = req.body;
+
+    // Check if log exists and is not completed
+    const { data: existingLog, error: checkError } = await supabase
+      .from('v2_daily_logs')
+      .select('id, status')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (checkError || !existingLog) {
+      return res.status(404).json({ error: 'Daily log not found' });
+    }
+
+    if (existingLog.status === 'completed') {
+      return res.status(400).json({ error: 'Cannot delete photos from a completed daily log' });
+    }
+
+    // Get the photo record to get the file URL
+    const { data: photo, error: fetchError } = await supabase
+      .from('v2_daily_log_attachments')
+      .select('*')
+      .eq('id', photoId)
+      .eq('daily_log_id', id)
+      .single();
+
+    if (fetchError || !photo) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    // Extract storage path from URL and delete from storage
+    try {
+      // URL format: .../storage/v1/object/public/invoices/daily-log-photos/...
+      const match = photo.file_url.match(/\/storage\/v1\/object\/public\/invoices\/(.+)$/);
+      if (match) {
+        const storagePath = decodeURIComponent(match[1].split('?')[0]);
+        await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);
+      }
+    } catch (storageErr) {
+      console.warn('Could not delete file from storage:', storageErr.message);
+    }
+
+    // Delete the database record
+    const { error: deleteError } = await supabase
+      .from('v2_daily_log_attachments')
+      .delete()
+      .eq('id', photoId);
+
+    if (deleteError) throw deleteError;
+
+    // Log activity
+    await logDailyLogActivity(id, 'photo_deleted', deleted_by || 'System', {
+      attachment_id: photoId,
+      file_name: photo.file_name
+    });
+
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

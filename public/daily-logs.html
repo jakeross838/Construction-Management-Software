@@ -7,7 +7,7 @@
   <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Daily Logs</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260115-absent">
+  <link rel="stylesheet" href="css/styles.css?v=20260116-photos">
 </head>
 <body>
   <div class="app">
@@ -172,6 +172,27 @@
             <textarea id="safetyNotes" class="form-control" rows="2" placeholder="Safety observations, incidents, or notes..."></textarea>
           </div>
         </div>
+
+        <!-- Photos Section -->
+        <div class="form-section">
+          <h3>Photos</h3>
+          <p class="form-hint">Document progress, deliveries, safety conditions, and inspections</p>
+
+          <!-- Upload Area -->
+          <div class="photo-upload-area" id="photoUploadArea">
+            <div class="upload-icon">📷</div>
+            <div class="upload-text">
+              <strong>Drop photos here</strong>
+              <span>or click to browse</span>
+            </div>
+            <input type="file" id="photoInput" accept="image/*" multiple style="display: none;">
+          </div>
+
+          <!-- Photo Gallery -->
+          <div class="photo-gallery" id="photoGallery">
+            <!-- Photos will be rendered here -->
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-danger" id="deleteLogBtn" onclick="deleteLog()" style="display: none; margin-right: auto;">Delete</button>
@@ -203,6 +224,6 @@
   <script defer src="js/toasts.js?v=20260115-perf"></script>
   <script defer src="js/nav-sidebar.js?v=20260115-perf"></script>
   <script defer src="js/sidebar.js?v=20260115-perf"></script>
-  <script defer src="js/daily-logs.js?v=20260115-absent"></script>
+  <script defer src="js/daily-logs.js?v=20260116-photos"></script>
 </body>
 </html>

@@ -17425,6 +17425,267 @@ textarea.form-control {
   margin-top: 0.375rem;
 }
 
+/* ============================================
+   PHOTO UPLOAD & GALLERY STYLES
+   ============================================ */
+
+/* Photo Upload Area */
+.photo-upload-area {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--bg-card);
+  margin-bottom: 1rem;
+}
+
+.photo-upload-area:hover {
+  border-color: var(--accent-blue);
+  background: rgba(88, 166, 255, 0.05);
+}
+
+.photo-upload-area.drag-over {
+  border-color: var(--accent-green);
+  background: rgba(63, 185, 80, 0.1);
+  transform: scale(1.01);
+}
+
+.photo-upload-area .upload-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.photo-upload-area .upload-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.photo-upload-area .upload-text strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.photo-upload-area .upload-text span {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Photo Gallery Grid */
+.photo-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+/* Photo Card */
+.photo-card {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.photo-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.photo-card.photo-uploading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: var(--bg-card);
+}
+
+.photo-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.photo-loading .spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.photo-name {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 0.5rem;
+  text-align: center;
+  word-break: break-all;
+}
+
+/* Photo Image */
+.photo-image {
+  position: relative;
+  height: 150px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg-card);
+}
+
+.photo-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.photo-image:hover .photo-overlay {
+  opacity: 1;
+}
+
+.photo-action-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-card);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.photo-action-btn:hover {
+  transform: scale(1.1);
+  background: var(--bg-card-elevated);
+}
+
+.photo-delete-btn:hover {
+  background: rgba(248, 81, 73, 0.2);
+}
+
+/* Photo Info */
+.photo-info {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.photo-category-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-card);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  width: fit-content;
+}
+
+.photo-category-badge[data-category="progress"] { color: var(--accent-blue); }
+.photo-category-badge[data-category="delivery"] { color: var(--accent-orange); }
+.photo-category-badge[data-category="safety"] { color: var(--accent-red); }
+.photo-category-badge[data-category="inspection"] { color: var(--accent-green); }
+
+.photo-caption-input {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.photo-caption-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.photo-category-select {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.photo-category-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+/* View Modal Photo Grid */
+.view-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.view-photo-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.view-photo-item:hover {
+  transform: scale(1.02);
+  border-color: var(--accent-blue);
+}
+
+.view-photo-image {
+  height: 120px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg-card-elevated);
+}
+
+.view-photo-info {
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.view-photo-category {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.view-photo-caption {
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* View Field */
 .view-field {
   margin-bottom: 1rem;
