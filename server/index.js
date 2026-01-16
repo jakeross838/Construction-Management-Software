@@ -1281,7 +1281,7 @@ app.get('/api/purchase-orders', async (req, res) => {
 
     if (job_id) query = query.eq('job_id', job_id);
     if (vendor_id) query = query.eq('vendor_id', vendor_id);
-    if (status) query = query.eq('status', status);
+    if (status && status !== 'all') query = query.eq('status', status);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -2579,7 +2579,7 @@ app.get('/api/invoices', async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (job_id) query = query.eq('job_id', job_id);
-    if (status) query = query.eq('status', status);
+    if (status && status !== 'all') query = query.eq('status', status);
     if (vendor_id) query = query.eq('vendor_id', vendor_id);
 
     const { data, error } = await query;
@@ -11673,7 +11673,7 @@ app.get('/api/lien-releases', asyncHandler(async (req, res) => {
   if (job_id) query = query.eq('job_id', job_id);
   if (vendor_id) query = query.eq('vendor_id', vendor_id);
   if (draw_id) query = query.eq('draw_id', draw_id);
-  if (status) query = query.eq('status', status);
+  if (status && status !== 'all') query = query.eq('status', status);
 
   const { data, error } = await query;
   if (error) throw error;

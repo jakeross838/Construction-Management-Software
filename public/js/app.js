@@ -145,16 +145,17 @@ function renderInvoiceList() {
     // "Invoicing" tab includes needs_review, ready_for_approval, approved, and denied
     // Also support legacy statuses: received → needs_review, needs_approval → ready_for_approval
     filtered = filtered.filter(inv =>
-      inv.status === 'needs_review' || inv.status === 'ready_for_approval' ||
-      inv.status === 'approved' || inv.status === 'denied' ||
+      inv.status === 'pending' || inv.status === 'needs_review' || inv.status === 'ready_for_approval' ||
+      inv.status === 'approved' || inv.status === 'pm_approved' || inv.status === 'denied' ||
       inv.status === 'received' || inv.status === 'needs_approval'
     );
     // Map legacy statuses for sorting
     const statusOrder = {
-      'needs_review': 0, 'received': 0,  // Legacy received = needs_review
+      'pending': 0,
+      'needs_review': 1, 'received': 1,  // Legacy received = needs_review
       'ready_for_approval': 1, 'needs_approval': 1,  // Legacy needs_approval = ready_for_approval
       'denied': 2,
-      'approved': 3
+      'approved': 3, 'pm_approved': 3
     };
     filtered.sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
   } else {
@@ -192,13 +193,20 @@ function renderInvoiceList() {
   if (state.currentStatusFilter === 'approval') {
     // Group invoices - include legacy statuses in their modern equivalents
     const groups = {
+      pending: filtered.filter(inv => inv.status === 'pending'),
       needs_review: filtered.filter(inv => inv.status === 'needs_review' || inv.status === 'received'),
       ready_for_approval: filtered.filter(inv => inv.status === 'ready_for_approval' || inv.status === 'needs_approval'),
       denied: filtered.filter(inv => inv.status === 'denied'),
-      approved: filtered.filter(inv => inv.status === 'approved')
+      approved: filtered.filter(inv => inv.status === 'approved' || inv.status === 'pm_approved')
     };
 
     let html = '';
+
+    // Pending: New invoices
+    if (groups.pending.length > 0) {
+      html += '<div class="invoice-group-header pending-header">Pending</div>';
+      html += groups.pending.map(inv => renderInvoiceCard(inv)).join('');
+    }
 
     // Needs Review: Only show in "All Jobs" view - this is the accountant's queue
     if (!state.currentJobFilter && groups.needs_review.length > 0) {
