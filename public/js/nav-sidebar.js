@@ -23,14 +23,14 @@
         { id: 'pos', label: 'Purchase Orders', href: 'pos.html' },
         { id: 'cos', label: 'Change Orders', href: 'change-orders.html' },
         { id: 'draws', label: 'Draws', href: 'draws.html' },
-        { id: 'budget', label: 'Budget', href: 'budgets.html' }
+        { id: 'budget', label: 'Budget', href: 'budgets.html' },
+        { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' }
       ]
     },
     {
       id: 'documents',
       label: 'Documents',
       items: [
-        { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' },
         { id: 'recon', label: 'Reconciliation', href: 'reconciliation.html' }
       ]
     },
