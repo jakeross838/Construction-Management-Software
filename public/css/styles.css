@@ -885,12 +885,12 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   justify-content: center;
   align-items: center;
   z-index: 10001;
   padding: 1.5rem;
-  backdrop-filter: blur(4px);
+  /* backdrop-filter: blur(4px); - removed for performance */
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -4927,8 +4927,8 @@ label .ai-indicator {
 .ai-processing-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(8px);
+  background: rgba(15, 23, 42, 0.95);
+  /* backdrop-filter: blur(8px); - removed for performance */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5541,7 +5541,8 @@ label .ai-indicator {
   padding: 1.25rem 1.5rem;
   position: relative;
   overflow: hidden;
-  transition: var(--transition);
+  transition: var(--transition), transform 0.15s ease;
+  will-change: transform;
 }
 
 .stat-card::before {
