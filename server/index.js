@@ -4028,7 +4028,8 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
     // ==========================================
     // VALIDATION: Prevent re-approval (preserve audit trail)
     // ==========================================
-    if (invoice.status === 'approved' || invoice.status === 'in_draw' || invoice.status === 'paid') {
+    const alreadyApprovedStatuses = ['approved', 'pm_approved', 'in_draw', 'paid'];
+    if (alreadyApprovedStatuses.includes(invoice.status)) {
       return res.status(400).json({
         error: `Invoice is already ${invoice.status}. Cannot re-approve.`,
         current_status: invoice.status,
