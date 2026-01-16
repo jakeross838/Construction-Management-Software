@@ -554,6 +554,40 @@ router.post('/:id/add-invoices', async (req, res) => {
       }
 
       await supabase.from('v2_invoices').update(updateData).eq('id', inv.id);
+
+      // Update budget billed_amount for each allocation
+      if (inv.job_id && inv.allocations && inv.allocations.length > 0) {
+        for (const alloc of inv.allocations) {
+          if (!alloc.cost_code_id) continue;
+
+          const { data: budgetLine } = await supabase
+            .from('v2_budget_lines')
+            .select('id, billed_amount')
+            .eq('job_id', inv.job_id)
+            .eq('cost_code_id', alloc.cost_code_id)
+            .single();
+
+          if (budgetLine) {
+            const newBilled = (parseFloat(budgetLine.billed_amount) || 0) + parseFloat(alloc.amount);
+            await supabase
+              .from('v2_budget_lines')
+              .update({ billed_amount: newBilled })
+              .eq('id', budgetLine.id);
+          } else {
+            // Create budget line if doesn't exist
+            await supabase
+              .from('v2_budget_lines')
+              .insert({
+                job_id: inv.job_id,
+                cost_code_id: alloc.cost_code_id,
+                budgeted_amount: 0,
+                committed_amount: 0,
+                billed_amount: parseFloat(alloc.amount) || 0,
+                paid_amount: 0
+              });
+          }
+        }
+      }
     }
 
     // Clear allocations for partial invoices
@@ -595,14 +629,50 @@ router.post('/:id/remove-invoice', async (req, res) => {
       return res.status(400).json({ error: 'Cannot remove invoices from non-draft draws' });
     }
 
-    await supabase.from('v2_draw_allocations').delete().eq('draw_id', drawId).eq('invoice_id', invoice_id);
-    await supabase.from('v2_draw_invoices').delete().eq('draw_id', drawId).eq('invoice_id', invoice_id);
-
+    // Get invoice with allocations BEFORE removing from draw
     const { data: invoice } = await supabase
       .from('v2_invoices')
-      .select(`*, vendor:v2_vendors(id, name), job:v2_jobs(id, name), po:v2_purchase_orders(id, po_number, total_amount)`)
+      .select(`
+        *,
+        vendor:v2_vendors(id, name),
+        job:v2_jobs(id, name),
+        po:v2_purchase_orders(id, po_number, total_amount),
+        allocations:v2_invoice_allocations(id, amount, cost_code_id)
+      `)
       .eq('id', invoice_id)
       .single();
+
+    // Get draw allocations to decrement budget
+    const { data: drawAllocations } = await supabase
+      .from('v2_draw_allocations')
+      .select('cost_code_id, amount')
+      .eq('draw_id', drawId)
+      .eq('invoice_id', invoice_id);
+
+    // Decrement budget billed_amount for each allocation
+    if (invoice?.job?.id && drawAllocations && drawAllocations.length > 0) {
+      for (const alloc of drawAllocations) {
+        if (!alloc.cost_code_id) continue;
+
+        const { data: budgetLine } = await supabase
+          .from('v2_budget_lines')
+          .select('id, billed_amount')
+          .eq('job_id', invoice.job.id)
+          .eq('cost_code_id', alloc.cost_code_id)
+          .single();
+
+        if (budgetLine) {
+          const newBilled = Math.max(0, (parseFloat(budgetLine.billed_amount) || 0) - parseFloat(alloc.amount));
+          await supabase
+            .from('v2_budget_lines')
+            .update({ billed_amount: newBilled })
+            .eq('id', budgetLine.id);
+        }
+      }
+    }
+
+    await supabase.from('v2_draw_allocations').delete().eq('draw_id', drawId).eq('invoice_id', invoice_id);
+    await supabase.from('v2_draw_invoices').delete().eq('draw_id', drawId).eq('invoice_id', invoice_id);
 
     // Re-stamp with just APPROVED
     if (invoice?.pdf_url) {
