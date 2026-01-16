@@ -30,6 +30,7 @@ router.get('/', async (req, res) => {
           cost_code:v2_cost_codes(id, code, name)
         )
       `)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (job_id) query = query.eq('job_id', job_id);
