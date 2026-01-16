@@ -428,7 +428,7 @@ function renderInvoiceModal(invoice, activity, approvalContext = {}) {
   if (invoice.pdf_url || invoice.pdf_stamped_url) {
     const showOriginal = ['needs_review', 'ready_for_approval'].includes(invoice.status);
     const pdfUrl = showOriginal ? invoice.pdf_url : (invoice.pdf_stamped_url || invoice.pdf_url);
-    pdfContainer.innerHTML = `<iframe src="${pdfUrl}"></iframe>`;
+    pdfContainer.innerHTML = `<iframe src="${pdfUrl}" loading="lazy"></iframe>`;
   } else {
     pdfContainer.innerHTML = `
       <div class="pdf-placeholder">

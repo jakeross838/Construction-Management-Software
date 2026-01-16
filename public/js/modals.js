@@ -532,7 +532,7 @@ const Modals = {
                 </div>
               </div>
               ${pdfUrl ? `
-                <iframe id="pdf-viewer-iframe" src="${pdfUrl}" class="pdf-iframe" data-stamped="${invoice.pdf_stamped_url || ''}" data-original="${invoice.pdf_url || ''}"></iframe>
+                <iframe id="pdf-viewer-iframe" src="${pdfUrl}" class="pdf-iframe" loading="lazy" data-stamped="${invoice.pdf_stamped_url || ''}" data-original="${invoice.pdf_url || ''}"></iframe>
               ` : `
                 <div class="pdf-placeholder">
                   <div class="pdf-icon">📄</div>

@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
@@ -91,6 +92,7 @@ const app = express();
 
 // Middleware
 app.use(cors());
+app.use(compression()); // Gzip compression for all responses
 app.use(express.json());
 
 // Disable caching for JS files during development

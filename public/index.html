@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Preconnect to speed up API/storage requests -->
+  <link rel="preconnect" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Invoice Approval</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260115-perf">
+  <link rel="stylesheet" href="css/styles.css?v=20260115-perf2">
 </head>
 <body>
   <div class="app">
@@ -226,16 +229,16 @@
   <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <!-- Core modules -->
-  <script src="js/toasts.js?v=20260114b"></script>
-  <script src="js/nav-sidebar.js?v=20260114b"></script>
-  <script src="js/validation.js?v=20260114b"></script>
-  <script src="js/cost-code-picker.js?v=20260114b"></script>
-  <script src="js/searchable-picker.js?v=20260114f"></script>
-  <script src="js/realtime.js?v=20260114f"></script>
-  <script src="js/modals.js?v=20260115-ai-split"></script>
-  <script src="js/sidebar.js?v=20260114f"></script>
-  <script src="js/app.js?v=20260115-partial-fix2"></script>
+  <!-- Core modules (defer for non-blocking load, maintains execution order) -->
+  <script defer src="js/toasts.js?v=20260115-perf"></script>
+  <script defer src="js/nav-sidebar.js?v=20260115-perf"></script>
+  <script defer src="js/validation.js?v=20260115-perf"></script>
+  <script defer src="js/cost-code-picker.js?v=20260115-perf"></script>
+  <script defer src="js/searchable-picker.js?v=20260115-perf"></script>
+  <script defer src="js/realtime.js?v=20260115-perf"></script>
+  <script defer src="js/modals.js?v=20260115-perf"></script>
+  <script defer src="js/sidebar.js?v=20260115-perf"></script>
+  <script defer src="js/app.js?v=20260115-perf"></script>
 
   <!-- Simple Upload Script -->
   <script>

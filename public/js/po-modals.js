@@ -969,7 +969,7 @@ class POModals {
           </div>
         </div>
         <div class="attachment-viewer-content">
-          ${isPdf ? `<iframe src="${url}" class="pdf-viewer-frame"></iframe>` : ''}
+          ${isPdf ? `<iframe src="${url}" class="pdf-viewer-frame" loading="lazy"></iframe>` : ''}
           ${isImage ? `<img src="${url}" alt="${this.escapeHtml(fileName)}" class="image-viewer">` : ''}
           ${!isPdf && !isImage ? `
             <div class="unsupported-preview">
