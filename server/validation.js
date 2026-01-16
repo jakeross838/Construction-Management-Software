@@ -52,6 +52,7 @@ const STATUS_TRANSITIONS = {
   needs_review: ['ready_for_approval', 'denied', 'deleted', 'split'],
   ready_for_approval: ['approved', 'needs_review', 'denied', 'split'],
   approved: ['in_draw', 'ready_for_approval', 'needs_review'],
+  pm_approved: ['in_draw', 'ready_for_approval', 'needs_review'],  // Same as approved
   in_draw: ['paid', 'approved'],
   paid: [],     // Archived - read only
   split: [],    // Split parent - container only, children are processed

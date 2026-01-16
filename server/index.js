@@ -9408,6 +9408,16 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
           updateFields.sent_back_reason = updates.sendback_reason;
         }
       },
+      // Send back from pm_approved: pm_approved → needs_review (clear approval, record reason)
+      'pm_approved_to_needs_review': () => {
+        updateFields.approved_at = null;
+        updateFields.approved_by = null;
+        updateFields.sent_back_at = new Date().toISOString();
+        updateFields.sent_back_by = performedBy;
+        if (updates.sendback_reason) {
+          updateFields.sent_back_reason = updates.sendback_reason;
+        }
+      },
       // Send back from ready_for_approval: ready_for_approval → needs_review (record reason)
       'ready_for_approval_to_needs_review': () => {
         updateFields.sent_back_at = new Date().toISOString();
