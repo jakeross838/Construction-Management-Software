@@ -863,7 +863,12 @@ router.patch('/:id/fund', async (req, res) => {
         // Update status first so stampInvoice applies correct stamp chain
         const invoiceUpdate = { status: 'paid', paid_amount: newPaidAmount, paid_at: now };
         if (isFullyBilled) invoiceUpdate.fully_billed_at = now;
-        await supabase.from('v2_invoices').update(invoiceUpdate).eq('id', inv.id);
+        const { error: invUpdateErr } = await supabase.from('v2_invoices').update(invoiceUpdate).eq('id', inv.id);
+        if (invUpdateErr) {
+          console.error('Invoice update failed:', inv.id, invUpdateErr);
+        } else {
+          console.log('[FUND] Invoice', inv.id.substring(0,8), 'updated to paid, amount:', newPaidAmount);
+        }
 
         // Stamp with full chain (approval + in_draw + paid)
         try {
