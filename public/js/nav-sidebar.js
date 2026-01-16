@@ -8,6 +8,8 @@
   'use strict';
 
   // Navigation structure - groups with sub-items
+  // Inspired by Procore/Buildertrend: flows like construction
+  // Commitments → Billing → Admin
   const navGroups = [
     {
       id: 'dashboard',
@@ -16,29 +18,29 @@
       items: [] // No sub-items, direct link
     },
     {
-      id: 'financial',
-      label: 'Financial',
+      id: 'commitments',
+      label: 'Commitments',
       items: [
-        { id: 'invoices', label: 'Invoices', href: 'index.html' },
         { id: 'pos', label: 'Purchase Orders', href: 'pos.html' },
         { id: 'cos', label: 'Change Orders', href: 'change-orders.html' },
+        { id: 'budget', label: 'Budget', href: 'budgets.html' }
+      ]
+    },
+    {
+      id: 'billing',
+      label: 'Billing',
+      items: [
+        { id: 'invoices', label: 'Invoices', href: 'index.html' },
         { id: 'draws', label: 'Draws', href: 'draws.html' },
-        { id: 'budget', label: 'Budget', href: 'budgets.html' },
         { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' }
       ]
     },
     {
-      id: 'documents',
-      label: 'Documents',
+      id: 'admin',
+      label: 'Admin',
       items: [
+        { id: 'vendors', label: 'Vendors', href: 'vendors.html' },
         { id: 'recon', label: 'Reconciliation', href: 'reconciliation.html' }
-      ]
-    },
-    {
-      id: 'manage',
-      label: 'Manage',
-      items: [
-        { id: 'vendors', label: 'Vendors', href: 'vendors.html' }
       ]
     }
   ];

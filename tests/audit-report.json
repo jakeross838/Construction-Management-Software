@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-01-16T00:52:18.421Z",
+  "timestamp": "2026-01-16T02:12:28.217Z",
   "summary": {
-    "passed": 8,
+    "passed": 0,
     "errors": 0,
     "warnings": 0,
     "improvements": 0
@@ -10,46 +10,5 @@
   "errors": [],
   "warnings": [],
   "improvements": [],
-  "passedChecks": [
-    {
-      "page": "API",
-      "check": "Jobs: 200 (1 items)",
-      "timestamp": "2026-01-16T00:52:16.661Z"
-    },
-    {
-      "page": "API",
-      "check": "Vendors: 200 (23 items)",
-      "timestamp": "2026-01-16T00:52:16.855Z"
-    },
-    {
-      "page": "API",
-      "check": "Invoices: 200 (25 items)",
-      "timestamp": "2026-01-16T00:52:16.968Z"
-    },
-    {
-      "page": "API",
-      "check": "Purchase Orders: 200 (16 items)",
-      "timestamp": "2026-01-16T00:52:17.095Z"
-    },
-    {
-      "page": "API",
-      "check": "Draws: 200 (1 items)",
-      "timestamp": "2026-01-16T00:52:17.277Z"
-    },
-    {
-      "page": "API",
-      "check": "Cost Codes: 200 (280 items)",
-      "timestamp": "2026-01-16T00:52:17.376Z"
-    },
-    {
-      "page": "API",
-      "check": "Dashboard Stats: 200 (object items)",
-      "timestamp": "2026-01-16T00:52:17.762Z"
-    },
-    {
-      "page": "API",
-      "check": "PO Stats: 200 (object items)",
-      "timestamp": "2026-01-16T00:52:17.933Z"
-    }
-  ]
+  "passedChecks": []
 }
