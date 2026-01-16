@@ -1239,6 +1239,12 @@ router.post('/bulk/approve', asyncHandler(async (req, res) => {
       continue;
     }
 
+    // GUARDRAIL: Warn if invoice has no allocations (but still allow approval)
+    const allocSum = (invoice.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+    if (allocSum === 0) {
+      console.warn(`[GUARDRAIL] Invoice ${invoiceId} approved without allocations`);
+    }
+
     results.success.push(invoiceId);
   }
 

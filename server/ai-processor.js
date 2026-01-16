@@ -41,185 +41,96 @@ const CONFIDENCE_THRESHOLDS = {
   LOW: 0.60      // Don't auto-assign, show picker
 };
 
-// Trade type to cost code mapping (code prefix -> cost codes)
-const TRADE_COST_CODE_MAP = {
-  // Using actual Ross Built cost codes from database
-  electrical: ['13101', '13102'],      // Electrical Labor, Electrical Fixtures
-  plumbing: ['12101', '12102'],        // Plumbing Labor, Plumbing Fixtures
-  hvac: ['14101'],                     // HVAC System and Ducting
-  drywall: ['19101'],                  // Drywall
-  framing: ['10101', '10102'],         // Framing Labor & General Carpentry, Framing Material
-  carpentry: ['10101', '25102'],       // Framing Labor, Interior Trim and Door Labor
-  roofing: ['17101'],                  // Roofing
-  painting: ['09200'],                 // Painting
-  flooring: ['23102', '23101'],        // Flooring Labor, Flooring Materials
-  tile: ['24101', '24102'],            // Tile Labor Floors, Tile Material Floors
-  concrete: ['08101'],                 // Concrete (Foundation)
-  masonry: ['09101'],                  // Masonry (Foundation)
-  waterproofing: ['07100'],            // Waterproofing
-  sitework: ['02100'],                 // Site Work
-  cabinets: ['21101', '21102'],        // Cabinetry, Cabinetry Installation
-  countertops: ['21103'],              // Counter Tops
-  windows_doors: ['11101', '11102'],   // Exterior Windows and SGDs, Exterior Swing Doors
-  insulation: ['18101'],               // Insulation
-  stucco: ['26101'],                   // Exterior Siding Labor
-  siding: ['26101', '26102'],          // Exterior Siding Labor, Exterior Siding Material
-  general: ['01100']                   // General Conditions
-};
+// ============================================================
+// DYNAMIC COST CODE MAPPINGS - Loaded from database
+// ============================================================
+// These are loaded from v2_trade_cost_mappings and v2_description_cost_mappings
+// tables at startup and cached for performance. Use refreshMappings() to reload.
 
-// Line item description keywords → cost codes (using actual Ross Built DB codes)
-const DESCRIPTION_COST_CODE_MAP = {
-  // Electrical (13101 labor, 13102 fixtures)
-  'electrical labor': '13101',
-  'wiring': '13101',
-  'panel': '13101',
-  'circuit': '13101',
-  'outlet': '13101',
-  'switch': '13101',
-  'electrical fixture': '13102',
-  'light fixture': '13102',
-  'lighting': '13102',
-  'chandelier': '13102',
-  'electrical': '13101',
+let TRADE_COST_CODE_MAP = {};  // trade_type -> [code1, code2, ...]
+let DESCRIPTION_COST_CODE_MAP = {};  // keyword -> code
+let mappingsLoaded = false;
+let mappingsLoadPromise = null;
 
-  // Plumbing (12101 labor, 12102 fixtures)
-  'plumbing labor': '12101',
-  'plumbing rough': '12101',
-  'rough-in': '12101',
-  'plumbing': '12101',
-  'pipe': '12101',
-  'drain': '12101',
-  'water heater': '12103',
-  'plumbing fixture': '12102',
-  'faucet': '12102',
-  'toilet': '12102',
-  'sink': '12102',
-  'shower': '12102',
+/**
+ * Load cost code mappings from database
+ * Caches results and only reloads when explicitly requested
+ */
+async function loadMappingsFromDatabase() {
+  try {
+    // Load trade mappings
+    const { data: tradeMappings, error: tradeError } = await supabase
+      .from('v2_trade_cost_mappings')
+      .select('trade_type, priority, cost_code:v2_cost_codes(code)')
+      .order('priority', { ascending: true });
 
-  // HVAC (14101)
-  'hvac': '14101',
-  'air conditioning': '14101',
-  'ac unit': '14101',
-  'ductwork': '14101',
-  'furnace': '14101',
-  'thermostat': '14101',
-  'heating': '14101',
-  'cooling': '14101',
+    if (tradeError) {
+      console.error('[AI] Error loading trade mappings:', tradeError.message);
+    } else {
+      TRADE_COST_CODE_MAP = {};
+      for (const m of tradeMappings || []) {
+        if (!TRADE_COST_CODE_MAP[m.trade_type]) {
+          TRADE_COST_CODE_MAP[m.trade_type] = [];
+        }
+        if (m.cost_code?.code) {
+          TRADE_COST_CODE_MAP[m.trade_type].push(m.cost_code.code);
+        }
+      }
+      console.log('[AI] Loaded', Object.keys(TRADE_COST_CODE_MAP).length, 'trade mappings from database');
+    }
 
-  // Framing/Carpentry (10101 labor, 10102 material, 25102 trim labor)
-  'framing labor': '10101',
-  'framing': '10101',
-  'lumber': '10102',
-  'studs': '10102',
-  'sheathing': '10102',
-  'truss': '10105',
-  'carpentry': '10101',
-  'trim': '25102',
-  'molding': '25103',
-  'baseboard': '25103',
-  'crown': '25103',
-  'finish carpentry': '25102',
+    // Load description mappings
+    const { data: descMappings, error: descError } = await supabase
+      .from('v2_description_cost_mappings')
+      .select('keyword, cost_code:v2_cost_codes(code)');
 
-  // Drywall (19101)
-  'drywall': '19101',
-  'sheetrock': '19101',
-  'gypsum': '19101',
-  'taping': '19101',
-  'mud': '19101',
+    if (descError) {
+      console.error('[AI] Error loading description mappings:', descError.message);
+    } else {
+      DESCRIPTION_COST_CODE_MAP = {};
+      for (const m of descMappings || []) {
+        if (m.cost_code?.code) {
+          DESCRIPTION_COST_CODE_MAP[m.keyword] = m.cost_code.code;
+        }
+      }
+      console.log('[AI] Loaded', Object.keys(DESCRIPTION_COST_CODE_MAP).length, 'description mappings from database');
+    }
 
-  // Roofing (17101)
-  'roofing': '17101',
-  'roof': '17101',
-  'shingle': '17101',
-  'flashing': '17101',
+    mappingsLoaded = true;
+  } catch (err) {
+    console.error('[AI] Failed to load mappings:', err.message);
+  }
+}
 
-  // Painting (09200)
-  'painting': '09200',
-  'paint': '09200',
-  'primer': '09200',
-  'stain': '09200',
-  'stucco': '26101',
+/**
+ * Ensure mappings are loaded before use
+ */
+async function ensureMappingsLoaded() {
+  if (mappingsLoaded) return;
 
-  // Flooring (23101 material, 23102 labor)
-  'flooring material': '23101',
-  'hardwood': '23101',
-  'vinyl': '23101',
-  'carpet': '24105',
-  'flooring labor': '23102',
-  'floor installation': '23102',
-  'flooring': '23102',
-  'lvp': '23101',
-  'laminate': '23101',
+  // Prevent multiple simultaneous loads
+  if (!mappingsLoadPromise) {
+    mappingsLoadPromise = loadMappingsFromDatabase();
+  }
+  await mappingsLoadPromise;
+  mappingsLoadPromise = null;
+}
 
-  // Tile (24101 labor floors, 24102 material floors, 24103 labor walls, 24104 material walls)
-  'tile labor': '24101',
-  'tile installation': '24101',
-  'tile material': '24102',
-  'grout': '24101',
-  'backsplash': '24103',
-  'tile': '24101',
-  'ceramic': '24102',
-  'porcelain': '24102',
-  'marble': '24102',
-  'travertine': '24102',
-  'durarock': '24106',
+/**
+ * Force refresh of mappings from database
+ * Call this after adding/updating mappings
+ */
+async function refreshMappings() {
+  mappingsLoaded = false;
+  await loadMappingsFromDatabase();
+}
 
-  // Concrete (08101)
-  'concrete': '08101',
-  'slab': '08101',
-  'foundation': '08101',
-  'rebar': '08101',
-  'footing': '08101',
-  'masonry': '09101',
-  'brick': '09101',
-  'block': '09101',
-  'stone': '09101',
+// Load mappings on module init
+loadMappingsFromDatabase();
 
-  // Cabinets/Countertops (21101 cabinetry, 21102 install, 21103 countertops)
-  'cabinet': '21101',
-  'cabinetry': '21101',
-  'cabinet installation': '21102',
-  'countertop': '21103',
-  'granite': '21103',
-  'quartz': '21103',
-
-  // Windows/Doors (11101-11103 exterior, 25101 interior)
-  'window': '11101',
-  'glass': '11101',
-  'door': '25101',
-  'entry door': '11102',
-  'sliding door': '11101',
-  'interior door': '25101',
-  'front door': '11104',
-
-  // Insulation (18101)
-  'insulation': '18101',
-  'spray foam': '18101',
-  'batt insulation': '18101',
-  'waterproofing': '07100',
-
-  // Site Work (02100 and 06101-06107)
-  'landscaping': '02100',
-  'irrigation': '02100',
-  'sod': '02100',
-  'sprinkler': '02100',
-  'grading': '06103',
-  'excavation': '05101',
-  'sitework': '02100',
-  'demolition': '05101',
-
-  // General Conditions (01100) - but these should be overridden by vendor trade
-  'cleanup': '03116',
-  'debris': '03112',
-  'dumpster': '03112',
-  'permit': '02104',
-  'general conditions': '01100',
-  'supervision': '03121',
-  'mobilization': '01100'
-
-  // NOTE: Removed 'starting job', 'deposit', 'draw', 'progress', 'labor'
-  // These generic terms should use vendor trade instead of defaulting to 01100
-};
+// NOTE: TRADE_COST_CODE_MAP and DESCRIPTION_COST_CODE_MAP are now loaded
+// dynamically from the database tables v2_trade_cost_mappings and
+// v2_description_cost_mappings. See loadMappingsFromDatabase() above.
 
 // ============================================================
 // EXTRACTION SCHEMA
@@ -911,7 +822,7 @@ function normalizeForMatch(str) {
 
 /**
  * Suggest cost codes based on trade type
- * Uses database mappings (v2_trade_mappings) for dynamic configuration
+ * Uses database mappings (v2_trade_cost_mappings) for dynamic configuration
  * @param {string} tradeType - The vendor's trade type
  * @param {number} amount - Total invoice amount
  * @returns {Promise<Array>} Array of suggested cost code allocations
@@ -921,36 +832,16 @@ async function suggestCostCodes(tradeType, amount) {
     return [];
   }
 
-  // First try database mappings (editable via UI)
-  const { data: mappings, error: mappingError } = await supabase
-    .from('v2_trade_mappings')
-    .select(`
-      cost_code:v2_cost_codes(id, code, name, category)
-    `)
-    .eq('trade_type', tradeType.toLowerCase())
-    .order('priority');
+  // Ensure mappings are loaded from database
+  await ensureMappingsLoaded();
 
-  if (!mappingError && mappings && mappings.length > 0) {
-    // Use database mappings
-    const costCodes = mappings.map(m => m.cost_code).filter(Boolean);
-    if (costCodes.length > 0) {
-      return [{
-        cost_code_id: costCodes[0].id,
-        code: costCodes[0].code,
-        name: costCodes[0].name,
-        amount: amount,
-        suggested: true,
-        source: 'trade_mapping'
-      }];
-    }
-  }
-
-  // Fallback to hardcoded map if no DB mapping found
-  if (!TRADE_COST_CODE_MAP[tradeType]) {
+  // Use the cached mappings from TRADE_COST_CODE_MAP (loaded from v2_trade_cost_mappings)
+  const normalizedTrade = tradeType.toLowerCase();
+  if (!TRADE_COST_CODE_MAP[normalizedTrade]) {
     return [];
   }
 
-  const suggestedCodes = TRADE_COST_CODE_MAP[tradeType];
+  const suggestedCodes = TRADE_COST_CODE_MAP[normalizedTrade];
 
   // Fetch the actual cost code records
   const { data: costCodes, error } = await supabase
@@ -962,39 +853,30 @@ async function suggestCostCodes(tradeType, amount) {
     return [];
   }
 
-  // If only one cost code, assign full amount
-  if (costCodes.length === 1) {
-    return [{
-      cost_code_id: costCodes[0].id,
-      code: costCodes[0].code,
-      name: costCodes[0].name,
-      amount: amount,
-      suggested: true,
-      source: 'hardcoded_fallback'
-    }];
-  }
-
-  // For multiple codes (like labor + materials), default to first (usually labor) with full amount
-  // User can adjust the split later
+  // Return first cost code (primary) with full amount
+  // User can adjust the split later if needed
   return [{
     cost_code_id: costCodes[0].id,
     code: costCodes[0].code,
     name: costCodes[0].name,
     amount: amount,
     suggested: true,
-    source: 'hardcoded_fallback'
+    source: 'trade_mapping'
   }];
 }
 
 /**
  * Suggest cost code for a line item description
- * Uses keyword matching against DESCRIPTION_COST_CODE_MAP
+ * Uses keyword matching against DESCRIPTION_COST_CODE_MAP (loaded from database)
  * @param {string} description - Line item description
  * @param {string} tradeType - Vendor trade type (fallback)
  * @returns {Promise<Object|null>} Cost code suggestion { id, code, name, confidence }
  */
 async function suggestCostCodeForDescription(description, tradeType = null) {
   if (!description) return null;
+
+  // Ensure mappings are loaded from database
+  await ensureMappingsLoaded();
 
   const desc = description.toLowerCase();
   let bestMatch = null;
@@ -2564,6 +2446,7 @@ module.exports = {
   storePDFHash,
   generatePDFHash,
   normalizeInvoiceNumber,
+  refreshMappings,  // Call this after updating cost code mappings
   CONFIDENCE_THRESHOLDS,
   DOCUMENT_TYPES
 };

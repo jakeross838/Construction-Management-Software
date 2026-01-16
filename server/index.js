@@ -5536,15 +5536,18 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       costCodeLookup[cc.id] = cc;
     });
 
-    // Combine all cost codes that have any activity
+    // Include ALL cost codes (not just ones with activity)
     const allCostCodeIds = new Set();
+    // First add all cost codes from the database
+    (allCostCodes || []).forEach(cc => allCostCodeIds.add(cc.id));
+    // Then add any with activity (in case of orphaned allocations)
     Object.keys(budgetMap).forEach(id => allCostCodeIds.add(id));
     Object.keys(actualsByCostCode).forEach(id => allCostCodeIds.add(id));
     Object.keys(committedByCostCode).forEach(id => allCostCodeIds.add(id));
     Object.keys(pendingByCostCode).forEach(id => allCostCodeIds.add(id));
 
-    // Build result lines (filter out lines with no activity unless they have budget)
-    const hideEmpty = req.query.hideEmpty !== 'false'; // Default to hiding empty lines
+    // Build result lines - show all cost codes by default
+    const hideEmpty = req.query.hideEmpty === 'true'; // Default to showing all lines
     const lines = [];
     allCostCodeIds.forEach(ccId => {
       const budget = budgetMap[ccId] || {};
@@ -12366,6 +12369,167 @@ app.get('/api/draws/:id/lien-release-coverage', asyncHandler(async (req, res) =>
     vendors: coverage,
     missing_vendors: vendorsMissingRelease
   });
+}));
+
+// =====================================================
+// RECONCILIATION & BALANCE INTEGRITY
+// =====================================================
+
+// Run full reconciliation check and optionally fix issues
+app.post('/api/reconcile', asyncHandler(async (req, res) => {
+  const { job_id, fix = false } = req.body;
+
+  const results = {
+    timestamp: new Date().toISOString(),
+    issues: [],
+    fixes: [],
+    summary: { draws: 0, invoices: 0, budgets: 0 }
+  };
+
+  // Get jobs to process
+  let jobQuery = supabase.from('v2_jobs').select('id, name');
+  if (job_id) {
+    jobQuery = jobQuery.eq('id', job_id);
+  }
+  const { data: jobs } = await jobQuery;
+
+  for (const job of (jobs || [])) {
+    // Check 1: Draw totals
+    const { data: draws } = await supabase
+      .from('v2_draws')
+      .select('id, draw_number, total_amount')
+      .eq('job_id', job.id);
+
+    for (const draw of (draws || [])) {
+      const { data: drawInvoices } = await supabase
+        .from('v2_draw_invoices')
+        .select('invoice:v2_invoices(amount)')
+        .eq('draw_id', draw.id);
+
+      const calculatedTotal = (drawInvoices || []).reduce((sum, di) =>
+        sum + parseFloat(di.invoice?.amount || 0), 0);
+      const currentTotal = parseFloat(draw.total_amount || 0);
+
+      if (Math.abs(currentTotal - calculatedTotal) > 0.01) {
+        results.issues.push({
+          type: 'DRAW_TOTAL_MISMATCH',
+          job: job.name,
+          draw: draw.draw_number,
+          current: currentTotal,
+          expected: calculatedTotal
+        });
+
+        if (fix) {
+          await supabase.from('v2_draws').update({ total_amount: calculatedTotal }).eq('id', draw.id);
+          results.fixes.push({ type: 'draw', id: draw.id, from: currentTotal, to: calculatedTotal });
+          results.summary.draws++;
+        }
+      }
+    }
+
+    // Check 2: Budget amounts match allocations
+    const { data: allocations } = await supabase
+      .from('v2_invoice_allocations')
+      .select('amount, cost_code_id, invoice:v2_invoices(status)')
+      .eq('job_id', job.id);
+
+    const actualByCode = {};
+    for (const alloc of (allocations || [])) {
+      const codeId = alloc.cost_code_id;
+      if (!actualByCode[codeId]) actualByCode[codeId] = { billed: 0, paid: 0 };
+      const amount = parseFloat(alloc.amount || 0);
+      if (alloc.invoice?.status === 'in_draw') actualByCode[codeId].billed += amount;
+      else if (alloc.invoice?.status === 'paid') actualByCode[codeId].paid += amount;
+    }
+
+    const { data: budgetLines } = await supabase
+      .from('v2_budget_lines')
+      .select('id, cost_code_id, billed_amount, paid_amount, cost_code:v2_cost_codes(code)')
+      .eq('job_id', job.id);
+
+    for (const bl of (budgetLines || [])) {
+      const actual = actualByCode[bl.cost_code_id] || { billed: 0, paid: 0 };
+      const currentBilled = parseFloat(bl.billed_amount || 0);
+      const currentPaid = parseFloat(bl.paid_amount || 0);
+
+      if (Math.abs(currentBilled - actual.billed) > 0.01 || Math.abs(currentPaid - actual.paid) > 0.01) {
+        results.issues.push({
+          type: 'BUDGET_MISMATCH',
+          job: job.name,
+          cost_code: bl.cost_code?.code,
+          current_billed: currentBilled,
+          expected_billed: actual.billed,
+          current_paid: currentPaid,
+          expected_paid: actual.paid
+        });
+
+        if (fix) {
+          await supabase.from('v2_budget_lines')
+            .update({ billed_amount: actual.billed, paid_amount: actual.paid })
+            .eq('id', bl.id);
+          results.fixes.push({ type: 'budget', id: bl.id, code: bl.cost_code?.code });
+          results.summary.budgets++;
+        }
+      }
+    }
+  }
+
+  results.total_issues = results.issues.length;
+  results.total_fixed = results.fixes.length;
+
+  res.json(results);
+}));
+
+// Get integrity status for a job
+app.get('/api/jobs/:id/integrity', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+
+  // Quick integrity check
+  const checks = {
+    invoices_without_allocations: 0,
+    draw_total_mismatches: 0,
+    budget_mismatches: 0,
+    is_balanced: true
+  };
+
+  // Check invoices without allocations
+  const { data: invoices } = await supabase
+    .from('v2_invoices')
+    .select('id, allocations:v2_invoice_allocations(amount)')
+    .eq('job_id', jobId)
+    .in('status', ['approved', 'in_draw', 'paid'])
+    .is('deleted_at', null);
+
+  for (const inv of (invoices || [])) {
+    const allocSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+    if (allocSum === 0) {
+      checks.invoices_without_allocations++;
+      checks.is_balanced = false;
+    }
+  }
+
+  // Check draw totals
+  const { data: draws } = await supabase
+    .from('v2_draws')
+    .select('id, total_amount')
+    .eq('job_id', jobId);
+
+  for (const draw of (draws || [])) {
+    const { data: drawInvoices } = await supabase
+      .from('v2_draw_invoices')
+      .select('invoice:v2_invoices(amount)')
+      .eq('draw_id', draw.id);
+
+    const calculatedTotal = (drawInvoices || []).reduce((sum, di) =>
+      sum + parseFloat(di.invoice?.amount || 0), 0);
+
+    if (Math.abs(parseFloat(draw.total_amount || 0) - calculatedTotal) > 0.01) {
+      checks.draw_total_mismatches++;
+      checks.is_balanced = false;
+    }
+  }
+
+  res.json(checks);
 }));
 
 app.listen(port, () => {

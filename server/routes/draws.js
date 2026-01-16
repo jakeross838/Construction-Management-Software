@@ -458,6 +458,31 @@ router.post('/:id/add-invoices', async (req, res) => {
     const drawId = req.params.id;
     const { invoice_ids } = req.body;
 
+    // GUARDRAIL: Validate that all invoices have allocations before adding to draw
+    const { data: invoicesToValidate } = await supabase
+      .from('v2_invoices')
+      .select(`
+        id, invoice_number, amount,
+        allocations:v2_invoice_allocations(id, amount)
+      `)
+      .in('id', invoice_ids);
+
+    const invoicesWithoutAllocations = [];
+    for (const inv of (invoicesToValidate || [])) {
+      const allocSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      if (allocSum === 0) {
+        invoicesWithoutAllocations.push(inv.invoice_number || inv.id);
+      }
+    }
+
+    if (invoicesWithoutAllocations.length > 0) {
+      return res.status(400).json({
+        error: 'Cannot add invoices without allocations to draw',
+        message: `The following invoices have no cost code allocations: ${invoicesWithoutAllocations.join(', ')}. Please allocate these invoices to cost codes before adding to a draw.`,
+        invoices_missing_allocations: invoicesWithoutAllocations
+      });
+    }
+
     const { data: draw } = await supabase
       .from('v2_draws')
       .select('draw_number')
