@@ -63,19 +63,17 @@ test.describe('Full Functionality Tests', () => {
   // ========== DASHBOARD & NAVIGATION ==========
 
   test('1. Dashboard loads correctly', async ({ page }) => {
-    // Check page title
-    const title = page.locator('h1');
-    await expect(title).toContainText('Invoice');
+    // Check header brand exists
+    await expect(page.locator('.header-brand')).toBeVisible();
 
-    // Check job filter dropdown exists
-    const jobFilter = page.locator('#jobFilter');
-    await expect(jobFilter).toBeVisible();
+    // Check job sidebar exists
+    await expect(page.locator('#jobSidebar, .job-sidebar')).toBeVisible();
 
     // Check upload button exists
-    await expect(page.locator('button:has-text("Upload")')).toBeVisible();
+    await expect(page.locator('#uploadBtn')).toBeVisible();
 
-    // Check connection status
-    await expect(page.locator('.connection-status')).toBeVisible();
+    // Check connection dot
+    await expect(page.locator('#connectionDot')).toBeVisible();
 
     // Check invoice list container exists
     await expect(page.locator('#invoiceList')).toBeVisible();
@@ -140,17 +138,19 @@ test.describe('Full Functionality Tests', () => {
     expect(errors.length).toBe(0);
   });
 
-  test('6. Job filter dropdown', async ({ page }) => {
-    const jobFilter = page.locator('select').first();
-    if (await jobFilter.count() > 0) {
-      const options = await jobFilter.locator('option').count();
-      console.log('Job filter options:', options);
+  test('6. Job sidebar selection', async ({ page }) => {
+    // Check sidebar exists and has jobs
+    const jobItems = page.locator('.job-item[data-job-id]:not(.all-jobs)');
+    const jobCount = await jobItems.count();
+    console.log('Job items in sidebar:', jobCount);
 
-      // Try selecting a job
-      if (options > 1) {
-        await jobFilter.selectOption({ index: 1 });
-        await page.waitForTimeout(1000);
-      }
+    if (jobCount > 0) {
+      // Click on a job to select it
+      await jobItems.first().click();
+      await page.waitForTimeout(1000);
+
+      // Verify the job is now selected (has active class)
+      await expect(jobItems.first()).toHaveClass(/active/);
     }
 
     expect(errors.length).toBe(0);
@@ -537,28 +537,26 @@ test.describe('Full Functionality Tests', () => {
   // ========== UPLOAD MODAL ==========
 
   test('21. Upload invoice modal opens', async ({ page }) => {
-    const uploadBtn = page.locator('button:has-text("Upload Invoice"), button:has-text("Upload")').first();
+    const uploadBtn = page.locator('#uploadBtn');
 
     if (await uploadBtn.count() > 0) {
       await uploadBtn.click();
       await page.waitForTimeout(1000);
 
       // Check modal opened
-      const uploadModal = page.locator('#uploadInvoiceModal, .upload-modal');
+      const uploadModal = page.locator('#uploadModal');
       console.log('Upload modal visible:', await uploadModal.isVisible());
 
-      // Close modal
-      const closeBtn = page.locator('.modal-close, button:has-text("Cancel")').first();
-      if (await closeBtn.count() > 0) {
-        await closeBtn.click({ force: true });
-      }
+      // Close modal with Escape key
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
     }
 
     expect(errors.length).toBe(0);
   });
 
   test('22. Upload modal has file input', async ({ page }) => {
-    const uploadBtn = page.locator('button:has-text("Upload Invoice"), button:has-text("Upload")').first();
+    const uploadBtn = page.locator('#uploadBtn');
 
     if (await uploadBtn.count() > 0) {
       await uploadBtn.click();
@@ -567,11 +565,9 @@ test.describe('Full Functionality Tests', () => {
       const fileInput = page.locator('input[type="file"]');
       console.log('File input present:', await fileInput.count() > 0);
 
-      // Close modal
-      const closeBtn = page.locator('.modal-close, button:has-text("Cancel")').first();
-      if (await closeBtn.count() > 0) {
-        await closeBtn.click({ force: true });
-      }
+      // Close modal with Escape key
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
     }
 
     expect(errors.length).toBe(0);

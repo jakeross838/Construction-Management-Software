@@ -1,4 +1,4 @@
-const { test } = require('@playwright/test');
+const { test, expect } = require('@playwright/test');
 
 test('Budget page test', async ({ page }) => {
   await page.goto('http://localhost:3001/budgets.html');
@@ -8,31 +8,27 @@ test('Budget page test', async ({ page }) => {
   // Screenshot initial state
   await page.screenshot({ path: 'tests/screenshots/budget-initial.png', fullPage: true });
 
-  // Select Drummond job
-  await page.selectOption('#jobFilter', { label: 'Drummond-501 74th St' });
+  // Wait for sidebar to load and find the job item
+  const jobItem = page.locator('.job-item[data-job-id]:not(.all-jobs)').first();
+  await expect(jobItem).toBeVisible({ timeout: 10000 });
+
+  // Click on the job to select it
+  await jobItem.click();
   await page.waitForTimeout(2000);
 
   // Screenshot after selection
   await page.screenshot({ path: 'tests/screenshots/budget-selected.png', fullPage: true });
 
-  // Check if modal opened
-  const modalVisible = await page.locator('#budgetModal').isVisible();
-  console.log('Modal visible:', modalVisible);
+  // Wait for budget detail section to be visible
+  const budgetDetail = page.locator('#budgetDetail');
+  await expect(budgetDetail).toBeVisible({ timeout: 10000 });
 
-  // Screenshot modal if visible
-  if (modalVisible) {
-    await page.screenshot({ path: 'tests/screenshots/budget-modal.png', fullPage: true });
+  // Check that budget title has content
+  const budgetTitle = page.locator('#budgetPageTitle');
+  await expect(budgetTitle).toBeVisible();
 
-    // Scroll to see budget lines
-    await page.locator('.draw-single-page').evaluate(el => el.scrollTop = 500);
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: 'tests/screenshots/budget-modal-scroll.png', fullPage: true });
-
-    // Scroll to bottom to see Change Orders
-    await page.locator('.draw-single-page').evaluate(el => el.scrollTop = el.scrollHeight);
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: 'tests/screenshots/budget-modal-bottom.png', fullPage: true });
-  }
+  // Screenshot the budget detail
+  await page.screenshot({ path: 'tests/screenshots/budget-detail.png', fullPage: true });
 
   console.log('Test complete');
 });

@@ -181,7 +181,7 @@ test.describe('Navigation', () => {
     await expect(page.locator('.sub-nav-link:has-text("Invoices")')).toBeVisible();
     await expect(page.locator('.sub-nav-link:has-text("Purchase Orders")')).toBeVisible();
     await expect(page.locator('.sub-nav-link:has-text("Draws")')).toBeVisible();
-    await expect(page.locator('.sub-nav-link:has-text("Budgets")')).toBeVisible();
+    await expect(page.locator('.sub-nav-link:has-text("Budget")')).toBeVisible();
   });
 
   test('should highlight correct sub-nav item on each page', async ({ page }) => {
@@ -197,9 +197,9 @@ test.describe('Navigation', () => {
     await page.goto('/draws.html');
     await expect(page.locator('.sub-nav-link:has-text("Draws")')).toHaveClass(/active/);
 
-    // Budgets page
+    // Budget page
     await page.goto('/budgets.html');
-    await expect(page.locator('.sub-nav-link:has-text("Budgets")')).toHaveClass(/active/);
+    await expect(page.locator('.sub-nav-link:has-text("Budget")')).toHaveClass(/active/);
   });
 
   test('should navigate between pages using sub-nav', async ({ page }) => {
@@ -213,8 +213,8 @@ test.describe('Navigation', () => {
     await page.locator('.sub-nav-link:has-text("Draws")').click();
     await expect(page).toHaveURL(/draws\.html/);
 
-    // Click Budgets link
-    await page.locator('.sub-nav-link:has-text("Budgets")').click();
+    // Click Budget link
+    await page.locator('.sub-nav-link:has-text("Budget")').click();
     await expect(page).toHaveURL(/budgets\.html/);
 
     // Click Invoices link

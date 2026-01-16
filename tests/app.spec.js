@@ -62,8 +62,9 @@ test.describe('Ross Built CMS - Full App Test', () => {
     console.log('Console Errors:', consoleErrors);
     console.log('Network Errors:', networkErrors);
 
-    // Page should have loaded
-    await expect(page.locator('h1')).toContainText('Invoice');
+    // Page should have loaded - check for header elements
+    await expect(page.locator('.header-brand')).toBeVisible();
+    await expect(page.locator('#uploadBtn')).toBeVisible();
   });
 
   test('2. Invoice list displays correctly', async ({ page }) => {
