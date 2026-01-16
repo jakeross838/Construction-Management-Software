@@ -102,10 +102,21 @@
   --z-toast: 2000;
   --z-tooltip: 3000;
 
-  /* Transitions */
-  --transition: all 0.15s ease;
-  --transition-fast: all 0.1s ease;
-  --transition-slow: all 0.3s ease;
+  /* Transitions - optimized to specific properties */
+  --transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  --transition-fast: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease, opacity 0.1s ease;
+  --transition-slow: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease;
+  --transition-transform: transform 0.2s ease;
+  --transition-shadow: box-shadow 0.2s ease;
+}
+
+/* Performance: Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 * {
@@ -558,6 +569,8 @@ body {
   transition: var(--transition);
   border-left: 3px solid transparent;
   position: relative;
+  /* Performance: contain layout/paint to reduce repaints */
+  contain: layout style;
 }
 
 .invoice-card:hover {
@@ -809,7 +822,7 @@ body {
   border-radius: 4px;
   border: none;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
   white-space: nowrap;
 }
 
@@ -905,6 +918,8 @@ body {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
+  /* Performance: optimize for animation */
+  will-change: transform, opacity;
 }
 
 .modal-content.modal-sm {
@@ -1274,7 +1289,7 @@ body {
   color: #6b7280;
   font-size: 0.875rem;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
 }
 
 .field-edit-btn:hover {
@@ -1306,7 +1321,7 @@ body {
   color: #6b7280;
   font-size: 0.875rem;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
   flex-shrink: 0;
 }
 
@@ -1364,7 +1379,7 @@ body {
   padding: 2rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
   position: relative;
 }
 
@@ -1592,7 +1607,7 @@ body {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
   opacity: 0;
   transform: translateX(100%);
-  transition: all 0.3s ease;
+  transition: var(--transition-slow);
   pointer-events: auto;
 }
 
@@ -2592,7 +2607,7 @@ body.modal-open {
   background: var(--card);
   border: 2px solid var(--border);
   color: var(--text-muted);
-  transition: all 0.2s;
+  transition: var(--transition);
 }
 
 .pipeline-stage.completed .pipeline-dot {
@@ -3212,7 +3227,7 @@ label .ai-indicator {
   font-size: 0.8rem;
   font-weight: 400;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition);
 }
 
 .btn-link-subtle:hover {
@@ -3233,7 +3248,7 @@ label .ai-indicator {
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
 }
 
 .btn-partial-payment:hover {
@@ -3409,7 +3424,7 @@ label .ai-indicator {
   cursor: pointer;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
-  transition: all 0.15s ease;
+  transition: var(--transition);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -3573,7 +3588,7 @@ label .ai-indicator {
   border-radius: 8px;
   padding: 1rem;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .link-card:hover {
@@ -3943,7 +3958,7 @@ label .ai-indicator {
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 4px;
-  transition: all 0.15s;
+  transition: var(--transition);
   margin-bottom: 2px;
 }
 
@@ -4369,7 +4384,7 @@ label .ai-indicator {
   background: var(--card);
   color: var(--foreground);
   cursor: text;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .cc-picker-input:hover {
@@ -4804,7 +4819,7 @@ label .ai-indicator {
   border: 1px solid var(--border);
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .job-item:hover {
@@ -5035,7 +5050,7 @@ label .ai-indicator {
   background: rgba(51, 65, 85, 0.3);
   border-radius: 12px;
   border: 1px solid transparent;
-  transition: all 0.3s ease;
+  transition: var(--transition-slow);
   opacity: 0.5;
 }
 
@@ -5060,7 +5075,7 @@ label .ai-indicator {
   background: rgba(51, 65, 85, 0.5);
   border-radius: 10px;
   flex-shrink: 0;
-  transition: all 0.3s ease;
+  transition: var(--transition-slow);
 }
 
 .ai-step-icon svg {
@@ -5133,7 +5148,7 @@ label .ai-indicator {
   font-weight: 700;
   opacity: 0;
   transform: scale(0);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .ai-step.completed .ai-step-check {
@@ -5246,7 +5261,7 @@ label .ai-indicator {
   font-size: 0.7rem;
   font-weight: 500;
   cursor: help;
-  transition: all 0.2s ease;
+  transition: var(--transition);
   white-space: nowrap;
   margin-left: 0.5rem;
   vertical-align: middle;
@@ -5496,7 +5511,7 @@ label .ai-indicator {
   text-decoration: none;
   padding: 0.5rem 1rem;
   border-radius: var(--radius);
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .nav-link:hover {
@@ -5609,7 +5624,8 @@ label .ai-indicator {
   border-radius: var(--radius);
   padding: 1rem;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
+  contain: layout style;
 }
 
 .po-card:hover {
@@ -5734,7 +5750,7 @@ label .ai-indicator {
   border-radius: var(--radius);
   padding: 1rem;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .co-card:hover {
@@ -7357,7 +7373,7 @@ label .ai-indicator {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
   align-items: center;
   border-left: 3px solid transparent;
 }
@@ -7792,7 +7808,7 @@ label .ai-indicator {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 #poModal .close-btn:hover {
@@ -8181,7 +8197,7 @@ label .ai-indicator {
   background: var(--bg-dark);
   border: 2px solid var(--border);
   color: var(--text-secondary);
-  transition: all 0.3s ease;
+  transition: var(--transition-slow);
 }
 
 .pipeline-stage.completed .pipeline-dot {
@@ -9564,7 +9580,7 @@ label .ai-indicator {
   padding: 2rem;
   text-align: center;
   margin-bottom: 1rem;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .upload-area:hover,
@@ -11444,7 +11460,7 @@ textarea.form-control {
   justify-content: center;
   background: var(--bg-card-elevated);
   border: 2px solid var(--border);
-  transition: all 0.2s ease;
+  transition: var(--transition);
 }
 
 .workflow-dot {
@@ -11452,7 +11468,7 @@ textarea.form-control {
   height: 12px;
   border-radius: 50%;
   background: var(--text-muted);
-  transition: all 0.2s ease;
+  transition: var(--transition);
 }
 
 .workflow-label {
@@ -12369,7 +12385,7 @@ textarea.form-control {
   border-radius: 6px;
   padding: 0.75rem;
   margin-bottom: 0.75rem;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .po-attachments-card .upload-zone:hover,
@@ -12446,7 +12462,7 @@ textarea.form-control {
   color: #8b949e;
   cursor: pointer;
   border-radius: 4px;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .po-attachments-card .btn-icon:hover {
@@ -12502,7 +12518,7 @@ textarea.form-control {
   cursor: pointer;
   border-radius: 4px;
   font-size: 1.25rem;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .line-item-row .btn-remove:hover {
@@ -13025,7 +13041,7 @@ textarea.form-control {
   border: 1px dashed var(--border);
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .upload-trigger:hover,
@@ -13059,7 +13075,7 @@ textarea.form-control {
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .attachment-preview:hover {
@@ -13214,7 +13230,7 @@ textarea.form-control {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .btn-close-viewer:hover {
@@ -13385,7 +13401,7 @@ textarea.form-control {
   border-radius: 4px;
   color: var(--foreground) !important;
   font-size: 0.875rem;
-  transition: all 0.15s;
+  transition: var(--transition);
   box-sizing: border-box;
 }
 
@@ -13530,7 +13546,7 @@ textarea.form-control {
   color: var(--foreground);
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .btn-add:hover {
@@ -13675,7 +13691,7 @@ textarea.form-control {
   border-radius: 4px;
   font-size: 0.75rem;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
 }
 
 .po-two-panel .btn-add-file:hover {
@@ -13783,7 +13799,7 @@ textarea.form-control {
   border-radius: 4px;
   font-size: 0.875rem;
   opacity: 0.7;
-  transition: all 0.15s ease;
+  transition: var(--transition);
 }
 
 .po-two-panel .btn-icon:hover {
@@ -14054,7 +14070,7 @@ textarea.form-control {
   border-radius: 6px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
   flex-shrink: 0;
 }
 
@@ -14101,7 +14117,7 @@ textarea.form-control {
   border-radius: 6px;
   color: var(--text-primary);
   font-size: 0.8125rem;
-  transition: all 0.15s ease;
+  transition: var(--transition);
 }
 
 .sidebar-search-input:focus {
@@ -14129,7 +14145,7 @@ textarea.form-control {
   padding: 0.625rem 0.75rem;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
   color: var(--text-secondary);
   border: 1px solid transparent;
 }
@@ -14270,7 +14286,7 @@ textarea.form-control {
   color: var(--text-primary);
   cursor: pointer;
   margin-right: 0.75rem;
-  transition: all 0.15s ease;
+  transition: var(--transition);
 }
 
 .mobile-sidebar-toggle:hover {
@@ -14372,7 +14388,7 @@ textarea.form-control {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: all 0.15s ease;
+  transition: var(--transition);
 }
 
 .search-clear-btn:hover {
@@ -15158,7 +15174,7 @@ textarea.form-control {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition);
 }
 
 .suggested-draw-item:hover {
@@ -15444,7 +15460,7 @@ textarea.form-control {
   font-size: 0.9rem;
   cursor: pointer;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  transition: all 0.15s;
+  transition: var(--transition);
 }
 
 .form-tab:hover {
@@ -15745,7 +15761,7 @@ textarea.form-control {
   border: 2px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition);
 }
 
 .merge-option:hover {
@@ -15790,7 +15806,7 @@ textarea.form-control {
   padding: 3rem 2rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition);
 }
 
 .upload-zone:hover,
@@ -15935,7 +15951,7 @@ textarea.form-control {
   border-radius: 8px;
   padding: 2rem;
   text-align: center;
-  transition: all 0.2s;
+  transition: var(--transition);
   cursor: pointer;
   background: var(--bg-card);
 }
@@ -16526,7 +16542,7 @@ textarea.form-control {
   border-radius: 4px;
   font-size: 1.25rem;
   line-height: 1;
-  transition: all 0.2s ease;
+  transition: var(--transition);
 }
 
 .split-section-remove:hover {
@@ -16779,6 +16795,77 @@ textarea.form-control {
   color: #93c5fd;
 }
 
+/* AI Split Suggestion Banner */
+.ai-split-suggestion-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  /* Removed infinite animation - causes performance issues */
+}
+
+.ai-split-suggestion-banner .ai-split-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.ai-split-suggestion-banner .ai-split-content {
+  flex: 1;
+}
+
+.ai-split-suggestion-banner .ai-split-content strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #a78bfa;
+  margin-bottom: 0.25rem;
+}
+
+.ai-split-suggestion-banner .ai-split-content p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem 0;
+}
+
+.ai-split-suggestion-banner .ai-split-details {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.ai-split-suggestion-banner .ai-split-details strong {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.ai-split-suggestion-banner .ai-split-details ul {
+  margin: 0.25rem 0 0 1rem;
+  padding: 0;
+  list-style: disc;
+}
+
+.ai-split-suggestion-banner .ai-split-details li {
+  margin: 0.15rem 0;
+}
+
+.ai-split-suggestion-banner .ai-split-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.ai-split-suggestion-banner .ai-split-actions .btn {
+  white-space: nowrap;
+}
+
 /* PDF Toolbar */
 .pdf-toolbar {
   display: flex;
@@ -16867,7 +16954,7 @@ textarea.form-control {
   color: var(--text-secondary);
   font-size: 0.75rem;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
 }
 
 .btn-pdf-toggle:hover {

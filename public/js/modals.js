@@ -301,6 +301,90 @@ const Modals = {
   },
 
   /**
+   * Build AI split suggestion banner - shown when AI detects multi-job invoice
+   */
+  buildAISplitSuggestionBanner(invoice) {
+    // Don't show if not suggested or already split
+    if (!invoice.ai_split_suggested) return '';
+    if (invoice.is_split_parent || invoice.parent_invoice_id) return '';
+
+    // Get split data for details
+    const splitData = invoice.ai_split_data || {};
+    const splitType = splitData.splitType || 'unknown';
+    const reason = splitData.reason || 'AI detected this invoice may cover multiple items';
+    const suggestedSplits = splitData.suggestedSplits || [];
+
+    // Build details based on split type
+    let detailsHtml = '';
+    if (splitType === 'multi_job' && suggestedSplits.length > 0) {
+      detailsHtml = `
+        <div class="ai-split-details">
+          <strong>Detected jobs:</strong>
+          <ul>
+            ${suggestedSplits.map(s => `<li>${s.jobReference || s.description || 'Unknown'}: ${window.Validation?.formatCurrency(s.amount) || s.amount}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    } else if (splitType === 'multi_invoice' && suggestedSplits.length > 0) {
+      detailsHtml = `
+        <div class="ai-split-details">
+          <strong>Detected invoices:</strong>
+          <ul>
+            ${suggestedSplits.map(s => `<li>${s.invoiceNumber || 'Invoice'} ${s.pageHint ? `(${s.pageHint})` : ''}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="ai-split-suggestion-banner">
+        <div class="ai-split-icon">🤖</div>
+        <div class="ai-split-content">
+          <strong>AI Split Suggestion</strong>
+          <p>${reason}</p>
+          ${detailsHtml}
+        </div>
+        <div class="ai-split-actions">
+          <button type="button" class="btn btn-sm btn-primary" onclick="window.showSplitModal(window.Modals?.currentInvoice)">
+            Split Invoice
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="window.Modals.dismissSplitSuggestion('${invoice.id}')">
+            Dismiss
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Dismiss AI split suggestion
+   */
+  async dismissSplitSuggestion(invoiceId) {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ai_split_suggested: false
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to dismiss suggestion');
+
+      window.showToast?.('Split suggestion dismissed', 'info');
+
+      // Update current invoice and refresh
+      if (this.currentInvoice && this.currentInvoice.id === invoiceId) {
+        this.currentInvoice.ai_split_suggested = false;
+        this.openInvoice(invoiceId);
+      }
+    } catch (err) {
+      console.error('Failed to dismiss split suggestion:', err);
+      window.showToast?.('Failed to dismiss suggestion', 'error');
+    }
+  },
+
+  /**
    * Toggle PDF view between original and stamped
    */
   togglePdfView() {
@@ -656,6 +740,8 @@ const Modals = {
                       </div>
                     ` : ''}
                   </div>
+
+                  ${this.buildAISplitSuggestionBanner(invoice)}
 
                   ${invoice.needs_review ? `
                     <div class="form-section review-flags">
@@ -4756,7 +4842,12 @@ const Modals = {
       'missing_vendor': 'Vendor could not be identified',
       'duplicate_possible': 'Possible duplicate invoice',
       'missing_invoice_number': 'No invoice number found',
-      'po_mismatch': 'PO reference may not match'
+      'po_mismatch': 'PO reference may not match',
+      // Split-related flags
+      'split_suggested': 'AI suggests this invoice may need splitting',
+      'multi_job_detected': 'Multiple jobs detected - consider splitting by job',
+      'split_child': 'This is a split invoice child',
+      'no_job': 'No job assigned to this invoice'
     };
     return labels[flag] || flag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   },
