@@ -7,7 +7,7 @@
   <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Daily Logs</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260116-photos">
+  <link rel="stylesheet" href="css/styles.css?v=20260116-features">
 </head>
 <body>
   <div class="app">
@@ -22,6 +22,7 @@
           <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
+          <button class="btn btn-secondary" onclick="openWeeklyReport()" title="Weekly Summary Report">📊 Weekly Report</button>
           <button class="btn btn-primary" onclick="openCreateModal()">+ New Daily Log</button>
           <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
         </div>
@@ -156,11 +157,30 @@
         <div class="form-section">
           <h3>Work Summary</h3>
           <div class="form-group">
-            <label>Work Completed</label>
+            <label>
+              Work Completed
+              <button type="button" class="btn-voice" onclick="startVoiceInput('workCompleted')" title="Voice input">
+                <span class="voice-icon">🎤</span>
+              </button>
+            </label>
             <textarea id="workCompleted" class="form-control" rows="3" placeholder="Describe work completed today..."></textarea>
           </div>
           <div class="form-group">
-            <label>Delays / Issues</label>
+            <label>
+              Tomorrow's Plan
+              <button type="button" class="btn-voice" onclick="startVoiceInput('workPlanned')" title="Voice input">
+                <span class="voice-icon">🎤</span>
+              </button>
+            </label>
+            <textarea id="workPlanned" class="form-control" rows="2" placeholder="What's planned for tomorrow..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>
+              Delays / Issues
+              <button type="button" class="btn-voice" onclick="startVoiceInput('delaysIssues')" title="Voice input">
+                <span class="voice-icon">🎤</span>
+              </button>
+            </label>
             <textarea id="delaysIssues" class="form-control" rows="2" placeholder="Note any delays, issues, or problems encountered..."></textarea>
           </div>
           <div class="form-group">
@@ -168,7 +188,12 @@
             <input type="text" id="siteVisitors" class="form-control" placeholder="e.g., Inspector John Smith (building), Owner visit">
           </div>
           <div class="form-group">
-            <label>Safety Notes</label>
+            <label>
+              Safety Notes
+              <button type="button" class="btn-voice" onclick="startVoiceInput('safetyNotes')" title="Voice input">
+                <span class="voice-icon">🎤</span>
+              </button>
+            </label>
             <textarea id="safetyNotes" class="form-control" rows="2" placeholder="Safety observations, incidents, or notes..."></textarea>
           </div>
         </div>
@@ -221,9 +246,42 @@
     </div>
   </div>
 
+  <!-- Weekly Report Modal -->
+  <div id="weeklyReportModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-xl">
+      <div class="modal-header">
+        <h2>Weekly Summary Report</h2>
+        <button class="close-btn" onclick="closeWeeklyReport()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="report-controls">
+          <div class="form-group">
+            <label>Week Starting</label>
+            <input type="date" id="reportWeekStart" class="form-control" onchange="loadWeeklyReport()">
+          </div>
+          <button class="btn btn-secondary" onclick="navigateWeek(-1)">← Previous Week</button>
+          <button class="btn btn-secondary" onclick="navigateWeek(1)">Next Week →</button>
+        </div>
+        <div id="weeklyReportContent">
+          <!-- Report content filled dynamically -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeWeeklyReport()">Close</button>
+        <button class="btn btn-primary" onclick="printWeeklyReport()">🖨️ Print Report</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Offline Status Banner -->
+  <div id="offlineBanner" class="offline-banner" style="display: none;">
+    <span>📡 You're offline. Changes will sync when connected.</span>
+    <span id="pendingSyncCount"></span>
+  </div>
+
   <script defer src="js/toasts.js?v=20260115-perf"></script>
   <script defer src="js/nav-sidebar.js?v=20260115-perf"></script>
   <script defer src="js/sidebar.js?v=20260115-perf"></script>
-  <script defer src="js/daily-logs.js?v=20260116-photos"></script>
+  <script defer src="js/daily-logs.js?v=20260116-features"></script>
 </body>
 </html>

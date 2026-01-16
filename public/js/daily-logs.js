@@ -369,6 +369,7 @@ async function openCreateModal() {
   document.getElementById('tempLow').value = '';
   document.getElementById('weatherNotes').value = '';
   document.getElementById('workCompleted').value = '';
+  document.getElementById('workPlanned').value = '';
   document.getElementById('delaysIssues').value = '';
   document.getElementById('siteVisitors').value = '';
   document.getElementById('safetyNotes').value = '';
@@ -419,6 +420,7 @@ async function openEditModal(logId) {
     document.getElementById('logJobId').value = currentLog.job_id;
     document.getElementById('logDate').value = currentLog.log_date;
     document.getElementById('workCompleted').value = currentLog.work_completed || '';
+    document.getElementById('workPlanned').value = currentLog.work_planned || '';
 
     // Show saved weather as display
     if (currentLog.weather_conditions) {
@@ -755,6 +757,7 @@ async function saveLog(status) {
     temperature_low: document.getElementById('tempLow').value ? parseInt(document.getElementById('tempLow').value) : null,
     weather_notes: document.getElementById('weatherNotes').value || null,
     work_completed: document.getElementById('workCompleted').value || null,
+    work_planned: document.getElementById('workPlanned').value || null,
     delays_issues: document.getElementById('delaysIssues').value || null,
     site_visitors: document.getElementById('siteVisitors').value || null,
     safety_notes: document.getElementById('safetyNotes').value || null,
@@ -952,6 +955,12 @@ async function viewLog(logId) {
           <div class="view-field">
             <label>Work Completed</label>
             <p>${currentLog.work_completed}</p>
+          </div>
+        ` : ''}
+        ${currentLog.work_planned ? `
+          <div class="view-field">
+            <label>Tomorrow's Plan</label>
+            <p>${currentLog.work_planned}</p>
           </div>
         ` : ''}
         ${currentLog.delays_issues ? `
@@ -1343,4 +1352,443 @@ function viewPhotoFull(url) {
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => {
   initPhotoUpload();
+  initOfflineMode();
 });
+
+// ============================================================
+// VOICE NOTES (Speech-to-Text)
+// ============================================================
+
+let recognition = null;
+let activeVoiceField = null;
+
+function initVoiceRecognition() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    console.warn('Speech recognition not supported');
+    return null;
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event) => {
+    if (!activeVoiceField) return;
+
+    let finalTranscript = '';
+    let interimTranscript = '';
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += transcript;
+      } else {
+        interimTranscript += transcript;
+      }
+    }
+
+    const field = document.getElementById(activeVoiceField);
+    if (field) {
+      // Append final transcript to existing text
+      if (finalTranscript) {
+        const existing = field.value;
+        field.value = existing + (existing ? ' ' : '') + finalTranscript;
+      }
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error:', event.error);
+    stopVoiceInput();
+    if (event.error === 'not-allowed') {
+      showToast('Microphone access denied', 'error');
+    } else {
+      showToast('Voice input error: ' + event.error, 'error');
+    }
+  };
+
+  recognition.onend = () => {
+    // Clear active state
+    const activeBtn = document.querySelector('.btn-voice.recording');
+    if (activeBtn) {
+      activeBtn.classList.remove('recording');
+    }
+    activeVoiceField = null;
+  };
+
+  return recognition;
+}
+
+function startVoiceInput(fieldId) {
+  // Check if already recording
+  if (activeVoiceField) {
+    stopVoiceInput();
+    return;
+  }
+
+  // Initialize if needed
+  if (!recognition) {
+    recognition = initVoiceRecognition();
+    if (!recognition) {
+      showToast('Voice input not supported in this browser', 'warning');
+      return;
+    }
+  }
+
+  activeVoiceField = fieldId;
+
+  // Find and highlight the button
+  const field = document.getElementById(fieldId);
+  if (field) {
+    const label = field.previousElementSibling || field.parentElement.querySelector('label');
+    const btn = label?.querySelector('.btn-voice');
+    if (btn) {
+      btn.classList.add('recording');
+    }
+  }
+
+  try {
+    recognition.start();
+    showToast('Listening... Speak now', 'info');
+  } catch (err) {
+    console.error('Failed to start voice recognition:', err);
+    stopVoiceInput();
+  }
+}
+
+function stopVoiceInput() {
+  if (recognition) {
+    recognition.stop();
+  }
+  activeVoiceField = null;
+
+  // Clear all recording states
+  document.querySelectorAll('.btn-voice.recording').forEach(btn => {
+    btn.classList.remove('recording');
+  });
+}
+
+// ============================================================
+// WEEKLY SUMMARY REPORT
+// ============================================================
+
+let currentReportWeek = null;
+
+function openWeeklyReport() {
+  if (!state.currentJobId) {
+    showToast('Please select a job first', 'warning');
+    return;
+  }
+
+  // Set to current week (Sunday start)
+  const now = new Date();
+  const sunday = new Date(now);
+  sunday.setDate(sunday.getDate() - sunday.getDay());
+  currentReportWeek = sunday.toISOString().split('T')[0];
+
+  document.getElementById('reportWeekStart').value = currentReportWeek;
+
+  const modal = document.getElementById('weeklyReportModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+
+  loadWeeklyReport();
+}
+
+function closeWeeklyReport() {
+  const modal = document.getElementById('weeklyReportModal');
+  modal.classList.remove('show');
+  setTimeout(() => {
+    modal.style.display = 'none';
+  }, 200);
+}
+
+function navigateWeek(direction) {
+  const current = new Date(document.getElementById('reportWeekStart').value);
+  current.setDate(current.getDate() + (direction * 7));
+  document.getElementById('reportWeekStart').value = current.toISOString().split('T')[0];
+  loadWeeklyReport();
+}
+
+async function loadWeeklyReport() {
+  const weekStart = document.getElementById('reportWeekStart').value;
+  const content = document.getElementById('weeklyReportContent');
+
+  content.innerHTML = '<div class="loading">Loading report...</div>';
+
+  try {
+    const res = await fetch(`/api/daily-logs/report/weekly?job_id=${state.currentJobId}&week_start=${weekStart}`);
+    if (!res.ok) throw new Error('Failed to load report');
+
+    const report = await res.json();
+    renderWeeklyReport(report);
+  } catch (err) {
+    console.error('Failed to load weekly report:', err);
+    content.innerHTML = '<div class="error-state">Failed to load report</div>';
+  }
+}
+
+function renderWeeklyReport(report) {
+  const content = document.getElementById('weeklyReportContent');
+  const weekEnd = new Date(report.week_start);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+
+  const formatDate = (dateStr) => new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  content.innerHTML = `
+    <div class="weekly-report">
+      <div class="report-header">
+        <h3>${report.job?.name || 'Unknown Job'}</h3>
+        <p class="report-period">${formatDate(report.week_start)} - ${formatDate(report.week_end)}</p>
+      </div>
+
+      <div class="report-summary-grid">
+        <div class="report-stat">
+          <div class="stat-value">${report.total_days_logged}</div>
+          <div class="stat-label">Days Logged</div>
+        </div>
+        <div class="report-stat">
+          <div class="stat-value">${report.total_workers}</div>
+          <div class="stat-label">Total Workers</div>
+        </div>
+        <div class="report-stat">
+          <div class="stat-value">${report.total_hours.toFixed(1)}</div>
+          <div class="stat-label">Total Hours</div>
+        </div>
+        <div class="report-stat">
+          <div class="stat-value">${report.total_deliveries}</div>
+          <div class="stat-label">Deliveries</div>
+        </div>
+        <div class="report-stat">
+          <div class="stat-value">${report.total_photos}</div>
+          <div class="stat-label">Photos</div>
+        </div>
+        <div class="report-stat">
+          <div class="stat-value">${report.total_absent}</div>
+          <div class="stat-label">No-Shows</div>
+        </div>
+      </div>
+
+      ${report.unique_vendors.length > 0 ? `
+        <div class="report-section">
+          <h4>Vendors On Site This Week</h4>
+          <div class="vendor-tags">
+            ${report.unique_vendors.map(v => `<span class="vendor-tag">${v}</span>`).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="report-section">
+        <h4>Daily Breakdown</h4>
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Weather</th>
+              <th>Crews</th>
+              <th>Workers</th>
+              <th>Hours</th>
+              <th>Deliveries</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${report.daily_logs.length > 0 ? report.daily_logs.map(day => {
+              const weatherIcon = weatherIcons[day.weather]?.icon || '🌤️';
+              return `
+                <tr>
+                  <td>${formatDate(day.date)}</td>
+                  <td>${weatherIcon} ${day.temp_high ? day.temp_high + '°F' : '-'}</td>
+                  <td>${day.crew_count}</td>
+                  <td>${day.worker_count}</td>
+                  <td>${day.hours.toFixed(1)}</td>
+                  <td>${day.delivery_count}</td>
+                  <td><span class="status-badge ${day.status === 'completed' ? 'status-approved' : 'status-draft'}">${day.status}</span></td>
+                </tr>
+              `;
+            }).join('') : '<tr><td colspan="7" class="no-data">No logs for this week</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+
+      ${report.work_completed.length > 0 ? `
+        <div class="report-section">
+          <h4>Work Completed</h4>
+          <ul class="report-list">
+            ${report.work_completed.map(w => `
+              <li><strong>${formatDate(w.date)}:</strong> ${w.work}</li>
+            `).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
+      ${report.delays_issues.length > 0 ? `
+        <div class="report-section report-section-warning">
+          <h4>Delays & Issues</h4>
+          <ul class="report-list">
+            ${report.delays_issues.map(d => `
+              <li><strong>${formatDate(d.date)}:</strong> ${d.issue}</li>
+            `).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
+      ${report.safety_notes.length > 0 ? `
+        <div class="report-section">
+          <h4>Safety Notes</h4>
+          <ul class="report-list">
+            ${report.safety_notes.map(s => `
+              <li><strong>${formatDate(s.date)}:</strong> ${s.note}</li>
+            `).join('')}
+          </ul>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function printWeeklyReport() {
+  const content = document.getElementById('weeklyReportContent').innerHTML;
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Weekly Report - Ross Built</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
+        h3 { margin: 0 0 5px; }
+        .report-period { color: #666; margin: 0 0 20px; }
+        .report-summary-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }
+        .report-stat { text-align: center; padding: 10px; background: #f5f5f5; border-radius: 8px; }
+        .stat-value { font-size: 24px; font-weight: bold; }
+        .stat-label { font-size: 12px; color: #666; }
+        .report-section { margin-bottom: 20px; }
+        .report-section h4 { border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        .report-table { width: 100%; border-collapse: collapse; }
+        .report-table th, .report-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .report-table th { background: #f5f5f5; }
+        .vendor-tag { display: inline-block; background: #e0e0e0; padding: 2px 8px; border-radius: 4px; margin: 2px; font-size: 12px; }
+        .report-list { margin: 0; padding-left: 20px; }
+        .report-list li { margin-bottom: 5px; }
+        .status-badge { padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+        .status-approved { background: #d4edda; color: #155724; }
+        .status-draft { background: #fff3cd; color: #856404; }
+        .report-section-warning { background: #fff3cd; padding: 10px; border-radius: 8px; }
+        @media print { body { padding: 0; } }
+      </style>
+    </head>
+    <body>
+      ${content}
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.print();
+}
+
+// ============================================================
+// OFFLINE MODE
+// ============================================================
+
+let isOnline = navigator.onLine;
+let pendingSync = [];
+
+function initOfflineMode() {
+  // Monitor online/offline status
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+
+  // Load any pending sync items from localStorage
+  const saved = localStorage.getItem('dailyLogs_pendingSync');
+  if (saved) {
+    pendingSync = JSON.parse(saved);
+    updateOfflineBanner();
+  }
+
+  // Initial status check
+  if (!navigator.onLine) {
+    handleOffline();
+  }
+}
+
+function handleOnline() {
+  isOnline = true;
+  document.getElementById('offlineBanner').style.display = 'none';
+  showToast('Back online', 'success');
+
+  // Sync pending changes
+  if (pendingSync.length > 0) {
+    syncPendingChanges();
+  }
+}
+
+function handleOffline() {
+  isOnline = false;
+  updateOfflineBanner();
+  showToast('You are offline', 'warning');
+}
+
+function updateOfflineBanner() {
+  const banner = document.getElementById('offlineBanner');
+  const countSpan = document.getElementById('pendingSyncCount');
+
+  if (!isOnline || pendingSync.length > 0) {
+    banner.style.display = 'flex';
+    if (pendingSync.length > 0) {
+      countSpan.textContent = `(${pendingSync.length} pending)`;
+    } else {
+      countSpan.textContent = '';
+    }
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function savePendingSync() {
+  localStorage.setItem('dailyLogs_pendingSync', JSON.stringify(pendingSync));
+  updateOfflineBanner();
+}
+
+async function syncPendingChanges() {
+  if (pendingSync.length === 0) return;
+
+  showToast(`Syncing ${pendingSync.length} changes...`, 'info');
+
+  const toSync = [...pendingSync];
+  pendingSync = [];
+
+  for (const item of toSync) {
+    try {
+      const res = await fetch(item.url, {
+        method: item.method,
+        headers: item.headers,
+        body: item.body
+      });
+
+      if (!res.ok) {
+        throw new Error('Sync failed');
+      }
+    } catch (err) {
+      console.error('Failed to sync item:', err);
+      pendingSync.push(item);
+    }
+  }
+
+  savePendingSync();
+
+  if (pendingSync.length === 0) {
+    showToast('All changes synced', 'success');
+    await loadDailyLogs();
+  } else {
+    showToast(`${pendingSync.length} changes failed to sync`, 'warning');
+  }
+}
+
+// Queue a request for offline sync
+function queueOfflineRequest(url, method, headers, body) {
+  pendingSync.push({ url, method, headers, body, timestamp: Date.now() });
+  savePendingSync();
+}
