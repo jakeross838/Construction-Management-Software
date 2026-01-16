@@ -4025,6 +4025,62 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
 
     if (getError) throw getError;
 
+    // ==========================================
+    // VALIDATION: Prevent re-approval (preserve audit trail)
+    // ==========================================
+    if (invoice.status === 'approved' || invoice.status === 'in_draw' || invoice.status === 'paid') {
+      return res.status(400).json({
+        error: `Invoice is already ${invoice.status}. Cannot re-approve.`,
+        current_status: invoice.status,
+        approved_by: invoice.approved_by,
+        approved_at: invoice.approved_at
+      });
+    }
+
+    // ==========================================
+    // VALIDATION: Require allocations before approval
+    // ==========================================
+    const allocations = invoice.allocations || [];
+    if (allocations.length === 0) {
+      return res.status(400).json({
+        error: 'Cannot approve invoice without cost code allocations. Please assign at least one cost code.'
+      });
+    }
+
+    // ==========================================
+    // VALIDATION: Allocation total must match invoice amount
+    // Allow partial billing (already billed amount + new allocations should cover invoice)
+    // ==========================================
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const allocationTotal = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const previouslyBilled = parseFloat(invoice.billed_amount || 0);
+    const totalCoded = previouslyBilled + allocationTotal;
+
+    // For credits, check if allocation is negative enough; for regular invoices, check if fully coded
+    const isCredit = invoiceAmount < 0;
+    const tolerance = 0.01; // Allow penny rounding differences
+
+    if (isCredit) {
+      // Credit: allocation should be negative and match invoice
+      if (allocationTotal > invoiceAmount + tolerance) {
+        return res.status(400).json({
+          error: `Allocation total ($${allocationTotal.toFixed(2)}) does not match credit amount ($${invoiceAmount.toFixed(2)}). Please adjust allocations.`
+        });
+      }
+    } else {
+      // Regular invoice: allocations should fully cover the invoice (allowing for partial billing)
+      if (totalCoded < invoiceAmount - tolerance) {
+        const remaining = invoiceAmount - totalCoded;
+        return res.status(400).json({
+          error: `Allocations ($${allocationTotal.toFixed(2)}) do not fully cover invoice amount ($${invoiceAmount.toFixed(2)}). $${remaining.toFixed(2)} remains unallocated.`,
+          invoice_amount: invoiceAmount,
+          allocation_total: allocationTotal,
+          previously_billed: previouslyBilled,
+          remaining: remaining
+        });
+      }
+    }
+
     // Check for pending CO allocations - block approval
     const pendingCOAllocations = (invoice.allocations || []).filter(a => a.pending_co);
     if (pendingCOAllocations.length > 0) {
