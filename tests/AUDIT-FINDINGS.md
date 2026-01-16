@@ -1,49 +1,40 @@
 # Application Audit Findings
 
-**Date:** January 15, 2026
+**Date:** January 15, 2026 (Updated)
 **Tested Pages:** Invoices, Purchase Orders, Draws, Budget, Vendors, Change Orders
-**Test Results:** 8/9 passed (1 timeout due to bug)
+**Test Results:** 9/9 passed (all issues fixed)
 
 ---
 
 ## 🐛 BUGS TO FIX
 
-### 1. Upload Modal Missing Escape Key Handler (HIGH)
+### 1. Upload Modal Missing Escape Key Handler (HIGH) - ✅ FIXED
 **Location:** `public/index.html` lines 240-280
-**Issue:** The upload modal (`universalUploadModal`) doesn't respond to Escape key to close. Users must click the X button or click outside the modal.
-**Impact:** Poor UX, modal can block page interactions in tests.
-**Fix:** Add Escape key handler:
-```javascript
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape' && modal.style.display === 'flex') {
-    closeModal();
-  }
-});
-```
+**Issue:** The upload modal (`universalUploadModal`) doesn't respond to Escape key to close.
+**Status:** Fixed on Jan 15, 2026 - Added Escape key handler
 
-### 2. Inconsistent Modal IDs (MEDIUM)
+### 2. Inconsistent Modal IDs (MEDIUM) - ✅ FIXED
 **Issue:** Test expects `#uploadModal` but actual ID is `#universalUploadModal`
-**Impact:** Tests may fail unexpectedly
-**Fix:** Standardize to one ID or update tests
+**Status:** Fixed on Jan 15, 2026 - Updated tests to use correct ID
 
 ---
 
 ## ⚠️ WARNINGS / POTENTIAL ISSUES
 
-### 1. PO Page - Create PO Button Selector Issue
+### 1. PO Page - Create PO Button Selector Issue - ✅ FIXED
 **Location:** `public/pos.html`
-**Issue:** Test couldn't find "Create PO" button with selector `button:has-text("Create PO"), #createPOBtn`
-**Check:** Verify the actual button text/ID matches expected selectors
+**Issue:** Test couldn't find "Create PO" button (actual text is "+ New PO")
+**Status:** Fixed on Jan 15, 2026 - Updated test to use correct selector
 
-### 2. PO Modal - Tab Detection
+### 2. PO Modal - Card-Based Layout - ✅ FIXED
 **Location:** PO detail modal
-**Issue:** Test found 0 tabs with selector `.tab, .modal-tab`
-**Check:** Verify actual tab class names in the PO modal
+**Issue:** Test looked for tabs but PO modal uses card-based layout
+**Status:** Fixed on Jan 15, 2026 - Updated test to check for `.po-card` elements
 
-### 3. Draw Modal - G702/G703 Tab Detection
+### 3. Draw Modal - G702/G703 Sections - ✅ FIXED
 **Location:** Draw detail modal
-**Issue:** G702 and G703 tabs not found with `button:has-text("G702")` selector
-**Check:** Verify actual tab implementation
+**Issue:** Test looked for tab buttons but Draw modal uses section headers
+**Status:** Fixed on Jan 15, 2026 - Updated test to check for `h3:has-text("G702")`
 
 ### 4. Invoice Data Quality
 **Found:** Some invoices missing job assignment and cost code allocations
@@ -132,11 +123,11 @@ document.addEventListener('keydown', function(e) {
 
 ## 🔧 RECOMMENDED FIXES (Priority Order)
 
-1. **HIGH**: Add Escape key handler to upload modal
-2. **MEDIUM**: Fix PO modal tab class names for consistency
-3. **MEDIUM**: Fix Draw modal G702/G703 tab selectors
-4. **LOW**: Standardize modal IDs across application
-5. **LOW**: Add empty state CTAs for Change Orders
+1. ~~**HIGH**: Add Escape key handler to upload modal~~ ✅ DONE
+2. ~~**MEDIUM**: Fix PO modal tab class names for consistency~~ ✅ DONE (was card-based, test updated)
+3. ~~**MEDIUM**: Fix Draw modal G702/G703 tab selectors~~ ✅ DONE (was section-based, test updated)
+4. ~~**LOW**: Standardize modal IDs across application~~ ✅ DONE (tests updated)
+5. **LOW**: Add empty state CTAs for Change Orders (pending)
 
 ---
 

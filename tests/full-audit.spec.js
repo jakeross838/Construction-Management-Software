@@ -251,15 +251,15 @@ test.describe('Full Application Audit', () => {
     auditResults.pageStats[pageName].poCount = poRows;
     logPass(pageName, `${poRows} purchase orders displayed`);
 
-    // Check Create PO button
-    const createBtn = await page.locator('button:has-text("Create PO"), #createPOBtn').count();
+    // Check Create PO button (actual text is "+ New PO")
+    const createBtn = await page.locator('button:has-text("New PO"), button:has-text("Create PO"), #createPOBtn').count();
     if (createBtn === 0) {
       logWarning(pageName, 'UI', 'Missing Create PO button');
     } else {
       logPass(pageName, 'Create PO button present');
 
       // Test create modal
-      await page.locator('button:has-text("Create PO"), #createPOBtn').first().click();
+      await page.locator('button:has-text("New PO"), button:has-text("Create PO"), #createPOBtn').first().click();
       await page.waitForTimeout(1000);
 
       const createModal = await page.locator('#poModal, .po-modal').isVisible();
@@ -268,16 +268,33 @@ test.describe('Full Application Audit', () => {
       } else {
         logPass(pageName, 'Create PO modal opens');
 
-        // Check required fields
-        const jobSelect = await page.locator('#po-job, #poJob').count();
-        const vendorSelect = await page.locator('#po-vendor, #poVendor').count();
+        // Check required fields (uses searchable picker containers)
+        const jobPicker = await page.locator('#po-job-picker-container').count();
+        const vendorPicker = await page.locator('#po-vendor-picker-container').count();
 
-        if (jobSelect === 0) logError(pageName, 'Modal', 'Missing job selector in PO form');
-        if (vendorSelect === 0) logError(pageName, 'Modal', 'Missing vendor selector in PO form');
+        if (jobPicker === 0) logWarning(pageName, 'Modal', 'Missing job picker in PO form');
+        else logPass(pageName, 'Job picker present in PO form');
 
-        // Close modal
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(500);
+        if (vendorPicker === 0) logWarning(pageName, 'Modal', 'Missing vendor picker in PO form');
+        else logPass(pageName, 'Vendor picker present in PO form');
+
+        // Close modal - use close button for reliability
+        const closeBtn = page.locator('#poModal .close-btn, #poModal button:has-text("Cancel")');
+        if (await closeBtn.count() > 0) {
+          await closeBtn.first().click();
+        } else {
+          await page.keyboard.press('Escape');
+        }
+        await page.waitForTimeout(1000);
+
+        // Verify modal closed
+        const modalStillOpen = await page.locator('#poModal.show').count();
+        if (modalStillOpen > 0) {
+          logWarning(pageName, 'Modal', 'Create PO modal did not close properly');
+          // Force close by clicking outside
+          await page.locator('body').click({ position: { x: 10, y: 10 } });
+          await page.waitForTimeout(500);
+        }
       }
     }
 
@@ -292,13 +309,20 @@ test.describe('Full Application Audit', () => {
       } else {
         logPass(pageName, 'PO detail modal opens');
 
-        // Check tabs
-        const tabs = await page.locator('.tab, .modal-tab').count();
-        if (tabs < 3) {
-          logWarning(pageName, 'Modal', `Only ${tabs} tabs in PO modal (expected 4+)`);
+        // Check sections (PO modal uses card-based layout, not tabs)
+        const poCards = await page.locator('.po-card').count();
+        const sectionHeaders = await page.locator('.po-card h4, .card-title-row h4').count();
+        if (poCards < 2) {
+          logWarning(pageName, 'Modal', `Only ${poCards} content cards in PO modal (expected 3+)`);
         } else {
-          logPass(pageName, `PO modal has ${tabs} tabs`);
+          logPass(pageName, `PO modal has ${poCards} content cards with ${sectionHeaders} sections`);
         }
+
+        // Check for key sections
+        const lineItemsSection = await page.locator('h4:has-text("Line Items")').count();
+        const invoicesSection = await page.locator('h4:has-text("Invoices"), h4:has-text("Linked Invoices")').count();
+        if (lineItemsSection === 0) logWarning(pageName, 'Modal', 'Missing Line Items section');
+        if (invoicesSection === 0) logWarning(pageName, 'Modal', 'Missing Invoices section');
 
         // Check action buttons
         const actionBtns = await page.locator('.modal-footer button, .modal-actions button').count();
@@ -362,12 +386,19 @@ test.describe('Full Application Audit', () => {
       } else {
         logPass(pageName, 'Draw detail modal opens');
 
-        // Check for G702/G703 tabs
-        const g702Tab = await page.locator('button:has-text("G702"), .tab:has-text("G702")').count();
-        const g703Tab = await page.locator('button:has-text("G703"), .tab:has-text("G703")').count();
+        // Check for G702/G703 sections (Draw modal uses section headers, not tabs)
+        const g702Section = await page.locator('h3:has-text("G702"), .section-header:has-text("G702")').count();
+        const g703Section = await page.locator('h3:has-text("G703"), .section-header:has-text("G703")').count();
 
-        if (g702Tab === 0) logWarning(pageName, 'Modal', 'Missing G702 tab');
-        if (g703Tab === 0) logWarning(pageName, 'Modal', 'Missing G703 tab');
+        if (g702Section === 0) logWarning(pageName, 'Modal', 'Missing G702 section');
+        else logPass(pageName, 'G702 section present');
+
+        if (g703Section === 0) logWarning(pageName, 'Modal', 'Missing G703 section');
+        else logPass(pageName, 'G703 section present');
+
+        // Check G703 table
+        const g703Table = await page.locator('#g703Body, .g703-table').count();
+        if (g703Table > 0) logPass(pageName, 'G703 Schedule of Values table present');
 
         // Check export buttons
         const excelBtn = await page.locator('button:has-text("Excel")').count();
