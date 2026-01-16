@@ -16969,3 +16969,509 @@ textarea.form-control {
 }
 
 /* PDF toolbar - flexbox handles sizing automatically */
+
+/* ============================================================
+   DAILY LOGS STYLES
+   ============================================================ */
+
+/* Daily Log Modal Overrides */
+#dailyLogModal.modal-fullscreen-dark,
+#viewLogModal.modal-fullscreen-dark {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+#dailyLogModal .modal-content,
+#viewLogModal .modal-content {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  width: 95vw;
+  max-width: 900px;
+  height: auto;
+  max-height: 95vh;
+  overflow-y: auto;
+}
+
+/* Weather Display Card */
+.weather-display {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.weather-loading {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.weather-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.weather-main {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.weather-icon-xl {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.weather-condition {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.weather-temps {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.temp-item {
+  text-align: center;
+}
+
+.temp-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.25rem;
+}
+
+.temp-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Auto-fetched label */
+.auto-label {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 0.5rem;
+}
+
+/* Stats Cards */
+.daily-log-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.daily-log-stats .stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  text-align: center;
+}
+
+.daily-log-stats .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.daily-log-stats .stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 0.25rem;
+}
+
+/* Daily Log List */
+.daily-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Daily Log Card */
+.daily-log-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.daily-log-card:hover {
+  border-color: var(--accent-blue);
+  background: var(--bg-card-elevated);
+}
+
+.log-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.log-card-date {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.log-card-weather {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.weather-icon {
+  font-size: 1.25rem;
+}
+
+.weather-temp {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.log-card-job {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.log-card-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.summary-icon {
+  font-size: 1rem;
+}
+
+.log-card-work {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Filter Date Inputs */
+.filter-date {
+  width: 140px;
+}
+
+/* Crew and Delivery Entry Styles */
+.crew-entry,
+.delivery-entry,
+.absent-entry {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.crew-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.crew-entry-number {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.absent-entry {
+  border-left: 3px solid var(--accent-orange);
+}
+
+.entry-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.entry-row + .entry-row {
+  margin-top: 0.75rem;
+}
+
+.entry-row .form-group {
+  margin-bottom: 0;
+}
+
+.entry-row .form-group label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 0;
+}
+
+.btn-icon.btn-sm {
+  width: 24px;
+  height: 24px;
+}
+
+.btn-icon span {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.btn-icon.btn-sm span {
+  font-size: 1rem;
+}
+
+/* Form hint text */
+.form-hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+/* View Log Modal Styles */
+.view-log-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.view-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.view-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.view-section h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.75rem;
+}
+
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.view-job {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.view-weather {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.weather-icon-large {
+  font-size: 2.5rem;
+}
+
+.weather-label {
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.view-weather .weather-temp {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+
+.weather-notes {
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Crew List in View Modal */
+.view-crew-list,
+.view-delivery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.view-crew-item,
+.view-delivery-item {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.crew-vendor,
+.delivery-vendor {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.crew-details,
+.delivery-desc {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.crew-notes,
+.delivery-notes,
+.delivery-received {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #6e7681);
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+/* View Absent/No-Show Section */
+.view-section-warning {
+  background: rgba(210, 153, 34, 0.1);
+  border: 1px solid var(--accent-orange);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.view-section-warning h4 {
+  color: var(--accent-orange);
+}
+
+.view-absent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.view-absent-item {
+  background: var(--bg-card);
+  border: 1px solid var(--accent-orange);
+  border-left-width: 3px;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.absent-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.absent-vendor {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.absent-trade {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  padding: 0.125rem 0.5rem;
+  background: var(--bg-card-elevated);
+  border-radius: 4px;
+}
+
+.absent-reason {
+  font-size: 0.875rem;
+  color: var(--accent-orange);
+  margin-top: 0.375rem;
+}
+
+/* View Field */
+.view-field {
+  margin-bottom: 1rem;
+}
+
+.view-field:last-child {
+  margin-bottom: 0;
+}
+
+.view-field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.375rem;
+}
+
+.view-field p {
+  color: var(--text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .daily-log-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .log-card-summary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .entry-row {
+    flex-wrap: wrap;
+  }
+
+  .entry-row .form-group {
+    min-width: 100px;
+  }
+
+  .view-weather {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

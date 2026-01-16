@@ -120,6 +120,7 @@ const lockRoutes = require('./routes/locks');
 const undoRoutes = require('./routes/undo');
 const aiRoutes = require('./routes/ai');
 const realtimeRoutes = require('./routes/realtime');
+const dailyLogRoutes = require('./routes/daily-logs');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -134,6 +135,7 @@ app.use('/api/locks', lockRoutes);
 app.use('/api/undo', undoRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/realtime', realtimeRoutes);
+app.use('/api/daily-logs', dailyLogRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Daily Logs</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260115-absent">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav">
+          <!-- Filled by nav-sidebar.js -->
+        </nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New Daily Log</button>
+          <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav">
+          <!-- Filled by nav-sidebar.js -->
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="app-body">
+      <main class="main">
+        <!-- Filters -->
+        <div class="table-toolbar">
+          <div class="filter-controls">
+            <select id="statusFilter" class="form-control filter-select" onchange="applyFilters()">
+              <option value="">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="completed">Completed</option>
+            </select>
+            <input type="date" id="dateFrom" class="form-control filter-date" placeholder="From" onchange="applyFilters()">
+            <input type="date" id="dateTo" class="form-control filter-date" placeholder="To" onchange="applyFilters()">
+          </div>
+          <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Search logs..." class="form-control search-input" oninput="applyFilters()">
+          </div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div class="daily-log-stats" id="statsContainer">
+          <div class="stat-card">
+            <div class="stat-value" id="statTotal">-</div>
+            <div class="stat-label">Total Logs</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statDraft">-</div>
+            <div class="stat-label">Drafts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statCompleted">-</div>
+            <div class="stat-label">Completed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statThisWeek">-</div>
+            <div class="stat-label">This Week</div>
+          </div>
+        </div>
+
+        <!-- No Job Selected State -->
+        <div id="noJobSelected" class="empty-state" style="display: none;">
+          <div class="empty-icon">📋</div>
+          <h3>Select a Job</h3>
+          <p>Choose a job from the sidebar to view daily logs</p>
+        </div>
+
+        <!-- Daily Logs List -->
+        <div class="daily-log-list" id="logList">
+          <div class="loading">Loading daily logs...</div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit Daily Log Modal -->
+  <div id="dailyLogModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-xl">
+      <div class="modal-header">
+        <h2 id="modalTitle">New Daily Log</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editLogId">
+
+        <!-- Basic Info -->
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label>Job <span class="required">*</span></label>
+            <select id="logJobId" class="form-control" onchange="onJobChange()">
+              <option value="">Select Job...</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label>Date <span class="required">*</span></label>
+            <input type="date" id="logDate" class="form-control">
+          </div>
+        </div>
+
+        <!-- Weather Section (Auto-calculated) -->
+        <div class="form-section">
+          <h3>Weather <span class="auto-label">(Auto-fetched)</span></h3>
+          <div class="weather-display" id="weatherDisplay">
+            <div class="weather-loading">Select a job to load weather...</div>
+          </div>
+          <!-- Hidden fields to store values -->
+          <input type="hidden" id="weatherConditions">
+          <input type="hidden" id="tempHigh">
+          <input type="hidden" id="tempLow">
+          <input type="hidden" id="weatherNotes">
+        </div>
+
+        <!-- Crew On Site Section -->
+        <div class="form-section">
+          <h3>Crew On Site</h3>
+          <div class="crew-list" id="crewList">
+            <!-- Crew entries added here -->
+          </div>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="addCrewEntry()">+ Add Crew</button>
+        </div>
+
+        <!-- Absent/No-Show Section -->
+        <div class="form-section">
+          <h3>Scheduled But Did Not Show</h3>
+          <p class="form-hint">Track crews that were expected but didn't arrive</p>
+          <div class="absent-list" id="absentList">
+            <!-- Absent entries added here -->
+          </div>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="addAbsentEntry()">+ Add No-Show</button>
+        </div>
+
+        <!-- Deliveries Section -->
+        <div class="form-section">
+          <h3>Deliveries</h3>
+          <div class="delivery-list" id="deliveryList">
+            <!-- Delivery entries added here -->
+          </div>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="addDeliveryEntry()">+ Add Delivery</button>
+        </div>
+
+        <!-- Work Summary Section -->
+        <div class="form-section">
+          <h3>Work Summary</h3>
+          <div class="form-group">
+            <label>Work Completed</label>
+            <textarea id="workCompleted" class="form-control" rows="3" placeholder="Describe work completed today..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Delays / Issues</label>
+            <textarea id="delaysIssues" class="form-control" rows="2" placeholder="Note any delays, issues, or problems encountered..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Site Visitors</label>
+            <input type="text" id="siteVisitors" class="form-control" placeholder="e.g., Inspector John Smith (building), Owner visit">
+          </div>
+          <div class="form-group">
+            <label>Safety Notes</label>
+            <textarea id="safetyNotes" class="form-control" rows="2" placeholder="Safety observations, incidents, or notes..."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="deleteLogBtn" onclick="deleteLog()" style="display: none; margin-right: auto;">Delete</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-secondary" onclick="saveLog('draft')">Save Draft</button>
+        <button class="btn btn-primary" onclick="saveLog('completed')">Mark Complete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- View Daily Log Modal -->
+  <div id="viewLogModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-xl">
+      <div class="modal-header">
+        <h2 id="viewModalTitle">Daily Log</h2>
+        <button class="close-btn" onclick="closeViewModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="viewLogContent">
+        <!-- Content filled dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeViewModal()">Close</button>
+        <button class="btn btn-secondary" id="reopenBtn" onclick="reopenLog()" style="display: none;">Reopen</button>
+        <button class="btn btn-primary" id="editViewBtn" onclick="editFromView()">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="js/toasts.js?v=20260115-perf"></script>
+  <script defer src="js/nav-sidebar.js?v=20260115-perf"></script>
+  <script defer src="js/sidebar.js?v=20260115-perf"></script>
+  <script defer src="js/daily-logs.js?v=20260115-absent"></script>
+</body>
+</html>
