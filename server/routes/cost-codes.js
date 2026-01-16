@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
       .order('code');
 
     if (error) throw error;
-    res.json(data);
+    res.json({ costCodes: data });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

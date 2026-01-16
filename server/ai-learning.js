@@ -621,6 +621,93 @@ async function enrichVendorFromInvoice(vendorId, extractedData) {
   }
 }
 
+/**
+ * Learn cost code mapping from vendor trade type
+ * Called when user assigns a cost code to an invoice
+ *
+ * @param {string} vendorId - Vendor UUID
+ * @param {string} costCodeId - Cost code UUID
+ */
+async function learnCostCodeMapping(vendorId, costCodeId) {
+  if (!vendorId || !costCodeId) return null;
+
+  try {
+    // Get vendor's trade (the column is 'trade', not 'trade_type')
+    const { data: vendor } = await supabase
+      .from('v2_vendors')
+      .select('id, name, trade')
+      .eq('id', vendorId)
+      .single();
+
+    if (!vendor || !vendor.trade) {
+      // No trade set - skip learning
+      return null;
+    }
+
+    const tradeType = vendor.trade.toLowerCase().trim();
+
+    // Check if mapping already exists
+    const { data: existing } = await supabase
+      .from('v2_trade_mappings')
+      .select('*')
+      .eq('trade_type', tradeType)
+      .single();
+
+    if (existing) {
+      if (existing.cost_code_id === costCodeId) {
+        // Same mapping - already learned
+        console.log(`[AI Learning] Trade mapping confirmed: "${tradeType}" → cost code`);
+        return existing;
+      }
+      // Different cost code - don't override existing mapping
+      // (User may have intentionally set different code for this invoice)
+      return existing;
+    }
+
+    // Create new trade mapping
+    const { data: newMapping, error } = await supabase
+      .from('v2_trade_mappings')
+      .insert({
+        trade_type: tradeType,
+        cost_code_id: costCodeId,
+        priority: 1
+      })
+      .select(`
+        *,
+        cost_code:v2_cost_codes(code, name)
+      `)
+      .single();
+
+    if (error) {
+      if (error.code === '23505') return null; // Duplicate
+      console.error('[AI Learning] Failed to create trade mapping:', error.message);
+      return null;
+    }
+
+    console.log(`[AI Learning] Learned trade mapping: "${tradeType}" → ${newMapping.cost_code?.code} ${newMapping.cost_code?.name}`);
+    return newMapping;
+
+  } catch (err) {
+    console.error('[AI Learning] Error learning cost code:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Get trade mapping count for stats
+ */
+async function getTradeMappingCount() {
+  try {
+    const { count, error } = await supabase
+      .from('v2_trade_mappings')
+      .select('*', { count: 'exact', head: true });
+
+    return error ? 0 : count;
+  } catch (err) {
+    return 0;
+  }
+}
+
 module.exports = {
   recordLearning,
   findLearnedMapping,
@@ -634,5 +721,8 @@ module.exports = {
   findVendorByAlias,
   findPotentialDuplicateVendors,
   flagVendorDuplicate,
-  enrichVendorFromInvoice
+  enrichVendorFromInvoice,
+  // Cost code learning
+  learnCostCodeMapping,
+  getTradeMappingCount
 };

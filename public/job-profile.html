@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Job Profile</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260116-profile">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-secondary" onclick="extractFromPlans()" id="extractBtn" style="display: none;">
+            🤖 Extract from Plans
+          </button>
+          <button class="btn btn-primary" onclick="enableEdit()" id="editBtn" style="display: none;">
+            ✏️ Edit
+          </button>
+          <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav"></nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="app-body">
+      <main class="main">
+        <!-- No Job Selected State -->
+        <div id="noJobSelected" class="empty-state">
+          <div class="empty-icon">🏠</div>
+          <h3>Select a Job</h3>
+          <p>Choose a job from the sidebar to view its profile</p>
+        </div>
+
+        <!-- Job Profile Content -->
+        <div id="profileContent" style="display: none;">
+          <!-- Job Header -->
+          <div class="profile-header">
+            <div class="profile-title">
+              <h1 id="jobName">Job Name</h1>
+              <p class="profile-address" id="jobAddress">Address</p>
+            </div>
+            <div class="profile-status">
+              <span class="status-badge" id="jobStatus">Active</span>
+              <span class="ai-badge" id="aiBadge" style="display: none;">
+                🤖 AI Extracted <span id="aiConfidence"></span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Quick Stats -->
+          <div class="profile-stats" id="quickStats">
+            <div class="stat-card">
+              <div class="stat-value" id="statSqft">--</div>
+              <div class="stat-label">Sq Ft</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statBeds">--</div>
+              <div class="stat-label">Bedrooms</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statBaths">--</div>
+              <div class="stat-label">Bathrooms</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statStories">--</div>
+              <div class="stat-label">Stories</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statGarage">--</div>
+              <div class="stat-label">Garage</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statAC">--</div>
+              <div class="stat-label">AC Tonnage</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statWindows">--</div>
+              <div class="stat-label">Windows</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statTrusses">--</div>
+              <div class="stat-label">Trusses</div>
+            </div>
+          </div>
+
+          <!-- Specs Sections -->
+          <div class="profile-sections">
+            <!-- Building Specs -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>🏠 Building Specifications</h2>
+              </div>
+              <div class="specs-grid" id="buildingSpecs">
+                <div class="spec-item">
+                  <label>Conditioned Sq Ft</label>
+                  <input type="number" id="specSqftConditioned" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Total Sq Ft</label>
+                  <input type="number" id="specSqftTotal" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Garage Sq Ft</label>
+                  <input type="number" id="specSqftGarage" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Covered Sq Ft</label>
+                  <input type="number" id="specSqftCovered" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Bedrooms</label>
+                  <input type="number" id="specBedrooms" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Full Bathrooms</label>
+                  <input type="number" id="specBathrooms" class="form-control spec-input" step="0.5" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Half Baths</label>
+                  <input type="number" id="specHalfBaths" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Stories</label>
+                  <input type="number" id="specStories" class="form-control spec-input" step="0.5" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Garage Spaces</label>
+                  <input type="number" id="specGarageSpaces" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Pool</label>
+                  <select id="specPoolType" class="form-control spec-input" disabled>
+                    <option value="">None</option>
+                    <option value="in_ground">In-Ground Pool</option>
+                    <option value="above_ground">Above Ground</option>
+                    <option value="spa">Spa Only</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Construction Details -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>🔨 Construction Details</h2>
+              </div>
+              <div class="specs-grid" id="constructionSpecs">
+                <div class="spec-item">
+                  <label>Construction Type</label>
+                  <select id="specConstructionType" class="form-control spec-input" disabled>
+                    <option value="">Select...</option>
+                    <option value="new_construction">New Construction</option>
+                    <option value="renovation">Renovation</option>
+                    <option value="addition">Addition</option>
+                    <option value="remodel">Remodel</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Foundation Type</label>
+                  <select id="specFoundationType" class="form-control spec-input" disabled>
+                    <option value="">Select...</option>
+                    <option value="slab">Slab on Grade</option>
+                    <option value="crawl">Crawl Space</option>
+                    <option value="basement">Basement</option>
+                    <option value="pier">Pier & Beam</option>
+                    <option value="stem_wall">Stem Wall</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Roof Type</label>
+                  <select id="specRoofType" class="form-control spec-input" disabled>
+                    <option value="">Select...</option>
+                    <option value="shingle">Asphalt Shingle</option>
+                    <option value="tile">Tile</option>
+                    <option value="metal">Metal</option>
+                    <option value="flat">Flat/TPO</option>
+                    <option value="slate">Slate</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Exterior Finish</label>
+                  <select id="specExteriorFinish" class="form-control spec-input" disabled>
+                    <option value="">Select...</option>
+                    <option value="stucco">Stucco</option>
+                    <option value="hardie">Hardie Siding</option>
+                    <option value="siding">Vinyl Siding</option>
+                    <option value="brick">Brick</option>
+                    <option value="stone">Stone</option>
+                    <option value="CBS">CBS Block</option>
+                    <option value="mixed">Mixed</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Ceiling Height (Main)</label>
+                  <input type="number" id="specCeilingHeightMain" class="form-control spec-input" step="0.1" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Countertop Material</label>
+                  <input type="text" id="specCountertopMaterial" class="form-control spec-input" disabled>
+                </div>
+              </div>
+            </div>
+
+            <!-- Structural Details -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>🏗️ Structural Details</h2>
+              </div>
+              <div class="specs-grid" id="structuralSpecs">
+                <div class="spec-item">
+                  <label>Pier Count</label>
+                  <input type="number" id="specStructPierCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Pier Depth (ft)</label>
+                  <input type="number" id="specStructPierDepth" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Concrete PSI</label>
+                  <input type="number" id="specStructConcretePsi" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Concrete (CY)</label>
+                  <input type="number" id="specStructConcreteYards" class="form-control spec-input" step="0.1" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Rebar (tons)</label>
+                  <input type="number" id="specStructRebarTons" class="form-control spec-input" step="0.1" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Wood Beams</label>
+                  <input type="number" id="specStructWoodBeamCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>LVL Beams</label>
+                  <input type="number" id="specStructLvlBeamCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Truss Count</label>
+                  <input type="number" id="specStructTrussCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Max Truss Span (ft)</label>
+                  <input type="number" id="specStructTrussSpanMax" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Wall Framing</label>
+                  <input type="text" id="specStructWallFraming" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Sheathing Type</label>
+                  <input type="text" id="specStructSheathingType" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Roof Pitch</label>
+                  <input type="text" id="specStructRoofPitch" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Est. Framing (BF)</label>
+                  <input type="number" id="specMatFramingBf" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Wind Speed (mph)</label>
+                  <input type="number" id="specStructWindSpeed" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Exposure Category</label>
+                  <input type="text" id="specStructExposureCategory" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Floor Live Load (PSF)</label>
+                  <input type="number" id="specStructLiveLoadFloor" class="form-control spec-input" disabled>
+                </div>
+              </div>
+            </div>
+
+            <!-- Windows & Doors -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>🪟 Windows & Doors</h2>
+              </div>
+              <div class="specs-grid" id="windowsDoors">
+                <div class="spec-item">
+                  <label>Total Windows</label>
+                  <input type="number" id="specWindowsTotalCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Impact Rated Windows</label>
+                  <select id="specWindowsImpactRated" class="form-control spec-input" disabled>
+                    <option value="">Unknown</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Exterior Doors</label>
+                  <input type="number" id="specDoorsExteriorCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Interior Doors</label>
+                  <input type="number" id="specDoorsInteriorCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Garage Doors</label>
+                  <input type="number" id="specDoorsGarageCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Impact Rated Doors</label>
+                  <select id="specDoorsImpactRated" class="form-control spec-input" disabled>
+                    <option value="">Unknown</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Electrical -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>⚡ Electrical</h2>
+              </div>
+              <div class="specs-grid" id="electricalSpecs">
+                <div class="spec-item">
+                  <label>Service (Amps)</label>
+                  <input type="number" id="specElecServiceAmps" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Panel Count</label>
+                  <input type="number" id="specElecPanelCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Est. Outlets</label>
+                  <input type="number" id="specElecOutletsCount" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Lighting Fixtures</label>
+                  <input type="number" id="specElecLightingFixtures" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Recessed Lights</label>
+                  <input type="number" id="specElecRecessedLights" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Ceiling Fans</label>
+                  <input type="number" id="specElecCeilingFans" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Generator Ready</label>
+                  <select id="specElecGeneratorReady" class="form-control spec-input" disabled>
+                    <option value="">Unknown</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Solar Ready</label>
+                  <select id="specElecSolarReady" class="form-control spec-input" disabled>
+                    <option value="">Unknown</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Plumbing -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>🚿 Plumbing</h2>
+              </div>
+              <div class="specs-grid" id="plumbingSpecs">
+                <div class="spec-item">
+                  <label>Toilets</label>
+                  <input type="number" id="specPlumbToilets" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Sinks</label>
+                  <input type="number" id="specPlumbSinks" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Showers</label>
+                  <input type="number" id="specPlumbShowers" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Tubs</label>
+                  <input type="number" id="specPlumbTubs" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Water Heater Type</label>
+                  <select id="specPlumbWaterHeaterType" class="form-control spec-input" disabled>
+                    <option value="">Select...</option>
+                    <option value="tank">Tank</option>
+                    <option value="tankless">Tankless</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Gas Line</label>
+                  <select id="specPlumbGasLine" class="form-control spec-input" disabled>
+                    <option value="">Unknown</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- HVAC -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>❄️ HVAC</h2>
+              </div>
+              <div class="specs-grid" id="hvacSpecs">
+                <div class="spec-item">
+                  <label>AC Units</label>
+                  <input type="number" id="specAcUnits" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>AC Tonnage</label>
+                  <input type="number" id="specAcTonnage" class="form-control spec-input" step="0.5" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>System Type</label>
+                  <select id="specHvacSystemType" class="form-control spec-input" disabled>
+                    <option value="">Select...</option>
+                    <option value="split">Split System</option>
+                    <option value="package">Package Unit</option>
+                    <option value="mini-split">Mini-Split</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Fuel Type</label>
+                  <select id="specHvacFuelType" class="form-control spec-input" disabled>
+                    <option value="">Select...</option>
+                    <option value="electric">Electric</option>
+                    <option value="gas">Gas</option>
+                    <option value="heat pump">Heat Pump</option>
+                  </select>
+                </div>
+                <div class="spec-item">
+                  <label>Zones</label>
+                  <input type="number" id="specHvacZones" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>SEER Rating</label>
+                  <input type="number" id="specHvacSeerRating" class="form-control spec-input" step="0.1" disabled>
+                </div>
+              </div>
+            </div>
+
+            <!-- Roofing -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>🏠 Roofing</h2>
+              </div>
+              <div class="specs-grid" id="roofingSpecs">
+                <div class="spec-item">
+                  <label>Roof Area (Sq Ft)</label>
+                  <input type="number" id="specRoofSqft" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Roof Squares</label>
+                  <input type="number" id="specRoofSquares" class="form-control spec-input" step="0.1" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Roof Material</label>
+                  <input type="text" id="specRoofMaterial" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Skylights</label>
+                  <input type="number" id="specRoofSkylights" class="form-control spec-input" disabled>
+                </div>
+              </div>
+            </div>
+
+            <!-- Code & Design -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>📋 Code & Design Criteria</h2>
+              </div>
+              <div class="specs-grid" id="codeSpecs">
+                <div class="spec-item spec-item-wide">
+                  <label>Building Code</label>
+                  <input type="text" id="specCodeBuildingCode" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Construction Type</label>
+                  <input type="text" id="specCodeConstructionType" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Fire Sprinklers</label>
+                  <select id="specCodeFireSprinklers" class="form-control spec-input" disabled>
+                    <option value="">Unknown</option>
+                    <option value="true">Required</option>
+                    <option value="false">Not Required</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Project Team -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>👥 Project Team</h2>
+              </div>
+              <div class="specs-grid" id="teamSpecs">
+                <div class="spec-item">
+                  <label>Architect</label>
+                  <input type="text" id="specArchitect" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Architect Firm</label>
+                  <input type="text" id="specTeamArchitectFirm" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Engineer</label>
+                  <input type="text" id="specEngineer" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Engineer Firm</label>
+                  <input type="text" id="specTeamEngineerFirm" class="form-control spec-input" disabled>
+                </div>
+              </div>
+            </div>
+
+            <!-- Property Info -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>📍 Property Information</h2>
+              </div>
+              <div class="specs-grid" id="propertySpecs">
+                <div class="spec-item">
+                  <label>Lot Size (Sq Ft)</label>
+                  <input type="number" id="specLotSizeSqft" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Lot Size (Acres)</label>
+                  <input type="number" id="specLotSizeAcres" class="form-control spec-input" step="0.001" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Zoning</label>
+                  <input type="text" id="specZoning" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Flood Zone</label>
+                  <input type="text" id="specFloodZone" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Parcel ID</label>
+                  <input type="text" id="specParcelId" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item spec-item-wide">
+                  <label>Legal Description</label>
+                  <input type="text" id="specLegalDescription" class="form-control spec-input" disabled>
+                </div>
+              </div>
+            </div>
+
+            <!-- Permits & Timeline -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>📅 Permits & Timeline</h2>
+              </div>
+              <div class="specs-grid" id="timelineSpecs">
+                <div class="spec-item">
+                  <label>Permit Number</label>
+                  <input type="text" id="specPermitNumber" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Permit Date</label>
+                  <input type="date" id="specPermitDate" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Estimated Start</label>
+                  <input type="date" id="specEstimatedStart" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Estimated Completion</label>
+                  <input type="date" id="specEstimatedCompletion" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Actual Start</label>
+                  <input type="date" id="specActualStart" class="form-control spec-input" disabled>
+                </div>
+                <div class="spec-item">
+                  <label>Actual Completion</label>
+                  <input type="date" id="specActualCompletion" class="form-control spec-input" disabled>
+                </div>
+              </div>
+            </div>
+
+            <!-- Financial -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>💰 Financial Summary</h2>
+              </div>
+              <div class="specs-grid" id="financialSpecs">
+                <div class="spec-item">
+                  <label>Contract Amount</label>
+                  <input type="text" id="specContractAmount" class="form-control spec-input" disabled readonly>
+                </div>
+                <div class="spec-item">
+                  <label>Cost per Sq Ft</label>
+                  <input type="text" id="specCostPerSqft" class="form-control spec-input" disabled readonly>
+                </div>
+                <div class="spec-item">
+                  <label>Total Billed</label>
+                  <input type="text" id="specTotalBilled" class="form-control spec-input" disabled readonly>
+                </div>
+                <div class="spec-item">
+                  <label>% Complete</label>
+                  <input type="text" id="specPercentComplete" class="form-control spec-input" disabled readonly>
+                </div>
+              </div>
+            </div>
+
+            <!-- Notes -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>📝 Notes</h2>
+              </div>
+              <div class="specs-grid">
+                <div class="spec-item spec-item-full">
+                  <textarea id="specNotes" class="form-control spec-input" rows="4" disabled placeholder="Additional notes about this job..."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Related Plans -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>📐 Related Plans</h2>
+                <button class="btn btn-sm btn-secondary" onclick="goToDocuments('plans')">View All Plans</button>
+              </div>
+              <div class="plans-grid" id="relatedPlans">
+                <div class="empty-plans">No plans uploaded yet</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Edit Mode Footer -->
+          <div class="edit-footer" id="editFooter" style="display: none;">
+            <button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveSpecs()">Save Changes</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- AI Extraction Modal -->
+  <div id="extractModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>🤖 AI Spec Extraction</h2>
+        <button class="close-btn" onclick="closeExtractModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Select a plan document to extract specifications from:</p>
+
+        <div class="plan-select-list" id="planSelectList">
+          <!-- Plans listed here -->
+        </div>
+
+        <div class="extraction-status" id="extractionStatus" style="display: none;">
+          <div class="extraction-spinner"></div>
+          <p id="extractionMessage">Analyzing document...</p>
+        </div>
+
+        <div class="extraction-results" id="extractionResults" style="display: none;">
+          <h3>Extracted Specifications</h3>
+          <div class="extraction-preview" id="extractionPreview">
+            <!-- Preview of extracted data -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeExtractModal()">Cancel</button>
+        <button class="btn btn-primary" id="applyExtractionBtn" onclick="applyExtraction()" style="display: none;">Apply to Profile</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/toasts.js?v=20260116"></script>
+  <script src="js/nav-sidebar.js?v=20260116"></script>
+  <script src="js/sidebar.js?v=20260116"></script>
+  <script src="js/realtime.js?v=20260116"></script>
+  <script src="js/job-profile.js?v=20260116"></script>
+</body>
+</html>

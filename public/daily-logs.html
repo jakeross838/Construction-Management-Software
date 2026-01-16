@@ -110,6 +110,49 @@
             <label>Date <span class="required">*</span></label>
             <input type="date" id="logDate" class="form-control">
           </div>
+          <div class="form-group flex-1">
+            <label>Construction Phase</label>
+            <select id="constructionPhase" class="form-control">
+              <option value="">Select Phase...</option>
+              <option value="pre-construction">Pre-Construction</option>
+              <option value="site-work">Site Work</option>
+              <option value="foundation">Foundation</option>
+              <option value="framing">Framing</option>
+              <option value="roofing">Roofing</option>
+              <option value="mep-rough">MEP Rough-In</option>
+              <option value="insulation">Insulation</option>
+              <option value="drywall">Drywall</option>
+              <option value="interior-trim">Interior Trim</option>
+              <option value="paint">Paint</option>
+              <option value="flooring">Flooring</option>
+              <option value="cabinetry">Cabinetry</option>
+              <option value="mep-finish">MEP Finish</option>
+              <option value="exterior-finish">Exterior Finish</option>
+              <option value="landscaping">Landscaping</option>
+              <option value="punch-list">Punch List</option>
+              <option value="final-inspection">Final Inspection</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Yesterday's Plan Status -->
+        <div class="form-section">
+          <h3>Yesterday's Plan Status</h3>
+          <div class="form-row">
+            <div class="form-group" style="width: 200px;">
+              <label>Plan Completed?</label>
+              <select id="planCompleted" class="form-control">
+                <option value="">N/A (First Day)</option>
+                <option value="yes">Yes - Fully Completed</option>
+                <option value="partial">Partial - Some Done</option>
+                <option value="no">No - Not Completed</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label>Variance Notes</label>
+              <input type="text" id="planVarianceNotes" class="form-control" placeholder="If not completed, explain what changed or delayed...">
+            </div>
+          </div>
         </div>
 
         <!-- Weather Section (Auto-calculated) -->
@@ -153,6 +196,26 @@
           <button class="btn btn-secondary btn-sm" type="button" onclick="addDeliveryEntry()">+ Add Delivery</button>
         </div>
 
+        <!-- Dumpster Exchange -->
+        <div class="form-section">
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="dumpsterExchange">
+              <span class="checkbox-text">🗑️ Dumpster Exchange Today</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Inspections Section -->
+        <div class="form-section">
+          <h3>Inspections</h3>
+          <p class="form-hint">Track scheduled, passed, or failed inspections</p>
+          <div class="inspection-list" id="inspectionList">
+            <!-- Inspection entries added here -->
+          </div>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="addInspectionEntry()">+ Add Inspection</button>
+        </div>
+
         <!-- Work Summary Section -->
         <div class="form-section">
           <h3>Work Summary</h3>
@@ -163,7 +226,7 @@
                 <span class="voice-icon">🎤</span>
               </button>
             </label>
-            <textarea id="workCompleted" class="form-control" rows="3" placeholder="Describe work completed today..."></textarea>
+            <textarea id="workCompleted" class="form-control" rows="6" placeholder="Describe work completed today..."></textarea>
           </div>
           <div class="form-group">
             <label>
@@ -187,21 +250,12 @@
             <label>Site Visitors</label>
             <input type="text" id="siteVisitors" class="form-control" placeholder="e.g., Inspector John Smith (building), Owner visit">
           </div>
-          <div class="form-group">
-            <label>
-              Safety Notes
-              <button type="button" class="btn-voice" onclick="startVoiceInput('safetyNotes')" title="Voice input">
-                <span class="voice-icon">🎤</span>
-              </button>
-            </label>
-            <textarea id="safetyNotes" class="form-control" rows="2" placeholder="Safety observations, incidents, or notes..."></textarea>
-          </div>
         </div>
 
         <!-- Photos Section -->
         <div class="form-section">
           <h3>Photos</h3>
-          <p class="form-hint">Document progress, deliveries, safety conditions, and inspections</p>
+          <p class="form-hint">Document progress, deliveries, and inspections</p>
 
           <!-- Upload Area -->
           <div class="photo-upload-area" id="photoUploadArea">
@@ -279,9 +333,26 @@
     <span id="pendingSyncCount"></span>
   </div>
 
+  <!-- Photo Lightbox Viewer -->
+  <div id="photoLightbox" class="photo-lightbox" onclick="closeLightboxOnOverlay(event)">
+    <button class="lightbox-close" onclick="closeLightbox()" title="Close (Esc)">&times;</button>
+    <button class="lightbox-nav lightbox-prev" onclick="navigateLightbox(-1)" title="Previous (←)">‹</button>
+    <button class="lightbox-nav lightbox-next" onclick="navigateLightbox(1)" title="Next (→)">›</button>
+    <div class="lightbox-content">
+      <img id="lightboxImage" src="" alt="Photo">
+      <div class="lightbox-info">
+        <div class="lightbox-caption" id="lightboxCaption"></div>
+        <div class="lightbox-meta" id="lightboxMeta"></div>
+        <div class="lightbox-counter" id="lightboxCounter"></div>
+      </div>
+    </div>
+  </div>
+
   <script defer src="js/toasts.js?v=20260115-perf"></script>
+  <script defer src="js/modal-helpers.js?v=20260116"></script>
   <script defer src="js/nav-sidebar.js?v=20260115-perf"></script>
   <script defer src="js/sidebar.js?v=20260115-perf"></script>
-  <script defer src="js/daily-logs.js?v=20260116-features"></script>
+  <script defer src="js/searchable-picker.js?v=20260116"></script>
+  <script defer src="js/daily-logs.js?v=20260116-pickers"></script>
 </body>
 </html>

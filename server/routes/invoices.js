@@ -67,12 +67,13 @@ router.get('/', async (req, res) => {
       .from('v2_invoices')
       .select(`
         *,
-        vendor:v2_vendors(id, name),
+        vendor:v2_vendors(id, name, trade),
         job:v2_jobs(id, name),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
-          id, amount, notes, job_id, change_order_id,
-          cost_code:v2_cost_codes(id, code, name)
+          id, amount, notes, job_id, change_order_id, po_id,
+          cost_code:v2_cost_codes(id, code, name),
+          purchase_order:v2_purchase_orders(id, po_number)
         ),
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
       `)
@@ -158,7 +159,7 @@ router.get('/:id', async (req, res) => {
       .from('v2_invoices')
       .select(`
         *,
-        vendor:v2_vendors(id, name, email, phone),
+        vendor:v2_vendors(id, name, email, phone, trade),
         job:v2_jobs(id, name, address),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
@@ -638,6 +639,12 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
   // Remove non-updateable fields (performed_by is used for logging, not stored on invoice)
   const { id, allocations, updated_by, performed_by, ...updateFields } = updates;
+
+  // Map frontend field names to database column names
+  if (updateFields.sendback_reason !== undefined) {
+    updateFields.sent_back_reason = updateFields.sendback_reason;
+    delete updateFields.sendback_reason;
+  }
 
   const { data: updated, error: updateError } = await supabase
     .from('v2_invoices')

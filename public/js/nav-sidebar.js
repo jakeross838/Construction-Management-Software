@@ -8,14 +8,27 @@
   'use strict';
 
   // Navigation structure - groups with sub-items
-  // Inspired by Procore/Buildertrend: flows like construction
-  // Commitments → Billing → Admin
+  // Flow: Dashboard → Job Profile → Preconstruction → Commitments → Operations → Billing → Admin
   const navGroups = [
     {
       id: 'dashboard',
       label: 'Dashboard',
       href: 'dashboard.html',
       items: [] // No sub-items, direct link
+    },
+    {
+      id: 'job-profile',
+      label: 'Job Profile',
+      href: 'job-profile.html',
+      items: [] // No sub-items, direct link
+    },
+    {
+      id: 'preconstruction',
+      label: 'Preconstruction',
+      items: [
+        { id: 'bids', label: 'Bids', href: 'bids.html', badge: 'Soon' },
+        { id: 'estimates', label: 'Estimates', href: 'estimates.html', badge: 'Soon' }
+      ]
     },
     {
       id: 'commitments',
@@ -32,6 +45,7 @@
       items: [
         { id: 'schedule', label: 'Schedule', href: 'schedule.html' },
         { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' },
+        { id: 'documents', label: 'Documents', href: 'documents.html' },
         { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' },
         { id: 'photos', label: 'Photos', href: 'photos.html' },
         { id: 'inspections', label: 'Inspections', href: 'inspections.html' }
@@ -51,6 +65,7 @@
       label: 'Admin',
       items: [
         { id: 'vendors', label: 'Vendors', href: 'vendors.html' },
+        { id: 'cost-codes', label: 'Cost Codes', href: 'cost-codes.html' },
         { id: 'recon', label: 'Reconciliation', href: 'reconciliation.html' }
       ]
     }
@@ -101,7 +116,8 @@
     if (currentGroup && currentGroup.items.length > 0) {
       subNavHTML = currentGroup.items.map(item => {
         const isActive = item.id === current.itemId;
-        return `<a href="${item.href}" class="sub-nav-link ${isActive ? 'active' : ''}">${item.label}</a>`;
+        const badgeHTML = item.badge ? `<span class="nav-badge">${item.badge}</span>` : '';
+        return `<a href="${item.href}" class="sub-nav-link ${isActive ? 'active' : ''}">${item.label}${badgeHTML}</a>`;
       }).join('');
     }
 

@@ -3,12 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Schedule</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260116">
+  <link rel="stylesheet" href="css/styles.css?v=20260116-schedule">
 </head>
 <body>
   <div class="app">
+    <!-- Header -->
     <header class="header">
       <div class="header-top">
         <div class="header-brand">
@@ -17,6 +20,15 @@
         </div>
         <nav class="main-nav"></nav>
         <div class="header-actions">
+          <div class="view-toggle">
+            <button class="view-btn active" data-view="list" onclick="setView('list')" title="List View">
+              <span>☰</span> List
+            </button>
+            <button class="view-btn" data-view="gantt" onclick="setView('gantt')" title="Gantt Chart">
+              <span>▤</span> Gantt
+            </button>
+          </div>
+          <button class="btn btn-primary" onclick="openTaskModal()" id="addTaskBtn" style="display: none;">+ Add Task</button>
           <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
         </div>
       </div>
@@ -25,21 +37,216 @@
       </div>
     </header>
 
+    <!-- Main Content -->
     <div class="app-body">
       <main class="main">
-        <div class="coming-soon-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; text-align: center;">
-          <div style="font-size: 4rem; margin-bottom: 1rem;">📅</div>
-          <h1 style="color: var(--text-primary); margin-bottom: 0.5rem;">Schedule</h1>
-          <p style="color: var(--text-secondary); font-size: 1.1rem;">Coming Soon</p>
-          <p style="color: var(--text-tertiary); margin-top: 1rem;">Project scheduling and timeline management</p>
+        <!-- Schedule Header -->
+        <div class="schedule-header" id="scheduleHeader" style="display: none;">
+          <div class="schedule-info">
+            <h2 id="scheduleName">Master Schedule</h2>
+            <div class="schedule-meta">
+              <span class="schedule-status" id="scheduleStatus">Draft</span>
+              <span class="schedule-dates" id="scheduleDates"></span>
+            </div>
+          </div>
+          <div class="schedule-actions">
+            <select id="phaseFilter" class="form-control filter-select" onchange="applyFilters()">
+              <option value="">All Phases</option>
+            </select>
+            <select id="tradeFilter" class="form-control filter-select" onchange="applyFilters()">
+              <option value="">All Trades</option>
+            </select>
+            <select id="statusFilter" class="form-control filter-select" onchange="applyFilters()">
+              <option value="">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="blocked">Blocked</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Schedule Stats -->
+        <div class="schedule-stats" id="scheduleStats" style="display: none;">
+          <div class="stat-card">
+            <div class="stat-value" id="statTotalTasks">0</div>
+            <div class="stat-label">Total Tasks</div>
+          </div>
+          <div class="stat-card stat-pending">
+            <div class="stat-value" id="statPending">0</div>
+            <div class="stat-label">Pending</div>
+          </div>
+          <div class="stat-card stat-progress">
+            <div class="stat-value" id="statInProgress">0</div>
+            <div class="stat-label">In Progress</div>
+          </div>
+          <div class="stat-card stat-complete">
+            <div class="stat-value" id="statCompleted">0</div>
+            <div class="stat-label">Completed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statOverall">0%</div>
+            <div class="stat-label">Overall Progress</div>
+          </div>
+        </div>
+
+        <!-- No Job Selected State -->
+        <div id="noJobSelected" class="empty-state">
+          <div class="empty-icon">📅</div>
+          <h3>Select a Job</h3>
+          <p>Choose a job from the sidebar to view its schedule</p>
+        </div>
+
+        <!-- No Schedule State -->
+        <div id="noSchedule" class="empty-state" style="display: none;">
+          <div class="empty-icon">📅</div>
+          <h3>No Schedule</h3>
+          <p>This job doesn't have a schedule yet</p>
+          <button class="btn btn-primary" onclick="createSchedule()">Create Schedule</button>
+        </div>
+
+        <!-- List View -->
+        <div class="schedule-list-view" id="listView" style="display: none;">
+          <table class="schedule-table">
+            <thead>
+              <tr>
+                <th class="col-task">Task</th>
+                <th class="col-trade">Trade</th>
+                <th class="col-phase">Phase</th>
+                <th class="col-dates">Planned</th>
+                <th class="col-dates">Actual</th>
+                <th class="col-progress">Progress</th>
+                <th class="col-status">Status</th>
+                <th class="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="taskTableBody">
+              <!-- Tasks rendered here -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Gantt View -->
+        <div class="schedule-gantt-view" id="ganttView" style="display: none;">
+          <div class="gantt-container">
+            <div class="gantt-header" id="ganttHeader">
+              <!-- Timeline header rendered here -->
+            </div>
+            <div class="gantt-body" id="ganttBody">
+              <!-- Gantt rows rendered here -->
+            </div>
+          </div>
         </div>
       </main>
     </div>
   </div>
 
+  <!-- Task Modal -->
+  <div id="taskModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2 id="taskModalTitle">Add Task</h2>
+        <button class="close-btn" onclick="closeTaskModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editTaskId">
+
+        <div class="form-row">
+          <div class="form-group form-group-lg">
+            <label for="taskName">Task Name *</label>
+            <input type="text" id="taskName" class="form-control" placeholder="e.g., Foundation Pour">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskTrade">Trade</label>
+            <div id="taskTradeContainer"></div>
+          </div>
+          <div class="form-group">
+            <label for="taskPhase">Construction Phase</label>
+            <div id="taskPhaseContainer"></div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskPlannedStart">Planned Start</label>
+            <input type="date" id="taskPlannedStart" class="form-control">
+          </div>
+          <div class="form-group">
+            <label for="taskPlannedEnd">Planned End</label>
+            <input type="date" id="taskPlannedEnd" class="form-control">
+          </div>
+          <div class="form-group">
+            <label for="taskDuration">Duration (days)</label>
+            <input type="number" id="taskDuration" class="form-control" min="1" placeholder="Auto-calculated">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskActualStart">Actual Start</label>
+            <input type="date" id="taskActualStart" class="form-control">
+          </div>
+          <div class="form-group">
+            <label for="taskActualEnd">Actual End</label>
+            <input type="date" id="taskActualEnd" class="form-control">
+          </div>
+          <div class="form-group">
+            <label for="taskCompletion">Completion %</label>
+            <input type="number" id="taskCompletion" class="form-control" min="0" max="100" value="0">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskStatus">Status</label>
+            <select id="taskStatus" class="form-control">
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="blocked">Blocked</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="taskVendor">Assigned Vendor</label>
+            <div id="taskVendorContainer"></div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskDependencies">Dependencies (wait for)</label>
+            <div id="taskDependenciesContainer"></div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group form-group-lg">
+            <label for="taskDescription">Description / Notes</label>
+            <textarea id="taskDescription" class="form-control" rows="3" placeholder="Optional notes about this task..."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
+        <button class="btn btn-danger" id="deleteTaskBtn" onclick="deleteTask()" style="display: none;">Delete Task</button>
+        <button class="btn btn-primary" onclick="saveTask()">Save Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Scripts -->
   <script src="js/toasts.js?v=20260116"></script>
+  <script src="js/modal-helpers.js?v=20260116"></script>
   <script src="js/nav-sidebar.js?v=20260116"></script>
+  <script src="js/sidebar.js?v=20260116"></script>
+  <script src="js/searchable-picker.js?v=20260116"></script>
   <script src="js/realtime.js?v=20260116"></script>
+  <script src="js/schedule.js?v=20260116"></script>
 </body>
 </html>

@@ -302,9 +302,18 @@ function renderInvoiceCard(inv) {
     // Build badges line (PO + Cost Codes)
     const badges = [];
 
-    // PO badge
-    if (inv.po) {
-      badges.push(`<span class="badge badge-po" title="Linked to ${inv.po.po_number}">${inv.po.po_number}</span>`);
+    // PO badge - check invoice PO first, then check allocations for PO links
+    let linkedPO = inv.po;
+    if (!linkedPO && allocations.length > 0) {
+      // Check if any allocation has a PO linked
+      const allocWithPO = allocations.find(a => a.purchase_order?.po_number);
+      if (allocWithPO) {
+        linkedPO = allocWithPO.purchase_order;
+      }
+    }
+
+    if (linkedPO) {
+      badges.push(`<span class="badge badge-po" title="Linked to ${linkedPO.po_number}">${linkedPO.po_number}</span>`);
     } else {
       badges.push(`<span class="badge badge-no-po">No PO</span>`);
     }

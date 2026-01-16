@@ -130,6 +130,65 @@ async function logDailyLogActivity(dailyLogId, action, performedBy, details = {}
   }
 }
 
+// Helper: Update schedule task progress from crew entries
+async function updateScheduleTaskProgress(crewEntries) {
+  // Group entries by schedule_task_id
+  const taskUpdates = {};
+
+  for (const entry of crewEntries) {
+    if (!entry.schedule_task_id) continue;
+
+    // Keep track of highest completion % per task
+    if (!taskUpdates[entry.schedule_task_id]) {
+      taskUpdates[entry.schedule_task_id] = {
+        completion_percent: entry.completion_percent || 0
+      };
+    } else if ((entry.completion_percent || 0) > taskUpdates[entry.schedule_task_id].completion_percent) {
+      taskUpdates[entry.schedule_task_id].completion_percent = entry.completion_percent;
+    }
+  }
+
+  // Update each task
+  for (const [taskId, data] of Object.entries(taskUpdates)) {
+    try {
+      // Get current task state
+      const { data: task } = await supabase
+        .from('v2_schedule_tasks')
+        .select('id, completion_percent, status, actual_start, actual_end')
+        .eq('id', taskId)
+        .single();
+
+      if (!task) continue;
+
+      const updates = {
+        completion_percent: data.completion_percent,
+        updated_at: new Date().toISOString()
+      };
+
+      // Set actual_start if this is the first work on the task
+      if (!task.actual_start && data.completion_percent > 0) {
+        updates.actual_start = new Date().toISOString().split('T')[0];
+      }
+
+      // Update status based on progress
+      if (data.completion_percent >= 100 && task.status !== 'completed') {
+        updates.status = 'completed';
+        updates.actual_end = new Date().toISOString().split('T')[0];
+      } else if (data.completion_percent > 0 && task.status === 'pending') {
+        updates.status = 'in_progress';
+      }
+
+      await supabase
+        .from('v2_schedule_tasks')
+        .update(updates)
+        .eq('id', taskId);
+
+    } catch (err) {
+      console.error(`Failed to update schedule task ${taskId}:`, err);
+    }
+  }
+}
+
 // ============================================================
 // LIST ENDPOINTS
 // ============================================================
@@ -145,7 +204,7 @@ router.get('/', async (req, res) => {
         *,
         job:v2_jobs(id, name, address),
         crew:v2_daily_log_crew(
-          id, vendor_id, worker_count, hours_worked, trade, notes,
+          id, vendor_id, worker_count, hours_worked, trade, notes, work_area, completion_percent, schedule_task_id,
           vendor:v2_vendors(id, name)
         ),
         deliveries:v2_daily_log_deliveries(
@@ -315,7 +374,7 @@ router.get('/report/weekly', async (req, res) => {
         *,
         job:v2_jobs(id, name, address, client_name),
         crew:v2_daily_log_crew(
-          id, vendor_id, worker_count, hours_worked, trade, notes,
+          id, vendor_id, worker_count, hours_worked, trade, notes, work_area, completion_percent, schedule_task_id,
           vendor:v2_vendors(id, name)
         ),
         deliveries:v2_daily_log_deliveries(
@@ -433,7 +492,7 @@ router.get('/:id', async (req, res) => {
         *,
         job:v2_jobs(id, name, address, client_name),
         crew:v2_daily_log_crew(
-          id, vendor_id, worker_count, hours_worked, trade, po_id, notes,
+          id, vendor_id, worker_count, hours_worked, trade, po_id, notes, work_area, completion_percent, schedule_task_id,
           vendor:v2_vendors(id, name),
           po:v2_purchase_orders(id, po_number, description)
         ),
@@ -441,6 +500,9 @@ router.get('/:id', async (req, res) => {
           id, vendor_id, po_id, description, quantity, unit, received_by, notes,
           vendor:v2_vendors(id, name),
           po:v2_purchase_orders(id, po_number, description)
+        ),
+        inspections:v2_daily_log_inspections(
+          id, inspection_type, result, inspector, notes
         ),
         attachments:v2_daily_log_attachments(
           id, file_url, file_name, file_type, caption, category, uploaded_by, uploaded_at
@@ -485,6 +547,9 @@ router.post('/', async (req, res) => {
     const {
       job_id,
       log_date,
+      construction_phase,
+      plan_completed,
+      plan_variance_notes,
       weather_conditions,
       temperature_high,
       temperature_low,
@@ -497,6 +562,8 @@ router.post('/', async (req, res) => {
       crew,
       deliveries,
       absent_crews,
+      dumpster_exchange,
+      inspections,
       created_by
     } = req.body;
 
@@ -527,6 +594,9 @@ router.post('/', async (req, res) => {
       .insert({
         job_id,
         log_date,
+        construction_phase,
+        plan_completed,
+        plan_variance_notes,
         weather_conditions,
         temperature_high,
         temperature_low,
@@ -537,6 +607,7 @@ router.post('/', async (req, res) => {
         site_visitors,
         safety_notes,
         absent_crews: absent_crews || null,
+        dumpster_exchange: dumpster_exchange || false,
         created_by,
         status: 'draft'
       })
@@ -553,11 +624,17 @@ router.post('/', async (req, res) => {
         worker_count: c.worker_count || 1,
         hours_worked: c.hours_worked || null,
         trade: c.trade || null,
+        work_area: c.work_area || null,
+        completion_percent: c.completion_percent || null,
         po_id: c.po_id || null,
+        schedule_task_id: c.schedule_task_id || null,
         notes: c.notes || null
       }));
 
       await supabase.from('v2_daily_log_crew').insert(crewEntries);
+
+      // Update schedule task progress for any linked tasks
+      await updateScheduleTaskProgress(crew);
     }
 
     // Add deliveries if provided
@@ -576,11 +653,26 @@ router.post('/', async (req, res) => {
       await supabase.from('v2_daily_log_deliveries').insert(deliveryEntries);
     }
 
+    // Add inspections if provided
+    if (inspections && inspections.length > 0) {
+      const inspectionEntries = inspections.map(i => ({
+        daily_log_id: newLog.id,
+        inspection_type: i.inspection_type,
+        result: i.result || 'scheduled',
+        inspector: i.inspector || null,
+        notes: i.notes || null
+      }));
+
+      await supabase.from('v2_daily_log_inspections').insert(inspectionEntries);
+    }
+
     // Log activity
     await logDailyLogActivity(newLog.id, 'created', created_by, {
       crew_count: crew?.length || 0,
       delivery_count: deliveries?.length || 0,
-      absent_count: absent_crews?.length || 0
+      absent_count: absent_crews?.length || 0,
+      dumpster_exchange: dumpster_exchange || false,
+      inspection_count: inspections?.length || 0
     });
 
     // Return the complete log
@@ -590,12 +682,15 @@ router.post('/', async (req, res) => {
         *,
         job:v2_jobs(id, name, address),
         crew:v2_daily_log_crew(
-          id, vendor_id, worker_count, hours_worked, trade, po_id, notes,
+          id, vendor_id, worker_count, hours_worked, trade, work_area, completion_percent, po_id, schedule_task_id, notes,
           vendor:v2_vendors(id, name)
         ),
         deliveries:v2_daily_log_deliveries(
           id, vendor_id, po_id, description, quantity, unit, received_by, notes,
           vendor:v2_vendors(id, name)
+        ),
+        inspections:v2_daily_log_inspections(
+          id, inspection_type, result, inspector, notes
         )
       `)
       .eq('id', newLog.id)
@@ -624,6 +719,11 @@ router.patch('/:id', async (req, res) => {
       crew,
       deliveries,
       absent_crews,
+      construction_phase,
+      plan_completed,
+      plan_variance_notes,
+      dumpster_exchange,
+      inspections,
       updated_by
     } = req.body;
 
@@ -658,6 +758,10 @@ router.patch('/:id', async (req, res) => {
     if (site_visitors !== undefined) updateData.site_visitors = site_visitors;
     if (safety_notes !== undefined) updateData.safety_notes = safety_notes;
     if (absent_crews !== undefined) updateData.absent_crews = absent_crews;
+    if (construction_phase !== undefined) updateData.construction_phase = construction_phase;
+    if (plan_completed !== undefined) updateData.plan_completed = plan_completed;
+    if (plan_variance_notes !== undefined) updateData.plan_variance_notes = plan_variance_notes;
+    if (dumpster_exchange !== undefined) updateData.dumpster_exchange = dumpster_exchange;
 
     const { error: updateError } = await supabase
       .from('v2_daily_logs')
@@ -680,10 +784,16 @@ router.patch('/:id', async (req, res) => {
           hours_worked: c.hours_worked || null,
           trade: c.trade || null,
           po_id: c.po_id || null,
-          notes: c.notes || null
+          schedule_task_id: c.schedule_task_id || null,
+          notes: c.notes || null,
+          work_area: c.work_area || null,
+          completion_percent: c.completion_percent || null
         }));
 
         await supabase.from('v2_daily_log_crew').insert(crewEntries);
+
+        // Update schedule task progress for any linked tasks
+        await updateScheduleTaskProgress(crew);
       }
     }
 
@@ -709,6 +819,25 @@ router.patch('/:id', async (req, res) => {
       }
     }
 
+    // Update inspections if provided
+    if (inspections !== undefined) {
+      // Delete existing inspection entries
+      await supabase.from('v2_daily_log_inspections').delete().eq('daily_log_id', id);
+
+      // Add new inspection entries
+      if (inspections.length > 0) {
+        const inspectionEntries = inspections.map(i => ({
+          daily_log_id: id,
+          inspection_type: i.inspection_type,
+          result: i.result || 'scheduled',
+          inspector: i.inspector || null,
+          notes: i.notes || null
+        }));
+
+        await supabase.from('v2_daily_log_inspections').insert(inspectionEntries);
+      }
+    }
+
     // Log activity
     await logDailyLogActivity(id, 'updated', updated_by || 'System', {
       fields_updated: Object.keys(updateData).filter(k => k !== 'updated_at')
@@ -721,12 +850,15 @@ router.patch('/:id', async (req, res) => {
         *,
         job:v2_jobs(id, name, address),
         crew:v2_daily_log_crew(
-          id, vendor_id, worker_count, hours_worked, trade, po_id, notes,
+          id, vendor_id, worker_count, hours_worked, trade, po_id, notes, work_area, completion_percent, schedule_task_id,
           vendor:v2_vendors(id, name)
         ),
         deliveries:v2_daily_log_deliveries(
           id, vendor_id, po_id, description, quantity, unit, received_by, notes,
           vendor:v2_vendors(id, name)
+        ),
+        inspections:v2_daily_log_inspections(
+          id, inspection_type, result, inspector, notes
         )
       `)
       .eq('id', id)

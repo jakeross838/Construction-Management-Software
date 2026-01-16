@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Documents</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260116-docs">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openUploadModal()" id="uploadBtn" style="display: none;">
+            + Upload Document
+          </button>
+          <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav"></nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="app-body">
+      <main class="main">
+        <!-- Category Tabs -->
+        <div class="doc-categories" id="categoryTabs" style="display: none;">
+          <button class="category-tab active" data-category="" onclick="filterByCategory('')">
+            All Documents
+          </button>
+          <button class="category-tab" data-category="contracts" onclick="filterByCategory('contracts')">
+            Contracts
+          </button>
+          <button class="category-tab" data-category="plans" onclick="filterByCategory('plans')">
+            Plans
+          </button>
+          <button class="category-tab" data-category="permits" onclick="filterByCategory('permits')">
+            Permits
+          </button>
+          <button class="category-tab" data-category="insurance" onclick="filterByCategory('insurance')">
+            Insurance
+          </button>
+          <button class="category-tab" data-category="proposals" onclick="filterByCategory('proposals')">
+            Proposals
+          </button>
+          <button class="category-tab" data-category="specs" onclick="filterByCategory('specs')">
+            Specs
+          </button>
+          <button class="category-tab" data-category="warranties" onclick="filterByCategory('warranties')">
+            Warranties
+          </button>
+          <button class="category-tab" data-category="correspondence" onclick="filterByCategory('correspondence')">
+            Correspondence
+          </button>
+          <button class="category-tab" data-category="other" onclick="filterByCategory('other')">
+            Other
+          </button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="doc-toolbar" id="docToolbar" style="display: none;">
+          <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Search documents..." class="form-control search-input" oninput="applySearch()">
+          </div>
+          <div class="doc-stats">
+            <span id="docCount">0 documents</span>
+          </div>
+        </div>
+
+        <!-- Expiring Documents Alert -->
+        <div class="expiring-alert" id="expiringAlert" style="display: none;">
+          <span class="alert-icon">⚠️</span>
+          <span class="alert-text" id="expiringText">0 documents expiring soon</span>
+          <button class="btn btn-sm" onclick="showExpiringDocs()">View</button>
+        </div>
+
+        <!-- No Job Selected State -->
+        <div id="noJobSelected" class="empty-state">
+          <div class="empty-icon">📁</div>
+          <h3>Select a Job</h3>
+          <p>Choose a job from the sidebar to view documents</p>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="empty-state" style="display: none;">
+          <div class="empty-icon">📄</div>
+          <h3>No Documents</h3>
+          <p>Upload your first document to get started</p>
+          <button class="btn btn-primary" onclick="openUploadModal()">+ Upload Document</button>
+        </div>
+
+        <!-- Documents Grid -->
+        <div class="doc-grid" id="docGrid" style="display: none;">
+          <!-- Documents rendered here -->
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Upload Modal -->
+  <div id="uploadModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Upload Document</h2>
+        <button class="close-btn" onclick="closeUploadModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Drop Zone -->
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <div class="drop-zone-content">
+            <div class="drop-icon">📄</div>
+            <p>Drag & drop a file here or click to browse</p>
+            <p class="drop-hint">PDF, Images, Word, Excel up to 50MB</p>
+          </div>
+          <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv">
+        </div>
+
+        <!-- File Preview -->
+        <div class="file-preview" id="filePreview" style="display: none;">
+          <div class="preview-icon" id="previewIcon">📄</div>
+          <div class="preview-info">
+            <div class="preview-name" id="previewName">filename.pdf</div>
+            <div class="preview-size" id="previewSize">1.2 MB</div>
+          </div>
+          <button class="btn btn-icon" onclick="clearFile()" title="Remove">×</button>
+        </div>
+
+        <!-- Document Details -->
+        <div class="upload-form" id="uploadForm" style="display: none;">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="docName">Document Name *</label>
+              <input type="text" id="docName" class="form-control" placeholder="e.g., Framing Contract">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="docCategory">Category *</label>
+              <select id="docCategory" class="form-control">
+                <option value="">Select category...</option>
+                <option value="contracts">Contracts & Agreements</option>
+                <option value="plans">Plans & Drawings</option>
+                <option value="permits">Permits & Approvals</option>
+                <option value="insurance">Insurance & Bonds</option>
+                <option value="proposals">Proposals & Bids</option>
+                <option value="specs">Specifications</option>
+                <option value="warranties">Warranties</option>
+                <option value="correspondence">Correspondence</option>
+                <option value="photos">Photos</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="docVendor">Related Vendor</label>
+              <div id="docVendorContainer"></div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="docDate">Document Date</label>
+              <input type="date" id="docDate" class="form-control">
+            </div>
+            <div class="form-group flex-1">
+              <label for="docExpiration">Expiration Date</label>
+              <input type="date" id="docExpiration" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="docDescription">Description</label>
+              <textarea id="docDescription" class="form-control" rows="2" placeholder="Optional notes about this document..."></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="uploadDocument()" id="uploadSubmitBtn" disabled>Upload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Document Detail Modal -->
+  <div id="docDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2 id="detailModalTitle">Document Details</h2>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="detailDocId">
+
+        <div class="doc-detail-preview" id="detailPreview">
+          <!-- Preview or icon shown here -->
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="detailName">Document Name</label>
+            <input type="text" id="detailName" class="form-control">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="detailCategory">Category</label>
+            <select id="detailCategory" class="form-control">
+              <option value="contracts">Contracts & Agreements</option>
+              <option value="plans">Plans & Drawings</option>
+              <option value="permits">Permits & Approvals</option>
+              <option value="insurance">Insurance & Bonds</option>
+              <option value="proposals">Proposals & Bids</option>
+              <option value="specs">Specifications</option>
+              <option value="warranties">Warranties</option>
+              <option value="correspondence">Correspondence</option>
+              <option value="photos">Photos</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label for="detailVendor">Related Vendor</label>
+            <div id="detailVendorContainer"></div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="detailDate">Document Date</label>
+            <input type="date" id="detailDate" class="form-control">
+          </div>
+          <div class="form-group flex-1">
+            <label for="detailExpiration">Expiration Date</label>
+            <input type="date" id="detailExpiration" class="form-control">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="detailDescription">Description</label>
+            <textarea id="detailDescription" class="form-control" rows="2"></textarea>
+          </div>
+        </div>
+
+        <div class="doc-meta">
+          <span id="detailMeta"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeDetailModal()">Cancel</button>
+        <a class="btn btn-secondary" id="detailDownloadBtn" href="#" target="_blank" download>Download</a>
+        <button class="btn btn-danger" onclick="deleteDocument()">Delete</button>
+        <button class="btn btn-primary" onclick="saveDocumentDetails()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/toasts.js?v=20260116"></script>
+  <script src="js/nav-sidebar.js?v=20260116"></script>
+  <script src="js/sidebar.js?v=20260116"></script>
+  <script src="js/searchable-picker.js?v=20260116"></script>
+  <script src="js/realtime.js?v=20260116"></script>
+  <script src="js/documents.js?v=20260116"></script>
+</body>
+</html>

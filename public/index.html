@@ -182,6 +182,119 @@
     </div>
   </div>
 
+  <!-- AI Processing Overlay -->
+  <div id="aiProcessingOverlay" class="ai-processing-overlay">
+    <div class="ai-processing-card">
+      <div class="ai-processing-header">
+        <div class="ai-brain-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 4.5a2.5 2.5 0 0 0-4.96-.46 2.5 2.5 0 0 0-1.98 3 2.5 2.5 0 0 0-1.32 4.24 3 3 0 0 0 .34 5.58 2.5 2.5 0 0 0 2.96 3.08A2.5 2.5 0 0 0 12 19.5a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 12 4.5"/>
+            <path d="m15.7 10.4-.9.4"/>
+            <path d="m9.2 13.2-.9.4"/>
+            <path d="m13.6 15.7-.4-.9"/>
+            <path d="m10.8 9.2-.4-.9"/>
+            <path d="m15.7 13.5-.9-.4"/>
+            <path d="m9.2 10.9-.9-.4"/>
+            <path d="m10.5 15.7.4-.9"/>
+            <path d="m13.1 9.2.4-.9"/>
+          </svg>
+          <div class="ai-pulse-ring"></div>
+          <div class="ai-pulse-ring delay-1"></div>
+          <div class="ai-pulse-ring delay-2"></div>
+        </div>
+        <h2>AI Processing</h2>
+        <p class="ai-processing-subtitle" id="aiProcessingSubtitle">Analyzing your document...</p>
+      </div>
+
+      <div class="ai-processing-steps">
+        <div class="ai-step" id="aiStep1">
+          <div class="ai-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">Upload & Read</span>
+            <span class="ai-step-status" id="aiStep1Status">Waiting...</span>
+          </div>
+          <div class="ai-step-check">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        </div>
+
+        <div class="ai-step" id="aiStep2">
+          <div class="ai-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4c0 1.5.8 2.8 2 3.5v1a1.5 1.5 0 0 0 3 0v-1c1.2-.7 2-2 2-3.5a4 4 0 0 0-4-4z"/><path d="M12 22v-5"/><path d="m9 18 3-3 3 3"/><circle cx="12" cy="14" r="1"/></svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">AI Classification</span>
+            <span class="ai-step-status" id="aiStep2Status">Waiting...</span>
+          </div>
+          <div class="ai-step-check">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        </div>
+
+        <div class="ai-step" id="aiStep3">
+          <div class="ai-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">Vendor Match</span>
+            <span class="ai-step-status" id="aiStep3Status">Waiting...</span>
+          </div>
+          <div class="ai-step-check">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        </div>
+
+        <div class="ai-step" id="aiStep4">
+          <div class="ai-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h.01"/><path d="M17 7h.01"/><path d="M7 12h10"/><path d="M7 17h6"/></svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">Data Extraction</span>
+            <span class="ai-step-status" id="aiStep4Status">Waiting...</span>
+          </div>
+          <div class="ai-step-check">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        </div>
+
+        <div class="ai-step" id="aiStep5">
+          <div class="ai-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h8"/><circle cx="18" cy="18" r="3"/><path d="m21 21-1.5-1.5"/></svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">Cost Code & PO Match</span>
+            <span class="ai-step-status" id="aiStep5Status">Waiting...</span>
+          </div>
+          <div class="ai-step-check">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        </div>
+
+        <div class="ai-step" id="aiStep6">
+          <div class="ai-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          </div>
+          <div class="ai-step-content">
+            <span class="ai-step-label">Save Invoice</span>
+            <span class="ai-step-status" id="aiStep6Status">Waiting...</span>
+          </div>
+          <div class="ai-step-check">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-processing-footer">
+        <div class="ai-progress-bar">
+          <div class="ai-progress-fill" id="aiProgressFill"></div>
+        </div>
+        <p class="ai-progress-text" id="aiProgressText">Step 1 of 5</p>
+      </div>
+    </div>
+  </div>
+
   <!-- Split Invoice Modal -->
   <div id="splitInvoiceModal" class="modal">
     <div class="modal-content modal-lg">
@@ -231,6 +344,7 @@
 
   <!-- Core modules (defer for non-blocking load, maintains execution order) -->
   <script defer src="js/toasts.js?v=20260115-perf"></script>
+  <script defer src="js/modal-helpers.js?v=20260116"></script>
   <script defer src="js/nav-sidebar.js?v=20260115-perf"></script>
   <script defer src="js/validation.js?v=20260115-perf"></script>
   <script defer src="js/cost-code-picker.js?v=20260115-perf"></script>
@@ -345,6 +459,74 @@
       }
     };
 
+    // AI Processing Overlay helpers
+    var aiOverlay = document.getElementById('aiProcessingOverlay');
+    var aiProgressFill = document.getElementById('aiProgressFill');
+    var aiProgressText = document.getElementById('aiProgressText');
+    var aiSubtitle = document.getElementById('aiProcessingSubtitle');
+
+    function showAIOverlay() {
+      // Reset all steps
+      for (var i = 1; i <= 5; i++) {
+        var step = document.getElementById('aiStep' + i);
+        var status = document.getElementById('aiStep' + i + 'Status');
+        step.className = 'ai-step';
+        status.textContent = 'Waiting...';
+      }
+      aiProgressFill.style.width = '0%';
+      aiProgressText.textContent = 'Step 1 of 5';
+      aiSubtitle.textContent = 'Analyzing your document...';
+      aiOverlay.classList.remove('success', 'error');
+      aiOverlay.classList.add('show');
+    }
+
+    function hideAIOverlay() {
+      aiOverlay.classList.remove('show');
+    }
+
+    var TOTAL_STEPS = 6;
+
+    function updateAIStep(stepNum, status, statusText) {
+      var step = document.getElementById('aiStep' + stepNum);
+      var statusEl = document.getElementById('aiStep' + stepNum + 'Status');
+
+      // Remove previous states
+      step.classList.remove('active', 'completed', 'error');
+
+      if (status === 'active') {
+        step.classList.add('active');
+        statusEl.textContent = statusText || 'Processing...';
+      } else if (status === 'completed') {
+        step.classList.add('completed');
+        statusEl.textContent = statusText || 'Done';
+      } else if (status === 'error') {
+        step.classList.add('error');
+        statusEl.textContent = statusText || 'Failed';
+      }
+
+      // Update progress
+      var progress = (stepNum / TOTAL_STEPS) * 100;
+      if (status === 'active') progress = ((stepNum - 1) / TOTAL_STEPS) * 100 + (100 / TOTAL_STEPS / 2);
+      aiProgressFill.style.width = progress + '%';
+      aiProgressText.textContent = 'Step ' + stepNum + ' of ' + TOTAL_STEPS;
+    }
+
+    async function animateStep(stepNum, label, minDuration) {
+      minDuration = minDuration || 400;
+      updateAIStep(stepNum, 'active', label + '...');
+      var start = Date.now();
+      return function complete(statusText) {
+        var elapsed = Date.now() - start;
+        var remaining = Math.max(0, minDuration - elapsed);
+        return new Promise(function(resolve) {
+          setTimeout(function() {
+            updateAIStep(stepNum, 'completed', statusText || 'Complete');
+            resolve();
+          }, remaining);
+        });
+      };
+    }
+
     // Process document
     processBtn.onclick = async function() {
       if (!selectedFile) {
@@ -355,14 +537,26 @@
       console.log('Processing document:', selectedFile.name);
       processBtn.disabled = true;
       processBtn.textContent = 'Processing...';
-      processingDiv.style.display = 'flex';
-      processingMsg.textContent = 'Uploading and analyzing document...';
+      modal.style.display = 'none';
       resultArea.style.display = 'none';
 
+      // Show AI overlay
+      showAIOverlay();
+      aiSubtitle.textContent = 'Reading ' + selectedFile.name + '...';
+
       try {
+        // Step 1: Reading document
+        var complete1 = await animateStep(1, 'Reading PDF', 400);
+
         var formData = new FormData();
         formData.append('file', selectedFile);
         formData.append('uploaded_by', 'Jake Ross');
+
+        await complete1(selectedFile.name);
+        aiSubtitle.textContent = 'Sending to AI for analysis...';
+
+        // Step 2: Classifying document type
+        var complete2 = await animateStep(2, 'AI analyzing document', 300);
 
         var response = await fetch('/api/documents/process', {
           method: 'POST',
@@ -372,11 +566,95 @@
         var result = await response.json();
         console.log('Processing result:', result);
 
-        processingDiv.style.display = 'none';
+        // Show classification result
+        var docType = result.documentType || result.classification?.type || 'unknown';
+        var confidence = result.classification?.confidence || 0;
+        var typeLabel = docType.charAt(0).toUpperCase() + docType.slice(1).replace('_', ' ');
+        await complete2(typeLabel + ' (' + Math.round(confidence * 100) + '%)');
+        aiSubtitle.textContent = 'Found ' + typeLabel.toLowerCase() + ', extracting details...';
+
+        // Step 3: Matching vendor
+        var complete3 = await animateStep(3, 'Finding vendor', 300);
+        await new Promise(function(r) { setTimeout(r, 400); });
+        var vendorName = result.data?.vendor?.name || result.data?.extracted?.vendor?.companyName || 'Unknown Vendor';
+        var vendorConf = result.data?.ai_confidence?.vendor || 0;
+        var vendorTradeDB = result.data?.vendor?.trade || '';
+        var vendorStatus = vendorName + (vendorConf ? ' (' + Math.round(vendorConf * 100) + '%)' : '');
+        if (vendorTradeDB) {
+          vendorStatus += ' [' + vendorTradeDB + ']';
+        }
+        await complete3(vendorStatus);
+        aiSubtitle.textContent = vendorTradeDB
+          ? 'Matched: ' + vendorName + ' (' + vendorTradeDB + ' trade)'
+          : 'Matched to ' + vendorName;
+
+        // Step 4: Extracting data - show all extracted fields
+        var complete4 = await animateStep(4, 'Extracting invoice data', 300);
+        await new Promise(function(r) { setTimeout(r, 400); });
+        var invNum = result.data?.extracted?.invoiceNumber || result.savedRecord?.invoice_number || '?';
+        var invDate = result.data?.extracted?.invoiceDate || result.savedRecord?.invoice_date || '';
+        var amount = result.data?.extracted?.totalAmount || result.savedRecord?.amount || 0;
+        var jobName = result.data?.matchedJob?.name || result.savedRecord?.job?.name || '';
+
+        // Build extraction summary
+        var extractedInfo = '#' + invNum + ' - $' + Number(amount).toLocaleString();
+        await complete4(extractedInfo);
+
+        // Update subtitle with job match
+        if (jobName) {
+          aiSubtitle.textContent = 'Matched to job: ' + jobName;
+        } else {
+          aiSubtitle.textContent = 'Invoice #' + invNum + ' for $' + Number(amount).toLocaleString();
+        }
+
+        // Step 5: Cost Code & PO Matching
+        var complete5 = await animateStep(5, 'Finding cost codes', 300);
+        await new Promise(function(r) { setTimeout(r, 350); });
+
+        // Extract cost code and PO info from result
+        var suggestedCodes = result.data?.suggestions?.cost_codes || result.data?.suggested_allocations || [];
+        var vendorTrade = result.data?.vendor?.trade || result.data?.extracted?.vendor?.tradeType || '';
+        var matchedPO = result.data?.matchedPO || result.data?.suggestions?.po || null;
+
+        var costCodeInfo = '';
+        if (suggestedCodes.length > 0) {
+          var codes = suggestedCodes.map(function(c) { return c.code; }).join(', ');
+          costCodeInfo = codes;
+          if (vendorTrade) {
+            aiSubtitle.textContent = 'Using ' + vendorTrade + ' trade → ' + codes;
+          } else {
+            aiSubtitle.textContent = 'Suggested cost codes: ' + codes;
+          }
+        } else {
+          costCodeInfo = 'No match';
+          aiSubtitle.textContent = 'No cost code match found';
+        }
+
+        // Show PO match info
+        if (matchedPO) {
+          costCodeInfo += ' | PO: ' + (matchedPO.po_number || matchedPO.poNumber || 'Found');
+          aiSubtitle.textContent += ' | PO matched';
+        }
+
+        await complete5(costCodeInfo);
+
+        // Step 6: Creating invoice
+        var complete6 = await animateStep(6, 'Saving to database', 300);
+        await new Promise(function(r) { setTimeout(r, 300); });
 
         if (!response.ok) {
-          throw new Error(result.error || 'Processing failed');
+          throw new Error(result.error || result.message || 'Processing failed');
         }
+
+        var savedId = result.savedRecord?.id || result.data?.invoiceId;
+        await complete6(savedId ? 'Saved' : 'Complete');
+
+        // Success state
+        aiOverlay.classList.add('success');
+        var successMsg = vendorName + ' - $' + Number(amount).toLocaleString();
+        if (jobName) successMsg += ' → ' + jobName;
+        aiSubtitle.textContent = successMsg;
+        aiProgressFill.style.width = '100%';
 
         // Show result
         var docType = result.documentType || 'unknown';
@@ -388,15 +666,6 @@
           unknown: 'Unknown Document'
         };
 
-        resultArea.innerHTML = '<div class="result-success">' +
-          '<h3>Document Processed</h3>' +
-          '<p><strong>Type:</strong> ' + (typeLabels[docType] || docType) + '</p>' +
-          (result.data?.vendor?.name ? '<p><strong>Vendor:</strong> ' + result.data.vendor.name + '</p>' : '') +
-          (result.data?.extracted?.totalAmount ? '<p><strong>Amount:</strong> $' + Number(result.data.extracted.totalAmount).toLocaleString() + '</p>' : '') +
-          '</div>';
-        resultArea.style.display = 'block';
-
-        processBtn.textContent = 'Done';
         showToast(typeLabels[docType] + ' processed successfully', 'success');
 
         // Refresh the invoice list
@@ -404,17 +673,37 @@
           loadInvoices();
         }
 
-        // Auto close after 2 seconds
+        // Hide overlay and close after delay
         setTimeout(function() {
+          hideAIOverlay();
           closeModal();
-        }, 2000);
+        }, 1500);
 
       } catch (err) {
         console.error('Upload error:', err);
-        processingDiv.style.display = 'none';
-        processBtn.disabled = false;
-        processBtn.textContent = 'Try Again';
+
+        // Show error in overlay
+        aiOverlay.classList.add('error');
+        aiSubtitle.textContent = err.message || 'Processing failed';
+
+        // Find and mark the failed step
+        for (var i = 1; i <= TOTAL_STEPS; i++) {
+          var step = document.getElementById('aiStep' + i);
+          if (step.classList.contains('active')) {
+            updateAIStep(i, 'error', 'Failed');
+            break;
+          }
+        }
+
         showToast(err.message || 'Upload failed', 'error');
+
+        // Hide overlay and show modal again
+        setTimeout(function() {
+          hideAIOverlay();
+          modal.style.display = 'flex';
+          processBtn.disabled = false;
+          processBtn.textContent = 'Try Again';
+        }, 2000);
       }
     };
 

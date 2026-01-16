@@ -98,7 +98,9 @@ window.SearchablePicker = {
       if (this.cache.costCodes) return this.cache.costCodes;
       const response = await fetch('/api/cost-codes');
       if (response.ok) {
-        this.cache.costCodes = await response.json();
+        const data = await response.json();
+        // API returns {costCodes: [...]} - extract the array
+        this.cache.costCodes = data.costCodes || data;
         return this.cache.costCodes;
       }
       return [];

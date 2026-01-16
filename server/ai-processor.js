@@ -43,31 +43,33 @@ const CONFIDENCE_THRESHOLDS = {
 
 // Trade type to cost code mapping (code prefix -> cost codes)
 const TRADE_COST_CODE_MAP = {
+  // Using actual Ross Built cost codes from database
   electrical: ['13101', '13102'],      // Electrical Labor, Electrical Fixtures
   plumbing: ['12101', '12102'],        // Plumbing Labor, Plumbing Fixtures
   hvac: ['14101'],                     // HVAC System and Ducting
   drywall: ['19101'],                  // Drywall
   framing: ['10101', '10102'],         // Framing Labor & General Carpentry, Framing Material
+  carpentry: ['10101', '25102'],       // Framing Labor, Interior Trim and Door Labor
   roofing: ['17101'],                  // Roofing
-  painting: ['27101'],                 // Painting
-  flooring: ['23101', '23102'],        // Flooring Materials, Flooring Labor
+  painting: ['09200'],                 // Painting
+  flooring: ['23102', '23101'],        // Flooring Labor, Flooring Materials
   tile: ['24101', '24102'],            // Tile Labor Floors, Tile Material Floors
-  concrete: ['08101'],                 // Concrete
-  masonry: ['09101'],                  // Masonry
-  landscaping: ['35101'],              // Landscaping and Irrigation
-  pool: ['34101'],                     // Pool and Spa
+  concrete: ['08101'],                 // Concrete (Foundation)
+  masonry: ['09101'],                  // Masonry (Foundation)
+  waterproofing: ['07100'],            // Waterproofing
+  sitework: ['02100'],                 // Site Work
   cabinets: ['21101', '21102'],        // Cabinetry, Cabinetry Installation
   countertops: ['21103'],              // Counter Tops
-  windows_doors: ['11101', '11102'],   // Exterior Windows, Exterior Doors
+  windows_doors: ['11101', '11102'],   // Exterior Windows and SGDs, Exterior Swing Doors
   insulation: ['18101'],               // Insulation
-  stucco: ['26112'],                   // Stucco
-  siding: ['26101', '26102'],          // Exterior Siding Labor, Material
-  general: ['03116']                   // General Labor and Job Site Cleaning
+  stucco: ['26101'],                   // Exterior Siding Labor
+  siding: ['26101', '26102'],          // Exterior Siding Labor, Exterior Siding Material
+  general: ['01100']                   // General Conditions
 };
 
-// Line item description keywords → cost codes
+// Line item description keywords → cost codes (using actual Ross Built DB codes)
 const DESCRIPTION_COST_CODE_MAP = {
-  // Electrical
+  // Electrical (13101 labor, 13102 fixtures)
   'electrical labor': '13101',
   'wiring': '13101',
   'panel': '13101',
@@ -78,128 +80,145 @@ const DESCRIPTION_COST_CODE_MAP = {
   'light fixture': '13102',
   'lighting': '13102',
   'chandelier': '13102',
-  
-  // Plumbing
+  'electrical': '13101',
+
+  // Plumbing (12101 labor, 12102 fixtures)
   'plumbing labor': '12101',
   'plumbing rough': '12101',
   'rough-in': '12101',
   'plumbing': '12101',
   'pipe': '12101',
   'drain': '12101',
-  'water heater': '12101',
+  'water heater': '12103',
   'plumbing fixture': '12102',
   'faucet': '12102',
   'toilet': '12102',
   'sink': '12102',
   'shower': '12102',
-  
-  // HVAC
+
+  // HVAC (14101)
   'hvac': '14101',
   'air conditioning': '14101',
   'ac unit': '14101',
   'ductwork': '14101',
   'furnace': '14101',
   'thermostat': '14101',
-  
-  // Framing/Carpentry
+  'heating': '14101',
+  'cooling': '14101',
+
+  // Framing/Carpentry (10101 labor, 10102 material, 25102 trim labor)
   'framing labor': '10101',
   'framing': '10101',
-  'carpentry': '10101',
   'lumber': '10102',
   'studs': '10102',
   'sheathing': '10102',
-  'truss': '10102',
-  
-  // Drywall
+  'truss': '10105',
+  'carpentry': '10101',
+  'trim': '25102',
+  'molding': '25103',
+  'baseboard': '25103',
+  'crown': '25103',
+  'finish carpentry': '25102',
+
+  // Drywall (19101)
   'drywall': '19101',
   'sheetrock': '19101',
   'gypsum': '19101',
   'taping': '19101',
   'mud': '19101',
-  
-  // Roofing
+
+  // Roofing (17101)
   'roofing': '17101',
   'roof': '17101',
   'shingle': '17101',
   'flashing': '17101',
-  'underlayment': '17101',
-  
-  // Painting
-  'painting': '27101',
-  'paint': '27101',
-  'primer': '27101',
-  'stain': '27101',
-  
-  // Flooring
+
+  // Painting (09200)
+  'painting': '09200',
+  'paint': '09200',
+  'primer': '09200',
+  'stain': '09200',
+  'stucco': '26101',
+
+  // Flooring (23101 material, 23102 labor)
   'flooring material': '23101',
   'hardwood': '23101',
   'vinyl': '23101',
-  'carpet': '23101',
+  'carpet': '24105',
   'flooring labor': '23102',
   'floor installation': '23102',
-  
-  // Tile
+  'flooring': '23102',
+  'lvp': '23101',
+  'laminate': '23101',
+
+  // Tile (24101 labor floors, 24102 material floors, 24103 labor walls, 24104 material walls)
   'tile labor': '24101',
   'tile installation': '24101',
   'tile material': '24102',
-  'grout': '24102',
-  'backsplash': '24102',
-  
-  // Concrete
+  'grout': '24101',
+  'backsplash': '24103',
+  'tile': '24101',
+  'ceramic': '24102',
+  'porcelain': '24102',
+  'marble': '24102',
+  'travertine': '24102',
+  'durarock': '24106',
+
+  // Concrete (08101)
   'concrete': '08101',
   'slab': '08101',
   'foundation': '08101',
   'rebar': '08101',
-  
-  // Masonry
+  'footing': '08101',
   'masonry': '09101',
   'brick': '09101',
   'block': '09101',
   'stone': '09101',
-  
-  // Cabinets/Countertops
+
+  // Cabinets/Countertops (21101 cabinetry, 21102 install, 21103 countertops)
   'cabinet': '21101',
   'cabinetry': '21101',
   'cabinet installation': '21102',
   'countertop': '21103',
   'granite': '21103',
   'quartz': '21103',
-  
-  // Windows/Doors
+
+  // Windows/Doors (11101-11103 exterior, 25101 interior)
   'window': '11101',
   'glass': '11101',
-  'door': '11102',
+  'door': '25101',
   'entry door': '11102',
-  'sliding door': '11102',
-  
-  // Insulation
+  'sliding door': '11101',
+  'interior door': '25101',
+  'front door': '11104',
+
+  // Insulation (18101)
   'insulation': '18101',
   'spray foam': '18101',
   'batt insulation': '18101',
-  
-  // Exterior
-  'stucco': '26112',
-  'siding': '26101',
-  'siding labor': '26101',
-  'siding material': '26102',
-  
-  // Landscaping
-  'landscaping': '35101',
-  'irrigation': '35101',
-  'sod': '35101',
-  'sprinkler': '35101',
-  
-  // Pool
-  'pool': '34101',
-  'spa': '34101',
-  'hot tub': '34101',
-  
-  // General
-  'labor': '03116',
+  'waterproofing': '07100',
+
+  // Site Work (02100 and 06101-06107)
+  'landscaping': '02100',
+  'irrigation': '02100',
+  'sod': '02100',
+  'sprinkler': '02100',
+  'grading': '06103',
+  'excavation': '05101',
+  'sitework': '02100',
+  'demolition': '05101',
+
+  // General Conditions (01100) - but these should be overridden by vendor trade
   'cleanup': '03116',
-  'debris': '03116',
-  'dumpster': '03116',
-  'permit': '01500'
+  'debris': '03112',
+  'dumpster': '03112',
+  'permit': '02104',
+  'general conditions': '01100',
+  'supervision': '03121',
+  'mobilization': '01100'
+
+  // NOTE: Removed 'starting job', 'deposit', 'draw', 'progress', 'labor'
+  // These generic terms should use vendor trade instead of defaulting to 01100
 };
 
 // ============================================================
@@ -892,12 +911,42 @@ function normalizeForMatch(str) {
 
 /**
  * Suggest cost codes based on trade type
+ * Uses database mappings (v2_trade_mappings) for dynamic configuration
  * @param {string} tradeType - The vendor's trade type
  * @param {number} amount - Total invoice amount
  * @returns {Promise<Array>} Array of suggested cost code allocations
  */
 async function suggestCostCodes(tradeType, amount) {
-  if (!tradeType || !TRADE_COST_CODE_MAP[tradeType]) {
+  if (!tradeType) {
+    return [];
+  }
+
+  // First try database mappings (editable via UI)
+  const { data: mappings, error: mappingError } = await supabase
+    .from('v2_trade_mappings')
+    .select(`
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .eq('trade_type', tradeType.toLowerCase())
+    .order('priority');
+
+  if (!mappingError && mappings && mappings.length > 0) {
+    // Use database mappings
+    const costCodes = mappings.map(m => m.cost_code).filter(Boolean);
+    if (costCodes.length > 0) {
+      return [{
+        cost_code_id: costCodes[0].id,
+        code: costCodes[0].code,
+        name: costCodes[0].name,
+        amount: amount,
+        suggested: true,
+        source: 'trade_mapping'
+      }];
+    }
+  }
+
+  // Fallback to hardcoded map if no DB mapping found
+  if (!TRADE_COST_CODE_MAP[tradeType]) {
     return [];
   }
 
@@ -920,7 +969,8 @@ async function suggestCostCodes(tradeType, amount) {
       code: costCodes[0].code,
       name: costCodes[0].name,
       amount: amount,
-      suggested: true
+      suggested: true,
+      source: 'hardcoded_fallback'
     }];
   }
 
@@ -931,7 +981,8 @@ async function suggestCostCodes(tradeType, amount) {
     code: costCodes[0].code,
     name: costCodes[0].name,
     amount: amount,
-    suggested: true
+    suggested: true,
+    source: 'hardcoded_fallback'
   }];
 }
 
@@ -948,6 +999,7 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
   const desc = description.toLowerCase();
   let bestMatch = null;
   let bestMatchLength = 0;
+  let confidence = 0.6;
 
   // Find longest matching keyword (more specific = better match)
   for (const [keyword, code] of Object.entries(DESCRIPTION_COST_CODE_MAP)) {
@@ -957,9 +1009,19 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
     }
   }
 
-  // If no description match, fall back to trade type
-  if (!bestMatch && tradeType && TRADE_COST_CODE_MAP[tradeType]) {
-    bestMatch = TRADE_COST_CODE_MAP[tradeType][0]; // Use first code for trade
+  // PRIORITY: If vendor trade is known AND either:
+  // 1. No description match found, OR
+  // 2. Description match is too short/generic (less than 6 chars keyword)
+  // Then use trade-based cost codes instead
+  if (tradeType && TRADE_COST_CODE_MAP[tradeType]) {
+    const tradeCode = TRADE_COST_CODE_MAP[tradeType][0];
+
+    // Use trade-based code if no match or weak match
+    if (!bestMatch || bestMatchLength < 6) {
+      bestMatch = tradeCode;
+      confidence = 0.85; // High confidence when using known vendor trade
+      console.log(`[AI] Using vendor trade "${tradeType}" → ${tradeCode} (description match was weak: "${description}")`);
+    }
   }
 
   if (!bestMatch) return null;
@@ -971,13 +1033,16 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
     .eq('code', bestMatch)
     .single();
 
-  if (error || !costCode) return null;
+  if (error || !costCode) {
+    console.log(`[AI] Cost code ${bestMatch} not found in database`);
+    return null;
+  }
 
   return {
     id: costCode.id,
     code: costCode.code,
     name: costCode.name,
-    confidence: bestMatchLength > 10 ? 0.9 : bestMatchLength > 5 ? 0.75 : 0.6
+    confidence: bestMatchLength > 10 ? 0.9 : bestMatchLength > 5 ? 0.75 : confidence
   };
 }
 
@@ -1176,7 +1241,7 @@ async function findOrCreateVendor(vendorData) {
   if (learnedMatch && learnedMatch.confidence >= 0.85) {
     const { data: learnedVendor } = await supabase
       .from('v2_vendors')
-      .select('id, name, email, phone')
+      .select('id, name, email, phone, trade')
       .eq('id', learnedMatch.matched_id)
       .single();
 
@@ -1193,7 +1258,7 @@ async function findOrCreateVendor(vendorData) {
   if (aliasMatch) {
     const { data: aliasVendor } = await supabase
       .from('v2_vendors')
-      .select('id, name, email, phone')
+      .select('id, name, email, phone, trade')
       .eq('id', aliasMatch.vendor_id)
       .single();
 
@@ -1208,7 +1273,7 @@ async function findOrCreateVendor(vendorData) {
   // Try to find existing vendor using improved matching from standards.js
   const { data: vendors } = await supabase
     .from('v2_vendors')
-    .select('id, name, email, phone');
+    .select('id, name, email, phone, trade');
 
   if (vendors && vendors.length > 0) {
     // Use standards.findBestVendorMatch which handles LLC, Inc, Co removal and better normalization
@@ -1447,8 +1512,15 @@ async function processInvoice(pdfBuffer, originalFilename) {
     }
 
     // 6b. Suggest cost codes - first try line items, then fall back to trade type
-    const tradeType = extracted.vendor?.tradeType;
+    // Priority: 1) Vendor's stored trade from database, 2) AI-extracted trade from invoice
+    const vendorStoredTrade = results.vendor?.trade?.toLowerCase().trim();
+    const extractedTradeType = extracted.vendor?.tradeType;
+    const tradeType = vendorStoredTrade || extractedTradeType;
     const invoiceAmount = extracted.totalAmount || extracted.amounts?.totalAmount || 0;
+
+    if (vendorStoredTrade) {
+      results.messages.push(`Using vendor trade: ${vendorStoredTrade} (from database)`);
+    }
 
     // First: Try to get cost codes from line item descriptions
     let lineItemAllocations = [];

@@ -6,6 +6,7 @@ let state = {
   logs: [],
   jobs: [],
   vendors: [],
+  scheduleTasks: [],  // Schedule tasks for current job
   currentJobId: null,
   filters: {
     status: '',
@@ -30,6 +31,124 @@ const weatherIcons = {
   snow: { icon: '❄️', label: 'Snow' }
 };
 
+// Common construction trades for searchable dropdown
+const trades = [
+  { id: 'framing', name: 'Framing' },
+  { id: 'electrical', name: 'Electrical' },
+  { id: 'plumbing', name: 'Plumbing' },
+  { id: 'hvac', name: 'HVAC' },
+  { id: 'roofing', name: 'Roofing' },
+  { id: 'drywall', name: 'Drywall' },
+  { id: 'painting', name: 'Painting' },
+  { id: 'flooring', name: 'Flooring' },
+  { id: 'tile', name: 'Tile' },
+  { id: 'concrete', name: 'Concrete' },
+  { id: 'masonry', name: 'Masonry' },
+  { id: 'carpentry', name: 'Carpentry' },
+  { id: 'finish-carpentry', name: 'Finish Carpentry' },
+  { id: 'cabinetry', name: 'Cabinetry' },
+  { id: 'countertops', name: 'Countertops' },
+  { id: 'insulation', name: 'Insulation' },
+  { id: 'windows-doors', name: 'Windows & Doors' },
+  { id: 'siding', name: 'Siding' },
+  { id: 'stucco', name: 'Stucco' },
+  { id: 'landscaping', name: 'Landscaping' },
+  { id: 'irrigation', name: 'Irrigation' },
+  { id: 'pool', name: 'Pool' },
+  { id: 'fencing', name: 'Fencing' },
+  { id: 'garage-doors', name: 'Garage Doors' },
+  { id: 'appliances', name: 'Appliances' },
+  { id: 'fire-sprinkler', name: 'Fire Sprinkler' },
+  { id: 'low-voltage', name: 'Low Voltage' },
+  { id: 'security', name: 'Security' },
+  { id: 'cleaning', name: 'Cleaning' },
+  { id: 'general-labor', name: 'General Labor' },
+  { id: 'excavation', name: 'Excavation' },
+  { id: 'grading', name: 'Grading' },
+  { id: 'foundation', name: 'Foundation' },
+  { id: 'steel', name: 'Steel/Iron' },
+  { id: 'waterproofing', name: 'Waterproofing' },
+  { id: 'demolition', name: 'Demolition' },
+  { id: 'other', name: 'Other' }
+];
+
+// Work areas for tracking location within a building
+const workAreas = [
+  { id: 'entire-site', name: 'Entire Site' },
+  { id: 'exterior', name: 'Exterior' },
+  { id: 'interior', name: 'Interior' },
+  { id: 'garage', name: 'Garage' },
+  { id: 'kitchen', name: 'Kitchen' },
+  { id: 'living-room', name: 'Living Room' },
+  { id: 'dining-room', name: 'Dining Room' },
+  { id: 'master-bed', name: 'Master Bedroom' },
+  { id: 'master-bath', name: 'Master Bath' },
+  { id: 'bedroom-2', name: 'Bedroom 2' },
+  { id: 'bedroom-3', name: 'Bedroom 3' },
+  { id: 'bedroom-4', name: 'Bedroom 4' },
+  { id: 'bathroom-2', name: 'Bathroom 2' },
+  { id: 'bathroom-3', name: 'Bathroom 3' },
+  { id: 'powder-room', name: 'Powder Room' },
+  { id: 'laundry', name: 'Laundry' },
+  { id: 'office', name: 'Office/Study' },
+  { id: 'bonus-room', name: 'Bonus Room' },
+  { id: 'media-room', name: 'Media Room' },
+  { id: 'pool-area', name: 'Pool Area' },
+  { id: 'patio', name: 'Patio/Lanai' },
+  { id: 'driveway', name: 'Driveway' },
+  { id: 'roof', name: 'Roof' },
+  { id: 'attic', name: 'Attic' },
+  { id: '1st-floor', name: '1st Floor' },
+  { id: '2nd-floor', name: '2nd Floor' },
+  { id: '3rd-floor', name: '3rd Floor' },
+  { id: 'basement', name: 'Basement' },
+  { id: 'other', name: 'Other' }
+];
+
+// Inspection types
+const inspectionTypes = [
+  { id: 'footing', name: 'Footing' },
+  { id: 'foundation', name: 'Foundation' },
+  { id: 'slab', name: 'Slab' },
+  { id: 'framing', name: 'Framing' },
+  { id: 'sheathing', name: 'Sheathing/Nailing' },
+  { id: 'roofing', name: 'Roofing' },
+  { id: 'electrical-rough', name: 'Electrical Rough' },
+  { id: 'electrical-final', name: 'Electrical Final' },
+  { id: 'plumbing-rough', name: 'Plumbing Rough' },
+  { id: 'plumbing-final', name: 'Plumbing Final' },
+  { id: 'mechanical-rough', name: 'Mechanical/HVAC Rough' },
+  { id: 'mechanical-final', name: 'Mechanical/HVAC Final' },
+  { id: 'insulation', name: 'Insulation' },
+  { id: 'drywall', name: 'Drywall' },
+  { id: 'fire', name: 'Fire/Sprinkler' },
+  { id: 'stucco', name: 'Stucco Lath' },
+  { id: 'gas', name: 'Gas Line' },
+  { id: 'pool', name: 'Pool' },
+  { id: 'final', name: 'Final/CO' },
+  { id: 'other', name: 'Other' }
+];
+
+// No-show reasons for predictive scheduling
+const noShowReasons = [
+  { id: 'weather', name: 'Weather' },
+  { id: 'scheduling-conflict', name: 'Scheduling Conflict' },
+  { id: 'crew-shortage', name: 'Crew Shortage' },
+  { id: 'materials-not-ready', name: 'Materials Not Ready' },
+  { id: 'previous-trade-incomplete', name: 'Previous Trade Not Complete' },
+  { id: 'equipment-issue', name: 'Equipment Issue' },
+  { id: 'permit-delay', name: 'Permit/Inspection Delay' },
+  { id: 'illness', name: 'Illness/Injury' },
+  { id: 'vehicle-issue', name: 'Vehicle/Transportation' },
+  { id: 'communication-error', name: 'Communication Error' },
+  { id: 'job-priority', name: 'Sent to Another Job' },
+  { id: 'no-call-no-show', name: 'No Call/No Show' },
+  { id: 'vacation', name: 'Vacation/Holiday' },
+  { id: 'other', name: 'Other' }
+];
+
+let inspectionEntryIndex = 0;
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -48,6 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.currentJobId = jobId;
       loadDailyLogs();
       loadStats();
+      loadScheduleTasks();  // Load schedule tasks for the new job
     });
 
     // Get initial job selection
@@ -56,8 +176,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load logs if job is selected
   if (state.currentJobId) {
-    await loadDailyLogs();
-    await loadStats();
+    await Promise.all([
+      loadDailyLogs(),
+      loadStats(),
+      loadScheduleTasks()  // Load schedule tasks
+    ]);
   } else {
     showNoJobSelected();
   }
@@ -86,6 +209,25 @@ async function loadVendors() {
     state.vendors = await res.json();
   } catch (err) {
     console.error('Failed to load vendors:', err);
+  }
+}
+
+async function loadScheduleTasks() {
+  if (!state.currentJobId) {
+    state.scheduleTasks = [];
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/schedules/tasks/by-job/${state.currentJobId}`);
+    if (res.ok) {
+      state.scheduleTasks = await res.json();
+    } else {
+      state.scheduleTasks = [];
+    }
+  } catch (err) {
+    console.error('Failed to load schedule tasks:', err);
+    state.scheduleTasks = [];
   }
 }
 
@@ -356,6 +498,7 @@ async function openCreateModal() {
   crewEntryIndex = 0;
   deliveryEntryIndex = 0;
   absentEntryIndex = 0;
+  inspectionEntryIndex = 0;
 
   document.getElementById('modalTitle').textContent = 'New Daily Log';
   document.getElementById('editLogId').value = '';
@@ -364,6 +507,9 @@ async function openCreateModal() {
   // Reset form
   document.getElementById('logJobId').value = state.currentJobId || '';
   document.getElementById('logDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('constructionPhase').value = '';
+  document.getElementById('planCompleted').value = '';
+  document.getElementById('planVarianceNotes').value = '';
   document.getElementById('weatherConditions').value = '';
   document.getElementById('tempHigh').value = '';
   document.getElementById('tempLow').value = '';
@@ -372,12 +518,13 @@ async function openCreateModal() {
   document.getElementById('workPlanned').value = '';
   document.getElementById('delaysIssues').value = '';
   document.getElementById('siteVisitors').value = '';
-  document.getElementById('safetyNotes').value = '';
+  document.getElementById('dumpsterExchange').checked = false;
 
-  // Clear crew, absent, delivery, and photo lists
+  // Clear all entry lists
   document.getElementById('crewList').innerHTML = '';
   document.getElementById('absentList').innerHTML = '';
   document.getElementById('deliveryList').innerHTML = '';
+  document.getElementById('inspectionList').innerHTML = '';
   document.getElementById('photoGallery').innerHTML = '';
   currentPhotos = [];
 
@@ -405,22 +552,37 @@ async function openEditModal(logId) {
     if (!res.ok) throw new Error('Failed to load daily log');
 
     currentLog = await res.json();
+
+    // Ensure schedule tasks are loaded for this job
+    if (currentLog.job_id && (!state.scheduleTasks.length || state.currentJobId !== currentLog.job_id)) {
+      state.currentJobId = currentLog.job_id;
+      await loadScheduleTasks();
+    }
+
     crewEntryIndex = 0;
     deliveryEntryIndex = 0;
     absentEntryIndex = 0;
+    inspectionEntryIndex = 0;
 
     document.getElementById('modalTitle').textContent = 'Edit Daily Log';
     document.getElementById('editLogId').value = currentLog.id;
     document.getElementById('deleteLogBtn').style.display = 'block';
 
-    // Clear lists first
+    // Clear all lists first
+    document.getElementById('crewList').innerHTML = '';
     document.getElementById('absentList').innerHTML = '';
+    document.getElementById('deliveryList').innerHTML = '';
+    document.getElementById('inspectionList').innerHTML = '';
 
-    // Populate form
+    // Populate form - basic info
     document.getElementById('logJobId').value = currentLog.job_id;
     document.getElementById('logDate').value = currentLog.log_date;
+    document.getElementById('constructionPhase').value = currentLog.construction_phase || '';
+    document.getElementById('planCompleted').value = currentLog.plan_completed || '';
+    document.getElementById('planVarianceNotes').value = currentLog.plan_variance_notes || '';
     document.getElementById('workCompleted').value = currentLog.work_completed || '';
     document.getElementById('workPlanned').value = currentLog.work_planned || '';
+    document.getElementById('dumpsterExchange').checked = currentLog.dumpster_exchange || false;
 
     // Show saved weather as display
     if (currentLog.weather_conditions) {
@@ -441,16 +603,13 @@ async function openEditModal(logId) {
     document.getElementById('weatherNotes').value = currentLog.weather_notes || '';
     document.getElementById('delaysIssues').value = currentLog.delays_issues || '';
     document.getElementById('siteVisitors').value = currentLog.site_visitors || '';
-    document.getElementById('safetyNotes').value = currentLog.safety_notes || '';
 
     // Populate crew list
-    document.getElementById('crewList').innerHTML = '';
     if (currentLog.crew && currentLog.crew.length > 0) {
       currentLog.crew.forEach(crew => addCrewEntry(crew));
     }
 
     // Populate delivery list
-    document.getElementById('deliveryList').innerHTML = '';
     if (currentLog.deliveries && currentLog.deliveries.length > 0) {
       currentLog.deliveries.forEach(delivery => addDeliveryEntry(delivery));
     }
@@ -458,6 +617,11 @@ async function openEditModal(logId) {
     // Populate absent list
     if (currentLog.absent_crews && currentLog.absent_crews.length > 0) {
       currentLog.absent_crews.forEach(absent => addAbsentEntry(absent));
+    }
+
+    // Populate inspection list
+    if (currentLog.inspections && currentLog.inspections.length > 0) {
+      currentLog.inspections.forEach(insp => addInspectionEntry(insp));
     }
 
     // Load photos
@@ -505,23 +669,35 @@ function addCrewEntry(data = null) {
     <div class="entry-row">
       <div class="form-group flex-1">
         <label>Vendor/Subcontractor</label>
-        <select id="crew-vendor-${index}" class="form-control">
-          <option value="">Select Vendor...</option>
-        </select>
+        <div id="crew-vendor-picker-${index}"></div>
       </div>
       <div class="form-group flex-1">
         <label>Trade</label>
-        <input type="text" id="crew-trade-${index}" class="form-control" placeholder="e.g., Framing, Electrical, Plumbing" value="${data?.trade || ''}">
+        <div id="crew-trade-picker-${index}"></div>
+      </div>
+      <div class="form-group flex-1">
+        <label>Work Area</label>
+        <div id="crew-area-picker-${index}"></div>
       </div>
     </div>
     <div class="entry-row">
-      <div class="form-group" style="width: 120px;">
+      <div class="form-group flex-2">
+        <label>Schedule Task <span class="label-hint">(auto-suggested by trade)</span></label>
+        <div id="crew-task-picker-${index}"></div>
+      </div>
+    </div>
+    <div class="entry-row">
+      <div class="form-group" style="width: 100px;">
         <label>Headcount</label>
-        <input type="number" id="crew-workers-${index}" class="form-control" placeholder="# workers" min="1" value="${data?.worker_count || ''}">
+        <input type="number" id="crew-workers-${index}" class="form-control" placeholder="#" min="1" value="${data?.worker_count || ''}">
+      </div>
+      <div class="form-group" style="width: 100px;">
+        <label>Hours</label>
+        <input type="number" id="crew-hours-${index}" class="form-control" placeholder="hrs" step="0.5" value="${data?.hours_worked || ''}">
       </div>
       <div class="form-group" style="width: 120px;">
-        <label>Hours</label>
-        <input type="number" id="crew-hours-${index}" class="form-control" placeholder="hrs worked" step="0.5" value="${data?.hours_worked || ''}">
+        <label>Completion %</label>
+        <input type="number" id="crew-completion-${index}" class="form-control" placeholder="0-100" min="0" max="100" value="${data?.completion_percent || ''}">
       </div>
       <div class="form-group flex-1">
         <label>Work Performed</label>
@@ -532,9 +708,70 @@ function addCrewEntry(data = null) {
 
   container.appendChild(entry);
 
-  // Populate vendor dropdown
-  const vendorSelect = document.getElementById(`crew-vendor-${index}`);
-  populateVendorDropdown(vendorSelect, data?.vendor_id);
+  // Initialize searchable vendor picker
+  const vendorContainer = document.getElementById(`crew-vendor-picker-${index}`);
+  SearchablePicker.init(vendorContainer, {
+    type: 'vendors',
+    value: data?.vendor_id || null,
+    placeholder: 'Search vendors...'
+  });
+
+  // Initialize searchable trade picker with auto-suggest for task
+  const tradeContainer = document.getElementById(`crew-trade-picker-${index}`);
+  SearchablePicker.init(tradeContainer, {
+    type: 'custom',
+    items: trades,
+    value: data?.trade ? trades.find(t => t.name === data.trade)?.id : null,
+    placeholder: 'Search trades...',
+    onChange: (tradeId) => autoSuggestTask(index, tradeId)
+  });
+
+  // Initialize searchable work area picker
+  const areaContainer = document.getElementById(`crew-area-picker-${index}`);
+  SearchablePicker.init(areaContainer, {
+    type: 'custom',
+    items: workAreas,
+    value: data?.work_area ? workAreas.find(a => a.name === data.work_area)?.id : null,
+    placeholder: 'Search areas...'
+  });
+
+  // Initialize schedule task picker
+  const taskContainer = document.getElementById(`crew-task-picker-${index}`);
+
+  // Show non-completed tasks, plus include the currently linked task even if completed
+  const currentTaskId = data?.schedule_task_id;
+  const taskItems = state.scheduleTasks
+    .filter(t => t.status !== 'completed' || t.id === currentTaskId)
+    .map(t => ({
+      id: t.id,
+      name: `${t.name} (${t.completion_percent || 0}%)${t.status === 'completed' ? ' ✓' : ''}`
+    }));
+
+  SearchablePicker.init(taskContainer, {
+    type: 'custom',
+    items: taskItems,
+    value: currentTaskId || null,
+    placeholder: 'Link to schedule task...'
+  });
+}
+
+// Auto-suggest a schedule task based on selected trade
+function autoSuggestTask(crewIndex, tradeId) {
+  if (!tradeId || state.scheduleTasks.length === 0) return;
+
+  // Find an active/pending task that matches this trade
+  const matchingTask = state.scheduleTasks.find(task =>
+    task.trade === tradeId &&
+    (task.status === 'pending' || task.status === 'in_progress')
+  );
+
+  if (matchingTask) {
+    // Set the task picker value
+    const taskPicker = document.querySelector(`#crew-task-picker-${crewIndex} .search-picker`);
+    if (taskPicker && window.SearchablePicker) {
+      window.SearchablePicker.setValue(taskPicker, matchingTask.id);
+    }
+  }
 }
 
 function removeCrewEntry(index) {
@@ -562,19 +799,40 @@ function getCrewEntries() {
 
   crewEntries.forEach(entry => {
     const index = entry.id.replace('crew-entry-', '');
-    const vendorId = document.getElementById(`crew-vendor-${index}`)?.value;
-    const trade = document.getElementById(`crew-trade-${index}`)?.value;
+
+    // Get vendor from searchable picker
+    const vendorPicker = document.getElementById(`crew-vendor-picker-${index}`);
+    const vendorId = vendorPicker?.querySelector('.search-picker-value')?.value || null;
+
+    // Get trade from searchable picker (stored as ID, need to get the name)
+    const tradePicker = document.getElementById(`crew-trade-picker-${index}`);
+    const tradeId = tradePicker?.querySelector('.search-picker-value')?.value;
+    const tradeName = tradeId ? (trades.find(t => t.id === tradeId)?.name || tradeId) : null;
+
+    // Get work area from searchable picker
+    const areaPicker = document.getElementById(`crew-area-picker-${index}`);
+    const areaId = areaPicker?.querySelector('.search-picker-value')?.value;
+    const areaName = areaId ? (workAreas.find(a => a.id === areaId)?.name || areaId) : null;
+
+    // Get schedule task from searchable picker
+    const taskPicker = document.getElementById(`crew-task-picker-${index}`);
+    const taskId = taskPicker?.querySelector('.search-picker-value')?.value || null;
+
     const workers = document.getElementById(`crew-workers-${index}`)?.value;
     const hours = document.getElementById(`crew-hours-${index}`)?.value;
+    const completion = document.getElementById(`crew-completion-${index}`)?.value;
     const workPerformed = document.getElementById(`crew-work-${index}`)?.value;
 
-    if (vendorId || trade || workers) {
+    if (vendorId || tradeName || workers) {
       entries.push({
         vendor_id: vendorId || null,
-        trade: trade || null,
+        trade: tradeName || null,
+        work_area: areaName || null,
+        schedule_task_id: taskId || null,
         worker_count: parseInt(workers) || 1,
         hours_worked: hours ? parseFloat(hours) : null,
-        notes: workPerformed || null  // Store work performed in notes field
+        completion_percent: completion ? parseInt(completion) : null,
+        notes: workPerformed || null
       });
     }
   });
@@ -597,15 +855,13 @@ function addAbsentEntry(data = null) {
   entry.innerHTML = `
     <div class="entry-row">
       <div class="form-group flex-1">
-        <select id="absent-vendor-${index}" class="form-control">
-          <option value="">Select Vendor...</option>
-        </select>
+        <div id="absent-vendor-picker-${index}"></div>
       </div>
       <div class="form-group flex-1">
-        <input type="text" id="absent-trade-${index}" class="form-control" placeholder="Trade" value="${data?.trade || ''}">
+        <div id="absent-trade-picker-${index}"></div>
       </div>
-      <div class="form-group flex-2">
-        <input type="text" id="absent-reason-${index}" class="form-control" placeholder="Reason (e.g., Weather, No call/no show, Rescheduled)" value="${data?.reason || ''}">
+      <div class="form-group flex-1">
+        <div id="absent-reason-picker-${index}"></div>
       </div>
       <button type="button" class="btn btn-icon btn-danger" onclick="removeAbsentEntry(${index})" title="Remove">
         <span>&times;</span>
@@ -615,9 +871,31 @@ function addAbsentEntry(data = null) {
 
   container.appendChild(entry);
 
-  // Populate vendor dropdown
-  const vendorSelect = document.getElementById(`absent-vendor-${index}`);
-  populateVendorDropdown(vendorSelect, data?.vendor_id);
+  // Initialize searchable vendor picker
+  const vendorContainer = document.getElementById(`absent-vendor-picker-${index}`);
+  SearchablePicker.init(vendorContainer, {
+    type: 'vendors',
+    value: data?.vendor_id || null,
+    placeholder: 'Search vendors...'
+  });
+
+  // Initialize searchable trade picker
+  const tradeContainer = document.getElementById(`absent-trade-picker-${index}`);
+  SearchablePicker.init(tradeContainer, {
+    type: 'custom',
+    items: trades,
+    value: data?.trade ? trades.find(t => t.name === data.trade)?.id : null,
+    placeholder: 'Search trades...'
+  });
+
+  // Initialize searchable reason picker
+  const reasonContainer = document.getElementById(`absent-reason-picker-${index}`);
+  SearchablePicker.init(reasonContainer, {
+    type: 'custom',
+    items: noShowReasons,
+    value: data?.reason ? noShowReasons.find(r => r.name === data.reason)?.id : null,
+    placeholder: 'Select reason...'
+  });
 }
 
 function removeAbsentEntry(index) {
@@ -633,15 +911,26 @@ function getAbsentEntries() {
 
   absentEntries.forEach(entry => {
     const index = entry.id.replace('absent-entry-', '');
-    const vendorId = document.getElementById(`absent-vendor-${index}`)?.value;
-    const trade = document.getElementById(`absent-trade-${index}`)?.value;
-    const reason = document.getElementById(`absent-reason-${index}`)?.value;
 
-    if (vendorId || trade) {
+    // Get vendor from searchable picker
+    const vendorPicker = document.getElementById(`absent-vendor-picker-${index}`);
+    const vendorId = vendorPicker?.querySelector('.search-picker-value')?.value || null;
+
+    // Get trade from searchable picker
+    const tradePicker = document.getElementById(`absent-trade-picker-${index}`);
+    const tradeId = tradePicker?.querySelector('.search-picker-value')?.value;
+    const tradeName = tradeId ? (trades.find(t => t.id === tradeId)?.name || tradeId) : null;
+
+    // Get reason from searchable picker
+    const reasonPicker = document.getElementById(`absent-reason-picker-${index}`);
+    const reasonId = reasonPicker?.querySelector('.search-picker-value')?.value;
+    const reasonName = reasonId ? (noShowReasons.find(r => r.id === reasonId)?.name || reasonId) : null;
+
+    if (vendorId || tradeName) {
       entries.push({
         vendor_id: vendorId || null,
-        trade: trade || null,
-        reason: reason || null
+        trade: tradeName || null,
+        reason: reasonName || null
       });
     }
   });
@@ -664,9 +953,7 @@ function addDeliveryEntry(data = null) {
   entry.innerHTML = `
     <div class="entry-row">
       <div class="form-group flex-1">
-        <select id="delivery-vendor-${index}" class="form-control">
-          <option value="">Select Vendor...</option>
-        </select>
+        <div id="delivery-vendor-picker-${index}"></div>
       </div>
       <div class="form-group flex-2">
         <input type="text" id="delivery-desc-${index}" class="form-control" placeholder="Description *" value="${data?.description || ''}">
@@ -693,9 +980,13 @@ function addDeliveryEntry(data = null) {
 
   container.appendChild(entry);
 
-  // Populate vendor dropdown
-  const vendorSelect = document.getElementById(`delivery-vendor-${index}`);
-  populateVendorDropdown(vendorSelect, data?.vendor_id);
+  // Initialize searchable vendor picker
+  const vendorContainer = document.getElementById(`delivery-vendor-picker-${index}`);
+  SearchablePicker.init(vendorContainer, {
+    type: 'vendors',
+    value: data?.vendor_id || null,
+    placeholder: 'Search vendors...'
+  });
 }
 
 function removeDeliveryEntry(index) {
@@ -711,7 +1002,11 @@ function getDeliveryEntries() {
 
   deliveryEntries.forEach(entry => {
     const index = entry.id.replace('delivery-entry-', '');
-    const vendorId = document.getElementById(`delivery-vendor-${index}`)?.value;
+
+    // Get vendor from searchable picker
+    const vendorPicker = document.getElementById(`delivery-vendor-picker-${index}`);
+    const vendorId = vendorPicker?.querySelector('.search-picker-value')?.value || null;
+
     const description = document.getElementById(`delivery-desc-${index}`)?.value;
     const quantity = document.getElementById(`delivery-qty-${index}`)?.value;
     const unit = document.getElementById(`delivery-unit-${index}`)?.value;
@@ -725,6 +1020,90 @@ function getDeliveryEntries() {
         quantity: quantity ? parseFloat(quantity) : null,
         unit: unit || null,
         received_by: receivedBy || null,
+        notes: notes || null
+      });
+    }
+  });
+
+  return entries;
+}
+
+
+// ============================================================
+// INSPECTION MANAGEMENT
+// ============================================================
+
+function addInspectionEntry(data = null) {
+  const container = document.getElementById('inspectionList');
+  const index = inspectionEntryIndex++;
+
+  const entry = document.createElement('div');
+  entry.className = 'inspection-entry';
+  entry.id = `inspection-entry-${index}`;
+
+  entry.innerHTML = `
+    <div class="entry-row">
+      <div class="form-group flex-1">
+        <div id="inspection-type-picker-${index}"></div>
+      </div>
+      <div class="form-group" style="width: 140px;">
+        <select id="inspection-result-${index}" class="form-control">
+          <option value="scheduled" ${data?.result === 'scheduled' ? 'selected' : ''}>Scheduled</option>
+          <option value="passed" ${data?.result === 'passed' ? 'selected' : ''}>Passed</option>
+          <option value="failed" ${data?.result === 'failed' ? 'selected' : ''}>Failed</option>
+          <option value="partial" ${data?.result === 'partial' ? 'selected' : ''}>Partial Pass</option>
+          <option value="cancelled" ${data?.result === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+        </select>
+      </div>
+      <div class="form-group flex-1">
+        <input type="text" id="inspection-inspector-${index}" class="form-control" placeholder="Inspector name" value="${data?.inspector || ''}">
+      </div>
+      <div class="form-group flex-2">
+        <input type="text" id="inspection-notes-${index}" class="form-control" placeholder="Notes, corrections needed, etc." value="${data?.notes || ''}">
+      </div>
+      <button type="button" class="btn btn-icon btn-danger" onclick="removeInspectionEntry(${index})" title="Remove">
+        <span>&times;</span>
+      </button>
+    </div>
+  `;
+
+  container.appendChild(entry);
+
+  // Initialize searchable inspection type picker
+  const typeContainer = document.getElementById(`inspection-type-picker-${index}`);
+  SearchablePicker.init(typeContainer, {
+    type: 'custom',
+    items: inspectionTypes,
+    value: data?.inspection_type ? inspectionTypes.find(i => i.name === data.inspection_type)?.id : null,
+    placeholder: 'Search inspection type...'
+  });
+}
+
+function removeInspectionEntry(index) {
+  const entry = document.getElementById(`inspection-entry-${index}`);
+  if (entry) entry.remove();
+}
+
+function getInspectionEntries() {
+  const entries = [];
+  const inspectionEntries = document.querySelectorAll('.inspection-entry');
+
+  inspectionEntries.forEach(entry => {
+    const index = entry.id.replace('inspection-entry-', '');
+
+    const typePicker = document.getElementById(`inspection-type-picker-${index}`);
+    const typeId = typePicker?.querySelector('.search-picker-value')?.value;
+    const typeName = typeId ? (inspectionTypes.find(i => i.id === typeId)?.name || typeId) : null;
+
+    const result = document.getElementById(`inspection-result-${index}`)?.value;
+    const inspector = document.getElementById(`inspection-inspector-${index}`)?.value;
+    const notes = document.getElementById(`inspection-notes-${index}`)?.value;
+
+    if (typeName) {
+      entries.push({
+        inspection_type: typeName,
+        result: result || 'scheduled',
+        inspector: inspector || null,
         notes: notes || null
       });
     }
@@ -752,6 +1131,9 @@ async function saveLog(status) {
   const payload = {
     job_id: jobId,
     log_date: logDate,
+    construction_phase: document.getElementById('constructionPhase').value || null,
+    plan_completed: document.getElementById('planCompleted').value || null,
+    plan_variance_notes: document.getElementById('planVarianceNotes').value || null,
     weather_conditions: document.getElementById('weatherConditions').value || null,
     temperature_high: document.getElementById('tempHigh').value ? parseInt(document.getElementById('tempHigh').value) : null,
     temperature_low: document.getElementById('tempLow').value ? parseInt(document.getElementById('tempLow').value) : null,
@@ -760,10 +1142,11 @@ async function saveLog(status) {
     work_planned: document.getElementById('workPlanned').value || null,
     delays_issues: document.getElementById('delaysIssues').value || null,
     site_visitors: document.getElementById('siteVisitors').value || null,
-    safety_notes: document.getElementById('safetyNotes').value || null,
     crew: getCrewEntries(),
     deliveries: getDeliveryEntries(),
     absent_crews: getAbsentEntries(),
+    dumpster_exchange: document.getElementById('dumpsterExchange').checked,
+    inspections: getInspectionEntries(),
     created_by: 'Jake Ross',
     updated_by: 'Jake Ross'
   };
@@ -859,6 +1242,33 @@ async function viewLog(logId) {
     document.getElementById('editViewBtn').style.display = currentLog.status === 'completed' ? 'none' : 'inline-flex';
     document.getElementById('reopenBtn').style.display = currentLog.status === 'completed' ? 'inline-flex' : 'none';
 
+    // Construction phase labels
+    const phaseLabels = {
+      'pre-construction': 'Pre-Construction',
+      'site-work': 'Site Work',
+      'foundation': 'Foundation',
+      'framing': 'Framing',
+      'roofing': 'Roofing',
+      'mep-rough': 'MEP Rough-In',
+      'insulation': 'Insulation',
+      'drywall': 'Drywall',
+      'interior-trim': 'Interior Trim',
+      'paint': 'Paint',
+      'flooring': 'Flooring',
+      'cabinetry': 'Cabinetry',
+      'mep-finish': 'MEP Finish',
+      'exterior-finish': 'Exterior Finish',
+      'landscaping': 'Landscaping',
+      'punch-list': 'Punch List',
+      'final-inspection': 'Final Inspection'
+    };
+
+    const planStatusLabels = {
+      'yes': '✅ Yes - Fully Completed',
+      'partial': '⚠️ Partial - Some Done',
+      'no': '❌ No - Not Completed'
+    };
+
     let content = `
       <div class="view-log-content">
         <div class="view-section">
@@ -868,7 +1278,23 @@ async function viewLog(logId) {
               ${currentLog.status === 'completed' ? 'Completed' : 'Draft'}
             </span>
           </div>
+          ${currentLog.construction_phase ? `
+            <div class="view-phase">
+              <span class="phase-label">Phase:</span>
+              <span class="phase-value">${phaseLabels[currentLog.construction_phase] || currentLog.construction_phase}</span>
+            </div>
+          ` : ''}
         </div>
+
+        ${currentLog.plan_completed ? `
+        <div class="view-section">
+          <h4>Yesterday's Plan Status</h4>
+          <div class="view-plan-status">
+            <span class="plan-status-value">${planStatusLabels[currentLog.plan_completed] || currentLog.plan_completed}</span>
+            ${currentLog.plan_variance_notes ? `<p class="plan-variance-notes">${currentLog.plan_variance_notes}</p>` : ''}
+          </div>
+        </div>
+        ` : ''}
 
         <div class="view-section">
           <h4>Weather</h4>
@@ -888,17 +1314,23 @@ async function viewLog(logId) {
         <div class="view-section">
           <h4>Crew On Site (${currentLog.crew.length})</h4>
           <div class="view-crew-list">
-            ${currentLog.crew.map(c => `
+            ${currentLog.crew.map(c => {
+              // Look up schedule task name if linked
+              const linkedTask = c.schedule_task_id ? state.scheduleTasks.find(t => t.id === c.schedule_task_id) : null;
+              return `
               <div class="view-crew-item">
                 <div class="crew-vendor">${c.vendor?.name || c.trade || 'Unknown'}</div>
                 <div class="crew-details">
                   ${c.worker_count} worker${c.worker_count !== 1 ? 's' : ''}
                   ${c.hours_worked ? ` | ${c.hours_worked} hrs` : ''}
                   ${c.trade && c.vendor ? ` | ${c.trade}` : ''}
+                  ${c.work_area ? ` | 📍 ${c.work_area}` : ''}
+                  ${c.completion_percent ? ` | ${c.completion_percent}% complete` : ''}
                 </div>
+                ${linkedTask ? `<div class="crew-task-link">📅 ${linkedTask.name}</div>` : ''}
                 ${c.notes ? `<div class="crew-notes">${c.notes}</div>` : ''}
               </div>
-            `).join('')}
+            `}).join('')}
           </div>
         </div>
       `;
@@ -947,6 +1379,44 @@ async function viewLog(logId) {
       `;
     }
 
+    // Dumpster exchange
+    if (currentLog.dumpster_exchange) {
+      content += `
+        <div class="view-section view-dumpster">
+          <span class="dumpster-icon">🗑️</span>
+          <span class="dumpster-text">Dumpster Exchange Today</span>
+        </div>
+      `;
+    }
+
+    // Inspections section
+    if (currentLog.inspections && currentLog.inspections.length > 0) {
+      const inspectionResultIcons = {
+        'scheduled': '📅',
+        'passed': '✅',
+        'failed': '❌',
+        'partial': '⚠️'
+      };
+      content += `
+        <div class="view-section">
+          <h4>Inspections (${currentLog.inspections.length})</h4>
+          <div class="view-inspection-list">
+            ${currentLog.inspections.map(i => `
+              <div class="view-inspection-item">
+                <div class="inspection-type">
+                  <span class="inspection-icon">${inspectionResultIcons[i.result] || '📋'}</span>
+                  <span class="inspection-name">${i.inspection_type}</span>
+                  <span class="inspection-result status-badge ${i.result === 'passed' ? 'status-approved' : i.result === 'failed' ? 'status-denied' : 'status-draft'}">${i.result || 'scheduled'}</span>
+                </div>
+                ${i.inspector ? `<div class="inspection-inspector">Inspector: ${i.inspector}</div>` : ''}
+                ${i.notes ? `<div class="inspection-notes">${i.notes}</div>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     // Work summary section
     content += `
       <div class="view-section">
@@ -975,25 +1445,21 @@ async function viewLog(logId) {
             <p>${currentLog.site_visitors}</p>
           </div>
         ` : ''}
-        ${currentLog.safety_notes ? `
-          <div class="view-field">
-            <label>Safety Notes</label>
-            <p>${currentLog.safety_notes}</p>
-          </div>
-        ` : ''}
       </div>
     `;
 
     // Photos section
     if (currentLog.attachments && currentLog.attachments.length > 0) {
+      // Set currentPhotos for lightbox navigation
+      currentPhotos = currentLog.attachments;
       content += `
         <div class="view-section">
           <h4>Photos (${currentLog.attachments.length})</h4>
           <div class="view-photo-grid">
-            ${currentLog.attachments.map(photo => {
+            ${currentLog.attachments.map((photo, index) => {
               const cat = photoCategories.find(c => c.value === photo.category) || photoCategories[4];
               return `
-                <div class="view-photo-item" onclick="viewPhotoFull('${photo.file_url}')">
+                <div class="view-photo-item" onclick="openLightbox(${index})">
                   <div class="view-photo-image" style="background-image: url('${photo.file_url}')"></div>
                   <div class="view-photo-info">
                     <span class="view-photo-category">${cat.icon} ${cat.label}</span>
@@ -1204,12 +1670,12 @@ function renderPhoto(photo) {
   card.className = 'photo-card';
   card.id = `photo-${photo.id}`;
   card.innerHTML = `
-    <div class="photo-image" style="background-image: url('${photo.file_url}')">
+    <div class="photo-image" style="background-image: url('${photo.file_url}')" onclick="viewPhotoFull('${photo.file_url}', '${photo.id}')">
       <div class="photo-overlay">
-        <button class="photo-action-btn" onclick="viewPhotoFull('${photo.file_url}')" title="View full size">
+        <button class="photo-action-btn" onclick="event.stopPropagation(); viewPhotoFull('${photo.file_url}', '${photo.id}')" title="View full size">
           <span>🔍</span>
         </button>
-        <button class="photo-action-btn photo-delete-btn" onclick="deletePhoto('${photo.id}')" title="Delete">
+        <button class="photo-action-btn photo-delete-btn" onclick="event.stopPropagation(); deletePhoto('${photo.id}')" title="Delete">
           <span>🗑️</span>
         </button>
       </div>
@@ -1344,10 +1810,126 @@ async function deletePhoto(photoId) {
   }
 }
 
-// View photo in full size (opens in new tab or lightbox)
-function viewPhotoFull(url) {
-  window.open(url, '_blank');
+// ============================================================
+// PHOTO LIGHTBOX VIEWER
+// ============================================================
+
+let currentLightboxIndex = 0;
+
+// Open lightbox with specific photo
+function viewPhotoFull(url, photoId) {
+  // Find photo index in currentPhotos array
+  const index = currentPhotos.findIndex(p => p.file_url === url || p.id === photoId);
+  if (index >= 0) {
+    openLightbox(index);
+  } else {
+    // Fallback: show single image
+    openLightboxSingle(url);
+  }
 }
+
+function openLightbox(index) {
+  if (currentPhotos.length === 0) return;
+
+  currentLightboxIndex = index;
+  updateLightboxDisplay();
+
+  const lightbox = document.getElementById('photoLightbox');
+  lightbox.classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function openLightboxSingle(url) {
+  const lightbox = document.getElementById('photoLightbox');
+  const image = document.getElementById('lightboxImage');
+  const caption = document.getElementById('lightboxCaption');
+  const meta = document.getElementById('lightboxMeta');
+  const counter = document.getElementById('lightboxCounter');
+
+  image.src = url;
+  caption.textContent = '';
+  meta.textContent = '';
+  counter.textContent = '';
+
+  // Hide nav buttons for single image
+  document.querySelector('.lightbox-prev').style.display = 'none';
+  document.querySelector('.lightbox-next').style.display = 'none';
+
+  lightbox.classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function updateLightboxDisplay() {
+  const photo = currentPhotos[currentLightboxIndex];
+  if (!photo) return;
+
+  const image = document.getElementById('lightboxImage');
+  const caption = document.getElementById('lightboxCaption');
+  const meta = document.getElementById('lightboxMeta');
+  const counter = document.getElementById('lightboxCounter');
+  const prevBtn = document.querySelector('.lightbox-prev');
+  const nextBtn = document.querySelector('.lightbox-next');
+
+  // Update image
+  image.src = photo.file_url;
+
+  // Update caption
+  caption.textContent = photo.caption || '';
+
+  // Update meta (category + uploader)
+  const cat = photoCategories.find(c => c.value === photo.category);
+  const categoryText = cat ? `${cat.icon} ${cat.label}` : '';
+  const uploaderText = photo.uploaded_by ? `by ${photo.uploaded_by}` : '';
+  meta.textContent = [categoryText, uploaderText].filter(Boolean).join(' • ');
+
+  // Update counter
+  counter.textContent = `${currentLightboxIndex + 1} of ${currentPhotos.length}`;
+
+  // Show/hide and enable/disable nav buttons
+  prevBtn.style.display = currentPhotos.length > 1 ? 'flex' : 'none';
+  nextBtn.style.display = currentPhotos.length > 1 ? 'flex' : 'none';
+  prevBtn.disabled = currentLightboxIndex === 0;
+  nextBtn.disabled = currentLightboxIndex === currentPhotos.length - 1;
+}
+
+function closeLightbox() {
+  const lightbox = document.getElementById('photoLightbox');
+  lightbox.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function closeLightboxOnOverlay(event) {
+  // Only close if clicking the overlay itself, not the content
+  if (event.target.id === 'photoLightbox') {
+    closeLightbox();
+  }
+}
+
+function navigateLightbox(direction) {
+  const newIndex = currentLightboxIndex + direction;
+  if (newIndex >= 0 && newIndex < currentPhotos.length) {
+    currentLightboxIndex = newIndex;
+    updateLightboxDisplay();
+  }
+}
+
+// Keyboard navigation for lightbox
+document.addEventListener('keydown', (e) => {
+  const lightbox = document.getElementById('photoLightbox');
+  if (!lightbox || !lightbox.classList.contains('active')) return;
+
+  switch (e.key) {
+    case 'Escape':
+      closeLightbox();
+      break;
+    case 'ArrowLeft':
+      navigateLightbox(-1);
+      break;
+    case 'ArrowRight':
+      navigateLightbox(1);
+      break;
+  }
+});
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => {
@@ -1630,17 +2212,6 @@ function renderWeeklyReport(report) {
           <ul class="report-list">
             ${report.delays_issues.map(d => `
               <li><strong>${formatDate(d.date)}:</strong> ${d.issue}</li>
-            `).join('')}
-          </ul>
-        </div>
-      ` : ''}
-
-      ${report.safety_notes.length > 0 ? `
-        <div class="report-section">
-          <h4>Safety Notes</h4>
-          <ul class="report-list">
-            ${report.safety_notes.map(s => `
-              <li><strong>${formatDate(s.date)}:</strong> ${s.note}</li>
             `).join('')}
           </ul>
         </div>

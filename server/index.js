@@ -121,6 +121,8 @@ const undoRoutes = require('./routes/undo');
 const aiRoutes = require('./routes/ai');
 const realtimeRoutes = require('./routes/realtime');
 const dailyLogRoutes = require('./routes/daily-logs');
+const scheduleRoutes = require('./routes/schedules');
+const documentRoutes = require('./routes/documents');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -136,6 +138,8 @@ app.use('/api/undo', undoRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/realtime', realtimeRoutes);
 app.use('/api/daily-logs', dailyLogRoutes);
+app.use('/api/schedules', scheduleRoutes);
+app.use('/api/documents', documentRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete
@@ -1249,7 +1253,127 @@ app.get('/api/cost-codes', async (req, res) => {
       .order('code');
 
     if (error) throw error;
-    res.json(data);
+    res.json({ costCodes: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create cost code
+app.post('/api/cost-codes', async (req, res) => {
+  try {
+    const { code, name, category } = req.body;
+    if (!code || !name) {
+      return res.status(400).json({ error: 'Code and name are required' });
+    }
+
+    const { data, error } = await supabase
+      .from('v2_cost_codes')
+      .insert({ code, name, category })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ costCode: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update cost code
+app.patch('/api/cost-codes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { code, name, category } = req.body;
+
+    const { data, error } = await supabase
+      .from('v2_cost_codes')
+      .update({ code, name, category })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ costCode: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete cost code
+app.delete('/api/cost-codes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('v2_cost_codes')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get trade mappings
+app.get('/api/cost-codes/trade-mappings', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('v2_trade_mappings')
+      .select(`
+        id,
+        trade_type,
+        priority,
+        cost_code:v2_cost_codes(id, code, name, category)
+      `)
+      .order('trade_type');
+
+    if (error) throw error;
+    res.json({ mappings: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add trade mapping
+app.post('/api/cost-codes/trade-mappings', async (req, res) => {
+  try {
+    const { trade_type, cost_code_id } = req.body;
+    if (!trade_type || !cost_code_id) {
+      return res.status(400).json({ error: 'Trade type and cost code ID are required' });
+    }
+
+    const { data, error } = await supabase
+      .from('v2_trade_mappings')
+      .insert({ trade_type: trade_type.toLowerCase(), cost_code_id })
+      .select(`
+        id,
+        trade_type,
+        cost_code:v2_cost_codes(id, code, name)
+      `)
+      .single();
+
+    if (error) throw error;
+    res.json({ mapping: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete trade mapping
+app.delete('/api/cost-codes/trade-mappings/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('v2_trade_mappings')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2565,7 +2689,7 @@ app.get('/api/invoices', async (req, res) => {
       .from('v2_invoices')
       .select(`
         *,
-        vendor:v2_vendors(id, name),
+        vendor:v2_vendors(id, name, trade),
         job:v2_jobs(id, name),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
@@ -2653,11 +2777,12 @@ app.get('/api/invoices/no-job', asyncHandler(async (req, res) => {
 // Get single invoice with full details
 app.get('/api/invoices/:id', async (req, res) => {
   try {
+    console.log('[DEBUG] Fetching invoice:', req.params.id);
     const { data, error } = await supabase
       .from('v2_invoices')
       .select(`
         *,
-        vendor:v2_vendors(id, name, email, phone),
+        vendor:v2_vendors(id, name, email, phone, trade),
         job:v2_jobs(id, name, address),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
@@ -2670,6 +2795,8 @@ app.get('/api/invoices/:id', async (req, res) => {
       `)
       .eq('id', req.params.id)
       .single();
+
+    console.log('[DEBUG] Vendor from query:', JSON.stringify(data?.vendor));
 
     if (error) {
       // PGRST116 = no rows found
@@ -5168,12 +5295,36 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
       const poAllocations = allocations.filter(a => a.po_id);
       if (poAllocations.length > 0) {
         await updatePOInvoicedAmounts(poAllocations);
+
+        // Also update invoice's po_id so it shows on the card/modal
+        const primaryPoId = poAllocations[0].po_id;
+        await supabase
+          .from('v2_invoices')
+          .update({ po_id: primaryPoId })
+          .eq('id', invoiceId);
       }
 
       // Update CO invoiced amounts for allocations linked to COs
       const coAllocations = allocations.filter(a => a.change_order_id);
       if (coAllocations.length > 0) {
         await updateCOInvoicedAmounts(coAllocations);
+      }
+
+      // AI Learning: Learn cost code mappings from vendor trade type
+      // Get invoice vendor to learn from this allocation
+      const { data: invForLearning } = await supabase
+        .from('v2_invoices')
+        .select('vendor_id')
+        .eq('id', invoiceId)
+        .single();
+
+      if (invForLearning?.vendor_id) {
+        // Learn from the first allocation's cost code (primary)
+        const primaryAlloc = allocations.find(a => a.cost_code_id);
+        if (primaryAlloc) {
+          aiLearning.learnCostCodeMapping(invForLearning.vendor_id, primaryAlloc.cost_code_id)
+            .catch(err => console.error('[AI Learning] Error:', err.message));
+        }
       }
     }
 
@@ -11206,6 +11357,12 @@ app.delete('/api/invoices/:id', asyncHandler(async (req, res) => {
   }
 
   await logActivity(invoiceId, 'deleted', performedBy, {});
+
+  // Delete the PDF hash so the same file can be re-uploaded
+  await supabase
+    .from('v2_invoice_hashes')
+    .delete()
+    .eq('invoice_id', invoiceId);
 
   // Check if this completes a split (deleted is a terminal state)
   if (invoice.parent_invoice_id) {
