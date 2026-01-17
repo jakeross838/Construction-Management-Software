@@ -85,9 +85,12 @@ async function loadVendors() {
 async function loadCostCodes() {
   try {
     const res = await fetch('/api/cost-codes');
-    state.costCodes = await res.json();
+    const data = await res.json();
+    // API returns { costCodes: [...] }, extract the array
+    state.costCodes = Array.isArray(data) ? data : (data.costCodes || []);
   } catch (err) {
     console.error('Failed to load cost codes:', err);
+    state.costCodes = [];
   }
 }
 

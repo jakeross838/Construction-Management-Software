@@ -658,6 +658,16 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     throw new AppError('DATABASE_ERROR', `Failed to update invoice: ${updateError.message}`);
   }
 
+  // Restamp if status changed to a status that needs stamping
+  const statusChanged = updateFields.status && updateFields.status !== existing.status;
+  const stampableStatuses = ['needs_review', 'ready_for_approval', 'approved', 'in_draw', 'paid'];
+  if (statusChanged && stampableStatuses.includes(updateFields.status)) {
+    console.log('[RESTAMP] Status changed to', updateFields.status, '- triggering restamp for invoice:', invoiceId);
+    restampInvoice(invoiceId).catch(err => {
+      console.error('[RESTAMP] Background re-stamp failed:', err.message);
+    });
+  }
+
   await logActivity(invoiceId, 'updated', performedBy, { fields: Object.keys(updateFields) });
   broadcastInvoiceUpdate(updated, 'updated', performedBy);
 

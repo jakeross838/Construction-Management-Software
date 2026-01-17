@@ -303,7 +303,8 @@ async function stampInvoice(invoiceId, options = {}) {
           isPartial: isPartialApproval
         });
 
-        if (invoice.status === 'in_draw') {
+        // Add IN DRAW stamp if applicable (for in_draw OR paid status - paid invoices were in a draw)
+        if (invoice.status === 'in_draw' || invoice.status === 'paid') {
           const { data: drawInvoice } = await supabase
             .from('v2_draw_invoices')
             .select('draw:v2_draws(draw_number)')
@@ -315,6 +316,7 @@ async function stampInvoice(invoiceId, options = {}) {
           }
         }
 
+        // Add PAID stamp if applicable
         if (invoice.status === 'paid' && invoice.paid_at) {
           const paidDate = new Date(invoice.paid_at).toLocaleDateString();
           stampedBuffer = await stampPaid(stampedBuffer, paidDate);

@@ -483,6 +483,18 @@ router.delete('/tasks/:taskId', async (req, res) => {
       .eq('id', taskId)
       .single();
 
+    // Clear task references in activity logs (to avoid FK constraint)
+    await supabase
+      .from('v2_schedule_activity')
+      .update({ task_id: null })
+      .eq('task_id', taskId);
+
+    // Also clear any dependency references to this task
+    await supabase
+      .from('v2_schedule_tasks')
+      .update({ depends_on: [] })
+      .contains('depends_on', [taskId]);
+
     const { error } = await supabase
       .from('v2_schedule_tasks')
       .delete()

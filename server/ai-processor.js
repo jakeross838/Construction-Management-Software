@@ -2134,12 +2134,20 @@ async function processDocument(pdfBuffer, originalFilename, options = {}) {
         break;
 
       default:
-        result.messages.push('Could not determine document type');
-        result.messages.push('Please manually categorize this document');
-        result.data = {
-          pdfText: pdfText?.substring(0, 2000)
+        // Default to invoice processing for construction documents
+        result.messages.push('Document type unclear - attempting to process as invoice');
+        result.documentType = DOCUMENT_TYPES.INVOICE;
+        const fallbackResult = await processInvoice(pdfBuffer, originalFilename, options.uploadedBy);
+        result.data = fallbackResult;
+        result.success = fallbackResult.success;
+        result.redirect = {
+          page: 'index.html',
+          param: 'invoice',
+          id: fallbackResult.invoice?.id
         };
-        result.success = false;
+        if (fallbackResult.messages) {
+          result.messages.push(...fallbackResult.messages);
+        }
     }
 
     result.messages.push('Document processing complete');

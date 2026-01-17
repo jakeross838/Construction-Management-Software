@@ -408,12 +408,15 @@
         const jobs = await res.json();
         const select = document.getElementById('jobSelector');
 
-        jobs.filter(j => j.status === 'active').forEach(job => {
-          const option = document.createElement('option');
-          option.value = job.id;
-          option.textContent = job.name;
-          select.appendChild(option);
-        });
+        // Only populate if the element exists
+        if (select) {
+          jobs.filter(j => j.status === 'active').forEach(job => {
+            const option = document.createElement('option');
+            option.value = job.id;
+            option.textContent = job.name;
+            select.appendChild(option);
+          });
+        }
       } catch (err) {
         console.error('Failed to load jobs:', err);
       }

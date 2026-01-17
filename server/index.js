@@ -123,6 +123,7 @@ const realtimeRoutes = require('./routes/realtime');
 const dailyLogRoutes = require('./routes/daily-logs');
 const scheduleRoutes = require('./routes/schedules');
 const documentRoutes = require('./routes/documents');
+const inspectionRoutes = require('./routes/inspections');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -140,6 +141,7 @@ app.use('/api/realtime', realtimeRoutes);
 app.use('/api/daily-logs', dailyLogRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/inspections', inspectionRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete
@@ -508,8 +510,8 @@ async function stampInvoice(invoiceId, options = {}) {
           isPartial: isPartialApproval
         });
 
-        // Add IN DRAW stamp if applicable
-        if (invoice.status === 'in_draw') {
+        // Add IN DRAW stamp if applicable (for in_draw OR paid status - paid invoices were in a draw)
+        if (invoice.status === 'in_draw' || invoice.status === 'paid') {
           const { data: drawInvoice } = await supabase
             .from('v2_draw_invoices')
             .select('draw:v2_draws(draw_number)')
@@ -6156,47 +6158,7 @@ app.get('/api/draws', async (req, res) => {
   }
 });
 
-app.get('/api/jobs/:id/draws', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('v2_draws')
-      .select(`
-        *,
-        invoices:v2_draw_invoices(
-          invoice:v2_invoices(id, invoice_number, amount, vendor:v2_vendors(name))
-        )
-      `)
-      .eq('job_id', req.params.id)
-      .order('draw_number', { ascending: false });
-
-    if (error) throw error;
-
-    // Get CO billings for all draws
-    const drawIds = data.map(d => d.id);
-    const { data: coBillings } = await supabase
-      .from('v2_job_co_draw_billings')
-      .select('draw_id, amount')
-      .in('draw_id', drawIds);
-
-    // Calculate total amount for each draw (invoices + CO billings)
-    const drawsWithTotals = data.map(draw => {
-      const invoiceTotal = draw.invoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
-      const coTotal = (coBillings || [])
-        .filter(b => b.draw_id === draw.id)
-        .reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
-      return {
-        ...draw,
-        total_amount: invoiceTotal + coTotal,
-        invoice_total: invoiceTotal,
-        co_total: coTotal
-      };
-    });
-
-    res.json(drawsWithTotals);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// NOTE: /api/jobs/:id/draws is handled in server/routes/jobs.js
 
 // Get single draw with full data for G702/G703 view
 app.get('/api/draws/:id', async (req, res) => {
@@ -6879,22 +6841,6 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
           }, { onConflict: 'draw_id,invoice_id,cost_code_id' });
       }
 
-      // Stamp PDF with "IN DRAW" using fixed path
-      if (inv.pdf_url) {
-        try {
-          // Always stamp from original PDF
-          const storagePath = extractStoragePath(inv.pdf_url);
-          if (storagePath) {
-            const pdfBuffer = await downloadPDF(storagePath);
-            const stampedBuffer = await stampInDraw(pdfBuffer, draw?.draw_number || 1);
-            // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
-            await uploadStampedPDFById(stampedBuffer, inv.id, inv.job_id);
-          }
-        } catch (stampErr) {
-          console.error('IN DRAW stamp failed for invoice:', inv.id, stampErr.message);
-        }
-      }
-
       // Update invoice billed_amount (cap at invoice amount to prevent overbilling)
       // For credits: use Math.max (cap at most negative value)
       // For standard: use Math.min (cap at invoice amount)
@@ -6938,6 +6884,11 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
         .from('v2_invoices')
         .update(updateData)
         .eq('id', inv.id);
+
+      // Re-stamp with unified stampInvoice (applies approval + in_draw stamps correctly)
+      restampInvoice(inv.id).catch(err => {
+        console.error('Stamp failed for invoice:', inv.id, err.message);
+      });
     }
 
     // For partial invoices, clear the allocations so they can be re-allocated for remaining
@@ -7490,26 +7441,11 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
           }
         }
 
-        // Stamp and update invoice as PAID using fixed path
-        if (inv.pdf_url) {
-          try {
-            // Always stamp from original PDF
-            const storagePath = extractStoragePath(inv.pdf_url);
-            if (storagePath) {
-              const pdfBuffer = await downloadPDF(storagePath);
-              const stampedBuffer = await stampPaid(pdfBuffer, paidDate);
-              // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
-              await uploadStampedPDFById(stampedBuffer, inv.id, inv.job_id);
-            }
-          } catch (stampErr) {
-            console.error('PAID stamp failed for invoice:', inv.id, stampErr.message);
-          }
-        }
-
         // Mark invoice as paid and set fully_billed_at if applicable
         const invoiceUpdate = {
           status: 'paid',
-          paid_amount: newPaidAmount
+          paid_amount: newPaidAmount,
+          paid_at: new Date().toISOString()
         };
         if (isFullyBilled) {
           invoiceUpdate.fully_billed_at = now;
@@ -7519,6 +7455,11 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
           .from('v2_invoices')
           .update(invoiceUpdate)
           .eq('id', inv.id);
+
+        // Re-stamp with unified stampInvoice (applies approval + draw + paid stamps correctly)
+        restampInvoice(inv.id).catch(err => {
+          console.error('Stamp failed for invoice:', inv.id, err.message);
+        });
 
         await logActivity(inv.id, 'paid', 'System', {
           draw_id: drawId,
@@ -9733,23 +9674,6 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
 
       // Log activity
       await logActivity(invoiceId, 'added_to_draw', performedBy, { draw_number: drawNumber });
-
-      // Add IN DRAW stamp to the PDF using fixed path
-      try {
-        if (existing.pdf_url) {
-          // Always stamp from original PDF
-          const storagePath = extractStoragePath(existing.pdf_url);
-          if (storagePath) {
-            const pdfBuffer = await downloadPDF(storagePath);
-            const stampedBuffer = await stampInDraw(pdfBuffer, drawNumber);
-            // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
-            const result = await uploadStampedPDFById(stampedBuffer, invoiceId, existing.job_id);
-            updateFields.pdf_stamped_url = result.url;
-          }
-        }
-      } catch (stampErr) {
-        console.error('IN DRAW stamp failed:', stampErr.message);
-      }
     }
 
     // Handle PDF stamping when transitioning TO approved
@@ -10043,13 +9967,19 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
   }
 
   // Re-stamp PDF if there were changes that affect the stamp
-  // (but skip if status transition already handled stamping)
+  // Status transitions that need restamping via unified stampInvoice:
+  // - in_draw, paid: always need full restamp
+  // - approved FROM in_draw: inline stamp was skipped, need restamp
+  // Status transitions that stamp inline (don't need restamp): needs_review, ready_for_approval, approved (except from in_draw)
   const stampAffectingFields = ['job_id', 'vendor_id', 'amount', 'invoice_number', 'po_id'];
   const hasStampAffectingChanges = stampAffectingFields.some(f => changes[f]) || changes.allocations;
-  const statusAlreadyStamped = changes.status && ['needs_review', 'ready_for_approval', 'approved', 'in_draw', 'paid'].includes(changes.status.to);
+  const isApprovedFromInDraw = changes.status?.to === 'approved' && changes.status?.from === 'in_draw';
+  const statusAlreadyStampedInline = changes.status && ['needs_review', 'ready_for_approval'].includes(changes.status.to);
+  const statusAlreadyStampedInlineApproved = changes.status?.to === 'approved' && changes.status?.from !== 'in_draw';
+  const statusNeedsRestamp = changes.status && (['in_draw', 'paid'].includes(changes.status.to) || isApprovedFromInDraw);
 
-  if (hasStampAffectingChanges && !statusAlreadyStamped) {
-    // Re-stamp in background (don't block response)
+  if ((hasStampAffectingChanges && !statusAlreadyStampedInline && !statusAlreadyStampedInlineApproved) || statusNeedsRestamp) {
+    // Re-stamp in background using unified stampInvoice (don't block response)
     restampInvoice(invoiceId).catch(err => {
       console.error('[RESTAMP] Background re-stamp failed:', err.message);
     });

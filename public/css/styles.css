@@ -19621,3 +19621,466 @@ textarea.form-control {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ============================================================
+   INSPECTIONS PAGE STYLES
+   ============================================================ */
+
+/* Inspection Stats Bar */
+.inspection-stats-bar {
+  display: flex;
+  gap: 2rem;
+  padding: 1rem 1.5rem;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.inspection-stats-bar .stat-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.inspection-stats-bar .stat-icon {
+  font-size: 1.25rem;
+}
+
+.inspection-stats-bar .stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--accent-blue);
+}
+
+.inspection-stats-bar .stat-value.stat-passed {
+  color: var(--accent-green);
+}
+
+.inspection-stats-bar .stat-value.stat-failed {
+  color: var(--accent-red);
+}
+
+.inspection-stats-bar .stat-value.stat-upcoming {
+  color: var(--accent-orange);
+}
+
+.inspection-stats-bar .stat-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* Inspection List */
+.inspection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.inspection-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.inspection-date-group .date-header {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Inspection Cards */
+.inspection-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.inspection-card:hover {
+  border-color: var(--accent-blue);
+  background: var(--bg-card-elevated);
+}
+
+.inspection-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.inspection-type {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.inspection-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.inspection-job {
+  font-size: 0.85rem;
+  color: var(--accent-blue);
+}
+
+.inspection-inspector {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.inspection-time {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+}
+
+.deficiency-count {
+  font-size: 0.85rem;
+  color: var(--accent-red);
+  margin-top: 0.25rem;
+}
+
+.reinspection-link {
+  font-size: 0.85rem;
+  color: var(--accent-blue);
+  margin-top: 0.25rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--accent-blue);
+}
+
+/* Status Badges */
+.status-no-show {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+
+.status-cancelled {
+  background: rgba(107, 114, 128, 0.15);
+  color: #9ca3af;
+}
+
+.badge-reinspection {
+  background: rgba(236, 72, 153, 0.15);
+  color: #f472b6;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+/* Form Section Divider */
+.form-section-divider {
+  position: relative;
+  text-align: left;
+  margin: 1.5rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--accent-blue);
+}
+
+/* Form Row */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 600px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Modal Footer Layout */
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-footer-right {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.modal-footer-left {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Detail Section */
+.detail-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.detail-section h4 {
+  font-size: 0.95rem;
+  color: var(--accent-blue);
+  margin-bottom: 0.75rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.detail-item label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+}
+
+.detail-item span {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.detail-item a {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.detail-item a:hover {
+  text-decoration: underline;
+}
+
+.detail-notes {
+  background: var(--bg-primary);
+  padding: 0.75rem;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-top: 0.75rem;
+}
+
+/* Linked Inspection */
+.linked-inspection {
+  padding: 0.75rem;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.linked-inspection:hover {
+  background: var(--bg-card);
+}
+
+.reinspection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Deficiency List */
+.deficiency-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.deficiency-item {
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 1rem;
+  border-left: 3px solid var(--border);
+}
+
+.deficiency-item.deficiency-open {
+  border-left-color: var(--accent-red);
+}
+
+.deficiency-item.deficiency-in_progress {
+  border-left-color: var(--accent-orange);
+}
+
+.deficiency-item.deficiency-resolved {
+  border-left-color: var(--accent-green);
+  opacity: 0.7;
+}
+
+.deficiency-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.severity-badge {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.severity-minor {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+}
+
+.severity-major {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-orange);
+}
+
+.severity-critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-red);
+}
+
+.deficiency-status {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.deficiency-description {
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.deficiency-location,
+.deficiency-vendor {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+}
+
+.deficiency-resolution {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--accent-green);
+}
+
+/* Deficiency Form Row */
+.deficiency-form-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.deficiency-form-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 100px auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .deficiency-form-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .deficiency-form-row .def-description {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Activity Log */
+.activity-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.85rem;
+}
+
+.activity-action {
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.activity-by {
+  color: var(--accent-blue);
+}
+
+.activity-time {
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+}
+
+/* Filter Date Input */
+.filter-date {
+  min-width: 140px;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--text-secondary);
+}
+
+.empty-state .empty-icon {
+  font-size: 4rem;
+  display: block;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  font-size: 1.25rem;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+  margin-bottom: 1.5rem;
+}
+
+/* Error State */
+.error-state {
+  text-align: center;
+  padding: 2rem;
+  color: var(--accent-red);
+}
+
+/* Modal Sizes */
+.modal-content.modal-sm {
+  max-width: 450px;
+}
+
+.modal-content.modal-md {
+  max-width: 600px;
+}
+
+.modal-content.modal-lg {
+  max-width: 800px;
+}

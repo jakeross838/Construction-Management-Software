@@ -26,7 +26,9 @@ window.CostCodePicker = {
       const response = await fetch('/api/cost-codes');
       if (!response.ok) throw new Error('Failed to load cost codes');
 
-      this.costCodes = await response.json();
+      const data = await response.json();
+      // API returns { costCodes: [...] }, extract the array
+      this.costCodes = Array.isArray(data) ? data : (data.costCodes || []);
 
       // Group by category
       this.codesByCategory = {};
@@ -41,6 +43,7 @@ window.CostCodePicker = {
       return this.costCodes;
     } catch (err) {
       console.error('Failed to load cost codes:', err);
+      this.costCodes = [];
       return [];
     }
   },

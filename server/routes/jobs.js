@@ -127,12 +127,41 @@ router.get('/:id/draws', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('v2_draws')
-      .select('*')
+      .select(`
+        *,
+        invoices:v2_draw_invoices(
+          invoice:v2_invoices(id, invoice_number, amount, vendor:v2_vendors(name))
+        )
+      `)
       .eq('job_id', req.params.id)
       .order('draw_number', { ascending: false });
 
     if (error) throw error;
-    res.json(data);
+
+    // Get CO billings for all draws
+    const drawIds = data.map(d => d.id);
+    const { data: coBillings } = drawIds.length > 0 ? await supabase
+      .from('v2_job_co_draw_billings')
+      .select('draw_id, amount')
+      .in('draw_id', drawIds) : { data: [] };
+
+    // Calculate totals for each draw
+    const drawsWithTotals = data.map(draw => {
+      const invoiceTotal = draw.invoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
+      const invoiceCount = draw.invoices?.length || 0;
+      const coTotal = (coBillings || [])
+        .filter(b => b.draw_id === draw.id)
+        .reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+      return {
+        ...draw,
+        total_amount: invoiceTotal + coTotal,
+        invoice_total: invoiceTotal,
+        invoice_count: invoiceCount,
+        co_total: coTotal
+      };
+    });
+
+    res.json(drawsWithTotals);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
