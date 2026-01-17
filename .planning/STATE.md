@@ -5,11 +5,11 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Phase 12 — Bids (first new feature for v1.1)
+**Current focus:** Phase 7 — Bids (first new feature)
 
 ## Current Position
 
-Phase: 12 of 16 (Bids)
+Phase: 7 of 11 (Bids)
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-01-17 — Comprehensive assessment completed, roadmap restructured
@@ -75,6 +75,6 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 12` to create detailed plan for Bids feature
+1. Run `/gsd:plan-phase 7` to create detailed plan for Bids feature
 2. Execute plan to implement Bids API and frontend
-3. Continue with Phase 13 (Estimates) and Phase 14 (Photos)
+3. Continue with Phase 8 (Estimates) and Phase 9 (Photos)

@@ -2,14 +2,11 @@
 
 ## Milestones
 
-- 🔧 **v1.0 Core** - Phases 1-11 (mostly complete, gaps identified)
-- 🚧 **v1.1 Field Features** - Phases 12-16 (in progress)
+- 🔧 **v1.1** - Phases 1-11 (gaps + new features)
 
 ---
 
-## v1.0 Core (Gaps & Polish)
-
-These phases address incomplete features in the "complete" v1.0 system.
+## Phases 1-6: Gap Fixes
 
 ### Phase 1: Foundation Polish
 **Goal**: Harden error handling and add missing infrastructure
@@ -98,11 +95,10 @@ Plans:
 
 ---
 
-## v1.1 Field Features (New Development)
+## Phases 7-11: New Features
 
-### Phase 12: Bids
+### Phase 7: Bids
 **Goal**: Users can collect vendor bids, compare them, and convert to POs
-**Depends on**: Phase 4 (PO system - complete)
 **Requirements**: BID-01, BID-02, BID-03, BID-04, BID-05
 **Status**: Not started
 **Success Criteria:**
@@ -113,14 +109,14 @@ Plans:
   5. User can convert an accepted bid to a Purchase Order
 
 Plans:
-- [ ] 12-01: Database schema and API routes
-- [ ] 12-02: Frontend page and modals
+- [ ] 07-01: Database schema and API routes
+- [ ] 07-02: Frontend page and modals
 
 ---
 
-### Phase 13: Estimates
+### Phase 8: Estimates
 **Goal**: Users can create cost estimates and convert to budgets
-**Depends on**: Phase 12 (import from bids)
+**Depends on**: Phase 7 (import from bids)
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05
 **Status**: Not started
 **Success Criteria:**
@@ -131,14 +127,14 @@ Plans:
   5. User can convert approved estimate to job budget
 
 Plans:
-- [ ] 13-01: Database schema and API routes
-- [ ] 13-02: Frontend page with line item editing
+- [ ] 08-01: Database schema and API routes
+- [ ] 08-02: Frontend page with line item editing
 
 ---
 
-### Phase 14: Photos
+### Phase 9: Photos
 **Goal**: Users can document project progress with photos
-**Depends on**: Nothing (can run parallel to Phase 13)
+**Depends on**: Nothing (can run parallel to Phase 8)
 **Requirements**: PHO-01, PHO-02, PHO-03, PHO-04
 **Status**: Not started
 **Success Criteria:**
@@ -148,14 +144,13 @@ Plans:
   4. User can link photos to inspections, punch items, or daily logs
 
 Plans:
-- [ ] 14-01: Database schema and API routes
-- [ ] 14-02: Frontend gallery and upload UI
+- [ ] 09-01: Database schema and API routes
+- [ ] 09-02: Frontend gallery and upload UI
 
 ---
 
-### Phase 15: Dashboard
+### Phase 10: Dashboard
 **Goal**: Actionable overview with alerts and metrics
-**Depends on**: All previous phases
 **Requirements**: DASH-01, DASH-02
 **Status**: Not started
 **Success Criteria:**
@@ -164,13 +159,12 @@ Plans:
   3. Quick action buttons
 
 Plans:
-- [ ] 15-01: Dashboard metrics and alerts
+- [ ] 10-01: Dashboard metrics and alerts
 
 ---
 
-### Phase 16: UX Polish
+### Phase 11: UX Polish
 **Goal**: Mobile responsiveness and usability improvements
-**Depends on**: All previous phases
 **Requirements**: UX-02, UX-03
 **Status**: Not started
 **Success Criteria:**
@@ -179,16 +173,16 @@ Plans:
   3. Keyboard shortcuts
 
 Plans:
-- [ ] 16-01: Mobile responsiveness
-- [ ] 16-02: Global search
+- [ ] 11-01: Mobile responsiveness
+- [ ] 11-02: Global search
 
 ---
 
 ## Progress
 
 **Execution Order:**
-Option A (Complete v1.0 first): Phases 1-6 → 12-16
-Option B (New features first): Phases 12-14 → 1-6 → 15-16
+Option A (Fix gaps first): 1-6 → 7-11
+Option B (New features first): 7-9 → 1-6 → 10-11
 
 **Recommended**: Option B - Ship visible new features (Bids, Estimates, Photos) first, then polish.
 
@@ -200,22 +194,22 @@ Option B (New features first): Phases 12-14 → 1-6 → 15-16
 | 4 | Budget Enhancements | 0/1 | Not started | P2 |
 | 5 | Schedule Improvements | 0/1 | Not started | P2 |
 | 6 | Document Versioning | 0/1 | Not started | P2 |
-| 12 | Bids | 0/2 | Not started | **P0** |
-| 13 | Estimates | 0/2 | Not started | **P0** |
-| 14 | Photos | 0/2 | Not started | **P0** |
-| 15 | Dashboard | 0/1 | Not started | P2 |
-| 16 | UX Polish | 0/2 | Not started | P2 |
+| 7 | Bids | 0/2 | Not started | **P0** |
+| 8 | Estimates | 0/2 | Not started | **P0** |
+| 9 | Photos | 0/2 | Not started | **P0** |
+| 10 | Dashboard | 0/1 | Not started | P2 |
+| 11 | UX Polish | 0/2 | Not started | P2 |
 
 **Priority Legend:**
-- P0: Ship in v1.1 (new features)
-- P1: Important gaps to fix
+- P0: New features (ship first)
+- P1: Important gaps
 - P2: Polish and enhancements
 
 ---
 
-## What's Actually Complete
+## What's Already Complete
 
-The following feature areas are fully implemented and need no further work:
+These features are fully implemented and need no further work:
 
 1. **Invoices** (100%) - AI extraction, OCR, workflow, stamping, splits, credits
 2. **Purchase Orders** (100%) - CRUD, line items, approval, change orders, attachments
