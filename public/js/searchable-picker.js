@@ -11,6 +11,9 @@ window.SearchablePicker = {
     pos: null
   },
 
+  // Debounce timer for input
+  inputDebounceTimer: null,
+
   /**
    * Initialize a searchable picker
    * @param {HTMLElement} container - Container element
@@ -56,7 +59,13 @@ window.SearchablePicker = {
     // Event handlers
     input.addEventListener('focus', () => this.handleFocus(picker));
     input.addEventListener('blur', () => this.handleBlur(picker));
-    input.addEventListener('input', (e) => this.handleInput(picker, e.target.value));
+    input.addEventListener('input', (e) => {
+      // Debounce input to prevent excessive DOM updates
+      clearTimeout(this.inputDebounceTimer);
+      this.inputDebounceTimer = setTimeout(() => {
+        this.handleInput(picker, e.target.value);
+      }, 150);
+    });
     input.addEventListener('keydown', (e) => this.handleKeydown(picker, e));
 
     clear.addEventListener('mousedown', (e) => {

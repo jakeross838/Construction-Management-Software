@@ -523,7 +523,7 @@ Status badge colors:
 
 ## Known Patterns
 
-### Modal Pattern
+### Modal Pattern (CRITICAL)
 Fullscreen modals use class `modal-fullscreen-dark`:
 ```html
 <div id="myModal" class="modal modal-fullscreen-dark">
@@ -535,9 +535,44 @@ Fullscreen modals use class `modal-fullscreen-dark`:
 </div>
 ```
 
-Open via JS:
+**IMPORTANT**: CSS uses `opacity: 0` by default. You MUST add `.show` class for visibility:
 ```javascript
-document.getElementById('myModal').style.display = 'flex';
+// OPEN MODAL - must add .show class or modal will be invisible!
+function openModal() {
+  const modal = document.getElementById('myModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');  // REQUIRED for opacity transition
+}
+
+// CLOSE MODAL - remove .show before hiding
+function closeModal() {
+  const modal = document.getElementById('myModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+```
+
+### Page Initialization Pattern (CRITICAL)
+Always set up UI controls BEFORE loading data. Wrap async loads individually:
+```javascript
+document.addEventListener('DOMContentLoaded', async () => {
+  // 1. Set up UI controls FIRST - page stays responsive even if data fails
+  setupEventListeners();
+  setupFilters();
+
+  // 2. Load data with individual error handling
+  try {
+    await Promise.all([
+      loadJobs().catch(err => console.error('Jobs failed:', err)),
+      loadVendors().catch(err => console.error('Vendors failed:', err))
+    ]);
+  } catch (err) {
+    showToast('Some data failed to load', 'error');
+  }
+
+  // 3. Then load main content
+  await loadMainData();
+});
 ```
 
 ### Tab Pattern
@@ -564,12 +599,46 @@ showToast('Error occurred', 'error');
 </select>
 ```
 
+### Input Debouncing Pattern
+Always debounce search/filter inputs to prevent DOM thrashing:
+```javascript
+let debounceTimer;
+input.addEventListener('input', (e) => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    handleSearch(e.target.value);
+  }, 150);  // 150ms delay
+});
+```
+
+### API Caching Pattern
+Use `window.APICache` for reference data (jobs, vendors, cost codes):
+```javascript
+// Cached fetch with 5-min TTL (falls back to regular fetch if cache unavailable)
+const jobs = await window.APICache?.fetch('/api/jobs')
+  || await fetch('/api/jobs').then(r => r.json());
+```
+
+### Parallel Data Loading
+Use Promise.all for independent API calls (avoid N+1 problem):
+```javascript
+// BAD - sequential (slow)
+for (const po of pos) {
+  po.billed = await getBilled(po.id);
+}
+
+// GOOD - parallel (fast)
+const billedAmounts = await Promise.all(pos.map(po => getBilled(po.id)));
+pos.forEach((po, i) => po.billed = billedAmounts[i]);
+```
+
 ---
 
 ## Troubleshooting
 
-### Modal not visible
-Check CSS: `#modalId .modal-content` needs `opacity: 1` and `transform: scale(1)`
+### Modal not visible / Page frozen on button click
+The modal `.show` class is missing. CSS uses `opacity: 0` by default.
+Fix: Add `modal.classList.add('show')` after setting `display: flex`
 
 ### API 404
 Check route order in server/index.js - specific routes before parameterized routes

@@ -19,12 +19,28 @@ let state = {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  loadJobs();
-  loadVendors();
-  loadCostCodes();
-  await loadPurchaseOrders();
+  // Set up UI controls FIRST - so page is responsive even if data fails
   setupFilterButtons();
   setupSearchInput();
+
+  // Load reference data in parallel with error handling
+  try {
+    await Promise.all([
+      loadJobs().catch(err => console.error('Jobs load failed:', err)),
+      loadVendors().catch(err => console.error('Vendors load failed:', err)),
+      loadCostCodes().catch(err => console.error('Cost codes load failed:', err))
+    ]);
+  } catch (err) {
+    console.error('Initial data load failed:', err);
+    window.toasts?.error('Some data failed to load');
+  }
+
+  // Load purchase orders
+  try {
+    await loadPurchaseOrders();
+  } catch (err) {
+    console.error('PO load failed:', err);
+  }
 
   // Check for openPO query parameter (deep linking from reconciliation, etc.)
   const urlParams = new URLSearchParams(window.location.search);
@@ -55,17 +71,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadJobs() {
   try {
-    const res = await fetch('/api/jobs');
-    state.jobs = await res.json();
+    // Use cached data if available (5 min TTL)
+    state.jobs = await window.APICache?.fetch('/api/jobs') || await fetch('/api/jobs').then(r => r.json());
   } catch (err) {
     console.error('Failed to load jobs:', err);
+    window.toasts?.error('Failed to load jobs', { details: 'Check your connection' });
   }
 }
 
 async function loadVendors() {
   try {
-    const res = await fetch('/api/vendors');
-    state.vendors = await res.json();
+    // Use cached data if available (5 min TTL)
+    state.vendors = await window.APICache?.fetch('/api/vendors') || await fetch('/api/vendors').then(r => r.json());
 
     const select = document.getElementById('vendorFilter');
     select.innerHTML = '<option value="">All Vendors</option>';
@@ -79,17 +96,19 @@ async function loadVendors() {
     });
   } catch (err) {
     console.error('Failed to load vendors:', err);
+    window.toasts?.error('Failed to load vendors');
   }
 }
 
 async function loadCostCodes() {
   try {
-    const res = await fetch('/api/cost-codes');
-    const data = await res.json();
+    // Use cached data if available (5 min TTL)
+    const data = await window.APICache?.fetch('/api/cost-codes') || await fetch('/api/cost-codes').then(r => r.json());
     // API returns { costCodes: [...] }, extract the array
     state.costCodes = Array.isArray(data) ? data : (data.costCodes || []);
   } catch (err) {
     console.error('Failed to load cost codes:', err);
+    window.toasts?.error('Failed to load cost codes');
     state.costCodes = [];
   }
 }
@@ -99,16 +118,20 @@ async function loadPurchaseOrders() {
     const res = await fetch('/api/purchase-orders');
     const pos = await res.json();
 
-    // Load billed amounts for each PO
-    for (const po of pos) {
-      po.billed_amount = await getPOBilledAmount(po.id);
-    }
+    // Load billed amounts for all POs in parallel (not sequential)
+    const billedAmounts = await Promise.all(
+      pos.map(po => getPOBilledAmount(po.id))
+    );
+    pos.forEach((po, i) => {
+      po.billed_amount = billedAmounts[i];
+    });
 
     state.purchaseOrders = pos;
     renderPOList();
   } catch (err) {
     console.error('Failed to load purchase orders:', err);
     document.getElementById('poList').innerHTML = '<div class="error-state">Failed to load purchase orders</div>';
+    window.toasts?.error('Failed to load purchase orders', { details: 'Please refresh the page' });
   }
 }
 

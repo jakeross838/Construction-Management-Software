@@ -436,7 +436,9 @@ async function extractFromPlans() {
   document.getElementById('extractionStatus').style.display = 'none';
   document.getElementById('extractionResults').style.display = 'none';
   document.getElementById('applyExtractionBtn').style.display = 'none';
-  document.getElementById('extractModal').style.display = 'flex';
+  const modal = document.getElementById('extractModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
 }
 
 async function extractAllPlans() {
@@ -713,7 +715,9 @@ async function applyExtraction() {
 }
 
 function closeExtractModal() {
-  document.getElementById('extractModal').style.display = 'none';
+  const modal = document.getElementById('extractModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
   state.extractedData = null;
 }
 

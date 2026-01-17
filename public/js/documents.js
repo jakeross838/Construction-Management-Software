@@ -322,11 +322,15 @@ function openUploadModal() {
     });
   }
 
-  document.getElementById('uploadModal').style.display = 'flex';
+  const modal = document.getElementById('uploadModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
 }
 
 function closeUploadModal() {
-  document.getElementById('uploadModal').style.display = 'none';
+  const modal = document.getElementById('uploadModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
   clearFile();
 }
 
@@ -438,7 +442,9 @@ async function openDetailModal(docId) {
       });
     }
 
-    document.getElementById('docDetailModal').style.display = 'flex';
+    const modal = document.getElementById('docDetailModal');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
   } catch (err) {
     console.error('Failed to load document:', err);
     showToast('Failed to load document', 'error');
@@ -446,7 +452,9 @@ async function openDetailModal(docId) {
 }
 
 function closeDetailModal() {
-  document.getElementById('docDetailModal').style.display = 'none';
+  const modal = document.getElementById('docDetailModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
 }
 
 async function saveDocumentDetails() {

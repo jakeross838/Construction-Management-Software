@@ -85,10 +85,18 @@ const constructionPhases = [
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await Promise.all([
-    loadJobs(),
-    loadVendors()
-  ]);
+  // Setup date calculation listeners in modal FIRST - so UI is responsive
+  setupDateCalculations();
+
+  // Load reference data with error handling
+  try {
+    await Promise.all([
+      loadJobs().catch(err => console.error('Jobs load failed:', err)),
+      loadVendors().catch(err => console.error('Vendors load failed:', err))
+    ]);
+  } catch (err) {
+    console.error('Initial data load failed:', err);
+  }
 
   // Sidebar integration - listen for job selection changes
   if (window.JobSidebar) {
@@ -101,12 +109,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.currentJobId = window.JobSidebar.getSelectedJobId();
   }
 
-  // Setup date calculation listeners in modal
-  setupDateCalculations();
-
   // Load schedule if job is selected
   if (state.currentJobId) {
-    await loadSchedule();
+    try {
+      await loadSchedule();
+    } catch (err) {
+      console.error('Schedule load failed:', err);
+    }
   } else {
     showNoJobSelected();
   }
@@ -643,10 +652,13 @@ function openTaskModal(taskId = null) {
   }
 
   modal.style.display = 'flex';
+  modal.classList.add('show');
 }
 
 function closeTaskModal() {
-  document.getElementById('taskModal').style.display = 'none';
+  const modal = document.getElementById('taskModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
 }
 
 function initTaskPickers() {

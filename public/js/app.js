@@ -44,8 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadJobs() {
   try {
-    const res = await fetch('/api/jobs');
-    state.jobs = await res.json();
+    // Use cached data if available (5 min TTL)
+    state.jobs = await window.APICache?.fetch('/api/jobs') || await fetch('/api/jobs').then(r => r.json());
 
     // Initialize upload modal job picker
     const uploadJobContainer = document.getElementById('upload-job-picker-container');
@@ -60,13 +60,14 @@ async function loadJobs() {
     }
   } catch (err) {
     console.error('Failed to load jobs:', err);
+    window.toasts?.error('Failed to load jobs');
   }
 }
 
 async function loadVendors() {
   try {
-    const res = await fetch('/api/vendors');
-    state.vendors = await res.json();
+    // Use cached data if available (5 min TTL)
+    state.vendors = await window.APICache?.fetch('/api/vendors') || await fetch('/api/vendors').then(r => r.json());
 
     // Initialize upload modal vendor picker
     const uploadVendorContainer = document.getElementById('upload-vendor-picker-container');
@@ -81,15 +82,17 @@ async function loadVendors() {
     }
   } catch (err) {
     console.error('Failed to load vendors:', err);
+    window.toasts?.error('Failed to load vendors');
   }
 }
 
 async function loadCostCodes() {
   try {
-    const res = await fetch('/api/cost-codes');
-    state.costCodes = await res.json();
+    // Use cached data if available (5 min TTL)
+    state.costCodes = await window.APICache?.fetch('/api/cost-codes') || await fetch('/api/cost-codes').then(r => r.json());
   } catch (err) {
     console.error('Failed to load cost codes:', err);
+    window.toasts?.error('Failed to load cost codes');
   }
 }
 
@@ -125,6 +128,7 @@ async function loadInvoices() {
     }
   } catch (err) {
     console.error('Failed to load invoices:', err);
+    window.toasts?.error('Failed to load invoices', { details: 'Please refresh the page' });
   }
 }
 

@@ -154,12 +154,19 @@ let inspectionEntryIndex = 0;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await Promise.all([
-    loadJobs(),
-    loadVendors()
-  ]);
-
+  // Set up filters FIRST - so UI is responsive even if data fails
   setupFilters();
+
+  // Load reference data with error handling
+  try {
+    await Promise.all([
+      loadJobs().catch(err => console.error('Jobs load failed:', err)),
+      loadVendors().catch(err => console.error('Vendors load failed:', err))
+    ]);
+  } catch (err) {
+    console.error('Initial data load failed:', err);
+    showToast('Some data failed to load', 'error');
+  }
 
   // Sidebar integration - listen for job selection changes
   if (window.JobSidebar) {
@@ -167,7 +174,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.currentJobId = jobId;
       loadDailyLogs();
       loadStats();
-      loadScheduleTasks();  // Load schedule tasks for the new job
+      loadScheduleTasks();
     });
 
     // Get initial job selection
@@ -176,11 +183,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load logs if job is selected
   if (state.currentJobId) {
-    await Promise.all([
-      loadDailyLogs(),
-      loadStats(),
-      loadScheduleTasks()  // Load schedule tasks
-    ]);
+    try {
+      await Promise.all([
+        loadDailyLogs().catch(err => console.error('Logs load failed:', err)),
+        loadStats().catch(err => console.error('Stats load failed:', err)),
+        loadScheduleTasks().catch(err => console.error('Tasks load failed:', err))
+      ]);
+    } catch (err) {
+      console.error('Daily logs data load failed:', err);
+    }
   } else {
     showNoJobSelected();
   }
@@ -200,6 +211,7 @@ async function loadJobs() {
     populateJobDropdown();
   } catch (err) {
     console.error('Failed to load jobs:', err);
+    showToast('Failed to load jobs', 'error');
   }
 }
 
@@ -209,6 +221,7 @@ async function loadVendors() {
     state.vendors = await res.json();
   } catch (err) {
     console.error('Failed to load vendors:', err);
+    showToast('Failed to load vendors', 'error');
   }
 }
 
@@ -240,7 +253,12 @@ async function loadDailyLogs() {
   const container = document.getElementById('logList');
   const noJobDiv = document.getElementById('noJobSelected');
   noJobDiv.style.display = 'none';
-  container.innerHTML = '<div class="loading">Loading daily logs...</div>';
+  // Skeleton loading for better perceived performance
+  container.innerHTML = `
+    <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
+    <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
+    <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
+  `;
 
   try {
     let url = `/api/daily-logs?job_id=${state.currentJobId}`;

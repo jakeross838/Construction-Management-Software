@@ -28,25 +28,34 @@ const CURRENT_USER = 'Jake Ross';
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Set up event listeners FIRST - so UI is responsive even if data fails
+  setupEventListeners();
+
   // Get job_id from sidebar if available
   const sidebarJobId = localStorage.getItem('selectedJobId');
   if (sidebarJobId) {
     state.currentJobId = sidebarJobId;
   }
 
-  // Load initial data
-  await Promise.all([
-    loadJobs(),
-    loadInspectionTypes(),
-    loadVendors()
-  ]);
-
-  // Set up event listeners
-  setupEventListeners();
+  // Load initial data with error handling - don't let failures freeze the page
+  try {
+    await Promise.all([
+      loadJobs().catch(err => console.error('Jobs load failed:', err)),
+      loadInspectionTypes().catch(err => console.error('Types load failed:', err)),
+      loadVendors().catch(err => console.error('Vendors load failed:', err))
+    ]);
+  } catch (err) {
+    console.error('Initial data load failed:', err);
+    showToast('Some data failed to load. Try refreshing.', 'error');
+  }
 
   // Load inspections
-  await loadInspections();
-  await loadStats();
+  try {
+    await loadInspections();
+    await loadStats();
+  } catch (err) {
+    console.error('Inspections load failed:', err);
+  }
 });
 
 // Listen for job changes from sidebar
@@ -58,8 +67,8 @@ window.addEventListener('jobChanged', (e) => {
 
 async function loadJobs() {
   try {
-    const res = await fetch('/api/jobs');
-    const jobs = await res.json();
+    // Use cached data if available (5 min TTL)
+    const jobs = await window.APICache?.fetch('/api/jobs') || await fetch('/api/jobs').then(r => r.json());
     state.jobs = jobs;
 
     // Populate form job select
@@ -78,6 +87,7 @@ async function loadJobs() {
     }
   } catch (err) {
     console.error('Error loading jobs:', err);
+    showToast('Failed to load jobs', 'error');
   }
 }
 
@@ -108,15 +118,14 @@ async function loadInspectionTypes() {
     });
   } catch (err) {
     console.error('Error loading inspection types:', err);
+    showToast('Failed to load inspection types', 'error');
   }
 }
 
 async function loadVendors() {
   try {
-    const res = await fetch('/api/vendors');
-    if (res.ok) {
-      state.vendors = await res.json();
-    }
+    // Use cached data if available (5 min TTL)
+    state.vendors = await window.APICache?.fetch('/api/vendors') || await fetch('/api/vendors').then(r => r.json());
   } catch (err) {
     console.error('Error loading vendors:', err);
     state.vendors = [];
@@ -171,9 +180,16 @@ function clearSearch() {
 // DATA LOADING
 // ============================================================
 
+// Skeleton loading HTML
+const SKELETON_LOADING = `
+  <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
+  <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
+  <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
+`;
+
 async function loadInspections() {
   const list = document.getElementById('inspectionList');
-  list.innerHTML = '<div class="loading">Loading inspections...</div>';
+  list.innerHTML = SKELETON_LOADING;
 
   try {
     const params = new URLSearchParams();
@@ -192,6 +208,7 @@ async function loadInspections() {
   } catch (err) {
     console.error('Error loading inspections:', err);
     list.innerHTML = '<div class="error-state">Failed to load inspections</div>';
+    showToast('Failed to load inspections', 'error');
   }
 }
 
@@ -346,7 +363,9 @@ function openCreateModal() {
   // Set default date to today
   document.getElementById('formDate').value = new Date().toISOString().split('T')[0];
 
-  document.getElementById('inspectionModal').style.display = 'flex';
+  const modal = document.getElementById('inspectionModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
 }
 
 async function openEditModal(inspectionId) {
@@ -373,7 +392,9 @@ async function openEditModal(inspectionId) {
     document.getElementById('formResultDate').value = inspection.result_date || '';
     document.getElementById('formResultNotes').value = inspection.result_notes || '';
 
-    document.getElementById('inspectionModal').style.display = 'flex';
+    const modal = document.getElementById('inspectionModal');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
   } catch (err) {
     console.error('Error loading inspection:', err);
     showToast('Failed to load inspection details', 'error');
@@ -381,7 +402,9 @@ async function openEditModal(inspectionId) {
 }
 
 function closeModal() {
-  document.getElementById('inspectionModal').style.display = 'none';
+  const modal = document.getElementById('inspectionModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
   resetForm();
 }
 
@@ -481,7 +504,9 @@ async function deleteInspection() {
 // ============================================================
 
 async function viewInspection(inspectionId) {
-  document.getElementById('detailModal').style.display = 'flex';
+  const modal = document.getElementById('detailModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
   document.getElementById('detailContent').innerHTML = '<div class="loading">Loading...</div>';
 
   try {
@@ -673,7 +698,9 @@ function renderDetailActions(inspection) {
 }
 
 function closeDetailModal() {
-  document.getElementById('detailModal').style.display = 'none';
+  const modal = document.getElementById('detailModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
   state.currentInspection = null;
 }
 
@@ -712,11 +739,15 @@ function openResultModal(action) {
     addResultDeficiencyRow();
   }
 
-  document.getElementById('resultModal').style.display = 'flex';
+  const modal = document.getElementById('resultModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
 }
 
 function closeResultModal() {
-  document.getElementById('resultModal').style.display = 'none';
+  const modal = document.getElementById('resultModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
 }
 
 function addResultDeficiencyRow() {
@@ -843,11 +874,15 @@ function openRescheduleModal() {
   document.getElementById('rescheduleTime').value = state.currentInspection.scheduled_time || '';
   document.getElementById('rescheduleNotes').value = '';
 
-  document.getElementById('rescheduleModal').style.display = 'flex';
+  const modal = document.getElementById('rescheduleModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
 }
 
 function closeRescheduleModal() {
-  document.getElementById('rescheduleModal').style.display = 'none';
+  const modal = document.getElementById('rescheduleModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
 }
 
 async function submitReschedule() {
@@ -899,11 +934,15 @@ function openReinspectModal() {
   document.getElementById('reinspectDate').value = '';
   document.getElementById('reinspectTime').value = state.currentInspection.scheduled_time || '';
 
-  document.getElementById('reinspectModal').style.display = 'flex';
+  const modal = document.getElementById('reinspectModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
 }
 
 function closeReinspectModal() {
-  document.getElementById('reinspectModal').style.display = 'none';
+  const modal = document.getElementById('reinspectModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
 }
 
 async function submitReinspect() {

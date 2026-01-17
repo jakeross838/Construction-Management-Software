@@ -15,6 +15,7 @@ window.CostCodePicker = {
   selectedIndex: -1,
   filteredCodes: [],
   onSelect: null,
+  inputDebounceTimer: null,
 
   /**
    * Load cost codes from server (cached)
@@ -85,7 +86,13 @@ window.CostCodePicker = {
     // Event handlers
     input.addEventListener('focus', () => this.handleFocus(picker));
     input.addEventListener('blur', () => this.handleBlur(picker));
-    input.addEventListener('input', (e) => this.handleInput(picker, e.target.value));
+    input.addEventListener('input', (e) => {
+      // Debounce input to prevent excessive DOM updates
+      clearTimeout(this.inputDebounceTimer);
+      this.inputDebounceTimer = setTimeout(() => {
+        this.handleInput(picker, e.target.value);
+      }, 150);
+    });
     input.addEventListener('keydown', (e) => this.handleKeydown(picker, e));
     clear.addEventListener('mousedown', (e) => {
       e.preventDefault();
