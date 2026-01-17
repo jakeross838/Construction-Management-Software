@@ -1,0 +1,14 @@
+{
+  "workflow_mode": "yolo",
+  "depth": "standard",
+  "parallelization": {
+    "max_concurrent_agents": 3,
+    "skip_checkpoints": true,
+    "min_plans_for_parallel": 2
+  },
+  "gates": {
+    "confirm_phases": false,
+    "confirm_roadmap": false,
+    "confirm_plan": false
+  }
+}
