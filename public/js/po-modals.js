@@ -1397,6 +1397,20 @@ class POModals {
     const jobId = this.selectedJobId || po.job_id;
     const vendorId = this.selectedVendorId || po.vendor_id;
 
+    // Validate required fields
+    if (!jobId) {
+      window.toasts?.error('Please select a job') || alert('Please select a job');
+      return;
+    }
+    if (!vendorId) {
+      window.toasts?.error('Please select a vendor') || alert('Please select a vendor');
+      return;
+    }
+    if (this.currentLineItems.length === 0 || !this.currentLineItems.some(li => li.amount > 0)) {
+      window.toasts?.error('Please add at least one line item with an amount') || alert('Please add at least one line item');
+      return;
+    }
+
     // Validate CO cost code line items have a CO assigned
     const coLineItemsWithoutCO = this.currentLineItems.filter((item, index) => {
       const isCO = this.isCOCostCode(item.cost_code_id);
