@@ -23,6 +23,7 @@ const standards = require('./standards');
 const aiLearning = require('./ai-learning');
 const ocrProcessor = require('./ocr-processor');
 const invoiceValidator = require('./invoice-validator');
+const poMatcher = require('./po-matcher');
 
 // Consolidated duplicate detection
 const {
@@ -1211,28 +1212,46 @@ async function findOrCreateVendor(vendorData) {
 // ============================================================
 
 /**
- * Find existing PO or create draft PO
+ * Find matching PO using multi-signal scoring
+ * Uses po-matcher module for intelligent matching across vendor, amount, date, and items
+ *
+ * @param {string} jobId - Job ID to search within
+ * @param {string} vendorId - Vendor ID (if already matched)
+ * @param {Object} invoiceData - Extracted invoice data
+ * @param {string} jobName - Job name (for logging)
+ * @returns {Object|null} Match result with PO, confidence, and match details
  */
 async function findOrCreatePO(jobId, vendorId, invoiceData, jobName) {
-  if (!jobId || !vendorId) return null;
+  if (!jobId) return null;
 
-  // Look for existing open PO for this vendor/job
-  // NOTE: We no longer auto-create POs because they require cost codes on line items.
-  // POs should be created manually with proper cost codes, then invoices linked to them.
-  const { data: existingPOs } = await supabase
-    .from('v2_purchase_orders')
-    .select('*')
-    .eq('job_id', jobId)
-    .eq('vendor_id', vendorId)
-    .eq('status', 'open')
-    .order('created_at', { ascending: false });
+  // Use multi-signal PO matching
+  const matchResult = await poMatcher.findMatchingPO(invoiceData, jobId, vendorId);
 
-  if (existingPOs && existingPOs.length > 0) {
-    return { po: existingPOs[0], isNew: false };
+  if (matchResult.match) {
+    return {
+      po: matchResult.match,
+      isNew: false,
+      matchConfidence: matchResult.confidence,
+      matchBreakdown: matchResult.breakdown,
+      needsReview: matchResult.needsReview,
+      explanation: matchResult.explanation,
+      candidates: matchResult.candidates
+    };
   }
 
-  // Don't auto-create POs - they require cost codes which aren't available at this stage
-  // User should create PO manually with cost codes, then link invoice to it
+  // No auto-match found - return match info for review
+  if (matchResult.candidates && matchResult.candidates.length > 0) {
+    return {
+      po: null,
+      isNew: false,
+      matchConfidence: matchResult.confidence,
+      candidates: matchResult.candidates,
+      needsReview: true,
+      explanation: matchResult.explanation
+    };
+  }
+
+  // No candidates found
   return null;
 }
 // Note: Duplicate detection functions moved to ./duplicate-check.js for consolidation
@@ -1809,7 +1828,7 @@ async function processInvoice(pdfBuffer, originalFilename) {
       }
     }
 
-    // 8. Find or create PO
+    // 8. Find or create PO with multi-signal matching
     if (results.matchedJob && results.vendor) {
       const poResult = await findOrCreatePO(
         results.matchedJob.id,
@@ -1817,38 +1836,72 @@ async function processInvoice(pdfBuffer, originalFilename) {
         extracted,
         results.matchedJob.name
       );
-      if (poResult) {
-        results.po = poResult.po;
-        results.suggestions.po_matches = [poResult.po];
-        // Set PO confidence based on match quality
-        if (poResult.isNew) {
-          // New PO created - confidence based on how much info we have
-          let poConf = 0.65;
-          if (results.matchedJob) poConf += 0.08; // Have job
-          if (results.vendor) poConf += 0.08; // Have vendor
-          if (extracted.totalAmount) poConf += 0.05; // Have amount
-          results.ai_confidence.po = Math.min(poConf, 0.82);
-        } else {
-          // Matched existing PO - high confidence
-          let poConf = 0.85;
-          // Boost if vendor and job both match
-          if (poResult.po.vendor_id === results.vendor?.id) poConf += 0.06;
-          if (poResult.po.job_id === results.matchedJob?.id) poConf += 0.06;
-          results.ai_confidence.po = Math.min(poConf, 0.97);
-        }
-        results.messages.push(poResult.isNew
-          ? `Created draft PO: ${poResult.poNumber || poResult.po.po_number}`
-          : `Matched PO: ${poResult.po.po_number}`);
 
-        // Auto-link suggested allocations to the matched PO
-        if (results.suggested_allocations?.length > 0 && !poResult.isNew) {
-          results.suggested_allocations = results.suggested_allocations.map(alloc => ({
-            ...alloc,
-            po_id: poResult.po.id,
-            _aiLinked: true
+      // Initialize po_match object for response
+      results.po_match = {
+        matched: false,
+        po_id: null,
+        po_number: null,
+        confidence: 0,
+        needs_review: false,
+        explanation: '',
+        breakdown: null,
+        candidates: []
+      };
+
+      if (poResult) {
+        // Set PO confidence from multi-signal matching
+        results.ai_confidence.po = poResult.matchConfidence || 0;
+
+        // Populate po_match details
+        results.po_match.confidence = poResult.matchConfidence || 0;
+        results.po_match.needs_review = poResult.needsReview || false;
+        results.po_match.explanation = poResult.explanation || '';
+        results.po_match.breakdown = poResult.matchBreakdown || null;
+        results.po_match.candidates = poResult.candidates || [];
+
+        if (poResult.po) {
+          results.po = poResult.po;
+          results.po_match.matched = true;
+          results.po_match.po_id = poResult.po.id;
+          results.po_match.po_number = poResult.po.po_number;
+          results.suggestions.po_matches = [poResult.po];
+
+          // Add confidence-based message
+          const confPercent = Math.round((poResult.matchConfidence || 0) * 100);
+          if (poResult.needsReview) {
+            results.messages.push(`Matched PO: ${poResult.po.po_number} (${confPercent}% confidence - review recommended)`);
+            results.review_flags.push('po_match_needs_review');
+          } else {
+            results.messages.push(`Matched PO: ${poResult.po.po_number} (${confPercent}% confidence)`);
+          }
+
+          // Auto-link suggested allocations to the matched PO
+          if (results.suggested_allocations?.length > 0) {
+            results.suggested_allocations = results.suggested_allocations.map(alloc => ({
+              ...alloc,
+              po_id: poResult.po.id,
+              _aiLinked: true
+            }));
+            results.messages.push(`Auto-linked allocations to ${poResult.po.po_number}`);
+          }
+        } else if (poResult.candidates && poResult.candidates.length > 0) {
+          // No auto-match, but candidates found
+          results.suggestions.po_matches = poResult.candidates.map(c => ({
+            id: c.po_id,
+            po_number: c.po_number,
+            score: c.score,
+            explanation: c.explanation
           }));
-          results.messages.push(`Auto-linked allocations to ${poResult.po.po_number}`);
+          results.messages.push(`${poResult.candidates.length} possible PO match(es) found - review required`);
+          results.review_flags.push('multiple_po_candidates');
+          results.po_match.needs_review = true;
+          results.po_match.explanation = poResult.explanation;
         }
+      } else {
+        // No match found
+        results.po_match.explanation = 'No matching POs found for this vendor on this job';
+        results.messages.push('No matching PO found - may need to create one');
       }
     }
 
@@ -2763,5 +2816,6 @@ module.exports = {
   normalizeInvoiceNumber,
   refreshMappings,  // Call this after updating cost code mappings
   CONFIDENCE_THRESHOLDS,
-  DOCUMENT_TYPES
+  DOCUMENT_TYPES,
+  poMatcher  // Multi-signal PO matching module
 };
