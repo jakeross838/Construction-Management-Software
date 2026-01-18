@@ -457,4 +457,233 @@ router.post('/:id/restore', asyncHandler(async (req, res) => {
     res.json(data);
 }));
 
+// ============================================================
+// VERSION MANAGEMENT
+// ============================================================
+
+// Helper: Find root document in version chain
+async function findRootDocumentId(documentId) {
+  let currentId = documentId;
+  let iterations = 0;
+  const maxIterations = 100; // Prevent infinite loops
+
+  while (iterations < maxIterations) {
+    const { data, error } = await supabase
+      .from('v2_documents')
+      .select('id, parent_document_id')
+      .eq('id', currentId)
+      .single();
+
+    if (error || !data) break;
+
+    if (!data.parent_document_id) {
+      // This is the root
+      return data.id;
+    }
+
+    currentId = data.parent_document_id;
+    iterations++;
+  }
+
+  return currentId;
+}
+
+// Get version history for a document
+router.get('/:id/versions', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    // First get the document to check it exists
+    const { data: doc, error: docError } = await supabase
+      .from('v2_documents')
+      .select('id, parent_document_id')
+      .eq('id', id)
+      .single();
+
+    if (docError || !doc) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Find the root document
+    const rootId = await findRootDocumentId(id);
+
+    // Get all versions in this chain
+    const { data: versions, error } = await supabase
+      .from('v2_documents')
+      .select('id, version_number, file_url, file_name, file_size, mime_type, uploaded_by, created_at, is_current')
+      .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`)
+      .is('deleted_at', null)
+      .order('version_number', { ascending: false });
+
+    if (error) throw error;
+
+    res.json(versions || []);
+}));
+
+// Upload new version of existing document
+router.post('/:id/versions', upload.single('file'), asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const { uploaded_by } = req.body;
+
+    // Get the current document
+    const { data: currentDoc, error: docError } = await supabase
+      .from('v2_documents')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (docError || !currentDoc) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    if (currentDoc.deleted_at) {
+      return res.status(400).json({ error: 'Cannot create version of deleted document' });
+    }
+
+    // Find the root document ID (for the parent_document_id)
+    const rootId = await findRootDocumentId(id);
+
+    // Get the highest version number in this chain
+    const { data: versionData } = await supabase
+      .from('v2_documents')
+      .select('version_number')
+      .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`)
+      .order('version_number', { ascending: false })
+      .limit(1);
+
+    const highestVersion = versionData?.[0]?.version_number || 1;
+    const newVersionNumber = highestVersion + 1;
+
+    // Mark all current versions in the chain as not current
+    await supabase
+      .from('v2_documents')
+      .update({ is_current: false })
+      .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`)
+      .eq('is_current', true);
+
+    // Upload new file to storage
+    const uniqueId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+    const storagePath = `${DOCUMENT_PREFIX}/${currentDoc.job_id}/${uniqueId}_${req.file.originalname}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(storagePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false
+      });
+
+    if (uploadError) throw uploadError;
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(storagePath);
+
+    // Create new version record
+    const { data: newDoc, error: insertError } = await supabase
+      .from('v2_documents')
+      .insert({
+        job_id: currentDoc.job_id,
+        name: currentDoc.name,
+        description: currentDoc.description,
+        category: currentDoc.category,
+        file_url: urlData.publicUrl,
+        file_name: req.file.originalname,
+        file_size: req.file.size,
+        mime_type: req.file.mimetype,
+        document_date: currentDoc.document_date,
+        expiration_date: currentDoc.expiration_date,
+        vendor_id: currentDoc.vendor_id,
+        po_id: currentDoc.po_id,
+        invoice_id: currentDoc.invoice_id,
+        tags: currentDoc.tags,
+        uploaded_by: uploaded_by || null,
+        version_number: newVersionNumber,
+        parent_document_id: rootId,
+        is_current: true
+      })
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    // Log activity
+    await logDocumentActivity(newDoc.id, 'new_version', uploaded_by, {
+      version_number: newVersionNumber,
+      previous_version: highestVersion,
+      original_document_id: rootId,
+      file_name: req.file.originalname,
+      file_size: req.file.size
+    });
+
+    res.status(201).json(newDoc);
+}));
+
+// Rollback to a previous version
+router.post('/:id/rollback', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { performed_by } = req.body;
+
+    // Get the target version document
+    const { data: targetDoc, error: targetError } = await supabase
+      .from('v2_documents')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (targetError || !targetDoc) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    if (targetDoc.deleted_at) {
+      return res.status(400).json({ error: 'Cannot rollback to deleted document' });
+    }
+
+    if (targetDoc.is_current) {
+      return res.status(400).json({ error: 'Document is already the current version' });
+    }
+
+    // Find the root document ID
+    const rootId = await findRootDocumentId(id);
+
+    // Find the current version
+    const { data: currentVersionData } = await supabase
+      .from('v2_documents')
+      .select('id, version_number')
+      .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`)
+      .eq('is_current', true)
+      .single();
+
+    const fromVersion = currentVersionData?.version_number || 'unknown';
+
+    // Mark all versions as not current
+    await supabase
+      .from('v2_documents')
+      .update({ is_current: false })
+      .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`);
+
+    // Mark target as current
+    const { data: updatedDoc, error: updateError } = await supabase
+      .from('v2_documents')
+      .update({ is_current: true, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Log activity
+    await logDocumentActivity(id, 'rollback', performed_by, {
+      from_version: fromVersion,
+      to_version: targetDoc.version_number,
+      root_document_id: rootId
+    });
+
+    res.json(updatedDoc);
+}));
+
 module.exports = router;
