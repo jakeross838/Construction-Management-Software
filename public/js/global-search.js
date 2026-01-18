@@ -6,6 +6,12 @@
 (function() {
   'use strict';
 
+  // Use global normalizeStatusClass if available (from app.js), otherwise define locally
+  const normalizeStatusClass = window.normalizeStatusClass || function(status) {
+    if (!status) return '';
+    return status.toString().toLowerCase().replace(/_/g, '-');
+  };
+
   let searchModal = null;
   let searchInput = null;
   let resultsContainer = null;
@@ -129,7 +135,7 @@
             return `<a href="${r.url}" class="search-result-item ${activeClass}" data-url="${r.url}">
               <div class="search-result-title">${escapeHtml(r.title)}</div>
               <div class="search-result-subtitle">${escapeHtml(r.subtitle)}</div>
-              ${r.status ? `<span class="search-result-status status-${r.status}">${r.status}</span>` : ''}
+              ${r.status ? `<span class="search-result-status status-${normalizeStatusClass(r.status)}">${r.status}</span>` : ''}
             </a>`;
           }).join('')}
         </div>`;
