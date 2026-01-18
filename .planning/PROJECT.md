@@ -4,15 +4,11 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.2 - Gap Fixes (shipped 2026-01-18)
+**Last Milestone:** v1.3 - Refinement (shipped 2026-01-18)
 
-## Current Milestone: v1.3 Refinement
+## Current State
 
-**Goal:** Improve invoice processing accuracy and add comprehensive reporting capabilities.
-
-**Target features:**
-- Invoice AI improvements (extraction accuracy, PO/job matching, approval workflow)
-- Reporting suite (financial summaries, Excel exports, PDF reports)
+v1.3 complete. Ready for next milestone planning.
 
 ## Core Value
 
@@ -20,12 +16,14 @@ Construction management software for Ross Built Custom Homes. Manages the full l
 
 ## Current State
 
-Shipped v1.2 with ~99,000 lines of JavaScript across 76+ files.
+Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
+- Invoice AI - Two-stage extraction, multi-signal PO matching, batch approval (v1.3)
 - Purchase Orders - CRUD, line items, approval, change orders, attachments
 - Draws - G702/G703, Excel/PDF export, workflow
+- Reports - Financial summaries, Excel exports, PDF exports (v1.3)
 - Daily Logs - Crew, weather, work summary, photos
 - Inspections - Types, status, deficiencies, photos, re-inspections
 - Punch Lists - Items, workflow, photos, retainage, PO blocking
@@ -94,17 +92,17 @@ Shipped v1.2 with ~99,000 lines of JavaScript across 76+ files.
 - ✓ INS-01 to INS-04 — v1.0 (inspections)
 - ✓ PUN-01 to PUN-06 — v1.0 (punch lists)
 
-### Active (v1.3 Refinement)
+### v1.3 Refinement (Shipped)
 
 **Invoice AI Improvements:**
-- [ ] INV-AI-01: Improve extraction accuracy for amounts, dates, and vendor names
-- [ ] INV-AI-02: Smarter auto-matching to POs and jobs with better confidence scoring
-- [ ] INV-AI-03: Streamline approval workflow to reduce clicks and confusion
+- [x] INV-AI-01: Improve extraction accuracy for amounts, dates, and vendor names
+- [x] INV-AI-02: Smarter auto-matching to POs and jobs with better confidence scoring
+- [x] INV-AI-03: Streamline approval workflow to reduce clicks and confusion
 
 **Reporting Suite:**
-- [ ] RPT-01: Financial summaries (job cost reports, spend by vendor, spend by category)
-- [ ] RPT-02: Custom Excel exports (export any data view to Excel)
-- [ ] RPT-03: PDF reports (printable professional reports for clients/owners)
+- [x] RPT-01: Financial summaries (job cost reports, spend by vendor, spend by category)
+- [x] RPT-02: Custom Excel exports (export any data view to Excel)
+- [x] RPT-03: PDF reports (printable professional reports for clients/owners)
 
 ### Out of Scope
 
@@ -136,4 +134,4 @@ Shipped v1.2 with ~99,000 lines of JavaScript across 76+ files.
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-18 — v1.3 Refinement milestone started*
+*Last updated: 2026-01-18 — v1.3 Refinement milestone complete*

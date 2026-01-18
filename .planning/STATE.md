@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.3 Milestone Complete
+**Current focus:** Between milestones - v1.3 complete
 
 ## Current Position
 
-Phase: 23 of 23 (Reports - PDF)
-Plan: 23-01 PDF Export Endpoints
-Status: Complete
-Last activity: 2026-01-18 — Phase 23 complete (PDF export endpoints)
+Phase: None (milestone complete)
+Plan: None
+Status: v1.3 archived
+Last activity: 2026-01-18 — v1.3 milestone archived
 
-Progress: ██████████ 100% v1.3 (6/6 phases complete)
+Progress: Milestone v1.3 complete
 
 ## Research
 
@@ -37,24 +37,12 @@ Key findings:
 
 See PROJECT.md Key Decisions table for full history.
 
-**Phase 21 decisions:**
+**v1.3 key decisions:**
+- Two-stage extraction: Claude extraction → programmatic validation
+- Multi-signal PO matching with weighted scoring (vendor 40%, PO# 25%, etc.)
 - Reports use dedicated router file (server/routes/reports.js)
-- Three core reports: job-cost, vendor-spend, category-spend
-- All reports support date range filtering via query params
-- Category derived from first 2 digits of cost code (CSI MasterFormat divisions)
-
-**Phase 22 decisions:**
-- Excel exports added to existing reports.js router file (not new file)
-- Three Excel export endpoints (job-cost, vendor-spend, category-spend)
-- Follow existing ExcelJS patterns from draw export in index.js
-- Professional formatting: blue headers, currency format, conditional status colors
-
-**Phase 23 decisions:**
-- PDF exports added to existing reports.js router file
-- Two PDF export endpoints (job-cost, vendor-spend)
-- Used pdfmake library for professional table formatting
-- Headers with page numbers, footers with generation date
-- Color-coded status columns (over/near/under)
+- pdfmake for PDF generation (better for tables than Puppeteer)
+- ExcelJS for Excel exports (already in use for draws)
 
 ### Pending Todos
 
@@ -67,10 +55,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 23 complete, v1.3 milestone complete
+Stopped at: v1.3 milestone archived
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:complete-milestone` to archive v1.3
-2. Start v1.4 planning
+1. Run `/gsd:discuss-milestone` to figure out what to build next
+2. Or run `/gsd:new-milestone` if you already know

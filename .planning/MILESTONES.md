@@ -1,53 +1,81 @@
-# Project Milestones: Ross Built CMS
+# Milestones
 
-## v1.2 Gap Fixes (Shipped: 2026-01-18)
+Historical record of shipped milestones.
 
-**Delivered:** Complete existing features with proper error handling, full CRUD operations, enhanced visualizations, and document versioning.
+## v1.3 Refinement
 
-**Phases completed:** 12-17 (10 plans total)
+**Shipped:** 2026-01-18
+**Phases:** 6 (18-23)
+**Plans executed:** 6
 
-**Key accomplishments:**
-- Standardized error handling and request validation across all API routes
-- Complete job CRUD with soft delete, audit logging, and profile metrics
-- Vendor lifecycle management with documents, duplicate detection, and merge
-- Budget visualization with charts, variance alerts, and spend forecasting
-- Interactive Gantt with drag-and-drop scheduling and critical path highlighting
-- Document version tracking with history UI and rollback capability
+### Highlights
 
-**Stats:**
-- 25 files modified (code only)
-- +4,051 / -1,215 lines changed (net +2,836)
-- 6 phases, 10 plans, 11 requirements
-- 1 day from start to ship
+- **Invoice AI - Extraction**: Two-stage pipeline (extract + validate) with OCR error correction and tiered confidence thresholds
+- **Invoice AI - Matching**: Multi-signal PO matching with weighted scoring (vendor 40%, PO# 25%, amount 15%, date 10%, items 10%)
+- **Invoice AI - Workflow**: Batch approval, quick actions on cards, confidence badges, one-click approve for high-confidence invoices
+- **Reports - Backend**: Financial summary API with job cost, vendor spend, and category spend reports
+- **Reports - Excel**: Professional Excel exports with blue headers, currency formatting, and conditional status coloring
+- **Reports - PDF**: Professional PDF exports using pdfmake with headers, footers, and page numbers
 
-**Git range:** `ba9d3a0` → `701c833`
+### Stats
 
-**What's next:** TBD (run `/gsd:discuss-milestone` to plan v1.3)
+| Metric | Value |
+|--------|-------|
+| Phases | 6 |
+| Plans | 6 |
+| Requirements | 6 (INV-AI-01, INV-AI-02, INV-AI-03, RPT-01, RPT-02, RPT-03) |
+
+### Archive
+
+- `.planning/milestones/v1.3-ROADMAP.md`
+- `.planning/milestones/v1.3-REQUIREMENTS.md`
+
+---
+
+## v1.2 Gap Fixes
+
+**Shipped:** 2026-01-18
+**Phases:** 6 (12-17)
+
+### Highlights
+
+- Error handling with AppError class
+- Jobs management with full CRUD and profile metrics
+- Vendors with soft delete, documents, and duplicate detection
+- Budget visualizations with Chart.js
+- Gantt drag-and-drop and critical path highlighting
+- Document versioning with history UI and rollback
 
 ---
 
-## v1.1 Field Features (Shipped: 2026-01-17)
+## v1.1 Field Features
 
-**Delivered:** Complete field functionality with vendor bids, cost estimates, project photos, dashboard alerts, and mobile responsiveness.
+**Shipped:** 2026-01-17
+**Phases:** 6 (6-11)
 
-**Phases completed:** 7-11 (8 plans total)
+### Highlights
 
-**Key accomplishments:**
-- Vendor bid collection with comparison and PO conversion
-- Cost estimation with versioning and budget conversion
-- Project photo gallery with entity linking
-- Dashboard alerts for inspections, budget overruns, pending approvals
-- Mobile-responsive layouts with hamburger navigation
-- Global search with Cmd/Ctrl+K keyboard shortcut
-
-**Stats:**
-- 76 files created/modified
-- 96,297 lines of JavaScript
-- 5 phases, 8 plans, ~30 tasks
-- 11 days from start to ship
-
-**Git range:** `feat(photos)` → `feat(11)`
-
-**What's next:** Gap fixes for foundation, jobs, vendors, budgets, schedules, documents (Phases 1-6)
+- Bids management with comparison and PO conversion
+- Estimates with line items and budget conversion
+- Photo attachments with gallery and lightbox
+- Dashboard alerts for inspections, budgets, approvals
+- Mobile responsive with hamburger menu
+- Global search with Cmd/Ctrl+K
 
 ---
+
+## v1.0 Core Platform
+
+**Shipped:** 2026-01-17
+**Phases:** 5 (1-5)
+
+### Highlights
+
+- Invoice AI processing with PDF extraction
+- Purchase order management
+- Draw workflow with G702/G703
+- Daily logs, inspections, punch lists
+- Real-time updates via SSE
+
+---
+*Milestone history created: 2026-01-18*
