@@ -165,6 +165,58 @@ async function batchApproveSelected() {
   }
 }
 
+// Quick approve a single invoice (for high-confidence invoices)
+async function quickApprove(invoiceId, event) {
+  event.stopPropagation();
+
+  try {
+    const response = await fetch(`/api/invoices/${invoiceId}/approve`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ performed_by: 'Jake Ross' })
+    });
+
+    if (!response.ok) throw new Error('Approval failed');
+
+    window.toasts?.success('Invoice approved');
+    await loadInvoices();
+  } catch (err) {
+    window.toasts?.error(err.message);
+  }
+}
+
+// Quick add invoice to draw
+async function quickAddToDraw(invoiceId, event) {
+  event.stopPropagation();
+
+  const inv = window.invoicesCache?.find(i => i.id === invoiceId);
+  if (!inv?.job_id) {
+    window.toasts?.error('Invoice has no job assigned');
+    return;
+  }
+
+  try {
+    // Get or create draft draw
+    const drawRes = await fetch(`/api/jobs/${inv.job_id}/current-draw?create=true`);
+    if (!drawRes.ok) throw new Error('Failed to get/create draw');
+    const draw = await drawRes.json();
+
+    // Add invoice to draw
+    const addRes = await fetch(`/api/draws/${draw.id}/add-invoices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoice_ids: [invoiceId] })
+    });
+
+    if (!addRes.ok) throw new Error('Failed to add to draw');
+
+    window.toasts?.success('Added to Draw #' + draw.draw_number);
+    await loadInvoices();
+  } catch (err) {
+    window.toasts?.error(err.message);
+  }
+}
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -517,6 +569,31 @@ function renderInvoiceCard(inv) {
         onclick="toggleInvoiceSelection('${inv.id}', event)">
     ` : '';
 
+    // Quick action buttons - show on hover for eligible invoices
+    const confidence = inv.ai_confidence?.overall || 0;
+    const canQuickApprove = inv.status === 'ready_for_approval' && confidence >= 0.95;
+    const canQuickAddToDraw = inv.status === 'approved';
+
+    let quickActionsHtml = '';
+    if (!selectionMode && (canQuickApprove || canQuickAddToDraw)) {
+      quickActionsHtml = `<div class="quick-actions">`;
+      if (canQuickApprove) {
+        quickActionsHtml += `<button class="quick-btn approve" onclick="quickApprove('${inv.id}', event)" title="Quick Approve">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+          </svg>
+        </button>`;
+      }
+      if (canQuickAddToDraw) {
+        quickActionsHtml += `<button class="quick-btn add-draw" onclick="quickAddToDraw('${inv.id}', event)" title="Add to Draw">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/>
+          </svg>
+        </button>`;
+      }
+      quickActionsHtml += `</div>`;
+    }
+
     return `
     <div class="invoice-card status-${inv.status}${isCredit ? ' is-credit' : ''}${isSelected ? ' selected' : ''}" data-invoice-id="${inv.id}" onclick="openEditModal('${inv.id}')">
       ${checkboxHtml}
@@ -534,6 +611,7 @@ function renderInvoiceCard(inv) {
       <div class="invoice-status">
         <span class="status-pill ${inv.status}">${formatStatus(inv.status, inv)}</span>
       </div>
+      ${quickActionsHtml}
     </div>
     `;
 }

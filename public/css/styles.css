@@ -1455,6 +1455,49 @@ body {
   background: #4f46e5;
 }
 
+/* Quick action icon buttons (for card hover) */
+.quick-btn.approve {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  background: var(--success);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-btn.approve:hover {
+  background: #15803d;
+  transform: scale(1.1);
+}
+
+.quick-btn.add-draw {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  background: var(--primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-btn.add-draw:hover {
+  background: var(--primary-hover);
+  transform: scale(1.1);
+}
+
+/* Position quick actions on right side of card */
+.invoice-card .quick-actions {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 /* Status Pills */
 .status-pill {
   display: inline-block;
