@@ -6,6 +6,9 @@
 const express = require('express');
 const router = express.Router();
 const ExcelJS = require('exceljs');
+const pdfMake = require('pdfmake/build/pdfmake');
+const pdfFonts = require('pdfmake/build/vfs_fonts');
+pdfMake.vfs = pdfFonts.pdfMake.vfs;
 const { supabase } = require('../../config');
 const { asyncHandler, AppError } = require('../errors');
 
@@ -528,6 +531,309 @@ router.get('/job-cost/:jobId/excel', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// JOB COST REPORT - PDF EXPORT
+// GET /api/reports/job-cost/:jobId/pdf
+// ============================================================
+
+router.get('/job-cost/:jobId/pdf', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { startDate, endDate } = req.query;
+
+  // Get job info
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id, name')
+    .eq('id', jobId)
+    .single();
+
+  if (jobError || !job) {
+    throw new AppError('JOB_NOT_FOUND', 'Job not found', { jobId });
+  }
+
+  // Get budget lines for the job
+  const { data: budgetLines, error: budgetError } = await supabase
+    .from('v2_budget_lines')
+    .select(`
+      id,
+      budgeted_amount,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .eq('job_id', jobId);
+
+  if (budgetError) {
+    throw new AppError('DATABASE_ERROR', budgetError.message);
+  }
+
+  // Get committed amounts from PO line items
+  let poQuery = supabase
+    .from('v2_po_line_items')
+    .select(`
+      id,
+      amount,
+      cost_code_id,
+      purchase_order:v2_purchase_orders!inner(id, job_id, status)
+    `)
+    .eq('purchase_order.job_id', jobId)
+    .neq('purchase_order.status', 'cancelled');
+
+  const { data: poLineItems, error: poError } = await poQuery;
+
+  if (poError) {
+    throw new AppError('DATABASE_ERROR', poError.message);
+  }
+
+  // Get actual costs from invoice allocations (approved, in_draw, paid invoices only)
+  let allocQuery = supabase
+    .from('v2_invoice_allocations')
+    .select(`
+      id,
+      amount,
+      cost_code_id,
+      invoice:v2_invoices!inner(id, status, invoice_date)
+    `)
+    .eq('job_id', jobId)
+    .in('invoice.status', ['approved', 'in_draw', 'paid']);
+
+  // Apply date filters if provided
+  if (startDate) {
+    allocQuery = allocQuery.gte('invoice.invoice_date', startDate);
+  }
+  if (endDate) {
+    allocQuery = allocQuery.lte('invoice.invoice_date', endDate);
+  }
+
+  const { data: allocations, error: allocError } = await allocQuery;
+
+  if (allocError) {
+    throw new AppError('DATABASE_ERROR', allocError.message);
+  }
+
+  // Build cost code map with budget, committed, and actual amounts
+  const costCodeMap = new Map();
+
+  // Initialize with budget lines
+  for (const bl of budgetLines || []) {
+    if (bl.cost_code) {
+      costCodeMap.set(bl.cost_code.id, {
+        costCodeId: bl.cost_code.id,
+        costCode: bl.cost_code.code,
+        description: bl.cost_code.name,
+        category: bl.cost_code.category,
+        budget: parseFloat(bl.budgeted_amount) || 0,
+        committed: 0,
+        actual: 0
+      });
+    }
+  }
+
+  // Add committed amounts from PO line items
+  for (const item of poLineItems || []) {
+    const existing = costCodeMap.get(item.cost_code_id);
+    if (existing) {
+      existing.committed += parseFloat(item.amount) || 0;
+    } else {
+      costCodeMap.set(item.cost_code_id, {
+        costCodeId: item.cost_code_id,
+        costCode: 'Unknown',
+        description: 'Unknown',
+        category: null,
+        budget: 0,
+        committed: parseFloat(item.amount) || 0,
+        actual: 0
+      });
+    }
+  }
+
+  // Add actual amounts from invoice allocations
+  for (const alloc of allocations || []) {
+    const existing = costCodeMap.get(alloc.cost_code_id);
+    if (existing) {
+      existing.actual += parseFloat(alloc.amount) || 0;
+    } else {
+      costCodeMap.set(alloc.cost_code_id, {
+        costCodeId: alloc.cost_code_id,
+        costCode: 'Unknown',
+        description: 'Unknown',
+        category: null,
+        budget: 0,
+        committed: 0,
+        actual: parseFloat(alloc.amount) || 0
+      });
+    }
+  }
+
+  // Calculate variance and status for each line
+  const lines = [];
+  let totalBudget = 0;
+  let totalCommitted = 0;
+  let totalActual = 0;
+
+  for (const [, item] of costCodeMap) {
+    const variance = item.budget - item.actual;
+    const variancePercent = item.budget > 0
+      ? Math.round((variance / item.budget) * 100)
+      : 0;
+
+    let status;
+    if (item.actual > item.budget) {
+      status = 'over';
+    } else if (item.budget > 0 && item.actual > item.budget * 0.9) {
+      status = 'near';
+    } else {
+      status = 'under';
+    }
+
+    lines.push({
+      costCode: item.costCode,
+      description: item.description,
+      category: item.category,
+      budget: item.budget,
+      committed: item.committed,
+      actual: item.actual,
+      variance,
+      variancePercent,
+      status
+    });
+
+    totalBudget += item.budget;
+    totalCommitted += item.committed;
+    totalActual += item.actual;
+  }
+
+  // Sort by cost code
+  lines.sort((a, b) => a.costCode.localeCompare(b.costCode));
+
+  const totalVariance = totalBudget - totalActual;
+  const percentComplete = totalBudget > 0
+    ? Math.round((totalActual / totalBudget) * 100)
+    : 0;
+
+  // Format period text
+  const periodText = (startDate && endDate)
+    ? `Period: ${startDate} to ${endDate}`
+    : (startDate ? `Period: From ${startDate}` : (endDate ? `Period: Through ${endDate}` : 'Period: All Time'));
+
+  // Helper function to format currency
+  const formatCurrency = (amount) => {
+    return '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Build table body
+  const tableBody = [
+    // Header row
+    [
+      { text: 'Cost Code', style: 'tableHeader' },
+      { text: 'Description', style: 'tableHeader' },
+      { text: 'Budget', style: 'tableHeader', alignment: 'right' },
+      { text: 'Committed', style: 'tableHeader', alignment: 'right' },
+      { text: 'Actual', style: 'tableHeader', alignment: 'right' },
+      { text: 'Variance', style: 'tableHeader', alignment: 'right' },
+      { text: 'Var %', style: 'tableHeader', alignment: 'center' },
+      { text: 'Status', style: 'tableHeader', alignment: 'center' }
+    ],
+    // Data rows
+    ...lines.map(line => {
+      let statusColor;
+      if (line.status === 'over') {
+        statusColor = '#CC0000';
+      } else if (line.status === 'near') {
+        statusColor = '#CC6600';
+      } else {
+        statusColor = '#006600';
+      }
+
+      return [
+        { text: line.costCode },
+        { text: line.description },
+        { text: formatCurrency(line.budget), alignment: 'right' },
+        { text: formatCurrency(line.committed), alignment: 'right' },
+        { text: formatCurrency(line.actual), alignment: 'right' },
+        { text: formatCurrency(line.variance), alignment: 'right' },
+        { text: `${line.variancePercent}%`, alignment: 'center' },
+        { text: line.status.toUpperCase(), alignment: 'center', color: statusColor, bold: true }
+      ];
+    })
+  ];
+
+  // Create PDF document definition
+  const docDefinition = {
+    pageSize: 'LETTER',
+    pageMargins: [40, 60, 40, 60],
+    header: (currentPage, pageCount) => ({
+      text: `Job Cost Report - Page ${currentPage} of ${pageCount}`,
+      alignment: 'right',
+      fontSize: 10,
+      margin: [40, 20, 40, 0]
+    }),
+    footer: () => ({
+      text: `Generated by Ross Built CMS - ${new Date().toLocaleDateString()}`,
+      alignment: 'center',
+      fontSize: 10,
+      margin: [40, 0, 40, 20]
+    }),
+    content: [
+      { text: `${job.name} - Job Cost Report`, style: 'title' },
+      { text: periodText, style: 'subtitle' },
+
+      // Summary section
+      {
+        margin: [0, 0, 0, 20],
+        table: {
+          widths: ['auto', 'auto'],
+          body: [
+            [{ text: 'Total Budget:', bold: true }, { text: formatCurrency(totalBudget), alignment: 'right' }],
+            [{ text: 'Total Committed:', bold: true }, { text: formatCurrency(totalCommitted), alignment: 'right' }],
+            [{ text: 'Total Actual:', bold: true }, { text: formatCurrency(totalActual), alignment: 'right' }],
+            [{ text: 'Variance:', bold: true }, { text: formatCurrency(totalVariance), alignment: 'right', color: totalVariance < 0 ? '#CC0000' : '#006600' }],
+            [{ text: '% Complete:', bold: true }, { text: `${percentComplete}%`, alignment: 'right' }]
+          ]
+        },
+        layout: 'noBorders'
+      },
+
+      // Data table
+      {
+        table: {
+          headerRows: 1,
+          widths: ['10%', '25%', '12%', '12%', '12%', '12%', '9%', '8%'],
+          body: tableBody
+        },
+        layout: {
+          fillColor: (rowIndex) => {
+            if (rowIndex === 0) return '#D9E1F2';
+            return null;
+          },
+          hLineWidth: () => 0.5,
+          vLineWidth: () => 0.5,
+          hLineColor: () => '#CCCCCC',
+          vLineColor: () => '#CCCCCC'
+        }
+      }
+    ],
+    styles: {
+      title: { fontSize: 24, bold: true, color: '#1F4E78', margin: [0, 0, 0, 5] },
+      subtitle: { fontSize: 12, color: '#666666', margin: [0, 0, 0, 20] },
+      tableHeader: { bold: true, color: '#1F4E78', fontSize: 10 }
+    },
+    defaultStyle: {
+      fontSize: 9
+    }
+  };
+
+  // Generate PDF and send response
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const safeJobName = job.name.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-');
+  const filename = `Job-Cost-${safeJobName}-${dateStr}.pdf`;
+
+  const pdfDoc = pdfMake.createPdf(docDefinition);
+  pdfDoc.getBuffer((buffer) => {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(Buffer.from(buffer));
+  });
+}));
+
+// ============================================================
 // VENDOR SPEND REPORT
 // GET /api/reports/vendor-spend
 // ============================================================
@@ -838,6 +1144,211 @@ router.get('/vendor-spend/excel', asyncHandler(async (req, res) => {
 
   await workbook.xlsx.write(res);
   res.end();
+}));
+
+// ============================================================
+// VENDOR SPEND REPORT - PDF EXPORT
+// GET /api/reports/vendor-spend/pdf
+// ============================================================
+
+router.get('/vendor-spend/pdf', asyncHandler(async (req, res) => {
+  const { jobId, startDate, endDate } = req.query;
+
+  // Build query for invoices with vendor info
+  let query = supabase
+    .from('v2_invoices')
+    .select(`
+      id,
+      amount,
+      invoice_date,
+      vendor_id,
+      vendor:v2_vendors(id, name)
+    `)
+    .is('deleted_at', null)
+    .in('status', ['approved', 'in_draw', 'paid']);
+
+  // Apply filters
+  if (jobId) {
+    query = query.eq('job_id', jobId);
+  }
+  if (startDate) {
+    query = query.gte('invoice_date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('invoice_date', endDate);
+  }
+
+  const { data: invoices, error } = await query;
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  // Get job name if filtered
+  let jobName = null;
+  if (jobId) {
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('name')
+      .eq('id', jobId)
+      .single();
+    jobName = job?.name || null;
+  }
+
+  // Group by vendor
+  const vendorMap = new Map();
+
+  for (const inv of invoices || []) {
+    if (!inv.vendor_id) continue;
+
+    const existing = vendorMap.get(inv.vendor_id);
+    const amount = parseFloat(inv.amount) || 0;
+    const invoiceDate = inv.invoice_date;
+
+    if (existing) {
+      existing.invoiceCount += 1;
+      existing.totalSpend += amount;
+      if (invoiceDate && (!existing.lastInvoiceDate || invoiceDate > existing.lastInvoiceDate)) {
+        existing.lastInvoiceDate = invoiceDate;
+      }
+    } else {
+      vendorMap.set(inv.vendor_id, {
+        vendorId: inv.vendor_id,
+        vendorName: inv.vendor?.name || 'Unknown',
+        invoiceCount: 1,
+        totalSpend: amount,
+        lastInvoiceDate: invoiceDate || null
+      });
+    }
+  }
+
+  // Calculate stats and build result
+  const vendors = [];
+  let totalSpend = 0;
+  let invoiceCount = 0;
+
+  for (const [, v] of vendorMap) {
+    v.avgInvoiceAmount = v.invoiceCount > 0
+      ? Math.round(v.totalSpend / v.invoiceCount * 100) / 100
+      : 0;
+    vendors.push(v);
+    totalSpend += v.totalSpend;
+    invoiceCount += v.invoiceCount;
+  }
+
+  // Sort by total spend descending
+  vendors.sort((a, b) => b.totalSpend - a.totalSpend);
+
+  const avgInvoiceAmount = invoiceCount > 0
+    ? Math.round(totalSpend / invoiceCount * 100) / 100
+    : 0;
+
+  // Format labels
+  const jobLabel = jobName ? jobName : 'All Jobs';
+  const periodLabel = (startDate && endDate)
+    ? `${startDate} to ${endDate}`
+    : (startDate ? `From ${startDate}` : (endDate ? `Through ${endDate}` : 'All Time'));
+
+  // Helper function to format currency
+  const formatCurrency = (amount) => {
+    return '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Build table body
+  const tableBody = [
+    // Header row
+    [
+      { text: 'Vendor', style: 'tableHeader' },
+      { text: 'Invoice Count', style: 'tableHeader', alignment: 'center' },
+      { text: 'Total Spend', style: 'tableHeader', alignment: 'right' },
+      { text: 'Avg Invoice', style: 'tableHeader', alignment: 'right' },
+      { text: 'Last Invoice Date', style: 'tableHeader', alignment: 'center' }
+    ],
+    // Data rows
+    ...vendors.map(vendor => [
+      { text: vendor.vendorName },
+      { text: vendor.invoiceCount.toString(), alignment: 'center' },
+      { text: formatCurrency(vendor.totalSpend), alignment: 'right' },
+      { text: formatCurrency(vendor.avgInvoiceAmount), alignment: 'right' },
+      { text: vendor.lastInvoiceDate || '-', alignment: 'center' }
+    ])
+  ];
+
+  // Create PDF document definition
+  const docDefinition = {
+    pageSize: 'LETTER',
+    pageMargins: [40, 60, 40, 60],
+    header: (currentPage, pageCount) => ({
+      text: `Vendor Spend Report - Page ${currentPage} of ${pageCount}`,
+      alignment: 'right',
+      fontSize: 10,
+      margin: [40, 20, 40, 0]
+    }),
+    footer: () => ({
+      text: `Generated by Ross Built CMS - ${new Date().toLocaleDateString()}`,
+      alignment: 'center',
+      fontSize: 10,
+      margin: [40, 0, 40, 20]
+    }),
+    content: [
+      { text: 'Vendor Spend Report', style: 'title' },
+      { text: `Job: ${jobLabel} | Period: ${periodLabel}`, style: 'subtitle' },
+
+      // Summary section
+      {
+        margin: [0, 0, 0, 20],
+        table: {
+          widths: ['auto', 'auto'],
+          body: [
+            [{ text: 'Total Spend:', bold: true }, { text: formatCurrency(totalSpend), alignment: 'right' }],
+            [{ text: 'Vendor Count:', bold: true }, { text: vendors.length.toString(), alignment: 'right' }],
+            [{ text: 'Invoice Count:', bold: true }, { text: invoiceCount.toString(), alignment: 'right' }],
+            [{ text: 'Avg Invoice Amount:', bold: true }, { text: formatCurrency(avgInvoiceAmount), alignment: 'right' }]
+          ]
+        },
+        layout: 'noBorders'
+      },
+
+      // Data table
+      {
+        table: {
+          headerRows: 1,
+          widths: ['35%', '15%', '18%', '18%', '14%'],
+          body: tableBody
+        },
+        layout: {
+          fillColor: (rowIndex) => {
+            if (rowIndex === 0) return '#D9E1F2';
+            return null;
+          },
+          hLineWidth: () => 0.5,
+          vLineWidth: () => 0.5,
+          hLineColor: () => '#CCCCCC',
+          vLineColor: () => '#CCCCCC'
+        }
+      }
+    ],
+    styles: {
+      title: { fontSize: 24, bold: true, color: '#1F4E78', margin: [0, 0, 0, 5] },
+      subtitle: { fontSize: 12, color: '#666666', margin: [0, 0, 0, 20] },
+      tableHeader: { bold: true, color: '#1F4E78', fontSize: 10 }
+    },
+    defaultStyle: {
+      fontSize: 9
+    }
+  };
+
+  // Generate PDF and send response
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const safeJobName = jobName ? jobName.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-') : 'All';
+  const filename = `Vendor-Spend-${safeJobName}-${dateStr}.pdf`;
+
+  const pdfDoc = pdfMake.createPdf(docDefinition);
+  pdfDoc.getBuffer((buffer) => {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(Buffer.from(buffer));
+  });
 }));
 
 // ============================================================
