@@ -107,12 +107,12 @@ Plans:
   1. User can drag tasks on Gantt to change dates
   2. User can see critical path highlighted
   3. Gantt updates persist to database
-**Research**: Likely (Gantt library options)
-**Research topics**: Vanilla JS Gantt libraries, drag-drop interaction patterns
-**Plans**: TBD
+**Research**: Not needed (vanilla JS approach using existing foundation)
+**Plans**: 0/2
 
 Plans:
-- [ ] 16-01: Gantt chart enhancements
+- [ ] 16-01: Interactive Gantt with drag-and-drop (mouse events, date calculation, API persistence)
+- [ ] 16-02: Critical path highlighting (algorithm, visual styling, toggle control)
 
 ---
 
@@ -143,7 +143,7 @@ Phases 12-17 can mostly run in parallel (12 first for foundation, then 13-17)
 | 13 | Jobs Completion | 2/2 | Complete | P1 |
 | 14 | Vendors Completion | 3/3 | Complete | P1 |
 | 15 | Budget Enhancements | 1/1 | Complete | P2 |
-| 16 | Schedule Improvements | 0/1 | Not started | P2 |
+| 16 | Schedule Improvements | 0/2 | Planned | P2 |
 | 17 | Document Versioning | 0/1 | Not started | P2 |
 
 **Priority Legend:**
