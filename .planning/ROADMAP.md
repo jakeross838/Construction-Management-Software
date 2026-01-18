@@ -87,7 +87,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
   4. PDFs are suitable for sharing with clients/owners
 **Research**: Likely (pdfmake is new)
 **Research topics**: pdfmake integration, declarative layout patterns, table formatting
-**Plans**: TBD
+**Plans**: 23-01-PLAN.md (PDF Export Endpoints)
 
 ## Progress
 
@@ -98,7 +98,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
 | 20. Invoice AI - Workflow | 1/1 | Complete | 2026-01-18 |
 | 21. Reports - Backend | 1/1 | Complete | 2026-01-18 |
 | 22. Reports - Excel | 1/1 | Complete | 2026-01-18 |
-| 23. Reports - PDF | 0/? | Not started | - |
+| 23. Reports - PDF | 0/1 | Planned | - |
 
 ---
 *Roadmap created: 2026-01-18*

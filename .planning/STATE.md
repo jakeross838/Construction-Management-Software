@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Phase 22 — Reports Excel
+**Current focus:** Phase 23 — Reports PDF
 
 ## Current Position
 
-Phase: 22 of 23 (Reports - Excel)
-Plan: 22-01 Excel Export Endpoints
-Status: Complete
-Last activity: 2026-01-18 — Phase 22 complete (Excel export endpoints)
+Phase: 23 of 23 (Reports - PDF)
+Plan: 23-01 PDF Export Endpoints
+Status: Plan ready for execution
+Last activity: 2026-01-18 — Phase 23 planned (PDF export endpoints)
 
 Progress: ████████░░ 83% v1.3 (5/6 phases complete)
 
@@ -64,6 +64,5 @@ Resume file: None
 
 ## Next Actions
 
-1. Plan Phase 23 (Reports - PDF)
-2. Execute Phase 23
-3. Complete v1.3 milestone
+1. Run `/gsd:execute-plan .planning/phases/23-reports-pdf/23-01-PLAN.md`
+2. Complete v1.3 milestone
