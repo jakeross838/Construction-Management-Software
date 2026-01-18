@@ -146,14 +146,56 @@
         subNav.parentElement.style.display = 'none';
       }
     }
+
+    // Add mobile hamburger if not exists
+    if (!document.querySelector('.mobile-menu-btn')) {
+      const headerTop = document.querySelector('.header-top');
+      const brand = headerTop?.querySelector('.header-brand');
+      if (brand && headerTop) {
+        const hamburger = document.createElement('button');
+        hamburger.className = 'mobile-menu-btn';
+        hamburger.innerHTML = '☰';
+        hamburger.setAttribute('aria-label', 'Toggle menu');
+        hamburger.onclick = window.NavSidebar.toggleMobile;
+        headerTop.insertBefore(hamburger, brand.nextSibling);
+      }
+    }
+
+    // Add search button to header actions
+    const headerActions = document.querySelector('.header-actions');
+    if (headerActions && !document.querySelector('.search-trigger-btn')) {
+      const searchBtn = document.createElement('button');
+      searchBtn.className = 'search-trigger-btn';
+      searchBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>';
+      searchBtn.setAttribute('aria-label', 'Search (Cmd+K)');
+      searchBtn.setAttribute('title', 'Search (Cmd+K)');
+      searchBtn.onclick = () => window.GlobalSearch?.open();
+      headerActions.insertBefore(searchBtn, headerActions.firstChild);
+    }
   }
 
   // Export API
   window.NavSidebar = {
     init,
     toggle: () => {},
-    toggleMobile: () => {},
-    closeMobile: () => {},
+    toggleMobile: () => {
+      const mainNav = document.querySelector('.main-nav');
+      const headerSub = document.querySelector('.header-sub');
+      const isOpen = mainNav?.classList.contains('mobile-open');
+
+      if (mainNav) {
+        mainNav.classList.toggle('mobile-open', !isOpen);
+      }
+      if (headerSub) {
+        headerSub.classList.toggle('mobile-open', !isOpen);
+      }
+      document.body.classList.toggle('mobile-menu-open', !isOpen);
+    },
+    closeMobile: () => {
+      document.querySelector('.main-nav')?.classList.remove('mobile-open');
+      document.querySelector('.header-sub')?.classList.remove('mobile-open');
+      document.body.classList.remove('mobile-menu-open');
+    },
     isCollapsed: () => false
   };
 

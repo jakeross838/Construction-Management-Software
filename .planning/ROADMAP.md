@@ -165,15 +165,15 @@ Plans:
 ### Phase 11: UX Polish
 **Goal**: Mobile responsiveness and usability improvements
 **Requirements**: UX-02, UX-03
-**Status**: Not started
+**Status**: COMPLETE
 **Success Criteria:**
   1. Mobile-responsive layouts
   2. Global search functionality
   3. Keyboard shortcuts
 
 Plans:
-- [ ] 11-01: Mobile responsiveness
-- [ ] 11-02: Global search
+- [x] 11-01: Mobile responsiveness (COMPLETE)
+- [x] 11-02: Global search (COMPLETE)
 
 ---
 
@@ -197,7 +197,7 @@ Option B (New features first): 7-9 → 1-6 → 10-11
 | 8 | Estimates | 1/1 | **COMPLETE** | **P0** |
 | 9 | Photos | 2/2 | **COMPLETE** | **P0** |
 | 10 | Dashboard | 1/1 | **COMPLETE** | **P0** |
-| 11 | UX Polish | 0/2 | Not started | P2 |
+| 11 | UX Polish | 2/2 | **COMPLETE** | **P0** |
 
 **Priority Legend:**
 - P0: New features (ship first)
