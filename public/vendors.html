@@ -355,6 +355,8 @@
         <div class="loading">Loading...</div>
       </div>
       <div class="modal-footer" id="vendorDetailFooter">
+        <button class="btn btn-danger" onclick="deleteCurrentVendor()">Delete Vendor</button>
+        <div class="footer-spacer"></div>
         <button class="btn btn-secondary" onclick="closeVendorDetailModal()">Close</button>
         <button class="btn btn-primary" onclick="editCurrentVendor()">Edit Vendor</button>
       </div>
@@ -1103,6 +1105,30 @@ function closeVendorDetailModal() {
   modal.style.display = 'none';
   modal.classList.remove('show');
   state.currentVendor = null;
+}
+
+async function deleteCurrentVendor() {
+  if (!state.currentVendor) return;
+
+  const confirmed = confirm(`Are you sure you want to delete "${state.currentVendor.name}"?\n\nThis will archive the vendor but preserve all associated invoices and POs.`);
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/vendors/${state.currentVendor.id}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to delete vendor');
+    }
+
+    showToast('Vendor deleted', 'success');
+    closeVendorDetailModal();
+    await loadVendors();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 function editCurrentVendor() {
