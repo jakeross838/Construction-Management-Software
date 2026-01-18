@@ -2261,8 +2261,24 @@ select.form-control-sm {
   cursor: default;
 }
 
-/* Form helper text */
-.form-helper {
+/* ============================================================
+   FORM HELPER TEXT - Below field hints
+   ============================================================ */
+
+/* Form helper text - standard pattern for hints below fields */
+.form-helper,
+.form-hint,
+.field-hint {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  margin-top: 0.25rem;
+}
+
+/* Helper with icon */
+.form-helper-icon {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   font-size: 0.75rem;
   color: var(--muted-foreground);
   margin-top: 0.25rem;
@@ -5264,7 +5280,7 @@ label .ai-indicator {
 }
 
 .field-label .required {
-  color: var(--danger);
+  color: var(--destructive);
 }
 
 /* Field inputs */
