@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.2 Gap Fixes — Phase 14 complete, continuing with phases 15-17
+**Current focus:** v1.2 Gap Fixes — Phase 15 complete, continuing with phases 16-17
 
 ## Current Position
 
-Phase: 14 (Vendors Completion) — COMPLETE
-Plan: 14-01, 14-02, 14-03 all executed
-Status: Phase 14 complete, ready for phases 15-17
-Last activity: 2026-01-17 — Plan 14-03 executed (Duplicate Detection Enhancement)
+Phase: 15 (Budget Enhancements) — COMPLETE
+Plan: 15-01 executed
+Status: Phase 15 complete, ready for phases 16-17
+Last activity: 2026-01-17 — Plan 15-01 executed (Budget Visualization Enhancements)
 
-Progress: ██████░░░░ 50% v1.2 (3/6 phases complete)
+Progress: ████████░░ 67% v1.2 (4/6 phases complete)
 
 ## Milestone History
 
@@ -56,7 +56,6 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-phase 15` for Purchase Orders Completion
-2. Or run `/gsd:execute-phase 16` for Invoices Completion
-3. Or run `/gsd:execute-phase 17` for Draws Completion
-4. Phases 15-17 can proceed in parallel
+1. Run `/gsd:plan-phase 16` for Schedule Improvements (Gantt enhancements)
+2. Or run `/gsd:plan-phase 17` for Document Versioning
+3. Phases 16-17 can proceed in parallel

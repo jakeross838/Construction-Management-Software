@@ -26,7 +26,7 @@ Gap fixes to complete existing features and improve system reliability.
 
 ### Budgets
 
-- [ ] **BUD-04**: Budget visualization - User sees budget vs actuals comparison, variance alerts, basic trend forecasting
+- [x] **BUD-04**: Budget visualization - User sees budget vs actuals comparison, variance alerts, basic trend forecasting
 
 ### Schedules
 
@@ -72,7 +72,7 @@ Which phases cover which requirements.
 | VND-01 | Phase 14 | Complete |
 | VND-02 | Phase 14 | Complete |
 | VND-03 | Phase 14 | Complete |
-| BUD-04 | Phase 15 | Pending |
+| BUD-04 | Phase 15 | Complete |
 | SCH-03 | Phase 16 | Pending |
 | DOC-03 | Phase 17 | Pending |
 
@@ -83,4 +83,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-01-17*
-*Last updated: 2026-01-17 after v1.1 milestone completion*
+*Last updated: 2026-01-17 after Phase 15 completion*
