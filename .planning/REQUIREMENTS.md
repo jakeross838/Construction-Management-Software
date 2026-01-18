@@ -10,7 +10,7 @@ Requirements for v1.3 Refinement milestone. Each maps to roadmap phases.
 ### Invoice AI
 
 - [x] **INV-AI-01**: User sees improved extraction accuracy for invoice amounts, dates, and vendor names via two-stage pipeline
-- [ ] **INV-AI-02**: User sees smarter auto-matching of invoices to POs and jobs with multi-signal confidence scoring
+- [x] **INV-AI-02**: User sees smarter auto-matching of invoices to POs and jobs with multi-signal confidence scoring
 - [ ] **INV-AI-03**: User can approve invoices with fewer clicks through streamlined workflow and batch actions
 
 ### Reporting
@@ -49,7 +49,7 @@ Which phases cover which requirements.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | INV-AI-01 | Phase 18 | Complete |
-| INV-AI-02 | Phase 19 | Pending |
+| INV-AI-02 | Phase 19 | Complete |
 | INV-AI-03 | Phase 20 | Pending |
 | RPT-01 | Phase 21 | Pending |
 | RPT-02 | Phase 22 | Pending |

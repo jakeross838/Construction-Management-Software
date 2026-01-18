@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Phase 18 — Invoice AI Extraction
+**Current focus:** Phase 19 — Invoice AI Matching
 
 ## Current Position
 
-Phase: 18 of 23 (Invoice AI - Extraction) ✓ COMPLETE
-Plan: 18-01 Two-Stage Extraction Pipeline ✓
-Status: Phase 18 complete, ready for Phase 19
-Last activity: 2026-01-18 — Phase 18 executed (two-stage pipeline)
+Phase: 19 of 23 (Invoice AI - Matching) ✓ COMPLETE
+Plan: 19-01 Multi-Signal PO Matching ✓
+Status: Phase 19 complete, ready for Phase 20
+Last activity: 2026-01-18 — Phase 19 executed (multi-signal PO matching)
 
-Progress: █░░░░░░░░░ 17% v1.3 (1/6 phases complete)
+Progress: ██░░░░░░░░ 33% v1.3 (2/6 phases complete)
 
 ## Research
 
@@ -52,5 +52,5 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 19` for PO/job matching improvements
-2. Then execute Phase 19 plan(s)
+1. Run `/gsd:plan-phase 20` for Invoice AI Workflow improvements
+2. Then execute Phase 20 plan(s)

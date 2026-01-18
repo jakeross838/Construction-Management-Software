@@ -12,7 +12,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
 ## Phases
 
 - [x] **Phase 18: Invoice AI - Extraction** - Two-stage pipeline for better accuracy
-- [ ] **Phase 19: Invoice AI - Matching** - Multi-signal PO/job matching
+- [x] **Phase 19: Invoice AI - Matching** - Multi-signal PO/job matching
 - [ ] **Phase 20: Invoice AI - Workflow** - Streamlined approval with fewer clicks
 - [ ] **Phase 21: Reports - Backend** - Reports API with financial summaries
 - [ ] **Phase 22: Reports - Excel** - Excel export for any data view
@@ -94,7 +94,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 18. Invoice AI - Extraction | 1/1 | Complete | 2026-01-18 |
-| 19. Invoice AI - Matching | 0/? | Not started | - |
+| 19. Invoice AI - Matching | 1/1 | Complete | 2026-01-18 |
 | 20. Invoice AI - Workflow | 0/? | Not started | - |
 | 21. Reports - Backend | 0/? | Not started | - |
 | 22. Reports - Excel | 0/? | Not started | - |
