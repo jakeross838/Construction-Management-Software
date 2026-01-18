@@ -13,6 +13,12 @@ let state = {
 let currentCO = null;
 let costCodeLineIndex = 0;
 
+// Normalize status strings to hyphen-based CSS class names
+const normalizeStatusClass = window.normalizeStatusClass || function(status) {
+  if (!status) return '';
+  return status.toString().toLowerCase().replace(/_/g, '-');
+};
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -592,7 +598,7 @@ function renderCODetail(co) {
 
   document.getElementById('coDetailTitle').textContent = `CO-${String(co.change_order_number).padStart(3, '0')}: ${co.title}`;
   document.getElementById('coStatusBadge').textContent = statusLabels[co.status] || co.status;
-  document.getElementById('coStatusBadge').className = `status-badge status-${co.status}`;
+  document.getElementById('coStatusBadge').className = `status-badge status-${normalizeStatusClass(co.status)}`;
 
   const amount = parseFloat(co.amount || 0);
   const baseAmount = parseFloat(co.base_amount || 0);
