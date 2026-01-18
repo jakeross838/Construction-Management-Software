@@ -125,10 +125,10 @@ Plans:
   2. User can compare two versions (show diffs)
   3. User can rollback to previous version
 **Research**: Unlikely (storage patterns exist)
-**Plans**: TBD
+**Plans**: 0/1
 
 Plans:
-- [ ] 17-01: Document version system
+- [ ] 17-01: Document version system (migration, API endpoints, version history UI, comparison view)
 
 ---
 
@@ -144,7 +144,7 @@ Phases 12-17 can mostly run in parallel (12 first for foundation, then 13-17)
 | 14 | Vendors Completion | 3/3 | Complete | P1 |
 | 15 | Budget Enhancements | 1/1 | Complete | P2 |
 | 16 | Schedule Improvements | 2/2 | Complete | P2 |
-| 17 | Document Versioning | 0/1 | Not started | P2 |
+| 17 | Document Versioning | 0/1 | Planned | P2 |
 
 **Priority Legend:**
 - P0: Foundation (do first)
