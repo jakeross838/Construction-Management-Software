@@ -273,6 +273,211 @@
       font-size: 0.75rem;
       font-weight: 500;
     }
+
+    /* Category Sidebar Layout */
+    .price-db-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 1.5rem;
+      min-height: calc(100vh - 280px);
+    }
+
+    .category-sidebar {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      height: fit-content;
+      position: sticky;
+      top: 1rem;
+    }
+
+    .category-sidebar-header {
+      padding: 0.875rem 1rem;
+      background: var(--bg-card-elevated);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-secondary);
+    }
+
+    .category-list {
+      padding: 0.5rem 0;
+    }
+
+    .category-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.625rem 1rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-left: 3px solid transparent;
+    }
+
+    .category-item:hover {
+      background: var(--accent);
+    }
+
+    .category-item.active {
+      background: var(--accent);
+      border-left-color: var(--accent-blue);
+    }
+
+    .category-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .category-count {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      background: var(--bg-card-elevated);
+      padding: 0.125rem 0.5rem;
+      border-radius: 10px;
+      min-width: 1.5rem;
+      text-align: center;
+    }
+
+    .category-item.active .category-count {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    .price-db-main {
+      min-width: 0;
+    }
+
+    .category-title {
+      margin: 0;
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* Subcategory Groups */
+    .subcategory-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .subcategory-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg-card-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px 8px 0 0;
+      cursor: pointer;
+    }
+
+    .subcategory-header:hover {
+      background: var(--accent);
+    }
+
+    .subcategory-toggle {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      transition: transform 0.2s;
+    }
+
+    .subcategory-group.collapsed .subcategory-toggle {
+      transform: rotate(-90deg);
+    }
+
+    .subcategory-name {
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+
+    .subcategory-item-count {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .subcategory-items {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+    }
+
+    .subcategory-group.collapsed .subcategory-items {
+      display: none;
+    }
+
+    /* Item Row in Subcategory */
+    .price-item-row {
+      display: grid;
+      grid-template-columns: 1fr 100px 100px 80px;
+      gap: 1rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .price-item-row:last-child {
+      border-bottom: none;
+    }
+
+    .price-item-row:hover {
+      background: var(--accent);
+    }
+
+    .item-name {
+      font-weight: 500;
+      font-size: 0.875rem;
+    }
+
+    .item-unit {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .item-price {
+      text-align: right;
+      font-family: 'SF Mono', 'Geist Mono', monospace;
+      font-size: 0.875rem;
+    }
+
+    .item-price.best {
+      color: var(--accent-green);
+      font-weight: 600;
+    }
+
+    .item-vendors {
+      text-align: center;
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+
+    .loading-state {
+      padding: 3rem;
+      text-align: center;
+      color: var(--text-secondary);
+    }
+
+    .empty-category {
+      padding: 2rem;
+      text-align: center;
+      color: var(--text-secondary);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    /* Responsive: stack on mobile */
+    @media (max-width: 768px) {
+      .price-db-layout {
+        grid-template-columns: 1fr;
+      }
+      .category-sidebar {
+        position: static;
+      }
+    }
   </style>
 </head>
 <body>
@@ -334,47 +539,46 @@
 
         <!-- Tab 1: Price Database -->
         <div id="tab-price-database" class="tab-content active">
-          <div class="data-toolbar">
-            <div class="toolbar-left">
-              <div class="filter-group">
-                <select id="categoryFilter" class="form-control form-control-sm" onchange="applyFilters()">
-                  <option value="">All Categories</option>
-                </select>
+          <div class="price-db-layout">
+            <!-- Category Sidebar -->
+            <div class="category-sidebar" id="categorySidebar">
+              <div class="category-sidebar-header">
+                <span>Categories</span>
               </div>
-              <div class="view-toggle">
-                <button class="active" data-unit="each" onclick="setUnit('each')">$/ea</button>
-                <button data-unit="lf" onclick="setUnit('lf')">$/LF</button>
-                <button data-unit="sf" onclick="setUnit('sf')">$/SF</button>
-              </div>
-              <div class="search-input-wrap">
-                <span class="search-icon">🔍</span>
-                <input type="text" id="searchInput" placeholder="Search items..." class="form-control form-control-sm search-input-inline">
+              <div class="category-list" id="categoryList">
+                <div class="category-item active" data-category="" onclick="selectCategory('')">
+                  <span class="category-name">All Items</span>
+                  <span class="category-count" id="allItemsCount">-</span>
+                </div>
+                <!-- Categories populated by JS -->
               </div>
             </div>
-            <div class="toolbar-right">
-              <button class="btn btn-primary btn-sm" onclick="showAddItemModal()">+ Add Item</button>
-            </div>
-          </div>
 
-          <div class="data-table-container">
-            <table class="data-table data-table-hover" id="priceMatrix">
-              <thead id="priceMatrixHead">
-                <tr>
-                  <th>Item</th>
-                  <th>Category</th>
-                  <th>Unit</th>
-                  <th style="text-align: center;">Vendors</th>
-                  <th style="text-align: right;">Best Price</th>
-                  <th style="text-align: right;">Spread</th>
-                  <th style="width: 100px;">Confidence</th>
-                </tr>
-              </thead>
-              <tbody id="priceMatrixBody">
-                <tr>
-                  <td colspan="7" style="text-align: center; padding: 2rem;">Loading price data...</td>
-                </tr>
-              </tbody>
-            </table>
+            <!-- Main Content -->
+            <div class="price-db-main">
+              <div class="data-toolbar">
+                <div class="toolbar-left">
+                  <h3 class="category-title" id="categoryTitle">All Items</h3>
+                  <div class="view-toggle">
+                    <button class="active" data-unit="each" onclick="setUnit('each')">$/ea</button>
+                    <button data-unit="lf" onclick="setUnit('lf')">$/LF</button>
+                    <button data-unit="sf" onclick="setUnit('sf')">$/SF</button>
+                  </div>
+                  <div class="search-input-wrap">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="searchInput" placeholder="Search items..." class="form-control form-control-sm search-input-inline">
+                  </div>
+                </div>
+                <div class="toolbar-right">
+                  <button class="btn btn-primary btn-sm" onclick="showAddItemModal()">+ Add Item</button>
+                </div>
+              </div>
+
+              <!-- Items grouped by subcategory -->
+              <div id="priceMatrixContainer">
+                <div class="loading-state">Loading price data...</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -562,21 +766,27 @@ Example:
           <label>Category *</label>
           <select id="itemCategory" class="form-control" required>
             <option value="">Select category...</option>
-            <option value="Lumber">Lumber</option>
-            <option value="Plywood">Plywood</option>
-            <option value="Drywall">Drywall</option>
-            <option value="Insulation">Insulation</option>
-            <option value="Roofing">Roofing</option>
-            <option value="Siding">Siding</option>
-            <option value="Flooring">Flooring</option>
-            <option value="Concrete">Concrete</option>
-            <option value="Electrical">Electrical</option>
-            <option value="Plumbing">Plumbing</option>
-            <option value="HVAC">HVAC</option>
-            <option value="Paint">Paint</option>
-            <option value="Hardware">Hardware</option>
-            <option value="Windows">Windows</option>
-            <option value="Doors">Doors</option>
+            <optgroup label="GC Materials">
+              <option value="Lumber">Lumber</option>
+              <option value="Plywood">Plywood</option>
+              <option value="Siding">Siding</option>
+              <option value="Trim">Trim</option>
+              <option value="Roofing">Roofing</option>
+              <option value="Windows">Windows</option>
+              <option value="Doors">Doors</option>
+              <option value="Hardware">Hardware</option>
+              <option value="Decking">Decking</option>
+            </optgroup>
+            <optgroup label="Other">
+              <option value="Drywall">Drywall</option>
+              <option value="Insulation">Insulation</option>
+              <option value="Flooring">Flooring</option>
+              <option value="Concrete">Concrete</option>
+              <option value="Electrical">Electrical</option>
+              <option value="Plumbing">Plumbing</option>
+              <option value="HVAC">HVAC</option>
+              <option value="Paint">Paint</option>
+            </optgroup>
           </select>
         </div>
         <div class="form-group">

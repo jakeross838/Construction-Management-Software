@@ -224,32 +224,69 @@ router.delete('/master-items/:id', asyncHandler(async (req, res) => {
 
 /**
  * GET /api/price-intelligence/categories
- * Get list of unique categories and subcategories
+ * Get list of unique categories and subcategories with summary stats
  */
 router.get('/categories', asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  // Get all active items with their categories
+  const { data: items, error } = await supabase
     .from('v2_master_items')
-    .select('category, subcategory')
+    .select('id, category, subcategory')
     .eq('is_active', true);
 
   if (error) throw new AppError(error.message, 500);
 
-  // Group by category
+  // Get price counts per category from price history
+  const { data: prices } = await supabase
+    .from('v2_price_history')
+    .select('master_item_id, vendor_id')
+    .in('master_item_id', items.map(i => i.id));
+
+  // Build category summaries
   const categories = {};
-  for (const item of data) {
+  for (const item of items) {
     if (!categories[item.category]) {
-      categories[item.category] = new Set();
+      categories[item.category] = {
+        subcategories: new Set(),
+        itemIds: new Set(),
+        vendorIds: new Set()
+      };
     }
+    categories[item.category].itemIds.add(item.id);
     if (item.subcategory) {
-      categories[item.category].add(item.subcategory);
+      categories[item.category].subcategories.add(item.subcategory);
     }
   }
 
-  // Convert to array format
-  const result = Object.entries(categories).map(([category, subs]) => ({
+  // Count vendors per category
+  for (const price of (prices || [])) {
+    const item = items.find(i => i.id === price.master_item_id);
+    if (item && categories[item.category]) {
+      categories[item.category].vendorIds.add(price.vendor_id);
+    }
+  }
+
+  // Define preferred category order (GC-relevant first)
+  const categoryOrder = [
+    'Lumber', 'Plywood', 'Siding', 'Trim', 'Roofing',
+    'Windows', 'Doors', 'Hardware', 'Decking',
+    'Drywall', 'Insulation', 'Flooring', 'Concrete',
+    'Electrical', 'Plumbing', 'HVAC', 'Paint'
+  ];
+
+  // Convert to array format with stats
+  const result = Object.entries(categories).map(([category, data]) => ({
     category,
-    subcategories: Array.from(subs).sort()
-  })).sort((a, b) => a.category.localeCompare(b.category));
+    subcategories: Array.from(data.subcategories).sort(),
+    item_count: data.itemIds.size,
+    vendor_count: data.vendorIds.size
+  })).sort((a, b) => {
+    const aIdx = categoryOrder.indexOf(a.category);
+    const bIdx = categoryOrder.indexOf(b.category);
+    if (aIdx === -1 && bIdx === -1) return a.category.localeCompare(b.category);
+    if (aIdx === -1) return 1;
+    if (bIdx === -1) return -1;
+    return aIdx - bIdx;
+  });
 
   res.json(result);
 }));

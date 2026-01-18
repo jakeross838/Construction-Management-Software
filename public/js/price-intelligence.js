@@ -17,7 +17,9 @@ let state = {
   matrixData: null,
   currentItemId: null,
   optimizationResult: null,
-  searchDebounce: null
+  searchDebounce: null,
+  selectedCategory: '',  // Currently selected category
+  collapsedSubcategories: new Set()  // Track collapsed subcategory groups
 };
 
 // ============================================================
@@ -76,7 +78,7 @@ async function loadCategories() {
     const res = await fetch('/api/price-intelligence/categories');
     if (!res.ok) return;
     state.categories = await res.json();
-    populateCategoryFilter();
+    renderCategorySidebar();
   } catch (err) {
     console.error('Error loading categories:', err);
   }
@@ -157,15 +159,64 @@ function switchTab(tabId) {
 // TAB 1: PRICE DATABASE
 // ============================================================
 
+/**
+ * Render the category sidebar with item counts
+ */
+function renderCategorySidebar() {
+  const container = document.getElementById('categoryList');
+  if (!container) return;
+
+  // Calculate total items across all categories
+  const totalItems = state.categories.reduce((sum, cat) => sum + cat.item_count, 0);
+  document.getElementById('allItemsCount').textContent = totalItems;
+
+  // Build category list HTML
+  const categoriesHtml = state.categories.map(cat => `
+    <div class="category-item${state.selectedCategory === cat.category ? ' active' : ''}"
+         data-category="${cat.category}"
+         onclick="selectCategory('${cat.category}')">
+      <span class="category-name">${cat.category}</span>
+      <span class="category-count">${cat.item_count}</span>
+    </div>
+  `).join('');
+
+  // Update only the category items (keep the All Items row)
+  const allItemsRow = container.querySelector('.category-item[data-category=""]');
+  container.innerHTML = '';
+  if (allItemsRow) {
+    allItemsRow.classList.toggle('active', state.selectedCategory === '');
+    container.appendChild(allItemsRow);
+  }
+  container.insertAdjacentHTML('beforeend', categoriesHtml);
+}
+
+/**
+ * Select a category from the sidebar
+ */
+function selectCategory(category) {
+  state.selectedCategory = category;
+
+  // Update sidebar active state
+  document.querySelectorAll('.category-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.category === category);
+  });
+
+  // Update title
+  document.getElementById('categoryTitle').textContent = category || 'All Items';
+
+  // Reload data for selected category
+  loadPriceMatrix();
+}
+
 async function loadPriceMatrix() {
-  const tbody = document.getElementById('priceMatrixBody');
-  tbody.innerHTML = '<tr><td colspan="7" class="loading">Loading price data...</td></tr>';
+  const container = document.getElementById('priceMatrixContainer');
+  container.innerHTML = '<div class="loading-state">Loading price data...</div>';
 
   try {
-    const category = document.getElementById('categoryFilter')?.value || '';
+    const category = state.selectedCategory;
     const url = category
-      ? `/api/price-intelligence/matrix?category=${encodeURIComponent(category)}&limit=100`
-      : '/api/price-intelligence/matrix?limit=100';
+      ? `/api/price-intelligence/matrix?category=${encodeURIComponent(category)}&limit=200`
+      : '/api/price-intelligence/matrix?limit=200';
 
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to load price matrix');
@@ -174,16 +225,16 @@ async function loadPriceMatrix() {
     renderPriceMatrix();
   } catch (err) {
     console.error('Error loading price matrix:', err);
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Failed to load price data</td></tr>';
+    container.innerHTML = '<div class="empty-category">Failed to load price data</div>';
   }
 }
 
 function renderPriceMatrix() {
-  const tbody = document.getElementById('priceMatrixBody');
+  const container = document.getElementById('priceMatrixContainer');
   const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
 
   if (!state.matrixData || !state.matrixData.items || state.matrixData.items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No items found. Add items to start tracking prices.</td></tr>';
+    container.innerHTML = '<div class="empty-category">No items found. Add items to start tracking prices.</div>';
     return;
   }
 
@@ -193,57 +244,107 @@ function renderPriceMatrix() {
   if (search) {
     items = items.filter(item =>
       item.standard_name?.toLowerCase().includes(search) ||
-      item.category?.toLowerCase().includes(search)
+      item.category?.toLowerCase().includes(search) ||
+      item.subcategory?.toLowerCase().includes(search)
     );
   }
 
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No items match your search</td></tr>';
+    container.innerHTML = '<div class="empty-category">No items match your search</div>';
     return;
   }
 
-  const priceField = `price_per_${state.priceUnit}`;
+  // Group items by subcategory (or "General" if no subcategory)
+  const groups = {};
+  for (const item of items) {
+    const subcat = item.subcategory || 'General';
+    if (!groups[subcat]) {
+      groups[subcat] = [];
+    }
+    groups[subcat].push(item);
+  }
 
-  tbody.innerHTML = items.map(item => {
-    const bestPrice = item.best_price || '-';
-    const spread = item.price_spread || 0;
-    const spreadPercent = item.best_price && item.worst_price && item.best_price > 0
-      ? ((item.worst_price - item.best_price) / item.best_price * 100).toFixed(0)
-      : 0;
+  // Sort subcategories: "General" last, others alphabetically
+  const sortedSubcats = Object.keys(groups).sort((a, b) => {
+    if (a === 'General') return 1;
+    if (b === 'General') return -1;
+    return a.localeCompare(b);
+  });
 
-    // Calculate confidence (simplified)
-    const confidence = item.vendor_count > 2 ? 'high' : item.vendor_count > 0 ? 'medium' : 'low';
-    const confidencePercent = item.vendor_count > 2 ? 90 : item.vendor_count > 0 ? 50 : 0;
+  // Render grouped items
+  container.innerHTML = sortedSubcats.map(subcat => {
+    const subcatItems = groups[subcat];
+    const isCollapsed = state.collapsedSubcategories.has(subcat);
 
     return `
-      <tr onclick="showItemDetail('${item.id}')" style="cursor: pointer;">
-        <td>
-          <div class="cell-title">${item.standard_name}</div>
-          ${item.subcategory ? `<div class="cell-subtitle">${item.subcategory}</div>` : ''}
-        </td>
-        <td>${item.category || '-'}</td>
-        <td>${item.standard_unit || 'ea'}</td>
-        <td style="text-align: center;">${item.vendor_count || 0}</td>
-        <td class="col-amount">${bestPrice !== '-' ? formatMoney(bestPrice) : '-'}</td>
-        <td class="col-amount">${spread > 0 ? `${formatMoney(spread)} <span style="color: var(--muted-foreground); font-size: 0.75rem;">(${spreadPercent}%)</span>` : '-'}</td>
-        <td>
-          <span class="confidence-bar">
-            <span class="confidence-fill ${confidence}" style="width: ${confidencePercent}%"></span>
-          </span>
-        </td>
-      </tr>
+      <div class="subcategory-group${isCollapsed ? ' collapsed' : ''}" data-subcategory="${subcat}">
+        <div class="subcategory-header" onclick="toggleSubcategory('${subcat}')">
+          <span class="subcategory-toggle">▼</span>
+          <span class="subcategory-name">${subcat}</span>
+          <span class="subcategory-item-count">${subcatItems.length} item${subcatItems.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="subcategory-items">
+          ${subcatItems.map(item => renderItemRow(item)).join('')}
+        </div>
+      </div>
     `;
   }).join('');
 }
 
-function populateCategoryFilter() {
-  const select = document.getElementById('categoryFilter');
-  if (!select) return;
+/**
+ * Render a single item row within a subcategory
+ */
+function renderItemRow(item) {
+  const bestPrice = item.best_price;
+  const vendorCount = item.vendor_count || 0;
 
-  select.innerHTML = '<option value="">All Categories</option>';
-  state.categories.forEach(cat => {
-    select.innerHTML += `<option value="${cat.category}">${cat.category}</option>`;
-  });
+  return `
+    <div class="price-item-row" onclick="showItemDetail('${item.id}')">
+      <div>
+        <div class="item-name">${item.standard_name}</div>
+        <div class="item-unit">${item.standard_unit || 'ea'}</div>
+      </div>
+      <div class="item-price${bestPrice ? ' best' : ''}">
+        ${bestPrice ? formatMoney(bestPrice) : '-'}
+      </div>
+      <div class="item-vendors">
+        ${vendorCount} vendor${vendorCount !== 1 ? 's' : ''}
+      </div>
+      <div>
+        ${renderConfidenceBar(vendorCount)}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render a confidence bar based on vendor count
+ */
+function renderConfidenceBar(vendorCount) {
+  const confidence = vendorCount > 2 ? 'high' : vendorCount > 0 ? 'medium' : 'low';
+  const percent = vendorCount > 2 ? 90 : vendorCount > 0 ? 50 : 0;
+
+  return `
+    <span class="confidence-bar">
+      <span class="confidence-fill ${confidence}" style="width: ${percent}%"></span>
+    </span>
+  `;
+}
+
+/**
+ * Toggle subcategory collapse state
+ */
+function toggleSubcategory(subcat) {
+  const group = document.querySelector(`.subcategory-group[data-subcategory="${subcat}"]`);
+  if (!group) return;
+
+  if (state.collapsedSubcategories.has(subcat)) {
+    state.collapsedSubcategories.delete(subcat);
+    group.classList.remove('collapsed');
+  } else {
+    state.collapsedSubcategories.add(subcat);
+    group.classList.add('collapsed');
+  }
 }
 
 function populateVendorSelects() {
@@ -274,7 +375,7 @@ function setUnit(unit) {
   state.priceUnit = unit;
 
   // Update toggle buttons
-  document.querySelectorAll('.unit-toggle button').forEach(btn => {
+  document.querySelectorAll('.view-toggle button').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.unit === unit);
   });
 
