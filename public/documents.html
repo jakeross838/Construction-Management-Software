@@ -196,7 +196,7 @@
 
   <!-- Document Detail Modal -->
   <div id="docDetailModal" class="modal modal-fullscreen-dark">
-    <div class="modal-content modal-md">
+    <div class="modal-content modal-lg">
       <div class="modal-header">
         <h2 id="detailModalTitle">Document Details</h2>
         <button class="close-btn" onclick="closeDetailModal()">&times;</button>
@@ -204,59 +204,79 @@
       <div class="modal-body">
         <input type="hidden" id="detailDocId">
 
-        <div class="doc-detail-preview" id="detailPreview">
-          <!-- Preview or icon shown here -->
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" data-tab="details" onclick="switchDetailTab('details')">Details</button>
+          <button class="tab" data-tab="versions" onclick="switchDetailTab('versions')">Versions</button>
         </div>
 
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label for="detailName">Document Name</label>
-            <input type="text" id="detailName" class="form-control">
+        <!-- Details Tab -->
+        <div id="tab-details" class="tab-content active">
+          <div class="doc-detail-preview" id="detailPreview">
+            <!-- Preview or icon shown here -->
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="detailName">Document Name</label>
+              <input type="text" id="detailName" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="detailCategory">Category</label>
+              <select id="detailCategory" class="form-control">
+                <option value="contracts">Contracts & Agreements</option>
+                <option value="plans">Plans & Drawings</option>
+                <option value="permits">Permits & Approvals</option>
+                <option value="insurance">Insurance & Bonds</option>
+                <option value="proposals">Proposals & Bids</option>
+                <option value="specs">Specifications</option>
+                <option value="warranties">Warranties</option>
+                <option value="correspondence">Correspondence</option>
+                <option value="photos">Photos</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="detailVendor">Related Vendor</label>
+              <div id="detailVendorContainer"></div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="detailDate">Document Date</label>
+              <input type="date" id="detailDate" class="form-control">
+            </div>
+            <div class="form-group flex-1">
+              <label for="detailExpiration">Expiration Date</label>
+              <input type="date" id="detailExpiration" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="detailDescription">Description</label>
+              <textarea id="detailDescription" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+
+          <div class="doc-meta">
+            <span id="detailMeta"></span>
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label for="detailCategory">Category</label>
-            <select id="detailCategory" class="form-control">
-              <option value="contracts">Contracts & Agreements</option>
-              <option value="plans">Plans & Drawings</option>
-              <option value="permits">Permits & Approvals</option>
-              <option value="insurance">Insurance & Bonds</option>
-              <option value="proposals">Proposals & Bids</option>
-              <option value="specs">Specifications</option>
-              <option value="warranties">Warranties</option>
-              <option value="correspondence">Correspondence</option>
-              <option value="photos">Photos</option>
-              <option value="other">Other</option>
-            </select>
+        <!-- Versions Tab -->
+        <div id="tab-versions" class="tab-content">
+          <div class="version-header">
+            <h3>Version History</h3>
+            <button class="btn btn-primary btn-sm" onclick="openUploadVersionModal()">+ Upload New Version</button>
           </div>
-          <div class="form-group flex-1">
-            <label for="detailVendor">Related Vendor</label>
-            <div id="detailVendorContainer"></div>
+          <div class="version-list" id="versionList">
+            <!-- Versions rendered here -->
           </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label for="detailDate">Document Date</label>
-            <input type="date" id="detailDate" class="form-control">
-          </div>
-          <div class="form-group flex-1">
-            <label for="detailExpiration">Expiration Date</label>
-            <input type="date" id="detailExpiration" class="form-control">
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label for="detailDescription">Description</label>
-            <textarea id="detailDescription" class="form-control" rows="2"></textarea>
-          </div>
-        </div>
-
-        <div class="doc-meta">
-          <span id="detailMeta"></span>
         </div>
       </div>
       <div class="modal-footer">
@@ -264,6 +284,65 @@
         <a class="btn btn-secondary" id="detailDownloadBtn" href="#" target="_blank" download>Download</a>
         <button class="btn btn-danger" onclick="deleteDocument()">Delete</button>
         <button class="btn btn-primary" onclick="saveDocumentDetails()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Version Modal -->
+  <div id="uploadVersionModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Upload New Version</h2>
+        <button class="close-btn" onclick="closeUploadVersionModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="drop-zone" id="versionDropZone" onclick="document.getElementById('versionFileInput').click()">
+          <div class="drop-zone-content">
+            <div class="drop-icon">📄</div>
+            <p>Drag & drop a file here or click to browse</p>
+            <p class="drop-hint">Upload a new version of this document</p>
+          </div>
+          <input type="file" id="versionFileInput" style="display: none;" onchange="handleVersionFileSelect(event)" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv">
+        </div>
+        <div class="file-preview" id="versionFilePreview" style="display: none;">
+          <div class="preview-icon" id="versionPreviewIcon">📄</div>
+          <div class="preview-info">
+            <div class="preview-name" id="versionPreviewName">filename.pdf</div>
+            <div class="preview-size" id="versionPreviewSize">1.2 MB</div>
+          </div>
+          <button class="btn btn-icon" onclick="clearVersionFile()" title="Remove">×</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeUploadVersionModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="uploadNewVersion()" id="uploadVersionBtn" disabled>Upload Version</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Version Compare Modal -->
+  <div id="versionCompareModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2>Compare Versions</h2>
+        <button class="close-btn" onclick="closeVersionCompareModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="version-compare-container">
+          <div class="version-compare-panel">
+            <h3 id="compareLeftTitle">Version 1</h3>
+            <div class="version-compare-preview" id="compareLeftPreview"></div>
+            <div class="version-compare-meta" id="compareLeftMeta"></div>
+          </div>
+          <div class="version-compare-panel">
+            <h3 id="compareRightTitle">Version 2</h3>
+            <div class="version-compare-preview" id="compareRightPreview"></div>
+            <div class="version-compare-meta" id="compareRightMeta"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeVersionCompareModal()">Close</button>
       </div>
     </div>
   </div>
