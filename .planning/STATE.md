@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 
 ## Current Position
 
-Phase: 13 (Jobs Completion) — COMPLETE
-Plan: 13-02 complete
-Status: Phase 13 shipped, ready for phases 14-17
-Last activity: 2026-01-17 — Phase 13 executed
+Phase: 14 (Vendors Completion) — PLANNED
+Plan: 14-01, 14-02, 14-03 planned
+Status: Phase 14 ready for execution
+Last activity: 2026-01-17 — Phase 14 planned
 
 Progress: ██░░░░░░░░ 33% v1.2 (2/6 phases complete)
 
@@ -48,6 +48,6 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 14` to plan Vendors Completion
-2. Or run `/gsd:plan-phase 15` to plan Budget Enhancements (can run in parallel)
-3. Phases 14-17 can now proceed (Foundation and Jobs complete)
+1. Run `/gsd:execute-plan .planning/phases/14-vendors-completion/14-01-PLAN.md` to execute Vendor CRUD completion
+2. Or run `/gsd:execute-phase 14` to execute all 3 plans in Phase 14
+3. Phases 15-17 can also proceed in parallel

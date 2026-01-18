@@ -115,6 +115,11 @@ const ERROR_CODES = {
   },
 
   // Conflict Errors (409)
+  ALREADY_DELETED: {
+    status: 409,
+    retry: false,
+    description: 'Entity is already deleted'
+  },
   ENTITY_LOCKED: {
     status: 409,
     retry: true,
