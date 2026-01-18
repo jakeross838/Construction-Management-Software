@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Position
 
 Phase: 34 of 36 — Forms & Validation
-Plan: 3 plans created (01, 02, 03)
-Status: PLANNING COMPLETE
-Last activity: 2026-01-18 — Phase 34 planned (labels, errors, layouts)
+Plan: 34-02 COMPLETE (Error & Validation Styling)
+Status: IN PROGRESS
+Last activity: 2026-01-18 — Plan 34-02 executed (error styling, form states, helper text)
 
 Progress: ████░░░░░░ 57% v1.5 (4/7 phases)
 
@@ -36,6 +36,9 @@ Progress: ████░░░░░░ 57% v1.5 (4/7 phases)
 - Standardize modal titles on `.modal-title-row` class
 - Standardize close buttons on `.close-btn` class
 - Use `.modal-footer-left` / `.modal-footer-right` for complex footers
+- Error text uses `.field-error` or `.error-text` with `.visible` class to show
+- Form validation states: `.form-control.error` for error, `.form-control.valid` for success
+- Helper text uses `.form-helper`, `.form-hint`, or `.field-hint` (all unified)
 
 ### Pending Todos
 
@@ -48,9 +51,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 33 complete
+Stopped at: Phase 34, Plan 02 complete
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-phase 34` to execute Forms & Validation CSS standardization
+1. Execute Plan 34-01 (Form Labels) if not already done
+2. Execute Plan 34-03 (Form Layouts) to complete phase 34
