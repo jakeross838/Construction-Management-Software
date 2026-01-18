@@ -3731,8 +3731,19 @@ body.modal-open {
   outline: none;
 }
 
+/* Required field indicator */
 .required {
-  color: var(--danger);
+  color: var(--destructive);
+  font-weight: 500;
+  margin-left: 0.125rem;
+}
+
+/* Alternative: asterisk after label text */
+label.required::after,
+.form-group.required label::after {
+  content: " *";
+  color: var(--destructive);
+  font-weight: 500;
 }
 
 .btn-warning {
@@ -7286,15 +7297,10 @@ label .ai-indicator {
   color: var(--text-muted);
 }
 
-/* Empty/Error Text */
+/* Empty Text */
 .empty-text {
   color: var(--text-muted);
   font-style: italic;
-  font-size: 0.85rem;
-}
-
-.error-text {
-  color: var(--danger);
   font-size: 0.85rem;
 }
 
