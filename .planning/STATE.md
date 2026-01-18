@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Position
 
 Phase: 22 of 23 (Reports - Excel)
-Plan: None yet
-Status: Ready for planning
-Last activity: 2026-01-18 — Phase 21 complete (reports API endpoints)
+Plan: 22-01 Excel Export Endpoints
+Status: Plan ready for execution
+Last activity: 2026-01-18 — Phase 22 planned (Excel export endpoints)
 
 Progress: ██████░░░░ 67% v1.3 (4/6 phases complete)
 
@@ -42,6 +42,12 @@ See PROJECT.md Key Decisions table for full history.
 - All reports support date range filtering via query params
 - Category derived from first 2 digits of cost code (CSI MasterFormat divisions)
 
+**Phase 22 decisions:**
+- Excel exports added to existing reports.js router file (not new file)
+- Three Excel export endpoints (job-cost, vendor-spend, category-spend)
+- Follow existing ExcelJS patterns from draw export in index.js
+- Professional formatting: blue headers, currency format, conditional status colors
+
 ### Pending Todos
 
 None
@@ -58,6 +64,6 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 22` to plan Reports Excel phase
-2. Then execute Phase 22 plan
-3. Then plan Phase 23 (Reports - PDF)
+1. Run `/gsd:execute-plan .planning/phases/22-reports-excel/22-01-PLAN.md`
+2. Then plan Phase 23 (Reports - PDF)
+3. Complete v1.3 milestone

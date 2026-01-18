@@ -74,7 +74,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
   2. User can export vendor spend report to Excel
   3. Excel files have professional formatting (headers, currency format)
 **Research**: Unlikely (ExcelJS already in use)
-**Plans**: TBD
+**Plans**: 22-01-PLAN.md (Excel Export Endpoints)
 
 ### Phase 23: Reports - PDF
 **Goal**: Professional PDF reports for clients and owners
@@ -97,7 +97,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
 | 19. Invoice AI - Matching | 1/1 | Complete | 2026-01-18 |
 | 20. Invoice AI - Workflow | 1/1 | Complete | 2026-01-18 |
 | 21. Reports - Backend | 1/1 | Complete | 2026-01-18 |
-| 22. Reports - Excel | 0/? | Not started | - |
+| 22. Reports - Excel | 0/1 | Planned | - |
 | 23. Reports - PDF | 0/? | Not started | - |
 
 ---
