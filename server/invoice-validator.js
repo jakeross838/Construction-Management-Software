@@ -77,6 +77,110 @@ function normalizeDate(match, p1, p2, p3) {
 }
 
 // ============================================================
+// OCR CORRECTION FUNCTIONS
+// ============================================================
+
+/**
+ * Apply OCR corrections to a value
+ * Returns the corrected value and a log of all corrections applied
+ *
+ * @param {string} value - Original value to correct
+ * @param {string} type - Type of correction ('invoiceNumber', 'amount', 'date')
+ * @returns {Object} { corrected: string, original: string, corrections: string[], wasModified: boolean }
+ */
+function applyOCRCorrections(value, type) {
+  const result = {
+    corrected: value || '',
+    original: value || '',
+    corrections: [],
+    wasModified: false
+  };
+
+  if (!value || !OCR_CORRECTIONS[type]) {
+    return result;
+  }
+
+  let current = String(value);
+
+  for (const rule of OCR_CORRECTIONS[type]) {
+    const before = current;
+    if (typeof rule.replacement === 'function') {
+      current = current.replace(rule.pattern, rule.replacement);
+    } else {
+      current = current.replace(rule.pattern, rule.replacement);
+    }
+
+    if (before !== current) {
+      result.corrections.push({
+        description: rule.description,
+        before: before,
+        after: current
+      });
+      console.log(`[OCR] ${type}: ${rule.description} - "${before}" → "${current}"`);
+    }
+  }
+
+  result.corrected = current;
+  result.wasModified = result.original !== result.corrected;
+
+  if (result.wasModified) {
+    console.log(`[OCR] ${type} final: "${result.original}" → "${result.corrected}" (${result.corrections.length} corrections)`);
+  }
+
+  return result;
+}
+
+/**
+ * Correct amount value (remove formatting, fix OCR errors)
+ * @param {string|number} amount - Amount to correct
+ * @returns {Object} { corrected: number, original: any, corrections: string[], wasModified: boolean }
+ */
+function correctAmount(amount) {
+  const result = {
+    corrected: 0,
+    original: amount,
+    corrections: [],
+    wasModified: false
+  };
+
+  if (amount === null || amount === undefined) {
+    return result;
+  }
+
+  // If already a number, just return it
+  if (typeof amount === 'number') {
+    result.corrected = amount;
+    return result;
+  }
+
+  // Apply string corrections
+  let amountStr = String(amount);
+  const originalStr = amountStr;
+
+  // Apply OCR corrections for amounts
+  for (const rule of OCR_CORRECTIONS.amount) {
+    const before = amountStr;
+    amountStr = amountStr.replace(rule.pattern, rule.replacement);
+    if (before !== amountStr) {
+      result.corrections.push(rule.description);
+    }
+  }
+
+  // Parse the corrected string
+  const parsed = parseFloat(amountStr);
+  if (!isNaN(parsed)) {
+    result.corrected = parsed;
+    result.wasModified = originalStr !== amountStr;
+
+    if (result.wasModified) {
+      console.log(`[OCR] amount: "${originalStr}" → ${result.corrected} (${result.corrections.join(', ')})`);
+    }
+  }
+
+  return result;
+}
+
+// ============================================================
 // AMOUNT VALIDATION
 // ============================================================
 
@@ -570,6 +674,8 @@ module.exports = {
   validateVendor,
   validateInvoiceNumber,
   validateConsistency,
+  applyOCRCorrections,
+  correctAmount,
   OCR_CORRECTIONS,
   VALID_TRADE_TYPES
 };
