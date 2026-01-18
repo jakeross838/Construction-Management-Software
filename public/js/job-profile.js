@@ -6,6 +6,7 @@ let state = {
   currentJobId: null,
   job: null,
   plans: [],
+  metrics: null,
   isEditing: false,
   originalValues: {},
   extractedData: null
@@ -156,16 +157,18 @@ async function loadJobProfile() {
   }
 
   try {
-    // Load job details and plans in parallel
-    const [jobRes, plansRes] = await Promise.all([
+    // Load job details, plans, and metrics in parallel
+    const [jobRes, plansRes, metricsRes] = await Promise.all([
       fetch(`/api/jobs/${state.currentJobId}`),
-      fetch(`/api/documents?job_id=${state.currentJobId}&category=plans`)
+      fetch(`/api/documents?job_id=${state.currentJobId}&category=plans`),
+      fetch(`/api/jobs/${state.currentJobId}/metrics`)
     ]);
 
     if (!jobRes.ok) throw new Error('Failed to load job');
 
     state.job = await jobRes.json();
     state.plans = await plansRes.json();
+    state.metrics = metricsRes.ok ? await metricsRes.json() : null;
 
     renderProfile();
   } catch (err) {
@@ -251,6 +254,9 @@ function renderProfile() {
 
   // Related plans
   renderPlans();
+
+  // Financial metrics
+  renderMetrics();
 }
 
 async function loadFinancialSummary() {
@@ -268,6 +274,52 @@ async function loadFinancialSummary() {
   } catch (err) {
     console.error('Failed to load financial summary:', err);
   }
+}
+
+function renderMetrics() {
+  const m = state.metrics;
+  if (!m) return;
+
+  // Helper for currency formatting
+  const fmt = (n) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(n);
+
+  // Completion progress
+  document.getElementById('completionPercent').textContent = m.completion_percent + '%';
+  document.getElementById('completionBar').style.width = m.completion_percent + '%';
+  document.getElementById('totalBilled').textContent = fmt(m.budget.billed);
+  document.getElementById('contractAmount').textContent = fmt(m.contract_amount);
+
+  // Budget card
+  document.getElementById('metricBudgeted').textContent = fmt(m.budget.budgeted);
+  document.getElementById('metricCommitted').textContent = fmt(m.budget.committed);
+  document.getElementById('metricBudgetBilled').textContent = fmt(m.budget.billed);
+  document.getElementById('metricPaid').textContent = fmt(m.budget.paid);
+
+  // PO card
+  document.getElementById('poCount').textContent = m.purchase_orders.total_count;
+  document.getElementById('poTotal').textContent = fmt(m.purchase_orders.total_amount);
+  document.getElementById('poOpen').textContent = m.purchase_orders.open_count;
+  document.getElementById('poClosed').textContent = m.purchase_orders.closed_count;
+
+  // Invoices card
+  document.getElementById('invoiceCount').textContent = m.invoices.total_count;
+  document.getElementById('invoiceTotal').textContent = fmt(m.invoices.total_amount);
+  document.getElementById('invNeedsApproval').textContent = m.invoices.by_status.needs_approval.count;
+  document.getElementById('invApproved').textContent = m.invoices.by_status.approved.count;
+  document.getElementById('invInDraw').textContent = m.invoices.by_status.in_draw.count;
+  document.getElementById('invPaid').textContent = m.invoices.by_status.paid.count;
+
+  // Draws card
+  document.getElementById('drawCount').textContent = m.draws.total_count;
+  document.getElementById('drawFunded').textContent = fmt(m.draws.total_funded);
+  document.getElementById('drawDraft').textContent = m.draws.draft_count;
+  document.getElementById('drawSubmitted').textContent = m.draws.submitted_count;
+  document.getElementById('drawFundedCount').textContent = m.draws.funded_count;
 }
 
 function renderPlans() {
