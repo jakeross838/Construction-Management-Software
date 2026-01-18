@@ -52,7 +52,8 @@ const {
   transitionError,
   notFoundError,
   lockedError,
-  versionConflictError
+  versionConflictError,
+  validateRequest
 } = require('./errors');
 
 const {
@@ -6565,9 +6566,10 @@ app.get('/api/draws/:id', async (req, res) => {
   }
 });
 
-app.post('/api/jobs/:id/draws', async (req, res) => {
-  try {
-    const jobId = req.params.id;
+app.post('/api/jobs/:id/draws', validateRequest({
+  params: { id: { type: 'uuid' } }
+}), asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
 
     const { data: existing } = await supabase
       .from('v2_draws')
@@ -6589,12 +6591,9 @@ app.post('/api/jobs/:id/draws', async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  res.json(data);
+}));
 
 // Get approved invoices that haven't been added to a draw yet
 app.get('/api/jobs/:id/approved-unbilled-invoices', async (req, res) => {

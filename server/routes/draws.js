@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { logActivity, checkSplitReconciliation, stampInvoice } = require('../services/invoiceHelpers');
-const { asyncHandler, AppError, notFoundError } = require('../errors');
+const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
 // Storage and pdf-stamper functions removed - using unified stampInvoice instead
 
 // Helper: Log draw activity
@@ -441,7 +441,10 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 // Add invoices to draw
-router.post('/:id/add-invoices', asyncHandler(async (req, res) => {
+router.post('/:id/add-invoices', validateRequest({
+  params: { id: { type: 'uuid' } },
+  body: { invoice_ids: { required: true } }
+}), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { invoice_ids } = req.body;
 

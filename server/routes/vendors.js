@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { asyncHandler, AppError, notFoundError } = require('../errors');
+const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
 
 // Get all vendors
 router.get('/', asyncHandler(async (req, res) => {
@@ -20,7 +20,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // Create vendor
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', validateRequest({ body: { name: { required: true } } }), asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_vendors')
     .insert(req.body)

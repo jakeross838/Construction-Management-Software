@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { extractSpecsFromPlans, extractSpecsFromMultipleDocuments } = require('../ai-document-processor');
-const { asyncHandler, AppError, notFoundError } = require('../errors');
+const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
 
 // Get all jobs
 router.get('/', asyncHandler(async (req, res) => {
@@ -21,7 +21,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // Get single job
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', validateRequest({ params: { id: { type: 'uuid' } } }), asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_jobs')
     .select('*')
