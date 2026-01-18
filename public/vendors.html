@@ -454,7 +454,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadVendors() {
   try {
-    const res = await fetch('/api/vendors');
+    const params = new URLSearchParams();
+    if (state.searchQuery) params.set('search', state.searchQuery);
+    if (state.tradeFilter) params.set('trade', state.tradeFilter);
+
+    const res = await fetch(`/api/vendors?${params}`);
     state.vendors = await res.json();
     renderVendorList();
     updateStats();
@@ -622,20 +626,8 @@ function closeExpiringModal() {
 
 function renderVendorList() {
   const container = document.getElementById('vendorList');
-  let filtered = state.vendors;
-
-  // Apply filters
-  if (state.tradeFilter) {
-    filtered = filtered.filter(v => v.trade === state.tradeFilter);
-  }
-  if (state.searchQuery) {
-    const q = state.searchQuery.toLowerCase();
-    filtered = filtered.filter(v =>
-      (v.name || '').toLowerCase().includes(q) ||
-      (v.email || '').toLowerCase().includes(q) ||
-      (v.phone || '').includes(q)
-    );
-  }
+  // Vendors are already filtered by server
+  const filtered = state.vendors;
 
   if (filtered.length === 0) {
     container.innerHTML = '<div class="empty-state">No vendors found</div>';
@@ -729,7 +721,7 @@ function formatMoney(amount) {
 function setupFilters() {
   document.getElementById('tradeFilter').addEventListener('change', e => {
     state.tradeFilter = e.target.value;
-    renderVendorList();
+    loadVendors(); // Reload from server with filter
   });
 
   let debounce;
@@ -737,7 +729,7 @@ function setupFilters() {
     clearTimeout(debounce);
     debounce = setTimeout(() => {
       state.searchQuery = e.target.value;
-      renderVendorList();
+      loadVendors(); // Reload from server with search
     }, 300);
   });
 }
