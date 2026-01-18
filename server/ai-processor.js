@@ -24,6 +24,7 @@ const aiLearning = require('./ai-learning');
 const ocrProcessor = require('./ocr-processor');
 const invoiceValidator = require('./invoice-validator');
 const poMatcher = require('./po-matcher');
+const priceCapture = require('./price-capture');
 
 // Consolidated duplicate detection
 const {
@@ -1914,7 +1915,30 @@ async function processInvoice(pdfBuffer, originalFilename) {
     });
     results.messages.push(`Renamed to: ${results.standardizedFilename}`);
 
-    // 10. Final review status
+    // 10. Capture prices from line items into Price Intelligence
+    if (results.vendor?.id && extracted.lineItems?.length > 0) {
+      try {
+        const priceResults = await priceCapture.captureFromInvoice({
+          invoiceId: results.invoiceId, // Will be set after insert
+          vendorId: results.vendor.id,
+          lineItems: extracted.lineItems,
+          invoiceDate: extracted.invoiceDate
+        });
+
+        results.price_capture = priceResults;
+        if (priceResults.captured > 0) {
+          results.messages.push(`Captured ${priceResults.captured} prices for Price Intelligence`);
+        }
+        if (priceResults.unmatched.length > 0) {
+          results.messages.push(`${priceResults.unmatched.length} items not matched to master items`);
+        }
+      } catch (err) {
+        console.error('Price capture error:', err);
+        // Non-fatal - don't fail invoice processing
+      }
+    }
+
+    // 11. Final review status
     if (results.review_flags.length > 0) {
       results.needs_review = true;
     }

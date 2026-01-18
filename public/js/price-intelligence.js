@@ -461,16 +461,49 @@ function renderItemHistory(history) {
     return;
   }
 
-  tbody.innerHTML = history.map(h => `
-    <tr>
-      <td>${formatDate(h.price_date)}</td>
-      <td>${h.vendor?.name || 'Unknown'}</td>
-      <td><span class="status-badge status-${h.source_type === 'invoice' ? 'approved' : 'pending'}">${h.source_type}</span></td>
-      <td class="amount">${formatMoney(h.unit_price)}</td>
-      <td>${h.unit}</td>
-      <td>${h.quantity || '-'}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = history.map(h => {
+    const hasSource = h.source_id && h.source_type !== 'manual';
+    const sourceClass = h.source_type === 'invoice' ? 'approved' : 'pending';
+    const sourceLink = hasSource
+      ? `<a href="#" onclick="viewPriceSource('${h.id}'); return false;" class="status-badge status-${sourceClass}" style="cursor: pointer;">${h.source_type}</a>`
+      : `<span class="status-badge status-${sourceClass}">${h.source_type}</span>`;
+
+    return `
+      <tr>
+        <td>${formatDate(h.price_date)}</td>
+        <td>${h.vendor?.name || 'Unknown'}</td>
+        <td>${sourceLink}</td>
+        <td class="amount">${formatMoney(h.unit_price)}</td>
+        <td>${h.unit}</td>
+        <td>${h.quantity || '-'}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * View the source document for a price entry
+ */
+async function viewPriceSource(priceId) {
+  try {
+    const res = await fetch(`/api/price-intelligence/price-history/${priceId}/source`);
+    if (!res.ok) throw new Error('Failed to load source');
+
+    const source = await res.json();
+
+    if (source.url) {
+      // Open the document in a new tab
+      window.open(source.url, '_blank');
+    } else if (source.document) {
+      // Show info about the source
+      showToast(`Source: ${source.label || source.type}`, 'info');
+    } else {
+      showToast('No source document available', 'info');
+    }
+  } catch (err) {
+    console.error('Error loading source:', err);
+    showToast('Could not load source document', 'error');
+  }
 }
 
 function renderItemAliases(aliases) {

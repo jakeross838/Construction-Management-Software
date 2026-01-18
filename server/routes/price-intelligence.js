@@ -8,6 +8,7 @@ const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../errors');
 const priceMatcher = require('../price-matcher');
+const priceCapture = require('../price-capture');
 
 // ============================================================
 // STATS & OVERVIEW
@@ -374,6 +375,18 @@ router.get('/price-history', asyncHandler(async (req, res) => {
   if (error) throw new AppError(error.message, 500);
 
   res.json(data);
+}));
+
+/**
+ * GET /api/price-intelligence/price-history/:id/source
+ * Get the source document for a price entry (invoice, quote, etc.)
+ */
+router.get('/price-history/:id/source', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const source = await priceCapture.getPriceSource(id);
+
+  res.json(source);
 }));
 
 /**

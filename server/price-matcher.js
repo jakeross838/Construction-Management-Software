@@ -62,19 +62,21 @@ const UNIT_CONVERSIONS = {
 const CATEGORY_KEYWORDS = {
   'Lumber': ['lumber', '2x4', '2x6', '2x8', '2x10', '2x12', 'stud', 'board', 'plank', 'timber', 'pt', 'pressure treated', 'kiln dried', 'kd', 'doug fir', 'douglas fir', 'spf', 'hem fir', 'cedar', 'redwood', 'pine', 'oak'],
   'Plywood': ['plywood', 'ply', 'osb', 'sheathing', 'cdx', 'bc', 'ac', 'advantech', 'zip system', 'huber'],
+  'Siding': ['siding', 'hardie', 'fiber cement', 'vinyl', 'lap siding', 'board and batten', 'shake', 'lp smartside'],
+  'Trim': ['trim', 'fascia', 'soffit', 'casing', 'baseboard', 'base', 'crown', 'moulding', 'molding', 'chair rail', 'pvc trim', 'azek', 'primed'],
+  'Roofing': ['shingle', 'roofing', 'felt', 'underlayment', 'ridge cap', 'flashing', 'drip edge', 'ice dam', 'ice & water'],
+  'Windows': ['window', 'glazing', 'glass', 'impact', 'vinyl window'],
+  'Doors': ['door', 'entry', 'interior door', 'exterior door', 'prehung', 'slab'],
+  'Hardware': ['screw', 'nail', 'bolt', 'washer', 'nut', 'anchor', 'fastener', 'hinge', 'bracket', 'joist hanger', 'simpson', 'hardware', 'clip', 'hidden fastener'],
+  'Decking': ['deck', 'decking', 'trex', 'timbertech', 'composite deck', 'deck board', 'deck screw', 'railing', 'baluster'],
   'Drywall': ['drywall', 'sheetrock', 'gypsum', 'gyp', 'greenboard', 'moisture resistant', 'firecode', 'type x', 'densglass'],
   'Insulation': ['insulation', 'batt', 'blown', 'spray foam', 'fiberglass', 'rockwool', 'mineral wool', 'rigid foam', 'eps', 'xps', 'polyiso'],
-  'Roofing': ['shingle', 'roofing', 'felt', 'underlayment', 'ridge cap', 'flashing', 'drip edge', 'ice dam', 'ice & water'],
-  'Siding': ['siding', 'hardie', 'fiber cement', 'vinyl', 'lap siding', 'board and batten', 'shake'],
   'Flooring': ['flooring', 'lvp', 'lvt', 'hardwood', 'tile', 'carpet', 'laminate', 'vinyl plank'],
   'Concrete': ['concrete', 'cement', 'rebar', 'block', 'cmu', 'mortar', 'grout', 'ready mix'],
   'Electrical': ['wire', 'romex', 'conduit', 'emt', 'pvc conduit', 'breaker', 'panel', 'outlet', 'switch'],
   'Plumbing': ['pipe', 'pex', 'copper', 'pvc pipe', 'fitting', 'valve', 'faucet', 'toilet', 'sink'],
   'HVAC': ['duct', 'ductwork', 'hvac', 'flex', 'register', 'grille', 'diffuser'],
-  'Paint': ['paint', 'primer', 'stain', 'sealer', 'gallon', 'quart'],
-  'Hardware': ['screw', 'nail', 'bolt', 'washer', 'nut', 'anchor', 'fastener', 'hinge', 'bracket', 'joist hanger', 'simpson', 'hardware'],
-  'Windows': ['window', 'glazing', 'glass', 'impact', 'vinyl window'],
-  'Doors': ['door', 'entry', 'interior door', 'exterior door', 'prehung', 'slab']
+  'Paint': ['paint', 'primer', 'stain', 'sealer', 'gallon', 'quart']
 };
 
 /**
