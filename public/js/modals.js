@@ -1,9 +1,15 @@
 /**
  * Modal Management Module
  * Handles invoice edit modal, job selection modal, and other UI dialogs
- * LAST UPDATED: 2026-01-15 - Only use billed_amount for in_draw status
+ * LAST UPDATED: 2026-01-18 - Use normalized status class names (hyphens)
  */
-console.log('[MODALS] Script loaded - version 2026-01-15-partial');
+console.log('[MODALS] Script loaded - version 2026-01-18-status-class');
+
+// Use global normalizeStatusClass from app.js (with fallback)
+const normalizeStatusClass = window.normalizeStatusClass || function(status) {
+  if (!status) return '';
+  return status.toString().toLowerCase().replace(/_/g, '-');
+};
 
 const Modals = {
   // Current state
@@ -437,7 +443,7 @@ const Modals = {
       const siblingList = siblings.map(s => `
         <div class="sibling-item ${s.id === currentId ? 'current' : ''}" onclick="window.Modals.viewSiblingInvoice('${s.id}')">
           <span class="sibling-amount">${window.Validation?.formatCurrency(s.amount)}</span>
-          <span class="sibling-status status-badge status-${s.status}">${s.status}</span>
+          <span class="sibling-status status-badge status-${normalizeStatusClass(s.status)}">${s.status}</span>
           ${s.id === currentId ? '<span class="current-marker">(current)</span>' : ''}
         </div>
       `).join('');
@@ -505,7 +511,7 @@ const Modals = {
           <div class="modal-header">
             <div class="modal-title">
               <h2>${this.isEditMode ? 'Edit Invoice' : 'View Invoice'}</h2>
-              <span class="status-badge status-${invoice.status}">${statusInfo.label || invoice.status}</span>
+              <span class="status-badge status-${normalizeStatusClass(invoice.status)}">${statusInfo.label || invoice.status}</span>
               ${isPartialAllocation ? '<span class="status-badge status-partial">Partial</span>' : ''}
               ${showReadOnlyBadge ? '<span class="readonly-badge">Read Only</span>' : ''}
             </div>
