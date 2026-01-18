@@ -455,10 +455,11 @@ let state = {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+  setupFilters();
+  setupDuplicateCheck();
   await loadVendors();
   await checkDuplicates();
   await checkExpiring();
-  setupFilters();
 });
 
 // ============================================================
@@ -803,6 +804,75 @@ function closeVendorModal() {
   const modal = document.getElementById('vendorModal');
   modal.classList.remove('show');
   modal.style.display = 'none';
+  hideDuplicateWarning();
+  state.duplicateWarningDismissed = false;
+}
+
+// ============================================================
+// DUPLICATE DETECTION (REAL-TIME)
+// ============================================================
+
+let duplicateCheckTimer;
+
+function setupDuplicateCheck() {
+  const nameInput = document.getElementById('vendorName');
+  nameInput.addEventListener('input', (e) => {
+    clearTimeout(duplicateCheckTimer);
+    const name = e.target.value.trim();
+    const vendorId = document.getElementById('vendorId').value;
+
+    // Only check if name is long enough and we're creating (not editing)
+    if (name.length < 3 || vendorId) {
+      hideDuplicateWarning();
+      return;
+    }
+
+    duplicateCheckTimer = setTimeout(() => checkForDuplicatesRealtime(name), 500);
+  });
+}
+
+async function checkForDuplicatesRealtime(name) {
+  try {
+    const res = await fetch(`/api/vendors/check-duplicate?name=${encodeURIComponent(name)}`);
+    const result = await res.json();
+
+    if (result.matches && result.matches.length > 0) {
+      showDuplicateWarningInModal(result.matches);
+    } else {
+      hideDuplicateWarning();
+    }
+  } catch (err) {
+    console.error('Duplicate check failed:', err);
+  }
+}
+
+function showDuplicateWarningInModal(matches) {
+  const banner = document.getElementById('duplicateWarningBanner');
+  const matchesDiv = document.getElementById('duplicateMatches');
+
+  matchesDiv.innerHTML = matches.map(m => `
+    <div class="duplicate-match">
+      <span class="match-name">${m.name}</span>
+      <span class="match-similarity">${m.similarity}% match</span>
+      <button type="button" class="btn btn-xs btn-link" onclick="useExistingVendor('${m.id}')">Use this vendor</button>
+    </div>
+  `).join('');
+
+  banner.style.display = 'flex';
+}
+
+function hideDuplicateWarning() {
+  document.getElementById('duplicateWarningBanner').style.display = 'none';
+}
+
+function dismissDuplicateWarning() {
+  hideDuplicateWarning();
+  state.duplicateWarningDismissed = true;
+}
+
+function useExistingVendor(vendorId) {
+  closeVendorModal();
+  openVendor(vendorId);
 }
 
 async function saveVendor() {
@@ -843,6 +913,11 @@ async function saveVendor() {
     return;
   }
 
+  // If user dismissed warning, skip duplicate check
+  if (state.duplicateWarningDismissed && !id) {
+    data.skip_duplicate_check = true;
+  }
+
   try {
     const url = id ? `/api/vendors/${id}` : '/api/vendors';
     const method = id ? 'PATCH' : 'POST';
@@ -853,9 +928,19 @@ async function saveVendor() {
       body: JSON.stringify(data)
     });
 
-    if (!res.ok) throw new Error('Failed to save vendor');
+    const result = await res.json();
+
+    // Handle duplicate warning from server
+    if (res.status === 409 && result.error === 'DUPLICATE_WARNING') {
+      showDuplicateWarningInModal(result.duplicates);
+      showToast('Similar vendor already exists - check the warning', 'warning');
+      return;
+    }
+
+    if (!res.ok) throw new Error(result.error || result.message || 'Failed to save vendor');
 
     showToast(id ? 'Vendor updated' : 'Vendor created', 'success');
+    state.duplicateWarningDismissed = false;
     closeVendorModal();
     await loadVendors();
     await checkDuplicates();
