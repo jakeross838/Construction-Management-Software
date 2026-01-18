@@ -208,6 +208,12 @@ function hideAllStates() {
   document.getElementById('listView').style.display = 'none';
   document.getElementById('ganttView').style.display = 'none';
   document.getElementById('addTaskBtn').style.display = 'none';
+
+  // Hide critical path toggle when no schedule
+  const criticalPathToggle = document.getElementById('criticalPathToggle');
+  if (criticalPathToggle) {
+    criticalPathToggle.style.display = 'none';
+  }
 }
 
 function showLoading() {
@@ -231,6 +237,12 @@ function showSchedule() {
   document.getElementById('scheduleHeader').style.display = 'flex';
   document.getElementById('scheduleStats').style.display = 'grid';
   document.getElementById('addTaskBtn').style.display = '';
+
+  // Show critical path toggle
+  const criticalPathToggle = document.getElementById('criticalPathToggle');
+  if (criticalPathToggle) {
+    criticalPathToggle.style.display = 'flex';
+  }
 
   // Update schedule info
   document.getElementById('scheduleName').textContent = state.schedule.name || 'Master Schedule';
@@ -350,6 +362,11 @@ function renderTaskList() {
     return;
   }
 
+  // Calculate critical path (use all tasks to get accurate path, not just filtered)
+  const { criticalTaskIds, taskMetrics } = calculateCriticalPath(state.tasks);
+  state.criticalPath = criticalTaskIds;
+  state.taskMetrics = taskMetrics;
+
   // Sort by sort_order, then by planned_start
   tasks.sort((a, b) => {
     if (a.sort_order !== b.sort_order) return (a.sort_order || 999) - (b.sort_order || 999);
@@ -357,10 +374,13 @@ function renderTaskList() {
     return 0;
   });
 
-  tbody.innerHTML = tasks.map(task => renderTaskRow(task)).join('');
+  tbody.innerHTML = tasks.map(task => {
+    const isCritical = state.showCriticalPath && criticalTaskIds.has(task.id);
+    return renderTaskRow(task, isCritical);
+  }).join('');
 }
 
-function renderTaskRow(task) {
+function renderTaskRow(task, isCritical = false) {
   const tradeName = trades.find(t => t.id === task.trade)?.name || task.trade || '-';
   const phaseName = constructionPhases.find(p => p.id === task.construction_phase)?.name || task.construction_phase || '-';
 
@@ -369,9 +389,10 @@ function renderTaskRow(task) {
 
   const progressClass = getProgressClass(task.completion_percent);
   const statusClass = getStatusClass(task.status);
+  const criticalClass = isCritical ? ' critical-path' : '';
 
   return `
-    <tr class="task-row" onclick="openTaskModal('${task.id}')">
+    <tr class="task-row${criticalClass}" onclick="openTaskModal('${task.id}')">
       <td class="col-task">
         <div class="task-name">${escapeHtml(task.name)}</div>
         ${task.description ? `<div class="task-desc">${escapeHtml(truncate(task.description, 60))}</div>` : ''}

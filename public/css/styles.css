@@ -19531,6 +19531,124 @@ textarea.form-control {
   white-space: nowrap;
 }
 
+/* Critical Path Styling */
+.gantt-bar-pending.critical-path,
+.gantt-bar-in_progress.critical-path,
+.gantt-bar-completed.critical-path,
+.gantt-bar-blocked.critical-path {
+  border: 2px solid var(--accent-red);
+  box-shadow: 0 0 8px rgba(220, 38, 38, 0.4);
+}
+
+.gantt-bar-pending.critical-path {
+  background: linear-gradient(135deg, #78716c 0%, #57534e 100%);
+}
+
+.gantt-bar-in_progress.critical-path {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.critical-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: rgba(220, 38, 38, 0.2);
+  color: var(--accent-red);
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 3px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* Critical path indicator in list view */
+.task-row.critical-path {
+  border-left: 3px solid var(--accent-red);
+}
+
+.task-row.critical-path .task-name::after {
+  content: 'CRITICAL';
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: rgba(220, 38, 38, 0.2);
+  color: var(--accent-red);
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 3px;
+}
+
+/* Critical path row highlight in gantt */
+.gantt-row.critical-path .gantt-label-col {
+  border-left: 3px solid var(--accent-red);
+}
+
+/* Critical path toggle control */
+.critical-path-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 16px;
+}
+
+.critical-path-toggle .toggle-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Toggle switch styling */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  transition: 0.3s;
+  border-radius: 20px;
+}
+
+.toggle-slider::before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text-secondary);
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--accent-red);
+  border-color: var(--accent-red);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background-color: white;
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.3);
+}
+
 /* Gantt Drag-and-Drop */
 .gantt-bar-pending,
 .gantt-bar-in_progress,

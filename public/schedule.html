@@ -28,6 +28,13 @@
               <span>▤</span> Gantt
             </button>
           </div>
+          <div class="critical-path-toggle" id="criticalPathToggle" style="display: none;">
+            <label class="toggle-switch">
+              <input type="checkbox" id="showCriticalPath" checked onchange="toggleCriticalPath()">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label">Critical Path</span>
+          </div>
           <button class="btn btn-primary" onclick="openTaskModal()" id="addTaskBtn" style="display: none;">+ Add Task</button>
           <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
         </div>
