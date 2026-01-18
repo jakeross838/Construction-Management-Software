@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Phase 23 — Reports PDF
+**Current focus:** v1.3 Milestone Complete
 
 ## Current Position
 
 Phase: 23 of 23 (Reports - PDF)
 Plan: 23-01 PDF Export Endpoints
-Status: Plan ready for execution
-Last activity: 2026-01-18 — Phase 23 planned (PDF export endpoints)
+Status: Complete
+Last activity: 2026-01-18 — Phase 23 complete (PDF export endpoints)
 
-Progress: ████████░░ 83% v1.3 (5/6 phases complete)
+Progress: ██████████ 100% v1.3 (6/6 phases complete)
 
 ## Research
 
@@ -27,6 +27,7 @@ Key findings:
 
 ## Milestone History
 
+- **v1.3 Refinement** (2026-01-18): Invoice AI improvements, Financial reports (JSON, Excel, PDF)
 - **v1.2 Gap Fixes** (2026-01-18): Error handling, Jobs, Vendors, Budgets, Schedules, Documents
 - **v1.1 Field Features** (2026-01-17): Bids, Estimates, Photos, Dashboard, UX Polish
 
@@ -48,6 +49,13 @@ See PROJECT.md Key Decisions table for full history.
 - Follow existing ExcelJS patterns from draw export in index.js
 - Professional formatting: blue headers, currency format, conditional status colors
 
+**Phase 23 decisions:**
+- PDF exports added to existing reports.js router file
+- Two PDF export endpoints (job-cost, vendor-spend)
+- Used pdfmake library for professional table formatting
+- Headers with page numbers, footers with generation date
+- Color-coded status columns (over/near/under)
+
 ### Pending Todos
 
 None
@@ -59,10 +67,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 22 complete
+Stopped at: Phase 23 complete, v1.3 milestone complete
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-plan .planning/phases/23-reports-pdf/23-01-PLAN.md`
-2. Complete v1.3 milestone
+1. Run `/gsd:complete-milestone` to archive v1.3
+2. Start v1.4 planning
