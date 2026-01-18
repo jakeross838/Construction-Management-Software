@@ -2127,6 +2127,26 @@ select.form-control-sm {
   padding-right: 1.75rem;
 }
 
+/* Disabled and readonly states */
+.form-control:disabled,
+.form-control[readonly] {
+  background: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Valid/Success state (explicit validation feedback) */
+.form-control.valid,
+.form-control.success {
+  border-color: var(--success);
+}
+
+.form-control.valid:focus,
+.form-control.success:focus {
+  border-color: var(--success);
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.1);
+}
+
 /* ============================================================
    LOCKED FIELDS - Click to edit pattern
    ============================================================ */
