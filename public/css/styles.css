@@ -1144,12 +1144,16 @@ body {
 }
 
 .invoice-card.status-received { border-left-color: var(--received); }
-.invoice-card.status-needs_review { border-left-color: var(--needs-review); }
-.invoice-card.status-ready_for_approval { border-left-color: var(--ready-for-approval); }
-.invoice-card.status-needs_approval { border-left-color: var(--needs-approval); }
+.invoice-card.status-needs_review,
+.invoice-card.status-needs-review { border-left-color: var(--needs-review); }
+.invoice-card.status-ready_for_approval,
+.invoice-card.status-ready-for-approval { border-left-color: var(--ready-for-approval); }
+.invoice-card.status-needs_approval,
+.invoice-card.status-needs-approval { border-left-color: var(--needs-approval); }
 .invoice-card.status-approved { border-left-color: var(--approved); }
 .invoice-card.status-denied { border-left-color: var(--denied); }
-.invoice-card.status-in_draw { border-left-color: var(--in-draw); }
+.invoice-card.status-in_draw,
+.invoice-card.status-in-draw { border-left-color: var(--in-draw); }
 .invoice-card.status-paid { border-left-color: var(--paid); }
 
 /* Batch selection styles */
@@ -2769,7 +2773,8 @@ body.modal-open {
   color: var(--muted-foreground);
   border: 1px solid var(--border);
 }
-.status-badge.status-needs_approval {
+.status-badge.status-needs_approval,
+.status-badge.status-needs-approval {
   background: rgba(245, 158, 11, 0.15);
   color: #fbbf24;
   border: 1px solid rgba(245, 158, 11, 0.3);
@@ -2779,7 +2784,8 @@ body.modal-open {
   color: #4ade80;
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
-.status-badge.status-in_draw {
+.status-badge.status-in_draw,
+.status-badge.status-in-draw {
   background: rgba(168, 85, 247, 0.15);
   color: #c084fc;
   border: 1px solid rgba(168, 85, 247, 0.3);
@@ -7656,7 +7662,8 @@ label .ai-indicator {
 
 /* Warning/Pending Approval */
 .status-pending-approval,
-.status-needs_approval {
+.status-needs_approval,
+.status-needs-approval {
   background: #fef3c7;
   color: #92400e;
 }
@@ -7676,6 +7683,7 @@ label .ai-indicator {
 /* Info/Active */
 .status-active,
 .status-in_draw,
+.status-in-draw,
 .status-info {
   background: #dbeafe;
   color: #1e40af;
@@ -7683,7 +7691,8 @@ label .ai-indicator {
 
 /* Partial/Warning */
 .status-partial,
-.status-partially_funded {
+.status-partially_funded,
+.status-partially-funded {
   background: #fef3c7;
   color: #92400e;
 }
@@ -8910,7 +8919,8 @@ label .ai-indicator {
   color: var(--received);
 }
 
-#poModal .status-pill.status-needs_approval {
+#poModal .status-pill.status-needs_approval,
+#poModal .status-pill.status-needs-approval {
   background: rgba(240, 136, 62, 0.2);
   color: var(--needs-approval);
 }
@@ -8920,7 +8930,8 @@ label .ai-indicator {
   color: var(--approved);
 }
 
-#poModal .status-pill.status-in_draw {
+#poModal .status-pill.status-in_draw,
+#poModal .status-pill.status-in-draw {
   background: rgba(163, 113, 247, 0.2);
   color: var(--in-draw);
 }
@@ -13240,7 +13251,8 @@ textarea.form-control {
   color: #3fb950;
 }
 
-.po-invoices-card .invoice-status.status-in_draw {
+.po-invoices-card .invoice-status.status-in_draw,
+.po-invoices-card .invoice-status.status-in-draw {
   background: rgba(88, 166, 255, 0.2);
   color: #58a6ff;
 }
@@ -13251,6 +13263,7 @@ textarea.form-control {
 }
 
 .po-invoices-card .invoice-status.status-needs_approval,
+.po-invoices-card .invoice-status.status-needs-approval,
 .po-invoices-card .invoice-status.status-received {
   background: rgba(210, 153, 34, 0.2);
   color: #d29922;
@@ -13893,7 +13906,8 @@ textarea.form-control {
   color: var(--success);
 }
 
-.inv-status.status-in_draw {
+.inv-status.status-in_draw,
+.inv-status.status-in-draw {
   background: rgba(88, 166, 255, 0.15);
   color: var(--accent-blue);
 }
@@ -13904,6 +13918,7 @@ textarea.form-control {
 }
 
 .inv-status.status-needs_approval,
+.inv-status.status-needs-approval,
 .inv-status.status-received {
   background: rgba(210, 153, 34, 0.15);
   color: var(--warning);
@@ -23927,6 +23942,7 @@ textarea.form-control {
 }
 
 .search-result-status.status-needs_approval,
+.search-result-status.status-needs-approval,
 .search-result-status.status-pending {
   background: rgba(245, 158, 11, 0.15);
   color: var(--accent-orange);
