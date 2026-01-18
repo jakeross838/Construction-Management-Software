@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 
 ## Current Position
 
-Phase: 12 (Foundation Polish) — COMPLETE
-Plan: 12-01 complete
-Status: Phase 12 shipped, ready for phases 13-17
-Last activity: 2026-01-17 — Phase 12 executed
+Phase: 13 (Jobs Completion) — IN PROGRESS
+Plan: 13-01 complete
+Status: Job CRUD routes complete, continuing with Job UI
+Last activity: 2026-01-17 — Plan 13-01 executed
 
-Progress: █░░░░░░░░░ 17% v1.2 (1/6 phases complete)
+Progress: █░░░░░░░░░ 17% v1.2 (1/6 phases complete, 13-01 done)
 
 ## Milestone History
 
@@ -29,6 +29,7 @@ Progress: █░░░░░░░░░ 17% v1.2 (1/6 phases complete)
 - 2026-01-17: Phase numbering continues from v1.1 (was 7-11, now 12-17)
 - 2026-01-17: validateRequest helper added to server/errors.js for request validation
 - 2026-01-17: All routes now use asyncHandler wrapper for consistent error handling
+- 2026-01-17: Job CRUD uses soft delete (deleted_at column) with v2_job_activity for audit trail
 
 ### Pending Todos
 
@@ -46,6 +47,6 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 13` to plan Jobs Completion
+1. Execute `/gsd:execute-plan 13-02` to implement Job UI page
 2. Or run `/gsd:plan-phase 14` to plan Vendors Completion (can run in parallel)
-3. Phases 13-17 can now proceed (Foundation complete)
+3. Phases 13-17 can proceed (Foundation complete)
