@@ -9,8 +9,8 @@ Gap fixes to complete existing features and improve system reliability.
 
 ### Foundation
 
-- [ ] **FND-01**: Consistent error handling - All API routes return standardized error responses with proper HTTP codes
-- [ ] **FND-04**: Request validation - Critical endpoints validate request body/params before processing
+- [x] **FND-01**: Consistent error handling - All API routes return standardized error responses with proper HTTP codes
+- [x] **FND-04**: Request validation - Critical endpoints validate request body/params before processing
 
 ### Jobs
 
@@ -64,8 +64,8 @@ Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 12 | Pending |
-| FND-04 | Phase 12 | Pending |
+| FND-01 | Phase 12 | Complete |
+| FND-04 | Phase 12 | Complete |
 | JOB-01 | Phase 13 | Pending |
 | JOB-02 | Phase 13 | Pending |
 | JOB-04 | Phase 13 | Pending |

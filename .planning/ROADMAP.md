@@ -28,19 +28,19 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 
 ---
 
-### Phase 12: Foundation Polish
+### Phase 12: Foundation Polish ✓
 **Goal**: Standardize error handling and add request validation
 **Depends on**: Nothing (can start immediately)
 **Requirements**: FND-01, FND-04
 **Success Criteria** (what must be TRUE):
-  1. All API errors return consistent JSON structure with error code
-  2. Invalid requests to critical endpoints return 400 with validation details
-  3. No unhandled exceptions leak to client
+  1. All API errors return consistent JSON structure with error code ✓
+  2. Invalid requests to critical endpoints return 400 with validation details ✓
+  3. No unhandled exceptions leak to client ✓
 **Research**: Unlikely (internal patterns, existing error.js)
-**Plans**: TBD
+**Plans**: 1/1 complete
 
 Plans:
-- [ ] 12-01: Error handling and validation
+- [x] 12-01: Error handling and validation
 
 ---
 
@@ -139,7 +139,7 @@ Phases 12-17 can mostly run in parallel (12 first for foundation, then 13-17)
 
 | Phase | Name | Plans | Status | Priority |
 |-------|------|-------|--------|----------|
-| 12 | Foundation Polish | 0/1 | Not started | P0 |
+| 12 | Foundation Polish | 1/1 | Complete | P0 |
 | 13 | Jobs Completion | 0/2 | Not started | P1 |
 | 14 | Vendors Completion | 0/3 | Not started | P1 |
 | 15 | Budget Enhancements | 0/1 | Not started | P2 |
