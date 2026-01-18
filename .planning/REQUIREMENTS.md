@@ -60,26 +60,26 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Updated by create-roadmap.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | TBD | Pending |
-| FND-04 | TBD | Pending |
-| JOB-01 | TBD | Pending |
-| JOB-02 | TBD | Pending |
-| JOB-04 | TBD | Pending |
-| VND-01 | TBD | Pending |
-| VND-02 | TBD | Pending |
-| VND-03 | TBD | Pending |
-| BUD-04 | TBD | Pending |
-| SCH-03 | TBD | Pending |
-| DOC-03 | TBD | Pending |
+| FND-01 | Phase 12 | Pending |
+| FND-04 | Phase 12 | Pending |
+| JOB-01 | Phase 13 | Pending |
+| JOB-02 | Phase 13 | Pending |
+| JOB-04 | Phase 13 | Pending |
+| VND-01 | Phase 14 | Pending |
+| VND-02 | Phase 14 | Pending |
+| VND-03 | Phase 14 | Pending |
+| BUD-04 | Phase 15 | Pending |
+| SCH-03 | Phase 16 | Pending |
+| DOC-03 | Phase 17 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 11 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 11
+- Mapped to phases: 11 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-17*
