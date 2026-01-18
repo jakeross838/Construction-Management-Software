@@ -79,7 +79,7 @@ Which phases cover which requirements.
 | PRC-02 | Phase 26, 28 | Complete |
 | PRC-03 | Phase 27, 28 | Complete |
 | PRC-04 | Phase 27, 28 | Complete |
-| PRC-05 | Phase 29 | Pending |
+| PRC-05 | Phase 29 | Complete |
 
 **Coverage:**
 - v1.4 requirements: 5 total
