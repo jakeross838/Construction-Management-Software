@@ -3,9 +3,390 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
-  <title>Ross Built - Photos</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260116">
+  <title>Photos | Ross Built</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260118">
+  <style>
+    /* Photo Grid Layout */
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 20px;
+    }
+
+    .photo-card {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      background: var(--card);
+      border: 1px solid var(--border);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .photo-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .photo-card:hover {
+      border-color: var(--primary);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .photo-card .photo-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 10px;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+      color: white;
+      font-size: 12px;
+    }
+
+    .photo-overlay .caption {
+      font-weight: 500;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .photo-overlay .location {
+      opacity: 0.8;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .photo-card .category-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+    }
+
+    .photo-card .category-badge.progress { background: var(--primary); }
+    .photo-card .category-badge.exterior { background: var(--success); }
+    .photo-card .category-badge.interior { background: var(--info); }
+    .photo-card .category-badge.detail { background: var(--warning); }
+    .photo-card .category-badge.issue { background: var(--danger); }
+    .photo-card .category-badge.completion { background: #7c3aed; }
+
+    /* Drop Zone Styles */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      transition: all 0.2s ease;
+      background: var(--card);
+    }
+
+    .drop-zone.drag-over {
+      border-color: var(--primary);
+      background: rgba(59, 111, 212, 0.05);
+    }
+
+    .drop-zone-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .drop-zone-text {
+      color: var(--muted-foreground);
+      margin-bottom: 16px;
+    }
+
+    .drop-zone-hint {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-top: 12px;
+    }
+
+    /* Upload Progress */
+    .upload-progress {
+      margin-top: 20px;
+    }
+
+    .upload-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      background: var(--card-elevated);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .upload-item-name {
+      flex: 1;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .upload-item-progress {
+      width: 100px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .upload-item-progress-bar {
+      height: 100%;
+      background: var(--primary);
+      transition: width 0.2s ease;
+    }
+
+    .upload-item-status {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      width: 60px;
+      text-align: right;
+    }
+
+    .upload-item-status.success { color: var(--success); }
+    .upload-item-status.error { color: var(--danger); }
+
+    /* Lightbox Styles */
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 1000;
+      display: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .lightbox.show {
+      display: flex;
+      opacity: 1;
+    }
+
+    .lightbox-content {
+      display: flex;
+      width: 100%;
+      height: 100%;
+    }
+
+    .lightbox-image-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 40px;
+    }
+
+    .lightbox-image-container img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 50px;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      transition: background 0.2s ease;
+    }
+
+    .lightbox-nav:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .lightbox-nav.prev { left: 20px; }
+    .lightbox-nav.next { right: 20px; }
+
+    .lightbox-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      transition: background 0.2s ease;
+    }
+
+    .lightbox-close:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .lightbox-sidebar {
+      width: 320px;
+      background: var(--card);
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .lightbox-sidebar h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--foreground);
+    }
+
+    .lightbox-meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .lightbox-meta-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+    }
+
+    .lightbox-meta-value {
+      font-size: 14px;
+      color: var(--foreground);
+    }
+
+    .lightbox-links {
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+
+    .lightbox-link-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      background: var(--card-elevated);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .lightbox-link-icon {
+      width: 24px;
+      text-align: center;
+    }
+
+    .lightbox-sidebar-actions {
+      margin-top: auto;
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Empty State */
+    .photo-empty-state {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .photo-empty-state-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+
+    .photo-empty-state h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .photo-empty-state p {
+      color: var(--muted-foreground);
+      margin-bottom: 20px;
+    }
+
+    /* File Preview in Upload Modal */
+    .file-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .file-preview-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--card-elevated);
+    }
+
+    .file-preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .file-preview-item .remove-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 20px;
+      height: 20px;
+      background: rgba(0, 0, 0, 0.6);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .file-preview-item .file-name {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 4px 6px;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      font-size: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
 </head>
 <body>
   <div class="app">
@@ -17,7 +398,7 @@
         </div>
         <nav class="main-nav"></nav>
         <div class="header-actions">
-          <span class="connection-dot" id="connectionDot" title="Checking connection..."></span>
+          <button class="btn btn-primary" onclick="openUploadModal()">+ Upload Photos</button>
         </div>
       </div>
       <div class="header-sub">
@@ -27,19 +408,232 @@
 
     <div class="app-body">
       <main class="main">
-        <div class="coming-soon-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; text-align: center;">
-          <div style="font-size: 4rem; margin-bottom: 1rem;">📷</div>
-          <h1 style="color: var(--text-primary); margin-bottom: 0.5rem;">Photos</h1>
-          <p style="color: var(--text-secondary); font-size: 1.1rem;">Coming Soon</p>
-          <p style="color: var(--text-tertiary); margin-top: 1rem;">Project photo documentation and progress shots</p>
+        <!-- Page Header with Stats -->
+        <div class="page-header-bar">
+          <div class="page-header-stats">
+            <div class="stat-chip">
+              <span class="stat-chip-value" id="totalPhotos">0</span>
+              <span class="stat-chip-label">Total Photos</span>
+            </div>
+            <div class="stat-chip stat-chip-info">
+              <span class="stat-chip-value" id="thisMonth">0</span>
+              <span class="stat-chip-label">This Month</span>
+            </div>
+            <div class="stat-chip stat-chip-success">
+              <span class="stat-chip-value" id="linkedPhotos">0</span>
+              <span class="stat-chip-label">Linked</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="data-toolbar">
+          <div class="toolbar-left">
+            <div class="filter-group">
+              <select id="jobFilter" class="form-control form-control-sm">
+                <option value="">All Jobs</option>
+              </select>
+              <select id="categoryFilter" class="form-control form-control-sm">
+                <option value="all">All Categories</option>
+                <option value="progress">Progress</option>
+                <option value="exterior">Exterior</option>
+                <option value="interior">Interior</option>
+                <option value="detail">Detail</option>
+                <option value="issue">Issue</option>
+                <option value="completion">Completion</option>
+              </select>
+              <input type="date" id="startDate" class="form-control form-control-sm" placeholder="Start Date">
+              <input type="date" id="endDate" class="form-control form-control-sm" placeholder="End Date">
+            </div>
+            <div class="search-input-wrap">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="searchInput" placeholder="Search captions..." class="form-control form-control-sm search-input-inline">
+              <button class="search-clear-btn" id="searchClear" style="display: none;" onclick="clearSearch()">&times;</button>
+            </div>
+          </div>
+          <div class="toolbar-right">
+            <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Clear Filters</button>
+          </div>
+        </div>
+
+        <!-- Photo Gallery Grid -->
+        <div id="photoGallery" class="photo-grid">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="photo-empty-state" style="display: none;">
+          <div class="photo-empty-state-icon">📷</div>
+          <h3>No Photos Found</h3>
+          <p>Upload photos to document your project progress.</p>
+          <button class="btn btn-primary" onclick="openUploadModal()">Upload First Photo</button>
         </div>
       </main>
     </div>
   </div>
 
+  <!-- Upload Modal -->
+  <div id="uploadModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Upload Photos</h2>
+        <button class="close-btn" onclick="closeUploadModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="uploadJob">Job *</label>
+          <select id="uploadJob" class="form-control" required>
+            <option value="">Select Job...</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="uploadCategory">Category</label>
+            <select id="uploadCategory" class="form-control">
+              <option value="progress">Progress</option>
+              <option value="exterior">Exterior</option>
+              <option value="interior">Interior</option>
+              <option value="detail">Detail</option>
+              <option value="issue">Issue</option>
+              <option value="completion">Completion</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="uploadLocation">Location</label>
+            <input type="text" id="uploadLocation" class="form-control" placeholder="e.g., Kitchen, 2nd Floor">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="uploadCaption">Caption</label>
+          <input type="text" id="uploadCaption" class="form-control" placeholder="Optional description">
+        </div>
+
+        <div id="dropZone" class="drop-zone">
+          <input type="file" id="fileInput" accept="image/*" multiple style="display: none" onchange="handleFileSelect(event)">
+          <div class="drop-zone-icon">📁</div>
+          <div class="drop-zone-text">Drag and drop photos here</div>
+          <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">Or Browse Files</button>
+          <div class="drop-zone-hint">Supports JPG, PNG, GIF, WEBP</div>
+        </div>
+
+        <div id="filePreviewGrid" class="file-preview-grid"></div>
+
+        <div id="uploadProgress" class="upload-progress" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+        <button class="btn btn-primary" id="uploadBtn" onclick="startUpload()" disabled>Upload Photos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div id="editModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Edit Photo</h2>
+        <button class="close-btn" onclick="closeEditModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editPhotoId">
+
+        <div class="form-group">
+          <label for="editCaption">Caption</label>
+          <input type="text" id="editCaption" class="form-control" placeholder="Photo caption">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="editCategory">Category</label>
+            <select id="editCategory" class="form-control">
+              <option value="progress">Progress</option>
+              <option value="exterior">Exterior</option>
+              <option value="interior">Interior</option>
+              <option value="detail">Detail</option>
+              <option value="issue">Issue</option>
+              <option value="completion">Completion</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="editLocation">Location</label>
+            <input type="text" id="editLocation" class="form-control" placeholder="e.g., Kitchen, 2nd Floor">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="editTakenAt">Date Taken</label>
+          <input type="datetime-local" id="editTakenAt" class="form-control">
+        </div>
+
+        <div class="form-group">
+          <label>Linked Entities</label>
+          <div id="editLinks" class="linked-entities">
+            <p class="text-muted">No linked entities</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" onclick="deleteCurrentPhoto()" style="margin-right: auto;">Delete</button>
+        <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="savePhotoEdit()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox">
+    <div class="lightbox-content">
+      <div class="lightbox-image-container">
+        <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+        <button class="lightbox-nav prev" onclick="navigateLightbox(-1)">&#8249;</button>
+        <img id="lightboxImage" src="" alt="">
+        <button class="lightbox-nav next" onclick="navigateLightbox(1)">&#8250;</button>
+      </div>
+      <div class="lightbox-sidebar">
+        <div class="lightbox-meta">
+          <h3>Photo Details</h3>
+          <div class="lightbox-meta-item">
+            <span class="lightbox-meta-label">Caption</span>
+            <span class="lightbox-meta-value" id="lightboxCaption">-</span>
+          </div>
+          <div class="lightbox-meta-item">
+            <span class="lightbox-meta-label">Location</span>
+            <span class="lightbox-meta-value" id="lightboxLocation">-</span>
+          </div>
+          <div class="lightbox-meta-item">
+            <span class="lightbox-meta-label">Category</span>
+            <span class="lightbox-meta-value" id="lightboxCategory">-</span>
+          </div>
+          <div class="lightbox-meta-item">
+            <span class="lightbox-meta-label">Date Taken</span>
+            <span class="lightbox-meta-value" id="lightboxDate">-</span>
+          </div>
+          <div class="lightbox-meta-item">
+            <span class="lightbox-meta-label">Job</span>
+            <span class="lightbox-meta-value" id="lightboxJob">-</span>
+          </div>
+        </div>
+        <div class="lightbox-links">
+          <h3>Linked To</h3>
+          <div id="lightboxLinks">
+            <p class="text-muted" style="font-size: 13px;">No linked entities</p>
+          </div>
+        </div>
+        <div class="lightbox-sidebar-actions">
+          <button class="btn btn-secondary btn-sm" onclick="openEditFromLightbox()">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteFromLightbox()">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/toasts.js?v=20260116"></script>
-  <script src="js/nav-sidebar.js?v=20260116"></script>
-  <script src="js/realtime.js?v=20260116"></script>
+  <script src="js/api-cache.js?v=20260118"></script>
+  <script src="js/toasts.js?v=20260118"></script>
+  <script src="js/nav-sidebar.js?v=20260118"></script>
+  <script src="js/sidebar.js?v=20260118"></script>
+  <script src="js/photos.js?v=20260118"></script>
 </body>
 </html>
