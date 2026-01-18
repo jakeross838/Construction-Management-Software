@@ -4236,24 +4236,7 @@ label.required::after,
   gap: 0.5rem;
 }
 
-/* Form grid for edit modal */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
-
-@media (max-width: 768px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.form-column {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
+/* REMOVED: Duplicate .form-grid, .form-column, responsive rule - see FORM LAYOUTS section (line ~2300) */
 
 /* Form sections - clean card style */
 .form-section {
@@ -9623,21 +9606,7 @@ label .ai-indicator {
   text-transform: uppercase;
 }
 
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem 1.5rem;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-
-.form-group.col-span-2 {
-  grid-column: span 2;
-}
+/* REMOVED: Duplicate .form-grid, .form-group variants - see FORM LAYOUTS section (line ~2300) */
 
 .form-group.required label::after {
   content: ' *';
@@ -21300,19 +21269,7 @@ textarea.form-control {
   color: var(--accent-blue);
 }
 
-/* Form Row */
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-@media (max-width: 600px) {
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-}
+/* REMOVED: Duplicate .form-row and responsive rule - see FORM LAYOUTS section (line ~2292) */
 
 /* Modal Footer Layout */
 .modal-footer {
