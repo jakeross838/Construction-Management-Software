@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.4 Price Intelligence
+**Current focus:** Phase 24 — Database Foundation
 
 ## Current Position
 
-Phase: Not started (run /gsd:define-requirements or /gsd:create-roadmap)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-01-18 — Milestone v1.4 started
+Phase: 24 of 29 (Database Foundation)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-01-18 — Roadmap created for v1.4
 
 Progress: ░░░░░░░░░░ 0% v1.4 (0/6 phases)
 
@@ -56,10 +56,9 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: v1.4 milestone started
+Stopped at: Roadmap created for v1.4
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:define-requirements` to scope what to build
-2. Or run `/gsd:create-roadmap` if requirements are clear
+1. Run `/gsd:plan-phase 24` to plan Database Foundation

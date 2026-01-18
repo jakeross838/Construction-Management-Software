@@ -71,20 +71,20 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Updated by create-roadmap.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PRC-01 | TBD | Pending |
-| PRC-02 | TBD | Pending |
-| PRC-03 | TBD | Pending |
-| PRC-04 | TBD | Pending |
-| PRC-05 | TBD | Pending |
+| PRC-01 | Phase 25, 28 | Pending |
+| PRC-02 | Phase 26, 28 | Pending |
+| PRC-03 | Phase 27, 28 | Pending |
+| PRC-04 | Phase 27, 28 | Pending |
+| PRC-05 | Phase 29 | Pending |
 
 **Coverage:**
 - v1.4 requirements: 5 total
-- Mapped to phases: 0 (awaiting roadmap)
-- Unmapped: 5
+- Mapped to phases: 5
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-01-18*
