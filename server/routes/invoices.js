@@ -43,7 +43,16 @@ const {
   validateCostCodesExist
 } = require('../validation');
 const { createUndoSnapshot, UNDO_WINDOW_SECONDS } = require('../undo');
-const { processInvoice, extractInvoiceFromImage, extractInvoiceFromText, findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('../ai-processor');
+const {
+  processInvoice,
+  processInvoiceTwoStage,
+  extractInvoiceFromImage,
+  extractInvoiceFromText,
+  findMatchingJob,
+  findOrCreateVendor,
+  findOrCreatePO,
+  CONFIDENCE_THRESHOLDS
+} = require('../ai-processor');
 const { convertDocument, getSupportedExtensions } = require('../document-converter');
 const { checkForDuplicates } = require('../duplicate-check');
 const standards = require('../standards');
@@ -364,9 +373,48 @@ router.post('/process', upload.single('file'), async (req, res) => {
     }
 
     let result;
+    let twoStageResult = null;
 
     if (converted.fileType === 'PDF') {
-      result = await processInvoice(fileBuffer, originalFilename);
+      // Use two-stage pipeline for PDFs
+      twoStageResult = await processInvoiceTwoStage(fileBuffer, originalFilename);
+
+      // Fall back to original process if two-stage fails
+      if (!twoStageResult.success) {
+        console.log('[TwoStage] Falling back to original processInvoice...');
+        result = await processInvoice(fileBuffer, originalFilename);
+      } else {
+        // Build result from two-stage pipeline
+        result = await processInvoice(fileBuffer, originalFilename);
+
+        // Enhance result with two-stage data
+        result.twoStageResult = {
+          stage1Confidence: twoStageResult.stage1Confidence,
+          stage2Score: twoStageResult.stage2Score,
+          validationIssues: twoStageResult.validationIssues,
+          autoCorrections: twoStageResult.autoCorrections
+        };
+
+        // Apply auto-corrections from two-stage pipeline
+        if (twoStageResult.extracted) {
+          if (twoStageResult.extracted.invoiceNumber) {
+            result.extracted.invoiceNumber = twoStageResult.extracted.invoiceNumber;
+          }
+          if (twoStageResult.extracted.totalAmount) {
+            result.extracted.totalAmount = twoStageResult.extracted.totalAmount;
+          }
+          if (twoStageResult.extracted.invoiceType) {
+            result.extracted.invoiceType = twoStageResult.extracted.invoiceType;
+          }
+        }
+
+        // Update confidence with combined score
+        if (twoStageResult.confidence) {
+          result.ai_confidence.combined = twoStageResult.confidence;
+        }
+
+        result.messages.push(...twoStageResult.messages);
+      }
     } else if (converted.fileType === 'IMAGE') {
       const extracted = await extractInvoiceFromImage(
         converted.data.base64,
@@ -597,6 +645,21 @@ router.post('/process', upload.single('file'), async (req, res) => {
       poMatched: !!result.po
     });
 
+    // Determine needs_review based on new thresholds
+    const combinedConfidence = twoStageResult?.confidence || result.ai_confidence?.overall || 0;
+    const needsReviewFromThreshold = combinedConfidence < CONFIDENCE_THRESHOLDS.HUMAN_REVIEW;
+    const reviewFlags = [...(result.review_flags || [])];
+
+    // Add threshold-based review flags
+    if (combinedConfidence < CONFIDENCE_THRESHOLDS.REJECT) {
+      reviewFlags.push('low_confidence_reject');
+    } else if (combinedConfidence < CONFIDENCE_THRESHOLDS.NEEDS_ATTENTION) {
+      reviewFlags.push('needs_attention');
+    } else if (combinedConfidence < CONFIDENCE_THRESHOLDS.HUMAN_REVIEW) {
+      reviewFlags.push('human_review_suggested');
+    }
+
+    // Build enhanced response
     res.json({
       success: true,
       invoice,
@@ -607,7 +670,18 @@ router.post('/process', upload.single('file'), async (req, res) => {
         po: result.po,
         standardizedFilename: result.standardizedFilename,
         messages: result.messages
-      }
+      },
+      // New validation-related fields
+      validation_issues: twoStageResult?.validationIssues || [],
+      auto_corrections: twoStageResult?.autoCorrections || [],
+      ai_confidence: {
+        overall: combinedConfidence,
+        extraction: twoStageResult?.stage1Confidence || result.ai_confidence?.overall || 0,
+        validation: twoStageResult?.stage2Score || 1.0,
+        breakdown: result.ai_confidence || {}
+      },
+      needs_review: result.needs_review || needsReviewFromThreshold,
+      review_flags: reviewFlags
     });
   } catch (err) {
     console.error('AI processing error:', err);
