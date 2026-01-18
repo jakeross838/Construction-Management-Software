@@ -51,7 +51,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
   2. Batch approval available for multiple invoices
   3. Quick actions for common corrections (swap job, change amount)
 **Research**: Unlikely (existing UI patterns)
-**Plans**: TBD
+**Plans**: 20-01-PLAN.md (Streamlined Approval Workflow)
 
 ### Phase 21: Reports - Backend
 **Goal**: Reports API with financial summaries
@@ -95,7 +95,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
 |-------|----------------|--------|-----------|
 | 18. Invoice AI - Extraction | 1/1 | Complete | 2026-01-18 |
 | 19. Invoice AI - Matching | 1/1 | Complete | 2026-01-18 |
-| 20. Invoice AI - Workflow | 0/? | Not started | - |
+| 20. Invoice AI - Workflow | 0/1 | Planned | - |
 | 21. Reports - Backend | 0/? | Not started | - |
 | 22. Reports - Excel | 0/? | Not started | - |
 | 23. Reports - PDF | 0/? | Not started | - |

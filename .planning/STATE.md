@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Phase 19 — Invoice AI Matching
+**Current focus:** Phase 20 — Invoice AI Workflow
 
 ## Current Position
 
-Phase: 19 of 23 (Invoice AI - Matching) ✓ COMPLETE
-Plan: 19-01 Multi-Signal PO Matching ✓
-Status: Phase 19 complete, ready for Phase 20
-Last activity: 2026-01-18 — Phase 19 executed (multi-signal PO matching)
+Phase: 20 of 23 (Invoice AI - Workflow)
+Plan: 20-01 Streamlined Approval Workflow
+Status: Plan ready for execution
+Last activity: 2026-01-18 — Phase 20 planned (streamlined approval workflow)
 
 Progress: ██░░░░░░░░ 33% v1.3 (2/6 phases complete)
 
@@ -36,6 +36,12 @@ Key findings:
 
 See PROJECT.md Key Decisions table for full history.
 
+**Phase 20 decisions:**
+- Batch selection uses checkbox mode toggle (not always-on)
+- Quick actions appear on hover for eligible invoices
+- High-confidence (95%+) invoices skip confirmation dialog
+- Quick corrections (job swap, amount fix) work without full edit mode
+
 ### Pending Todos
 
 None
@@ -47,10 +53,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 18 planned
+Stopped at: Phase 20 planned
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 20` for Invoice AI Workflow improvements
-2. Then execute Phase 20 plan(s)
+1. Run `/gsd:execute-plan .planning/phases/20-invoice-ai-workflow/20-01-PLAN.md`
+2. Then plan Phase 21 (Reports - Backend)
