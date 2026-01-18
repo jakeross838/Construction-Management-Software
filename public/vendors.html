@@ -96,6 +96,16 @@
       <div class="modal-body">
         <input type="hidden" id="vendorId">
 
+        <!-- Duplicate Warning Banner -->
+        <div id="duplicateWarningBanner" class="duplicate-warning-banner" style="display: none;">
+          <div class="warning-icon">!</div>
+          <div class="warning-content">
+            <span class="warning-title">Similar vendor found</span>
+            <div id="duplicateMatches" class="duplicate-matches"></div>
+          </div>
+          <button type="button" class="btn btn-sm btn-link" onclick="dismissDuplicateWarning()">Dismiss</button>
+        </div>
+
         <!-- Tabs -->
         <div class="form-tabs">
           <button class="form-tab active" onclick="switchVendorTab('basic')">Basic Info</button>
@@ -436,7 +446,8 @@ let state = {
   currentVendor: null,
   searchQuery: '',
   tradeFilter: '',
-  pendingMerge: null
+  pendingMerge: null,
+  duplicateWarningDismissed: false
 };
 
 // ============================================================
@@ -920,6 +931,21 @@ async function openVendor(id) {
           </div>
 
           <div class="detail-card">
+            <h3>Documents</h3>
+            <div class="documents-grid" id="vendorDocuments">
+              <div class="loading-small">Loading...</div>
+            </div>
+            <div class="document-upload-row">
+              <button class="btn btn-sm btn-secondary" onclick="uploadDocumentFromDetail('coi')">+ COI</button>
+              <button class="btn btn-sm btn-secondary" onclick="uploadDocumentFromDetail('w9')">+ W-9</button>
+              <button class="btn btn-sm btn-secondary" onclick="uploadDocumentFromDetail('license')">+ License</button>
+              <button class="btn btn-sm btn-secondary" onclick="uploadDocumentFromDetail('contract')">+ Contract</button>
+              <button class="btn btn-sm btn-secondary" onclick="uploadDocumentFromDetail('other')">+ Other</button>
+            </div>
+            <input type="file" id="detailDocInput" accept=".pdf" style="display:none">
+          </div>
+
+          <div class="detail-card">
             <h3>Summary</h3>
             <div class="vendor-summary-stats">
               <div class="summary-stat">
@@ -976,6 +1002,9 @@ async function openVendor(id) {
         </div>
       </div>
     `;
+
+    // Load vendor documents
+    loadVendorDocuments(vendor.id);
   } catch (err) {
     console.error('Error loading vendor:', err);
     body.innerHTML = '<div class="error-state">Failed to load vendor details</div>';
@@ -1098,6 +1127,117 @@ function renderComplianceItem(label, isOnFile) {
 function formatDate(dateStr) {
   if (!dateStr) return '-';
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ============================================================
+// VENDOR DOCUMENTS
+// ============================================================
+
+async function loadVendorDocuments(vendorId) {
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/documents`);
+    const docs = await res.json();
+    renderVendorDocuments(docs);
+  } catch (err) {
+    console.error('Failed to load documents:', err);
+    document.getElementById('vendorDocuments').innerHTML =
+      '<div class="empty-state-small">Failed to load documents</div>';
+  }
+}
+
+function renderVendorDocuments(docs) {
+  const container = document.getElementById('vendorDocuments');
+  if (!docs || docs.length === 0) {
+    container.innerHTML = '<div class="empty-state-small">No documents uploaded</div>';
+    return;
+  }
+
+  container.innerHTML = docs.map(doc => `
+    <div class="document-item ${getDocStatusClass(doc)}">
+      <div class="doc-icon">${getDocIcon(doc.document_type)}</div>
+      <div class="doc-info">
+        <span class="doc-type">${formatDocType(doc.document_type)}</span>
+        <span class="doc-date">Uploaded ${formatDate(doc.created_at)}</span>
+        ${doc.expiration_date ? `<span class="doc-expiry ${isExpiringSoon(doc.expiration_date) ? 'warning' : ''}">Expires ${formatDate(doc.expiration_date)}</span>` : ''}
+      </div>
+      <a href="${doc.file_url}" target="_blank" class="btn btn-sm btn-link">View</a>
+    </div>
+  `).join('');
+}
+
+function formatDocType(type) {
+  const labels = { coi: 'Certificate of Insurance', w9: 'W-9', license: 'License', contract: 'Contract', other: 'Other' };
+  return labels[type] || type;
+}
+
+function getDocIcon(type) {
+  const icons = { coi: '[COI]', w9: '[W9]', license: '[LIC]', contract: '[CON]', other: '[DOC]' };
+  return icons[type] || '[DOC]';
+}
+
+function getDocStatusClass(doc) {
+  if (!doc.expiration_date) return '';
+  const today = new Date();
+  const expDate = new Date(doc.expiration_date);
+  if (expDate < today) return 'expired';
+  if (expDate < new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)) return 'expiring';
+  return 'valid';
+}
+
+function isExpiringSoon(dateStr) {
+  if (!dateStr) return false;
+  const expDate = new Date(dateStr);
+  const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  return expDate < thirtyDays;
+}
+
+let pendingDocType = null;
+
+function uploadDocumentFromDetail(docType) {
+  if (!state.currentVendor) {
+    showToast('No vendor selected', 'error');
+    return;
+  }
+  pendingDocType = docType;
+  const input = document.getElementById('detailDocInput');
+  input.value = '';
+  input.onchange = handleDetailDocUpload;
+  input.click();
+}
+
+async function handleDetailDocUpload(e) {
+  if (!e.target.files || !e.target.files[0] || !state.currentVendor || !pendingDocType) return;
+
+  const file = e.target.files[0];
+  if (file.type !== 'application/pdf') {
+    showToast('Please upload a PDF file', 'error');
+    return;
+  }
+
+  showToast('Uploading document...', 'info');
+
+  try {
+    const base64 = await fileToBase64(file);
+    const res = await fetch(`/api/vendors/${state.currentVendor.id}/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        document_type: pendingDocType,
+        file_data: base64,
+        file_name: file.name
+      })
+    });
+
+    if (!res.ok) throw new Error('Upload failed');
+
+    showToast('Document uploaded successfully', 'success');
+    loadVendorDocuments(state.currentVendor.id);
+  } catch (err) {
+    console.error('Upload error:', err);
+    showToast('Failed to upload document', 'error');
+  }
+
+  pendingDocType = null;
 }
 
 function closeVendorDetailModal() {
