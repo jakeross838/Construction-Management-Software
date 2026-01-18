@@ -12119,32 +12119,7 @@ textarea.form-control {
   color: var(--text-primary);
 }
 
-.input-with-prefix {
-  display: flex;
-  align-items: center;
-  background: var(--input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.input-with-prefix .input-prefix {
-  padding: 0.625rem 0.75rem;
-  background: var(--muted);
-  color: var(--text-secondary);
-  border-right: 1px solid var(--border);
-  font-size: 0.875rem;
-}
-
-.input-with-prefix .form-control {
-  border: none;
-  border-radius: 0;
-  flex: 1;
-}
-
-.input-with-prefix .form-control:focus {
-  box-shadow: none;
-}
+/* REMOVED: Duplicate .input-with-prefix styles - see INPUT PREFIX/SUFFIX section (line ~2420) */
 
 .field-hint {
   font-size: 0.8rem;
