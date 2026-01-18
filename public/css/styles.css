@@ -23865,3 +23865,176 @@ textarea.form-control {
   padding: 2px 8px;
   font-size: 12px;
 }
+
+/* ============================================================
+   BUDGET VISUALIZATION - Charts and Alerts
+   ============================================================ */
+
+/* Budget Analysis Charts */
+.charts-container {
+  position: relative;
+  min-height: 320px;
+}
+
+.chart-panel {
+  display: none;
+  padding: 16px 0;
+}
+
+.chart-panel.active {
+  display: block;
+}
+
+.chart-toggle-group {
+  display: flex;
+  gap: 8px;
+}
+
+.chart-toggle {
+  padding: 6px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: var(--transition);
+}
+
+.chart-toggle:hover {
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+.chart-toggle.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+/* Variance Alerts */
+.variance-alerts {
+  background: var(--card);
+  border: 1px solid var(--accent-orange);
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.alerts-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(217, 119, 6, 0.1);
+  border-bottom: 1px solid var(--border);
+}
+
+.alert-icon {
+  font-size: 20px;
+  color: var(--accent-orange);
+}
+
+.alerts-title {
+  font-weight: 600;
+  color: var(--accent-orange);
+  flex: 1;
+}
+
+.alerts-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.alert-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.alert-item:last-child {
+  border-bottom: none;
+}
+
+.alert-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  min-width: 60px;
+  text-align: center;
+}
+
+.alert-warning .alert-badge {
+  background: rgba(217, 119, 6, 0.2);
+  color: var(--accent-orange);
+}
+
+.alert-danger .alert-badge {
+  background: rgba(220, 38, 38, 0.2);
+  color: var(--accent-red);
+}
+
+.alert-critical .alert-badge {
+  background: var(--accent-red);
+  color: white;
+}
+
+.alert-content {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.alert-code {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.alert-desc {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.alert-message {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.alert-amounts {
+  text-align: right;
+}
+
+.alert-spent {
+  display: block;
+  font-weight: 600;
+  color: var(--accent-red);
+}
+
+.alert-budget {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Forecast metrics grid adjustment for 6 columns on budget page */
+@media (max-width: 1200px) {
+  .draw-summary-grid[style*="repeat(6"] {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .draw-summary-grid[style*="repeat(6"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .chart-toggle-group {
+    flex-wrap: wrap;
+  }
+}
