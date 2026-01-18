@@ -560,6 +560,26 @@ function renderInvoiceCard(inv) {
     // Partial approval badge (uses isPartialApproval from above)
     const partialBadge = isPartialApproval ? `<span class="badge badge-partial" title="Partially allocated approval">Partial</span>` : '';
 
+    // Confidence badge for AI-processed invoices
+    let confidenceBadge = '';
+    if (inv.ai_processed && inv.ai_confidence?.overall) {
+      const conf = inv.ai_confidence.overall;
+      let confClass = 'conf-low';
+      let confLabel = 'Low';
+
+      if (conf >= 0.95) {
+        confClass = 'conf-high';
+        confLabel = 'High';
+      } else if (conf >= 0.80) {
+        confClass = 'conf-medium';
+        confLabel = 'Medium';
+      }
+
+      confidenceBadge = `<span class="confidence-badge ${confClass}" title="AI Confidence: ${Math.round(conf * 100)}%">
+        ${confLabel}
+      </span>`;
+    }
+
     // Selection mode checkbox
     const canSelect = selectionMode && canBatchApprove(inv.id);
     const isSelected = selectedInvoices.has(inv.id);
@@ -600,6 +620,7 @@ function renderInvoiceCard(inv) {
       <div class="invoice-main">
         <div class="invoice-header">
           <span class="invoice-vendor">${inv.vendor?.name || 'Unknown Vendor'}</span>
+          ${confidenceBadge}
           ${creditBadge}
           ${partialBadge}
           ${splitBadge}
