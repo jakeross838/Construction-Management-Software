@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 
 ## Current Position
 
-Phase: 20 of 23 (Invoice AI - Workflow) ✓ COMPLETE
-Plan: 20-01 Streamlined Approval Workflow ✓
-Status: Phase 20 complete, ready for Phase 21
-Last activity: 2026-01-18 — Phase 20 executed (streamlined approval workflow)
+Phase: 21 of 23 (Reports - Backend)
+Plan: 21-01 Reports API Endpoints
+Status: Plan ready for execution
+Last activity: 2026-01-18 — Phase 21 planned (reports API endpoints)
 
 Progress: █████░░░░░ 50% v1.3 (3/6 phases complete)
 
@@ -36,11 +36,11 @@ Key findings:
 
 See PROJECT.md Key Decisions table for full history.
 
-**Phase 20 decisions:**
-- Batch selection uses checkbox mode toggle (not always-on)
-- Quick actions appear on hover for eligible invoices
-- High-confidence (95%+) invoices skip confirmation dialog
-- Quick corrections (job swap, amount fix) work without full edit mode
+**Phase 21 decisions:**
+- Reports use dedicated router file (server/routes/reports.js)
+- Three core reports: job-cost, vendor-spend, category-spend
+- All reports support date range filtering via query params
+- Category derived from first 2 digits of cost code
 
 ### Pending Todos
 
@@ -53,10 +53,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 20 complete
+Stopped at: Phase 21 planned
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 21` for Reports - Backend
-2. Then execute Phase 21 plan(s)
+1. Run `/gsd:execute-plan .planning/phases/21-reports-backend/21-01-PLAN.md`
+2. Then plan Phase 22 (Reports - Excel)

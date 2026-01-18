@@ -63,7 +63,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
   3. Category spend report available (spend by cost code category)
   4. Reports support date range filtering
 **Research**: Unlikely (existing Express patterns)
-**Plans**: TBD
+**Plans**: 21-01-PLAN.md (Reports API Endpoints)
 
 ### Phase 22: Reports - Excel
 **Goal**: Excel export for any data view
@@ -96,7 +96,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
 | 18. Invoice AI - Extraction | 1/1 | Complete | 2026-01-18 |
 | 19. Invoice AI - Matching | 1/1 | Complete | 2026-01-18 |
 | 20. Invoice AI - Workflow | 1/1 | Complete | 2026-01-18 |
-| 21. Reports - Backend | 0/? | Not started | - |
+| 21. Reports - Backend | 0/1 | Planned | - |
 | 22. Reports - Excel | 0/? | Not started | - |
 | 23. Reports - PDF | 0/? | Not started | - |
 
