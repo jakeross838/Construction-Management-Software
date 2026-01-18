@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Position
 
 Phase: 34 of 36 — Forms & Validation
-Plan: 34-02 COMPLETE (Error & Validation Styling)
+Plan: 34-01 COMPLETE (Form Labels & Structure)
 Status: IN PROGRESS
-Last activity: 2026-01-18 — Plan 34-02 executed (error styling, form states, helper text)
+Last activity: 2026-01-18 — Plan 34-01 executed (unified labels, required indicators, form-group structure)
 
 Progress: ████░░░░░░ 57% v1.5 (4/7 phases)
 
@@ -39,6 +39,10 @@ Progress: ████░░░░░░ 57% v1.5 (4/7 phases)
 - Error text uses `.field-error` or `.error-text` with `.visible` class to show
 - Form validation states: `.form-control.error` for error, `.form-control.valid` for success
 - Helper text uses `.form-helper`, `.form-hint`, or `.field-hint` (all unified)
+- Labels use unified selector: `.form-group label, .form-label, .form-panel .form-group label`
+- Required indicators use `var(--destructive)` variable (not `var(--danger)` or hardcoded colors)
+- Single `.form-group` base definition at line ~2060 in styles.css
+- Context-specific form styling scoped to parent (e.g., `.form-section .form-group`)
 
 ### Pending Todos
 
@@ -51,10 +55,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 34, Plan 02 complete
+Stopped at: Phase 34, Plan 01 complete
 Resume file: None
 
 ## Next Actions
 
-1. Execute Plan 34-01 (Form Labels) if not already done
-2. Execute Plan 34-03 (Form Layouts) to complete phase 34
+1. Execute Plan 34-03 (Form Layouts) to complete phase 34
+2. Run `/gsd:execute-phase 35` for Navigation & Layout phase
