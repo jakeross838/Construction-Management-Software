@@ -40,7 +40,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
   2. Match confidence reflects signal strength combination
   3. Ambiguous matches flagged for review instead of wrong auto-assignment
 **Research**: Unlikely (existing matching patterns)
-**Plans**: TBD
+**Plans**: 19-01-PLAN.md (Multi-Signal PO Matching)
 
 ### Phase 20: Invoice AI - Workflow
 **Goal**: Streamlined approval workflow with fewer clicks
