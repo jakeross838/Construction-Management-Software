@@ -602,6 +602,129 @@
               </div>
             </div>
 
+            <!-- Financial Metrics (new) -->
+            <div class="profile-section">
+              <div class="section-header">
+                <h2>📊 Financial Overview</h2>
+              </div>
+
+              <!-- Completion Progress -->
+              <div class="metrics-progress">
+                <div class="progress-header">
+                  <span>Job Completion</span>
+                  <span id="completionPercent">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div class="progress-bar-fill" id="completionBar" style="width: 0%"></div>
+                </div>
+                <div class="progress-labels">
+                  <span>Billed: <strong id="totalBilled">$0</strong></span>
+                  <span>Contract: <strong id="contractAmount">$0</strong></span>
+                </div>
+              </div>
+
+              <!-- Metrics Cards Grid -->
+              <div class="metrics-cards">
+                <!-- Budget Card -->
+                <div class="metric-card">
+                  <div class="metric-header">
+                    <span class="metric-icon">💰</span>
+                    <span class="metric-title">Budget</span>
+                  </div>
+                  <div class="metric-rows">
+                    <div class="metric-row">
+                      <span>Budgeted</span>
+                      <span id="metricBudgeted">$0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>Committed</span>
+                      <span id="metricCommitted">$0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>Billed</span>
+                      <span id="metricBudgetBilled">$0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>Paid</span>
+                      <span id="metricPaid">$0</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Purchase Orders Card -->
+                <div class="metric-card">
+                  <div class="metric-header">
+                    <span class="metric-icon">📋</span>
+                    <span class="metric-title">Purchase Orders</span>
+                  </div>
+                  <div class="metric-value" id="poCount">0</div>
+                  <div class="metric-subtitle">Total: <span id="poTotal">$0</span></div>
+                  <div class="metric-rows">
+                    <div class="metric-row">
+                      <span>Open</span>
+                      <span id="poOpen">0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>Closed</span>
+                      <span id="poClosed">0</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Invoices Card -->
+                <div class="metric-card">
+                  <div class="metric-header">
+                    <span class="metric-icon">🧾</span>
+                    <span class="metric-title">Invoices</span>
+                  </div>
+                  <div class="metric-value" id="invoiceCount">0</div>
+                  <div class="metric-subtitle">Total: <span id="invoiceTotal">$0</span></div>
+                  <div class="metric-rows">
+                    <div class="metric-row">
+                      <span>Needs Approval</span>
+                      <span id="invNeedsApproval">0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>Approved</span>
+                      <span id="invApproved">0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>In Draw</span>
+                      <span id="invInDraw">0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>Paid</span>
+                      <span id="invPaid">0</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Draws Card -->
+                <div class="metric-card">
+                  <div class="metric-header">
+                    <span class="metric-icon">📤</span>
+                    <span class="metric-title">Draws</span>
+                  </div>
+                  <div class="metric-value" id="drawCount">0</div>
+                  <div class="metric-subtitle">Funded: <span id="drawFunded">$0</span></div>
+                  <div class="metric-rows">
+                    <div class="metric-row">
+                      <span>Draft</span>
+                      <span id="drawDraft">0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>Submitted</span>
+                      <span id="drawSubmitted">0</span>
+                    </div>
+                    <div class="metric-row">
+                      <span>Funded</span>
+                      <span id="drawFundedCount">0</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Financial -->
             <div class="profile-section">
               <div class="section-header">
