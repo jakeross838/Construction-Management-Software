@@ -9,11 +9,43 @@ const { supabase } = require('../../config');
 const { extractSpecsFromPlans, extractSpecsFromMultipleDocuments } = require('../ai-document-processor');
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
 
+// Create a new job
+router.post('/', validateRequest({
+  body: { name: { required: true } }
+}), asyncHandler(async (req, res) => {
+  const { name, address, client_name, contract_amount, status } = req.body;
+
+  const { data, error } = await supabase
+    .from('v2_jobs')
+    .insert({
+      name,
+      address,
+      client_name,
+      contract_amount: contract_amount || null,
+      status: status || 'active'
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Log activity
+  await supabase.from('v2_job_activity').insert({
+    job_id: data.id,
+    action: 'created',
+    performed_by: req.body.created_by || 'User',
+    notes: `Job "${name}" created`
+  });
+
+  res.status(201).json(data);
+}));
+
 // Get all jobs
 router.get('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_jobs')
     .select('*')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
@@ -26,6 +58,7 @@ router.get('/:id', validateRequest({ params: { id: { type: 'uuid' } } }), asyncH
     .from('v2_jobs')
     .select('*')
     .eq('id', req.params.id)
+    .is('deleted_at', null)
     .single();
 
   if (error) {
@@ -33,6 +66,112 @@ router.get('/:id', validateRequest({ params: { id: { type: 'uuid' } } }), asyncH
     throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
   }
   res.json(data);
+}));
+
+// Update job (basic fields, not specs)
+router.patch('/:id', validateRequest({
+  params: { id: { type: 'uuid' } }
+}), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const allowedFields = ['name', 'address', 'client_name', 'contract_amount', 'status'];
+
+  // Get current job for activity log
+  const { data: current } = await supabase
+    .from('v2_jobs')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!current) throw notFoundError('job', id);
+
+  // Build update object with only allowed fields
+  const updates = {};
+  const changes = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined && req.body[field] !== current[field]) {
+      updates[field] = req.body[field];
+      changes[field] = { old: current[field], new: req.body[field] };
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.json(current); // No changes
+  }
+
+  updates.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('v2_jobs')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Log activity
+  const action = updates.status ? 'status_changed' : 'updated';
+  await supabase.from('v2_job_activity').insert({
+    job_id: id,
+    action,
+    performed_by: req.body.updated_by || 'User',
+    field_changes: changes,
+    previous_status: updates.status ? current.status : null,
+    new_status: updates.status || null
+  });
+
+  res.json(data);
+}));
+
+// Soft delete job
+router.delete('/:id', validateRequest({
+  params: { id: { type: 'uuid' } }
+}), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Verify job exists
+  const { data: current } = await supabase
+    .from('v2_jobs')
+    .select('id, name')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!current) throw notFoundError('job', id);
+
+  // Soft delete
+  const { error } = await supabase
+    .from('v2_jobs')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Log activity
+  await supabase.from('v2_job_activity').insert({
+    job_id: id,
+    action: 'deleted',
+    performed_by: req.body.deleted_by || 'User',
+    notes: `Job "${current.name}" archived`
+  });
+
+  res.json({ success: true, message: 'Job archived' });
+}));
+
+// Get job activity history
+router.get('/:id/activity', validateRequest({
+  params: { id: { type: 'uuid' } }
+}), asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_job_activity')
+    .select('*')
+    .eq('job_id', req.params.id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  res.json(data || []);
 }));
 
 // Get purchase orders for a specific job
