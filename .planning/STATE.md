@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Phase 20 — Invoice AI Workflow
+**Current focus:** Phase 21 — Reports Backend
 
 ## Current Position
 
-Phase: 20 of 23 (Invoice AI - Workflow)
-Plan: 20-01 Streamlined Approval Workflow
-Status: Plan ready for execution
-Last activity: 2026-01-18 — Phase 20 planned (streamlined approval workflow)
+Phase: 20 of 23 (Invoice AI - Workflow) ✓ COMPLETE
+Plan: 20-01 Streamlined Approval Workflow ✓
+Status: Phase 20 complete, ready for Phase 21
+Last activity: 2026-01-18 — Phase 20 executed (streamlined approval workflow)
 
-Progress: ██░░░░░░░░ 33% v1.3 (2/6 phases complete)
+Progress: █████░░░░░ 50% v1.3 (3/6 phases complete)
 
 ## Research
 
@@ -53,10 +53,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 20 planned
+Stopped at: Phase 20 complete
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-plan .planning/phases/20-invoice-ai-workflow/20-01-PLAN.md`
-2. Then plan Phase 21 (Reports - Backend)
+1. Run `/gsd:plan-phase 21` for Reports - Backend
+2. Then execute Phase 21 plan(s)
