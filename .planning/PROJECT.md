@@ -4,7 +4,7 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.1 - Field Features (shipped 2026-01-17)
+**Last Milestone:** v1.2 - Gap Fixes (shipped 2026-01-18)
 
 ## Core Value
 
@@ -12,7 +12,7 @@ Construction management software for Ross Built Custom Homes. Manages the full l
 
 ## Current State
 
-Shipped v1.1 with 96,297 lines of JavaScript across 76 files.
+Shipped v1.2 with ~99,000 lines of JavaScript across 76+ files.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
@@ -23,20 +23,20 @@ Shipped v1.1 with 96,297 lines of JavaScript across 76 files.
 - Punch Lists - Items, workflow, photos, retainage, PO blocking
 - Cost Codes - Master list, categories, picker component
 - Real-time - SSE, offline queue, connection status
-- **Bids** - CRUD, documents, comparison, PO conversion (v1.1)
-- **Estimates** - Line items, versioning, bid import, budget conversion (v1.1)
-- **Photos** - Upload, gallery, lightbox, entity linking (v1.1)
-- **Dashboard Alerts** - Inspections, budget overruns, approvals, punch items (v1.1)
-- **Mobile Responsive** - Hamburger menu, scrollable tables, full-screen modals (v1.1)
-- **Global Search** - Cmd/Ctrl+K across jobs, vendors, invoices, POs (v1.1)
+- Bids - CRUD, documents, comparison, PO conversion (v1.1)
+- Estimates - Line items, versioning, bid import, budget conversion (v1.1)
+- Photos - Upload, gallery, lightbox, entity linking (v1.1)
+- Dashboard Alerts - Inspections, budget overruns, approvals, punch items (v1.1)
+- Mobile Responsive - Hamburger menu, scrollable tables, full-screen modals (v1.1)
+- Global Search - Cmd/Ctrl+K across jobs, vendors, invoices, POs (v1.1)
+- **Error Handling** - Consistent API responses, request validation (v1.2)
+- **Jobs** - Full CRUD, soft delete, audit logging, profile metrics (v1.2)
+- **Vendors** - Soft delete, documents, duplicate detection, merge (v1.2)
+- **Budgets** - Chart visualizations, variance alerts, spend forecasting (v1.2)
+- **Schedules** - Drag-and-drop Gantt, critical path highlighting (v1.2)
+- **Documents** - Version tracking, history UI, rollback, comparison (v1.2)
 
-**Gap Fixes Needed (Phases 1-6):**
-- Foundation - Error handling inconsistent, no request validation
-- Jobs - Missing CRUD routes, status workflow
-- Vendors - Missing delete, documents, duplicate merge
-- Budgets - Basic UI, no forecasting
-- Schedules - Gantt needs enhancement
-- Documents - Version tracking incomplete
+**Gap Fixes Complete** - All v1.2 requirements shipped.
 
 ## Tech Stack
 
@@ -48,12 +48,15 @@ Shipped v1.1 with 96,297 lines of JavaScript across 76 files.
 | Frontend | Vanilla JavaScript |
 | AI | Claude API (Anthropic) |
 | PDF | pdf-lib, pdf-parse |
+| Charts | Chart.js |
 
 **Key Patterns:**
 - All tables use `v2_` prefix
 - Soft deletes via `deleted_at`
 - Modal class `.show` required for visibility
 - API caching via `window.APICache`
+- asyncHandler wrapper on all routes
+- Version tracking via `is_current` flag pattern
 
 ## Constraints
 
@@ -61,38 +64,40 @@ Shipped v1.1 with 96,297 lines of JavaScript across 76 files.
 2. **Dark theme only** - Use CSS variables, no hardcoded colors
 3. **Existing patterns** - Follow conventions in CLAUDE.md
 4. **Supabase** - All data through Supabase client
-5. **Migration numbering** - Continue from migration-047
+5. **Migration numbering** - Continue from migration-049
 
 ## Requirements
 
 ### Validated (Shipped)
 
-- ✓ BID-01 to BID-05 — v1.1 (bid collection, comparison, PO conversion)
-- ✓ EST-01 to EST-05 — v1.1 (estimates, versioning, budget conversion)
-- ✓ PHO-01 to PHO-04 — v1.1 (photos, gallery, entity linking)
-- ✓ DASH-01 to DASH-02 — v1.1 (dashboard alerts, activity)
-- ✓ UX-02 to UX-03 — v1.1 (global search, mobile responsive)
-- ✓ INV-01 to INV-12 — v1.0 (invoices, AI, OCR, workflow)
-- ✓ PO-01 to PO-07 — v1.0 (purchase orders, change orders)
-- ✓ DRW-01 to DRW-07 — v1.0 (draws, G702/G703)
+- ✓ FND-01, FND-04 — v1.2 (error handling, validation)
+- ✓ JOB-01, JOB-02, JOB-04 — v1.2 (job CRUD, status workflow, metrics)
+- ✓ VND-01, VND-02, VND-03 — v1.2 (vendor management, documents, duplicates)
+- ✓ BUD-04 — v1.2 (budget visualization)
+- ✓ SCH-03 — v1.2 (Gantt enhancements)
+- ✓ DOC-03 — v1.2 (document versioning)
+- ✓ BID-01 to BID-05 — v1.1 (bids)
+- ✓ EST-01 to EST-05 — v1.1 (estimates)
+- ✓ PHO-01 to PHO-04 — v1.1 (photos)
+- ✓ DASH-01 to DASH-02 — v1.1 (dashboard)
+- ✓ UX-02 to UX-03 — v1.1 (search, mobile)
+- ✓ INV-01 to INV-12 — v1.0 (invoices)
+- ✓ PO-01 to PO-07 — v1.0 (purchase orders)
+- ✓ DRW-01 to DRW-07 — v1.0 (draws)
 - ✓ LOG-01 to LOG-04 — v1.0 (daily logs)
 - ✓ INS-01 to INS-04 — v1.0 (inspections)
 - ✓ PUN-01 to PUN-06 — v1.0 (punch lists)
 
 ### Active (Next Milestone)
 
-- [ ] FND-01, FND-04: Error handling, request validation
-- [ ] JOB-01, JOB-02, JOB-04: Job CRUD, status workflow, profile
-- [ ] VND-01, VND-02, VND-03: Vendor delete, documents, duplicate merge
-- [ ] BUD-04: Budget UI, forecasting
-- [ ] SCH-03: Gantt enhancements
-- [ ] DOC-03: Document versioning
+TBD - run `/gsd:discuss-milestone` to define v1.3 scope
 
 ### Out of Scope
 
 - Mobile native app — web works on mobile now
 - Video/audio attachments — photos sufficient for documentation
 - Multi-company tenancy — single company use case
+- Real-time collaborative editing — SSE covers live updates
 
 ## Key Decisions
 
@@ -101,7 +106,13 @@ Shipped v1.1 with 96,297 lines of JavaScript across 76 files.
 | 2026-01-17 | v1.1 ships new features first | Complete placeholder features before gap fixes | ✓ Good |
 | 2026-01-17 | Follow existing page patterns | Consistency with inspections.js, punch-lists.js | ✓ Good |
 | 2026-01-17 | Photos in invoices bucket | Reuse existing bucket, path-based organization | ✓ Good |
-| 2026-01-17 | Dashboard client-side filtering | Supabase doesn't support column comparison | — Pending |
+| 2026-01-17 | Dashboard client-side filtering | Supabase doesn't support column comparison | ✓ Good |
+| 2026-01-17 | asyncHandler wrapper for routes | Consistent error handling without try/catch | ✓ Good |
+| 2026-01-17 | Vendor documents is_current flag | Version tracking without separate table | ✓ Good |
+| 2026-01-17 | 75% threshold for duplicate detection | Balances false positives vs missed duplicates | ✓ Good |
+| 2026-01-18 | Chart.js for budget visualizations | Already bundled, simple API | ✓ Good |
+| 2026-01-18 | Critical path: forward/backward pass | Standard CPM algorithm, efficient | ✓ Good |
+| 2026-01-18 | Document versioning follows vendor pattern | Consistency, proven approach | ✓ Good |
 
 ## References
 
@@ -111,4 +122,4 @@ Shipped v1.1 with 96,297 lines of JavaScript across 76 files.
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-17 after v1.1 milestone*
+*Last updated: 2026-01-18 after v1.2 milestone*
