@@ -12,9 +12,9 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 Phase: 10 of 11 (Dashboard)
 Plan: Pending
 Status: Ready to start
-Last activity: 2026-01-17 — Completed Photos frontend UI (Plan 09-02)
+Last activity: 2026-01-17 — Photos phase complete, navigation reorganized
 
-Progress: ████░░░░░░ 36% (4 of 11 phases complete)
+Progress: █████░░░░░ 45% (5 of 11 phases complete)
 
 ## Assessment Summary (2026-01-17)
 
@@ -69,6 +69,7 @@ Full codebase analysis identified:
 - 2026-01-17: Photos uses migration-046 (045 already used by price-intelligence)
 - 2026-01-17: Photos stored in 'invoices' bucket under photos/{job_id}/ path
 - 2026-01-17: Photos frontend (09-02) human verification approved
+- 2026-01-17: Navigation reorganized to follow construction workflow (Preconstruction → Financial → Operations)
 
 ### Pending Todos
 

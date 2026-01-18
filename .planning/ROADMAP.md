@@ -135,7 +135,7 @@ Plans:
 **Goal**: Users can document project progress with photos
 **Depends on**: Nothing (can run parallel to Phase 8)
 **Requirements**: PHO-01, PHO-02, PHO-03, PHO-04
-**Status**: Not started
+**Status**: COMPLETE
 **Success Criteria:**
   1. User can upload photos to a job
   2. User can add caption, location, and category to photos
@@ -143,8 +143,8 @@ Plans:
   4. User can link photos to inspections, punch items, or daily logs
 
 Plans:
-- [ ] 09-01: Database schema and API routes
-- [ ] 09-02: Frontend gallery and upload UI
+- [x] 09-01: Database schema and API routes (COMPLETE)
+- [x] 09-02: Frontend gallery and upload UI (COMPLETE)
 
 ---
 
@@ -195,7 +195,7 @@ Option B (New features first): 7-9 → 1-6 → 10-11
 | 6 | Document Versioning | 0/1 | Not started | P2 |
 | 7 | Bids | 2/2 | **COMPLETE** | **P0** |
 | 8 | Estimates | 1/1 | **COMPLETE** | **P0** |
-| 9 | Photos | 0/2 | Not started | **P0** |
+| 9 | Photos | 2/2 | **COMPLETE** | **P0** |
 | 10 | Dashboard | 0/1 | Not started | P2 |
 | 11 | UX Polish | 0/2 | Not started | P2 |
 
