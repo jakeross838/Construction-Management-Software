@@ -14,9 +14,9 @@ Gap fixes to complete existing features and improve system reliability.
 
 ### Jobs
 
-- [ ] **JOB-01**: Job CRUD - User can create, update, and soft-delete jobs via API
-- [ ] **JOB-02**: Job status workflow - Jobs transition through active/completed/on_hold with audit trail
-- [ ] **JOB-04**: Job profile metrics - Job profile page shows budget summary, PO count, invoice totals, completion %
+- [x] **JOB-01**: Job CRUD - User can create, update, and soft-delete jobs via API
+- [x] **JOB-02**: Job status workflow - Jobs transition through active/completed/on_hold with audit trail
+- [x] **JOB-04**: Job profile metrics - Job profile page shows budget summary, PO count, invoice totals, completion %
 
 ### Vendors
 
@@ -66,9 +66,9 @@ Which phases cover which requirements.
 |-------------|-------|--------|
 | FND-01 | Phase 12 | Complete |
 | FND-04 | Phase 12 | Complete |
-| JOB-01 | Phase 13 | Pending |
-| JOB-02 | Phase 13 | Pending |
-| JOB-04 | Phase 13 | Pending |
+| JOB-01 | Phase 13 | Complete |
+| JOB-02 | Phase 13 | Complete |
+| JOB-04 | Phase 13 | Complete |
 | VND-01 | Phase 14 | Pending |
 | VND-02 | Phase 14 | Pending |
 | VND-03 | Phase 14 | Pending |

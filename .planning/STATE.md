@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.2 Gap Fixes — Phase 12 complete, continuing with phases 13-17
+**Current focus:** v1.2 Gap Fixes — Phases 12-13 complete, continuing with phases 14-17
 
 ## Current Position
 
-Phase: 13 (Jobs Completion) — IN PROGRESS
+Phase: 13 (Jobs Completion) — COMPLETE
 Plan: 13-02 complete
-Status: Job profile metrics UI complete, ready for 13-03
-Last activity: 2026-01-17 — Plan 13-02 executed
+Status: Phase 13 shipped, ready for phases 14-17
+Last activity: 2026-01-17 — Phase 13 executed
 
-Progress: █░░░░░░░░░ 17% v1.2 (1/6 phases complete, 13-01, 13-02 done)
+Progress: ██░░░░░░░░ 33% v1.2 (2/6 phases complete)
 
 ## Milestone History
 
@@ -30,6 +30,7 @@ Progress: █░░░░░░░░░ 17% v1.2 (1/6 phases complete, 13-01, 1
 - 2026-01-17: validateRequest helper added to server/errors.js for request validation
 - 2026-01-17: All routes now use asyncHandler wrapper for consistent error handling
 - 2026-01-17: Job CRUD uses soft delete (deleted_at column) with v2_job_activity for audit trail
+- 2026-01-17: Job metrics endpoint consolidates budget/PO/invoice/draw data for profile page
 
 ### Pending Todos
 
@@ -37,16 +38,16 @@ None — fresh for next phases.
 
 ### Blockers/Concerns
 
-None — foundation in place, ready for feature work.
+None — foundation and jobs complete, ready for remaining features.
 
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Phase 12 complete
+Stopped at: Phase 13 complete
 Resume file: None
 
 ## Next Actions
 
-1. Execute `/gsd:execute-plan 13-03` to complete Job list page (if exists)
-2. Or run `/gsd:plan-phase 14` to plan Vendors Completion (can run in parallel)
-3. Phases 13-17 can proceed (Foundation complete)
+1. Run `/gsd:plan-phase 14` to plan Vendors Completion
+2. Or run `/gsd:plan-phase 15` to plan Budget Enhancements (can run in parallel)
+3. Phases 14-17 can now proceed (Foundation and Jobs complete)
