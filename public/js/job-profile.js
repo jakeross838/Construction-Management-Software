@@ -123,6 +123,12 @@ const specFields = {
   specNotes: 'specs_notes'
 };
 
+// Normalize status strings to hyphen-based CSS class names
+const normalizeStatusClass = window.normalizeStatusClass || function(status) {
+  if (!status) return '';
+  return status.toString().toLowerCase().replace(/_/g, '-');
+};
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -200,7 +206,7 @@ function renderProfile() {
   document.getElementById('jobName').textContent = job.name || 'Unnamed Job';
   document.getElementById('jobAddress').textContent = job.address || 'No address';
   document.getElementById('jobStatus').textContent = formatStatus(job.status);
-  document.getElementById('jobStatus').className = `status-badge status-${job.status || 'active'}`;
+  document.getElementById('jobStatus').className = `status-badge status-${normalizeStatusClass(job.status || 'active')}`;
 
   // AI extraction badge
   if (job.specs_extracted_at) {
