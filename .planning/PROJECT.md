@@ -6,9 +6,16 @@ Construction management software for Ross Built Custom Homes. Manages the full l
 
 **Last Milestone:** v1.3 - Refinement (shipped 2026-01-18)
 
-## Current State
+## Current Milestone: v1.4 Price Intelligence
 
-v1.3 complete. Ready for next milestone planning.
+**Goal:** Comprehensive price tracking and order optimization to reduce material costs.
+
+**Target features:**
+- Price Database - Master item catalog with vendor price comparison
+- Order Optimizer - Material list → optimal vendor splits with waste factors
+- Savings Tracker - Track historical savings from optimized orders
+- Spend Analytics - Vendor spend analysis for negotiation leverage
+- PO Integration - Warn when creating PO if better pricing available
 
 ## Core Value
 
@@ -16,7 +23,7 @@ v1.3 complete. Ready for next milestone planning.
 
 ## Current State
 
-Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files.
+Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files. Starting v1.4 Price Intelligence.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
@@ -104,6 +111,15 @@ Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files.
 - [x] RPT-02: Custom Excel exports (export any data view to Excel)
 - [x] RPT-03: PDF reports (printable professional reports for clients/owners)
 
+### Active (v1.4 Price Intelligence)
+
+**Price Intelligence:**
+- [ ] PRC-01: User can browse/search master items with vendor price comparison
+- [ ] PRC-02: User can paste material list and get optimal vendor split recommendations
+- [ ] PRC-03: User can track savings from optimized orders over time
+- [ ] PRC-04: User can analyze vendor spend for negotiation leverage
+- [ ] PRC-05: User sees price warning when creating PO with better options available
+
 ### Out of Scope
 
 - Mobile native app — web works on mobile now
@@ -134,4 +150,4 @@ Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files.
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-18 — v1.3 Refinement milestone complete*
+*Last updated: 2026-01-18 — v1.4 Price Intelligence milestone started*
