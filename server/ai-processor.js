@@ -22,6 +22,7 @@ const { supabase } = require('../config');
 const standards = require('./standards');
 const aiLearning = require('./ai-learning');
 const ocrProcessor = require('./ocr-processor');
+const invoiceValidator = require('./invoice-validator');
 
 // Consolidated duplicate detection
 const {
@@ -1237,11 +1238,307 @@ async function findOrCreatePO(jobId, vendorId, invoiceData, jobName) {
 // Note: Duplicate detection functions moved to ./duplicate-check.js for consolidation
 
 // ============================================================
+// TWO-STAGE EXTRACTION PIPELINE
+// ============================================================
+
+/**
+ * Extract raw invoice data (Stage 1)
+ * Focuses on accurate data extraction using Claude Vision for all PDFs
+ *
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @param {string} filename - Original filename
+ * @returns {Promise<Object>} - Raw extracted data with extraction confidence
+ */
+async function extractInvoiceRaw(pdfBuffer, filename) {
+  const result = {
+    success: false,
+    extracted: null,
+    extractionConfidence: {},
+    extractionMethod: 'unknown',
+    messages: []
+  };
+
+  try {
+    // Always use vision mode for PDFs (better layout understanding)
+    result.messages.push('Using Claude Vision for extraction...');
+    result.extractionMethod = 'vision';
+
+    const systemPrompt = `You are an expert construction invoice processing assistant for Ross Built Custom Homes, a custom home builder in Florida.
+
+CRITICAL IDENTIFICATION RULES:
+1. Ross Built Custom Homes (or "Ross Built") is ALWAYS the general contractor being billed - NEVER the vendor
+2. The VENDOR is the subcontractor/supplier company SENDING the invoice - they performed work or supplied materials
+3. Look for "Bill To:", "Invoice To:", "Customer:" fields - these typically show Ross Built
+4. Look for company letterhead, logo, or "From:" - this is typically the VENDOR
+
+EXTRACTION ACCURACY REQUIREMENTS:
+1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown
+2. Amounts: Extract the TOTAL AMOUNT DUE. Look for "Total", "Amount Due", "Balance Due"
+3. Dates: Convert all dates to YYYY-MM-DD format
+4. Line items: Extract ALL work items with their individual amounts
+
+JOB/PROJECT IDENTIFICATION:
+Job references can appear in MANY forms. Check ALL of these locations:
+1. "P.O.#" or "PO#" field - often contains client name or job reference
+2. "Subject:", "Job:", "Project:", "Site:", "Location:", "Re:" fields
+3. Any street address that is NOT the vendor's address
+4. Client/homeowner last name
+
+Focus on ACCURATE extraction. Validation will happen in Stage 2.
+Return ONLY valid JSON, no markdown code blocks.`;
+
+    const base64PDF = pdfBuffer.toString('base64');
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: base64PDF
+            }
+          },
+          {
+            type: 'text',
+            text: `Please analyze this invoice PDF and extract all information according to this schema:\n\n${INVOICE_SCHEMA}\n\nReturn ONLY valid JSON, no markdown code blocks.`
+          }
+        ]
+      }]
+    });
+
+    let jsonStr = response.content[0].text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+
+    const extracted = JSON.parse(jsonStr);
+    result.extracted = normalizeExtractedData(extracted);
+    result.extractionConfidence = result.extracted.extractionConfidence || {};
+    result.success = true;
+    result.messages.push('Extraction complete');
+
+  } catch (err) {
+    result.success = false;
+    result.messages.push(`Extraction error: ${err.message}`);
+    console.error('[Stage1] Extraction error:', err);
+  }
+
+  return result;
+}
+
+/**
+ * Validate and enrich extracted data (Stage 2)
+ * Calls invoice-validator for programmatic validation
+ *
+ * @param {Object} rawExtracted - Raw extracted data from Stage 1
+ * @returns {Promise<Object>} - Validated data with corrections and issues
+ */
+async function validateAndEnrich(rawExtracted) {
+  const result = {
+    data: { ...rawExtracted },
+    validationScore: 1.0,
+    issues: [],
+    corrections: {},
+    validationBreakdown: {}
+  };
+
+  try {
+    // Run validation
+    const validation = await invoiceValidator.validateExtraction(rawExtracted);
+
+    result.validationScore = validation.confidence;
+    result.issues = validation.issues;
+    result.corrections = validation.corrections;
+    result.validationBreakdown = validation.breakdown;
+
+    // Apply safe auto-corrections to data
+    if (validation.corrections.invoiceNumber) {
+      result.data.invoiceNumber = validation.corrections.invoiceNumber;
+    }
+    if (validation.corrections.totalAmount !== undefined) {
+      result.data.totalAmount = validation.corrections.totalAmount;
+      if (result.data.amounts) {
+        result.data.amounts.totalAmount = validation.corrections.totalAmount;
+      }
+    }
+    if (validation.corrections.invoiceType) {
+      result.data.invoiceType = validation.corrections.invoiceType;
+    }
+    if (validation.corrections.tradeType && result.data.vendor) {
+      result.data.vendor.tradeType = validation.corrections.tradeType;
+    }
+
+  } catch (err) {
+    result.issues.push(`Validation error: ${err.message}`);
+    result.validationScore = 0.5; // Penalize for validation failure
+    console.error('[Stage2] Validation error:', err);
+  }
+
+  return result;
+}
+
+/**
+ * Calculate final confidence from extraction and validation scores
+ * Weighted combination favoring extraction but penalizing validation failures
+ *
+ * @param {number} extractionConfidence - Overall extraction confidence (0-1)
+ * @param {number} validationScore - Validation score (0-1)
+ * @returns {number} - Combined confidence score (0-1)
+ */
+function calculateFinalConfidence(extractionConfidence, validationScore) {
+  // Extraction is 60%, validation is 40%
+  const extractionWeight = 0.60;
+  const validationWeight = 0.40;
+
+  // Handle missing values
+  const extConf = extractionConfidence || 0.5;
+  const valScore = validationScore || 0.5;
+
+  // Calculate weighted average
+  let finalConfidence = (extConf * extractionWeight) + (valScore * validationWeight);
+
+  // Apply penalty if validation found critical issues (score < 0.6)
+  if (valScore < 0.6) {
+    finalConfidence *= 0.9; // 10% penalty
+  }
+
+  return Math.round(finalConfidence * 100) / 100;
+}
+
+/**
+ * Process invoice using two-stage extraction pipeline
+ *
+ * Stage 1: Raw extraction using Claude Vision
+ * Stage 2: Programmatic validation with cross-field checks
+ *
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @param {string} filename - Original filename
+ * @returns {Promise<Object>} - Processing results with combined confidence
+ */
+async function processInvoiceTwoStage(pdfBuffer, filename) {
+  const result = {
+    success: false,
+    extracted: null,
+    confidence: 0,
+    stage1Confidence: 0,
+    stage2Score: 0,
+    validationIssues: [],
+    autoCorrections: [],
+    extractionMethod: 'two_stage',
+    messages: []
+  };
+
+  try {
+    // Stage 1: Raw extraction
+    result.messages.push('Stage 1: Extracting invoice data with Claude Vision...');
+    const stage1 = await extractInvoiceRaw(pdfBuffer, filename);
+
+    if (!stage1.success || !stage1.extracted) {
+      result.success = false;
+      result.messages.push(...stage1.messages);
+      result.messages.push('Stage 1 extraction failed');
+      return result;
+    }
+
+    result.extracted = stage1.extracted;
+    result.stage1Confidence = calculateOverallExtractionConfidence(stage1.extractionConfidence);
+    result.messages.push(`Stage 1 complete: ${Math.round(result.stage1Confidence * 100)}% confidence`);
+    result.messages.push(...stage1.messages);
+
+    // Stage 2: Validation and enrichment
+    result.messages.push('Stage 2: Validating extracted data...');
+    const stage2 = await validateAndEnrich(stage1.extracted);
+
+    result.extracted = stage2.data; // Use corrected data
+    result.stage2Score = stage2.validationScore;
+    result.validationIssues = stage2.issues;
+
+    // Track auto-corrections
+    if (stage2.corrections.invoiceNumber) {
+      result.autoCorrections.push({
+        field: 'invoiceNumber',
+        original: stage2.corrections.originalInvoiceNumber,
+        corrected: stage2.corrections.invoiceNumber,
+        reason: 'OCR correction'
+      });
+    }
+    if (stage2.corrections.totalAmount !== undefined) {
+      result.autoCorrections.push({
+        field: 'totalAmount',
+        original: stage1.extracted.totalAmount,
+        corrected: stage2.corrections.totalAmount,
+        reason: 'Amount recalculation'
+      });
+    }
+    if (stage2.corrections.invoiceType) {
+      result.autoCorrections.push({
+        field: 'invoiceType',
+        original: stage1.extracted.invoiceType,
+        corrected: stage2.corrections.invoiceType,
+        reason: 'Type detection from amount'
+      });
+    }
+
+    result.messages.push(`Stage 2 complete: ${Math.round(result.stage2Score * 100)}% validation score`);
+    if (result.validationIssues.length > 0) {
+      result.messages.push(`Found ${result.validationIssues.length} validation issue(s)`);
+    }
+
+    // Calculate final confidence
+    result.confidence = calculateFinalConfidence(result.stage1Confidence, result.stage2Score);
+    result.messages.push(`Final confidence: ${Math.round(result.confidence * 100)}%`);
+
+    result.success = true;
+
+  } catch (err) {
+    result.success = false;
+    result.messages.push(`Pipeline error: ${err.message}`);
+    console.error('[TwoStage] Pipeline error:', err);
+  }
+
+  return result;
+}
+
+/**
+ * Calculate overall extraction confidence from individual field confidences
+ */
+function calculateOverallExtractionConfidence(extractionConfidence) {
+  if (!extractionConfidence) return 0.5;
+
+  const weights = {
+    vendor: 0.25,
+    amount: 0.30,
+    invoiceNumber: 0.15,
+    date: 0.15,
+    job: 0.15
+  };
+
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  for (const [key, weight] of Object.entries(weights)) {
+    if (extractionConfidence[key] !== undefined) {
+      weightedSum += extractionConfidence[key] * weight;
+      totalWeight += weight;
+    }
+  }
+
+  return totalWeight > 0 ? weightedSum / totalWeight : 0.5;
+}
+
+// ============================================================
 // MAIN PROCESSING FUNCTION
 // ============================================================
 
 /**
  * Process an invoice PDF with AI
+ * Now uses two-stage pipeline internally
  *
  * @param {Buffer} pdfBuffer - PDF file buffer
  * @param {string} originalFilename - Original filename
@@ -2440,6 +2737,10 @@ async function processMultiPageDocument(pdfBuffer, originalFilename, options = {
 
 module.exports = {
   processInvoice,
+  processInvoiceTwoStage,  // New two-stage pipeline
+  extractInvoiceRaw,        // Stage 1: Raw extraction
+  validateAndEnrich,        // Stage 2: Validation
+  calculateFinalConfidence, // Combined confidence calculation
   processLienRelease,
   processDocument,
   processMultiPageDocument,
