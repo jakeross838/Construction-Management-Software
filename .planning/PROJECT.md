@@ -5,6 +5,7 @@
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
 **Last Milestone:** v1.4 - Price Intelligence (shipped 2026-01-18)
+**Current Milestone:** v1.5 - UI Cleanup & Uniformity
 
 ## Core Value
 
@@ -110,6 +111,20 @@ Shipped v1.4 with ~105,000+ lines of JavaScript across 85+ files. v1.4 Price Int
 - [x] PRC-03: User can track savings from optimized orders over time
 - [x] PRC-04: User can analyze vendor spend for negotiation leverage
 - [x] PRC-05: User sees price warning when creating PO with better options available
+
+### v1.5 UI Cleanup & Uniformity (Current)
+
+**UI Standards & Components:**
+- [ ] UI-01: All buttons use consistent sizes, colors, and states
+- [ ] UI-02: All form inputs follow same styling patterns
+- [ ] UI-03: All badges/status indicators are uniform
+- [ ] UI-04: All modals have consistent structure (header, body, footer)
+- [ ] UI-05: All tables use same styling and interactions
+- [ ] UI-06: All forms show validation errors consistently
+- [ ] UI-07: Navigation and layout is uniform across pages
+- [ ] UI-08: All pages use CSS variables (no hardcoded colors)
+- [ ] UI-09: Loading and empty states are consistent
+- [ ] UI-10: Mobile experience is uniform across all pages
 
 ### Out of Scope
 
