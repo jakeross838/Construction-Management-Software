@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.2 Gap Fixes — Phases 12-13 complete, continuing with phases 14-17
+**Current focus:** v1.2 Gap Fixes — Phases 12-13 complete, Phase 14 in progress
 
 ## Current Position
 
-Phase: 14 (Vendors Completion) — PLANNED
-Plan: 14-01, 14-02, 14-03 planned
-Status: Phase 14 ready for execution
-Last activity: 2026-01-17 — Phase 14 planned
+Phase: 14 (Vendors Completion) — IN PROGRESS
+Plan: 14-01 complete, 14-02 and 14-03 pending
+Status: Vendor CRUD completion shipped, documents and duplicate detection next
+Last activity: 2026-01-17 — Plan 14-01 executed
 
 Progress: ██░░░░░░░░ 33% v1.2 (2/6 phases complete)
 
@@ -31,23 +31,26 @@ Progress: ██░░░░░░░░ 33% v1.2 (2/6 phases complete)
 - 2026-01-17: All routes now use asyncHandler wrapper for consistent error handling
 - 2026-01-17: Job CRUD uses soft delete (deleted_at column) with v2_job_activity for audit trail
 - 2026-01-17: Job metrics endpoint consolidates budget/PO/invoice/draw data for profile page
+- 2026-01-17: Vendor soft delete follows same pattern as jobs (deleted_at column)
+- 2026-01-17: Vendor search moved to server-side for better performance with large lists
+- 2026-01-17: ALREADY_DELETED error code (409) added for idempotent delete attempts
 
 ### Pending Todos
 
-None — fresh for next phases.
+None — continuing with Phase 14.
 
 ### Blockers/Concerns
 
-None — foundation and jobs complete, ready for remaining features.
+None — Plan 14-01 complete, ready for 14-02 and 14-03.
 
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Phase 13 complete
+Stopped at: Plan 14-01 complete
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-plan .planning/phases/14-vendors-completion/14-01-PLAN.md` to execute Vendor CRUD completion
-2. Or run `/gsd:execute-phase 14` to execute all 3 plans in Phase 14
+1. Run `/gsd:execute-plan .planning/phases/14-vendors-completion/14-02-PLAN.md` for vendor documents
+2. Run `/gsd:execute-plan .planning/phases/14-vendors-completion/14-03-PLAN.md` for duplicate detection
 3. Phases 15-17 can also proceed in parallel
