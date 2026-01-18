@@ -2,6 +2,39 @@
 
 Historical record of shipped milestones.
 
+## v1.4 Price Intelligence
+
+**Shipped:** 2026-01-18
+**Phases:** 6 (24-29)
+**Plans executed:** 6
+
+### Highlights
+
+- **Price Database**: Master item catalog with vendor price comparison and confidence scoring
+- **Order Optimizer**: Material list parsing with waste factors and vendor split recommendations
+- **Savings Tracker**: Historical savings analysis by job, category, and time period
+- **Spend Analytics**: Vendor spend breakdown with negotiation insights
+- **Frontend**: Price Intelligence page with 4 tabs (Price Database, Order Optimizer, Savings Tracker, Spend Analytics)
+- **PO Integration**: Better-pricing warnings when creating POs with higher-than-necessary prices
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Phases | 6 |
+| Plans | 6 |
+| Requirements | 5 (PRC-01, PRC-02, PRC-03, PRC-04, PRC-05) |
+| New Tables | 8 + 2 materialized views |
+| New Endpoints | 30+ |
+| Lines of Code | ~5,100 |
+
+### Archive
+
+- `.planning/milestones/v1.4-ROADMAP.md`
+- `.planning/milestones/v1.4-REQUIREMENTS.md`
+
+---
+
 ## v1.3 Refinement
 
 **Shipped:** 2026-01-18

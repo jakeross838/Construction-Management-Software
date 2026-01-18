@@ -4,18 +4,7 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.3 - Refinement (shipped 2026-01-18)
-
-## Current Milestone: v1.4 Price Intelligence
-
-**Goal:** Comprehensive price tracking and order optimization to reduce material costs.
-
-**Target features:**
-- Price Database - Master item catalog with vendor price comparison
-- Order Optimizer - Material list → optimal vendor splits with waste factors
-- Savings Tracker - Track historical savings from optimized orders
-- Spend Analytics - Vendor spend analysis for negotiation leverage
-- PO Integration - Warn when creating PO if better pricing available
+**Last Milestone:** v1.4 - Price Intelligence (shipped 2026-01-18)
 
 ## Core Value
 
@@ -23,12 +12,12 @@ Construction management software for Ross Built Custom Homes. Manages the full l
 
 ## Current State
 
-Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files. Starting v1.4 Price Intelligence.
+Shipped v1.4 with ~105,000+ lines of JavaScript across 85+ files. v1.4 Price Intelligence complete.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
 - Invoice AI - Two-stage extraction, multi-signal PO matching, batch approval (v1.3)
-- Purchase Orders - CRUD, line items, approval, change orders, attachments
+- Purchase Orders - CRUD, line items, approval, change orders, attachments, price warnings (v1.4)
 - Draws - G702/G703, Excel/PDF export, workflow
 - Reports - Financial summaries, Excel exports, PDF exports (v1.3)
 - Daily Logs - Crew, weather, work summary, photos
@@ -48,6 +37,8 @@ Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files. Starting v1.4 
 - Budgets - Chart visualizations, variance alerts, spend forecasting (v1.2)
 - Schedules - Drag-and-drop Gantt, critical path highlighting (v1.2)
 - Documents - Version tracking, history UI, rollback, comparison (v1.2)
+- Price Intelligence - Master items, vendor prices, order optimizer, savings tracker (v1.4)
+- Spend Analytics - Vendor spend breakdown, negotiation insights (v1.4)
 
 ## Tech Stack
 
@@ -111,14 +102,14 @@ Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files. Starting v1.4 
 - [x] RPT-02: Custom Excel exports (export any data view to Excel)
 - [x] RPT-03: PDF reports (printable professional reports for clients/owners)
 
-### Active (v1.4 Price Intelligence)
+### v1.4 Price Intelligence (Shipped)
 
 **Price Intelligence:**
-- [ ] PRC-01: User can browse/search master items with vendor price comparison
-- [ ] PRC-02: User can paste material list and get optimal vendor split recommendations
-- [ ] PRC-03: User can track savings from optimized orders over time
-- [ ] PRC-04: User can analyze vendor spend for negotiation leverage
-- [ ] PRC-05: User sees price warning when creating PO with better options available
+- [x] PRC-01: User can browse/search master items with vendor price comparison
+- [x] PRC-02: User can paste material list and get optimal vendor split recommendations
+- [x] PRC-03: User can track savings from optimized orders over time
+- [x] PRC-04: User can analyze vendor spend for negotiation leverage
+- [x] PRC-05: User sees price warning when creating PO with better options available
 
 ### Out of Scope
 
@@ -141,6 +132,9 @@ Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files. Starting v1.4 
 | 2026-01-18 | Chart.js for budget visualizations | Already bundled, simple API | ✓ Good |
 | 2026-01-18 | Critical path: forward/backward pass | Standard CPM algorithm, efficient | ✓ Good |
 | 2026-01-18 | Document versioning follows vendor pattern | Consistency, proven approach | ✓ Good |
+| 2026-01-18 | Master items schema with vendor aliases | Organic growth from invoices/quotes | ✓ Good |
+| 2026-01-18 | Materialized view for current prices | Fast lookups without complex queries | ✓ Good |
+| 2026-01-18 | 10% threshold for price warnings | Balances noise vs value | ✓ Good |
 
 ## References
 
@@ -150,4 +144,4 @@ Shipped v1.3 with ~100,000+ lines of JavaScript across 80+ files. Starting v1.4 
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-18 — v1.4 Price Intelligence milestone started*
+*Last updated: 2026-01-18 — v1.4 Price Intelligence milestone complete*
