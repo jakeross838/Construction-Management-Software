@@ -30,7 +30,7 @@ Gap fixes to complete existing features and improve system reliability.
 
 ### Schedules
 
-- [ ] **SCH-03**: Gantt enhancements - Interactive Gantt with drag-and-drop task editing, critical path highlighting
+- [x] **SCH-03**: Gantt enhancements - Interactive Gantt with drag-and-drop task editing, critical path highlighting
 
 ### Documents
 
@@ -73,7 +73,7 @@ Which phases cover which requirements.
 | VND-02 | Phase 14 | Complete |
 | VND-03 | Phase 14 | Complete |
 | BUD-04 | Phase 15 | Complete |
-| SCH-03 | Phase 16 | Pending |
+| SCH-03 | Phase 16 | Complete |
 | DOC-03 | Phase 17 | Pending |
 
 **Coverage:**
@@ -83,4 +83,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-01-17*
-*Last updated: 2026-01-17 after Phase 15 completion*
+*Last updated: 2026-01-18 after Phase 16 completion*
