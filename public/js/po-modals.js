@@ -1543,8 +1543,10 @@ class POModals {
       <div id="create-co-for-line-modal" class="modal" style="display: flex; opacity: 1; z-index: 10003;">
         <div class="modal-content" style="max-width: 500px; opacity: 1;">
           <div class="modal-header">
-            <h2>Create Change Order</h2>
-            <button class="modal-close" onclick="window.poModals.closeCreateCOForLineModal()">&times;</button>
+            <div class="modal-title-row">
+              <h2>Create Change Order</h2>
+            </div>
+            <button class="close-btn" onclick="window.poModals.closeCreateCOForLineModal()">&times;</button>
           </div>
           <div class="modal-body">
             <p class="modal-hint">This line item uses a CO cost code. Create or select a Change Order to link it to.</p>

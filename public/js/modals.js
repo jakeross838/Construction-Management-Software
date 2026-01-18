@@ -509,13 +509,13 @@ const Modals = {
       <div class="modal-backdrop">
         <div class="modal modal-fullscreen">
           <div class="modal-header">
-            <div class="modal-title">
+            <div class="modal-title-row">
               <h2>${this.isEditMode ? 'Edit Invoice' : 'View Invoice'}</h2>
               <span class="status-badge status-${normalizeStatusClass(invoice.status)}">${statusInfo.label || invoice.status}</span>
               ${isPartialAllocation ? '<span class="status-badge status-partial">Partial</span>' : ''}
               ${showReadOnlyBadge ? '<span class="readonly-badge">Read Only</span>' : ''}
             </div>
-            <button class="modal-close" onclick="window.Modals.closeActiveModal()">&times;</button>
+            <button class="close-btn" onclick="window.Modals.closeActiveModal()">&times;</button>
           </div>
 
           <div class="modal-body modal-split-view">
@@ -1846,7 +1846,7 @@ const Modals = {
           <div class="link-picker-header">
             <h2>Link to Purchase Order</h2>
             <p class="link-picker-subtitle">Select a PO for this allocation</p>
-            <button class="modal-close" onclick="window.Modals.closeLinkPicker()">&times;</button>
+            <button class="close-btn" onclick="window.Modals.closeLinkPicker()">&times;</button>
           </div>
           <div class="link-picker-body">
             <div class="link-section">
@@ -1937,7 +1937,7 @@ const Modals = {
           <div class="link-picker-header">
             <h2>Link to Change Order</h2>
             <p class="link-picker-subtitle">CO cost code requires a Change Order link</p>
-            <button class="modal-close" onclick="window.Modals.closeLinkPicker()">&times;</button>
+            <button class="close-btn" onclick="window.Modals.closeLinkPicker()">&times;</button>
           </div>
           <div class="link-picker-body">
             <div class="link-section">
@@ -2110,8 +2110,10 @@ const Modals = {
       <div id="create-co-modal" class="modal" style="display: flex; opacity: 1; z-index: 10002;">
         <div class="modal-content" style="max-width: 600px; opacity: 1;">
           <div class="modal-header">
-            <h2>Create Change Order</h2>
-            <button class="modal-close" onclick="window.Modals.closeCreateCOModal()">&times;</button>
+            <div class="modal-title-row">
+              <h2>Create Change Order</h2>
+            </div>
+            <button class="close-btn" onclick="window.Modals.closeCreateCOModal()">&times;</button>
           </div>
           <div class="modal-body">
             <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
@@ -2322,8 +2324,10 @@ const Modals = {
       <div id="create-po-modal" class="modal" style="display: flex; opacity: 1; z-index: 10002;">
         <div class="modal-content" style="max-width: 500px; opacity: 1;">
           <div class="modal-header">
-            <h2>Create Purchase Order</h2>
-            <button class="modal-close" onclick="window.Modals.closeCreatePOModal()">&times;</button>
+            <div class="modal-title-row">
+              <h2>Create Purchase Order</h2>
+            </div>
+            <button class="close-btn" onclick="window.Modals.closeCreatePOModal()">&times;</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
@@ -3031,8 +3035,10 @@ const Modals = {
     const modal = `
       <div class="confirm-modal co-link-prompt-modal" style="max-width: 650px;">
         <div class="modal-header">
-          <h2>Link to Change Order</h2>
-          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
+          <div class="modal-title-row">
+            <h2>Link to Change Order</h2>
+          </div>
+          <button class="close-btn" onclick="window.Modals.closeConfirmDialog()">&times;</button>
         </div>
 
         <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
@@ -3371,8 +3377,10 @@ const Modals = {
     const modal = `
       <div class="confirm-modal partial-approval-modal">
         <div class="modal-header">
-          <h2>Partial Approval</h2>
-          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
+          <div class="modal-title-row">
+            <h2>Partial Approval</h2>
+          </div>
+          <button class="close-btn" onclick="window.Modals.closeConfirmDialog()">&times;</button>
         </div>
 
         <div class="modal-body">
@@ -3452,8 +3460,10 @@ const Modals = {
     const modal = `
       <div class="confirm-modal sendback-modal">
         <div class="modal-header">
-          <h2>Send Back for Review</h2>
-          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
+          <div class="modal-title-row">
+            <h2>Send Back for Review</h2>
+          </div>
+          <button class="close-btn" onclick="window.Modals.closeConfirmDialog()">&times;</button>
         </div>
 
         <div class="modal-body">
@@ -3510,8 +3520,10 @@ const Modals = {
     const modal = `
       <div class="confirm-modal denial-modal">
         <div class="modal-header">
-          <h2>Deny Invoice</h2>
-          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
+          <div class="modal-title-row">
+            <h2>Deny Invoice</h2>
+          </div>
+          <button class="close-btn" onclick="window.Modals.closeConfirmDialog()">&times;</button>
         </div>
 
         <div class="modal-body">
@@ -3694,8 +3706,10 @@ const Modals = {
     const modal = `
       <div class="modal modal-medium close-out-modal">
         <div class="modal-header">
-          <h2>Close Out Invoice</h2>
-          <button class="modal-close" onclick="window.Modals.closeCloseOutDialog()">&times;</button>
+          <div class="modal-title-row">
+            <h2>Close Out Invoice</h2>
+          </div>
+          <button class="close-btn" onclick="window.Modals.closeCloseOutDialog()">&times;</button>
         </div>
 
         <div class="modal-body">
@@ -4136,8 +4150,10 @@ const Modals = {
         <div class="modal-backdrop">
           <div class="modal modal-medium">
             <div class="modal-header">
-              <h2>${title}</h2>
-              <button class="modal-close" onclick="window.Modals.closeActiveModal()">&times;</button>
+              <div class="modal-title-row">
+                <h2>${title}</h2>
+              </div>
+              <button class="close-btn" onclick="window.Modals.closeActiveModal()">&times;</button>
             </div>
 
             <div class="modal-body">
@@ -4239,8 +4255,10 @@ const Modals = {
     const modal = `
       <div class="confirm-modal">
         <div class="modal-header">
-          <h2>${title}</h2>
-          <button class="modal-close" onclick="window.Modals.closeConfirmDialog()">&times;</button>
+          <div class="modal-title-row">
+            <h2>${title}</h2>
+          </div>
+          <button class="close-btn" onclick="window.Modals.closeConfirmDialog()">&times;</button>
         </div>
 
         <div class="modal-body">

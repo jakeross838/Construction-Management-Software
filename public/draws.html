@@ -63,7 +63,7 @@
   <div id="drawModal" class="modal modal-fullscreen-dark">
     <div class="modal-content">
       <div class="modal-header">
-        <div class="modal-title-group">
+        <div class="modal-title-row">
           <h2 id="drawModalTitle">Draw #1</h2>
           <span class="status-badge" id="drawModalStatus">Draft</span>
           <span class="lock-indicator" id="lockIndicator" style="display: none;" title="This draw is locked">🔒</span>
@@ -385,7 +385,9 @@
   <div id="addCOBillingModal" class="modal">
     <div class="modal-content modal-md">
       <div class="modal-header">
-        <h2>Add Change Order Billings</h2>
+        <div class="modal-title-row">
+          <h2>Add Change Order Billings</h2>
+        </div>
         <button class="close-btn" onclick="closeModal('addCOBillingModal')">&times;</button>
       </div>
       <div class="modal-body">
@@ -405,7 +407,9 @@
   <div id="fundDrawModal" class="modal">
     <div class="modal-content modal-sm">
       <div class="modal-header">
-        <h2>Mark Draw as Funded</h2>
+        <div class="modal-title-row">
+          <h2>Mark Draw as Funded</h2>
+        </div>
         <button class="close-btn" onclick="closeModal('fundDrawModal')">&times;</button>
       </div>
       <div class="modal-body">
@@ -440,7 +444,9 @@
   <div id="submitDrawModal" class="modal">
     <div class="modal-content modal-sm">
       <div class="modal-header">
-        <h2>Submit Draw</h2>
+        <div class="modal-title-row">
+          <h2>Submit Draw</h2>
+        </div>
         <button class="close-btn" onclick="closeModal('submitDrawModal')">&times;</button>
       </div>
       <div class="modal-body">
@@ -465,7 +471,9 @@
   <div id="unsubmitModal" class="modal">
     <div class="modal-content modal-sm">
       <div class="modal-header">
-        <h2>Unsubmit Draw</h2>
+        <div class="modal-title-row">
+          <h2>Unsubmit Draw</h2>
+        </div>
         <button class="close-btn" onclick="closeModal('unsubmitModal')">&times;</button>
       </div>
       <div class="modal-body">
@@ -486,7 +494,9 @@
   <div id="autoGenerateModal" class="modal">
     <div class="modal-content modal-md">
       <div class="modal-header">
-        <h2>Auto-Generate Draw</h2>
+        <div class="modal-title-row">
+          <h2>Auto-Generate Draw</h2>
+        </div>
         <button class="close-btn" onclick="closeModal('autoGenerateModal')">&times;</button>
       </div>
       <div class="modal-body">
@@ -530,11 +540,11 @@
   <div id="pdfViewerModal" class="modal modal-fullscreen-dark">
     <div class="modal-content" style="max-width: 1200px; height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
-        <div>
+        <div class="modal-title-row">
           <h2 id="pdfViewerTitle">Invoice</h2>
           <p id="pdfViewerSubtitle" class="modal-subtitle" style="margin: 0; color: var(--text-secondary);"></p>
         </div>
-        <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <div class="modal-header-actions">
           <span id="pdfInvoiceStatus" class="status-badge"></span>
           <button class="close-btn" onclick="closeModal('pdfViewerModal')">&times;</button>
         </div>
@@ -560,7 +570,9 @@
   <div id="attachLienReleaseModal" class="modal">
     <div class="modal-content modal-md">
       <div class="modal-header">
-        <h2>Attach Lien Release</h2>
+        <div class="modal-title-row">
+          <h2>Attach Lien Release</h2>
+        </div>
         <button class="close-btn" onclick="closeModal('attachLienReleaseModal')">&times;</button>
       </div>
       <div class="modal-body">
