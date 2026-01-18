@@ -78,11 +78,40 @@ router.get('/', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// Create vendor
+// Create vendor (with duplicate warning)
 router.post('/', validateRequest({ body: { name: { required: true } } }), asyncHandler(async (req, res) => {
+  const { name, skip_duplicate_check } = req.body;
+
+  // Check for duplicates unless explicitly skipped
+  if (!skip_duplicate_check) {
+    const { data: vendors } = await supabase
+      .from('v2_vendors')
+      .select('id, name, email, phone, trade')
+      .is('deleted_at', null);
+
+    const duplicates = [];
+    for (const vendor of vendors || []) {
+      const similarity = calculateVendorSimilarity(name.trim(), vendor.name);
+      if (similarity >= 75) {
+        duplicates.push({ ...vendor, similarity: Math.round(similarity) });
+      }
+    }
+
+    if (duplicates.length > 0) {
+      return res.status(409).json({
+        error: 'DUPLICATE_WARNING',
+        message: 'Similar vendor(s) already exist',
+        duplicates: duplicates.sort((a, b) => b.similarity - a.similarity).slice(0, 3),
+        hint: 'Set skip_duplicate_check: true to create anyway'
+      });
+    }
+  }
+
+  // Create the vendor (strip skip_duplicate_check from data)
+  const { skip_duplicate_check: _, ...vendorData } = req.body;
   const { data, error } = await supabase
     .from('v2_vendors')
-    .insert(req.body)
+    .insert(vendorData)
     .select()
     .single();
 
