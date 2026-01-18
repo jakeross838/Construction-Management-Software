@@ -312,7 +312,13 @@
               </thead>
               <tbody id="coBillingBody">
                 <tr>
-                  <td colspan="10" class="empty-state">No change order billings in this draw</td>
+                  <td colspan="10">
+                    <div class="empty-state">
+                      <div class="empty-state-icon">📋</div>
+                      <div class="empty-state-title">No Change Order Billings</div>
+                      <div class="empty-state-message">No change order billings in this draw.</div>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
               <tfoot id="coBillingFooter">
@@ -357,7 +363,11 @@
             <button class="btn btn-sm btn-secondary" onclick="showAttachLienReleaseModal()">+ Attach Release</button>
           </div>
           <div class="lien-release-mini-list" id="drawLienReleasesContainer">
-            <div class="empty-state">No lien releases attached</div>
+            <div class="empty-state">
+              <div class="empty-state-icon">📄</div>
+              <div class="empty-state-title">No Lien Releases</div>
+              <div class="empty-state-message">No lien releases attached to this draw.</div>
+            </div>
           </div>
         </section>
 
@@ -367,7 +377,11 @@
             <h3>Activity Log</h3>
           </div>
           <div class="activity-container" id="activityContainer">
-            <div class="empty-state">No activity recorded</div>
+            <div class="empty-state">
+              <div class="empty-state-icon">📜</div>
+              <div class="empty-state-title">No Activity</div>
+              <div class="empty-state-message">Activity will appear here as changes are made.</div>
+            </div>
           </div>
         </section>
       </div>
@@ -690,7 +704,13 @@
         renderDrawList();
       } catch (err) {
         console.error('Failed to load draws:', err);
-        document.getElementById('drawList').innerHTML = '<div class="empty-state">Failed to load draws</div>';
+        document.getElementById('drawList').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">⚠️</div>
+            <div class="empty-state-title">Failed to Load Draws</div>
+            <div class="empty-state-message">Please try refreshing the page.</div>
+          </div>
+        `;
       }
     }
 
@@ -729,7 +749,13 @@
       }
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="empty-state">No draws found</div>';
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📑</div>
+            <div class="empty-state-title">No Draws Found</div>
+            <div class="empty-state-message">Create a draw to get started with payment applications.</div>
+          </div>
+        `;
         return;
       }
 
@@ -1111,7 +1137,17 @@
       const tfoot = document.getElementById('g703Footer');
 
       if (!scheduleOfValues || scheduleOfValues.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No billing data for this draw</td></tr>';
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8">
+              <div class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <div class="empty-state-title">No Billing Data</div>
+                <div class="empty-state-message">No schedule of values data available for this draw.</div>
+              </div>
+            </td>
+          </tr>
+        `;
         tfoot.innerHTML = '';
         return;
       }
@@ -1173,7 +1209,17 @@
         (unlinkedCOAllocations.totalThisPeriod > 0 || unlinkedCOAllocations.totalPrevious > 0);
 
       if (!hasLinkedCOs && !hasUnlinkedCO) {
-        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No change order billings in this draw</td></tr>';
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="10">
+              <div class="empty-state">
+                <div class="empty-state-icon">📋</div>
+                <div class="empty-state-title">No Change Order Billings</div>
+                <div class="empty-state-message">No change order billings in this draw.</div>
+              </div>
+            </td>
+          </tr>
+        `;
         tfoot.innerHTML = '';
         return;
       }
@@ -1328,7 +1374,17 @@
       const isDraft = drawStatus === 'draft';
 
       if (!invoices || invoices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No invoices in this draw yet. Approve invoices to add them automatically.</td></tr>';
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6">
+              <div class="empty-state">
+                <div class="empty-state-icon">📋</div>
+                <div class="empty-state-title">No Invoices in Draw</div>
+                <div class="empty-state-message">Approve invoices to add them to this draw.</div>
+              </div>
+            </td>
+          </tr>
+        `;
         tfoot.innerHTML = '';
         return;
       }
@@ -1392,7 +1448,13 @@
       };
 
       if (!activities || activities.length === 0) {
-        container.innerHTML = '<div class="empty-state">No activity recorded</div>';
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📜</div>
+            <div class="empty-state-title">No Activity</div>
+            <div class="empty-state-message">Activity will appear here as changes are made.</div>
+          </div>
+        `;
         return;
       }
 
@@ -2149,7 +2211,13 @@
       // Build releases list
       let releasesHtml = '';
       if (!releases || releases.length === 0) {
-        releasesHtml = '<div class="empty-state">No lien releases attached to this draw</div>';
+        releasesHtml = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📄</div>
+            <div class="empty-state-title">No Lien Releases</div>
+            <div class="empty-state-message">No lien releases attached to this draw.</div>
+          </div>
+        `;
       } else {
         releasesHtml = releases.map(lr => `
           <div class="lien-release-mini-item">
@@ -2201,7 +2269,13 @@
         const available = releases.filter(lr => !lr.draw_id);
 
         if (available.length === 0) {
-          container.innerHTML = '<div class="empty-state">No available lien releases for this job. Upload releases on the Lien Releases page first.</div>';
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📄</div>
+              <div class="empty-state-title">No Available Lien Releases</div>
+              <div class="empty-state-message">Upload releases on the Lien Releases page first.</div>
+            </div>
+          `;
           return;
         }
 

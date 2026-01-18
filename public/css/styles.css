@@ -878,6 +878,123 @@ body {
   cursor: pointer;
 }
 
+/* ============================================================
+   UNIFIED TABLE STYLING
+   All standard data tables share this base styling.
+   Legacy classes (invoices-table, history-table, comparison-table)
+   are aliased here for backward compatibility.
+   Note: Specialized tables (g702-table, g703-table, worksheet-table,
+   schedule-table) maintain separate styling for their unique needs.
+   ============================================================ */
+
+/* Unified data table base - all table types inherit this */
+.data-table,
+.invoices-table,
+.history-table,
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  font-size: 0.875rem;
+}
+
+/* Unified thead styling */
+.data-table thead,
+.invoices-table thead,
+.history-table thead,
+.comparison-table thead {
+  background: var(--card-elevated);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* Unified header cell styling */
+.data-table th,
+.invoices-table th,
+.history-table th,
+.comparison-table th {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* Unified data cell styling */
+.data-table td,
+.invoices-table td,
+.history-table td,
+.comparison-table td {
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--foreground);
+  vertical-align: middle;
+}
+
+/* Unified last row styling - no bottom border */
+.data-table tbody tr:last-child td,
+.invoices-table tbody tr:last-child td,
+.history-table tbody tr:last-child td,
+.comparison-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Unified table row hover transition */
+.data-table tbody tr,
+.invoices-table tbody tr,
+.history-table tbody tr,
+.comparison-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+/* Unified table row hover state */
+.data-table-hover tbody tr:hover,
+.invoices-table tbody tr:hover,
+.history-table tbody tr:hover,
+.comparison-table tbody tr:hover {
+  background: var(--accent);
+  cursor: pointer;
+}
+
+/* Table action column - standard for all tables */
+.col-actions {
+  width: 80px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.col-actions .btn {
+  padding: 0.25rem 0.5rem;
+}
+
+.col-actions .btn + .btn {
+  margin-left: 0.25rem;
+}
+
+/* Row action buttons - ghost style for inline actions */
+.data-table .col-actions .btn-ghost,
+.invoices-table .col-actions .btn-ghost,
+.history-table .col-actions .btn-ghost,
+.comparison-table .col-actions .btn-ghost {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.data-table tbody tr:hover .col-actions .btn-ghost,
+.invoices-table tbody tr:hover .col-actions .btn-ghost,
+.history-table tbody tr:hover .col-actions .btn-ghost,
+.comparison-table tbody tr:hover .col-actions .btn-ghost {
+  opacity: 1;
+}
+
 /* Card Grid View */
 .card-grid {
   display: grid;
@@ -24544,4 +24661,175 @@ textarea.form-control {
   .version-item {
     flex-wrap: wrap;
   }
+}
+
+/* ============================================================
+   UNIFIED EMPTY STATE STYLES
+   Standardized empty state components for all tables/lists
+   ============================================================ */
+
+/* Empty state - standard structure for all tables/lists */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+
+.empty-state-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  opacity: 0.6;
+}
+
+.empty-state-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state-message {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  margin-bottom: 1rem;
+  max-width: 300px;
+}
+
+/* Inline empty state for table cells */
+.empty-state-inline {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+
+.empty-state-inline .empty-state-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Table cell empty state (colspan usage) */
+td.empty-state {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+/* ============================================================
+   UNIFIED TOOLBAR STYLES
+   Standardized toolbar layouts for all list pages
+   ============================================================ */
+
+/* Toolbar - standard for all list pages */
+.toolbar,
+.data-toolbar,
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.toolbar-left,
+.data-toolbar .toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.toolbar-right,
+.data-toolbar .toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Filter group within toolbar */
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-group select,
+.filter-group .form-control {
+  min-width: 120px;
+}
+
+/* Search box in toolbar */
+.search-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-inline {
+  padding-right: 2rem;
+  min-width: 200px;
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem;
+  display: none;
+}
+
+.search-clear-btn:hover {
+  color: var(--foreground);
+}
+
+/* ============================================================
+   UNIFIED FILTER SELECT STYLES
+   Standardized filter dropdown styling
+   ============================================================ */
+
+/* Filter select styling */
+.filter-select,
+.filter-group select {
+  padding: 0.375rem 2rem 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2378716c' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+}
+
+.filter-select:hover,
+.filter-group select:hover {
+  border-color: var(--border-light);
+}
+
+.filter-select:focus,
+.filter-group select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 111, 212, 0.1);
+}
+
+/* Date filter inputs */
+.filter-date {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
 }

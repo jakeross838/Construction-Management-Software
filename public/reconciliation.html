@@ -915,25 +915,27 @@
             Reconciliation History
           </h2>
         </div>
-        <table class="history-table">
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Job</th>
-              <th>Run At</th>
-              <th>Checks</th>
-              <th>Duration</th>
-              <th>Resolution</th>
-            </tr>
-          </thead>
-          <tbody id="historyTableBody">
-            <tr>
-              <td colspan="6" class="loading-spinner">
-                <div class="spinner"></div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="data-table-container">
+          <table class="data-table data-table-hover history-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Job</th>
+                <th>Run At</th>
+                <th>Checks</th>
+                <th>Duration</th>
+                <th class="col-actions">Resolution</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="6" class="loading-spinner">
+                  <div class="spinner"></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </main>
     </div>
@@ -1207,7 +1209,7 @@
       const tbody = document.getElementById('historyTableBody');
 
       if (state.history.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No reconciliation history yet</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">No reconciliation history</div><div class="empty-state-message">Run a reconciliation to see history</div></td></tr>';
         return;
       }
 

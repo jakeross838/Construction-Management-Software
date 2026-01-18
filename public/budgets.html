@@ -37,7 +37,11 @@
       <main class="main">
       <!-- Budget Content -->
       <div id="budgetContent">
-        <div class="empty-state">Select a job from the sidebar to view budget</div>
+        <div class="empty-state">
+          <div class="empty-state-icon">📊</div>
+          <div class="empty-state-title">No Job Selected</div>
+          <div class="empty-state-message">Select a job from the sidebar to view budget</div>
+        </div>
       </div>
 
       <!-- Budget Detail (shown when job selected) -->
@@ -213,8 +217,8 @@
               <button class="btn btn-sm btn-primary" onclick="showAddCOModal()">+ Add Change Order</button>
             </div>
           </div>
-          <div class="invoices-container">
-            <table class="invoices-table co-table">
+          <div class="data-table-container">
+            <table class="data-table data-table-hover co-table">
               <thead>
                 <tr>
                   <th style="width: 60px;">PCCO #</th>
@@ -225,12 +229,16 @@
                   <th style="width: 60px;">Days</th>
                   <th style="width: 80px;">Billed</th>
                   <th style="width: 80px;">Status</th>
-                  <th style="width: 100px;">Actions</th>
+                  <th class="col-actions" style="width: 100px;">Actions</th>
                 </tr>
               </thead>
               <tbody id="changeOrdersBody">
-                <tr>
-                  <td colspan="9" class="empty-state">No change orders</td>
+                <tr class="empty-row">
+                  <td colspan="9" class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <div class="empty-state-title">No change orders</div>
+                    <div class="empty-state-message">Click "+ Add Change Order" to create one</div>
+                  </td>
                 </tr>
               </tbody>
               <tfoot id="changeOrdersFooter">
@@ -318,7 +326,11 @@
             <button class="btn btn-sm btn-secondary" onclick="showLinkInvoiceModal()">+ Link Invoice</button>
           </div>
           <div id="coLinkedInvoices" class="linked-invoices-list">
-            <div class="empty-state" style="padding: 0.5rem;">No invoices linked</div>
+            <div class="empty-state" style="padding: 1rem;">
+              <div class="empty-state-icon">📄</div>
+              <div class="empty-state-title">No linked invoices</div>
+              <div class="empty-state-message">Link an invoice to track CO billing</div>
+            </div>
           </div>
         </div>
       </div>
@@ -431,41 +443,57 @@
 
         <!-- Invoices Tab -->
         <div id="tab-cc-invoices" class="tab-content active">
-          <table class="invoices-table">
-            <thead>
-              <tr>
-                <th>Invoice #</th>
-                <th>Vendor</th>
-                <th>Date</th>
-                <th>Allocated</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="ccInvoicesBody">
-              <tr><td colspan="5" class="empty-state">No invoices</td></tr>
-            </tbody>
-            <tfoot id="ccInvoicesFooter"></tfoot>
-          </table>
+          <div class="data-table-container">
+            <table class="data-table data-table-hover">
+              <thead>
+                <tr>
+                  <th>Invoice #</th>
+                  <th>Vendor</th>
+                  <th>Date</th>
+                  <th>Allocated</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="ccInvoicesBody">
+                <tr class="empty-row">
+                  <td colspan="5" class="empty-state">
+                    <div class="empty-state-icon">📄</div>
+                    <div class="empty-state-title">No invoices</div>
+                    <div class="empty-state-message">No invoices coded to this cost code</div>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot id="ccInvoicesFooter"></tfoot>
+            </table>
+          </div>
         </div>
 
         <!-- Purchase Orders Tab -->
         <div id="tab-cc-pos" class="tab-content" style="display: none;">
-          <table class="invoices-table">
-            <thead>
-              <tr>
-                <th>PO #</th>
-                <th>Vendor</th>
-                <th>Line Item</th>
-                <th>Amount</th>
-                <th>Invoiced</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="ccPOsBody">
-              <tr><td colspan="6" class="empty-state">No purchase orders</td></tr>
-            </tbody>
-            <tfoot id="ccPOsFooter"></tfoot>
-          </table>
+          <div class="data-table-container">
+            <table class="data-table data-table-hover">
+              <thead>
+                <tr>
+                  <th>PO #</th>
+                  <th>Vendor</th>
+                  <th>Line Item</th>
+                  <th>Amount</th>
+                  <th>Invoiced</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="ccPOsBody">
+                <tr class="empty-row">
+                  <td colspan="6" class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <div class="empty-state-title">No purchase orders</div>
+                    <div class="empty-state-message">No purchase orders for this cost code</div>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot id="ccPOsFooter"></tfoot>
+            </table>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -557,7 +585,7 @@
           } else {
             // "All Jobs" selected - show selection prompt, hide budget detail
             document.getElementById('budgetContent').style.display = 'block';
-            document.getElementById('budgetContent').innerHTML = '<div class="empty-state">Select a job from the sidebar to view budget</div>';
+            document.getElementById('budgetContent').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-title">No Job Selected</div><div class="empty-state-message">Select a job from the sidebar to view budget</div></div>';
             document.getElementById('budgetDetail').style.display = 'none';
             state.currentJob = null;
             state.budgetData = null;
@@ -608,7 +636,7 @@
         console.error('Error loading budget:', err);
         showToast('Failed to load budget', 'error');
         // Show error state
-        document.getElementById('budgetBody').innerHTML = '<tr><td colspan="9" class="empty-state">Failed to load budget. Please try again.</td></tr>';
+        document.getElementById('budgetBody').innerHTML = '<tr class="empty-row"><td colspan="9" class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-title">Failed to load budget</div><div class="empty-state-message">Please try again later</div></td></tr>';
       }
     }
 
@@ -776,7 +804,7 @@
       const tfoot = document.getElementById('budgetFooter');
 
       if (!lines || lines.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No budget lines found. Import a budget to get started.</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="9" class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-title">No budget lines found</div><div class="empty-state-message">Import a budget to get started</div></td></tr>';
         tfoot.innerHTML = '';
         return;
       }
@@ -968,7 +996,7 @@
       countBadge.textContent = `${changeOrders.length} PCCO${changeOrders.length !== 1 ? 's' : ''}`;
 
       if (!changeOrders || changeOrders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No change orders. Click "+ Add Change Order" to create one.</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="9" class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">No change orders</div><div class="empty-state-message">Click "+ Add Change Order" to create one</div></td></tr>';
         tfoot.innerHTML = '';
         return;
       }
@@ -1199,7 +1227,7 @@
 
         const container = document.getElementById('coLinkedInvoices');
         if (!invoices || invoices.length === 0) {
-          container.innerHTML = '<div class="empty-state" style="padding: 0.5rem;">No invoices linked to this change order</div>';
+          container.innerHTML = '<div class="empty-state" style="padding: 1rem;"><div class="empty-state-icon">📄</div><div class="empty-state-title">No linked invoices</div><div class="empty-state-message">Link an invoice to track CO billing</div></div>';
           return;
         }
 
@@ -1523,7 +1551,7 @@
       state.currentInvoices = invoices;
 
       if (!invoices || invoices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No invoices coded to this cost code</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="empty-state"><div class="empty-state-icon">📄</div><div class="empty-state-title">No invoices</div><div class="empty-state-message">No invoices coded to this cost code</div></td></tr>';
         tfoot.innerHTML = '';
         return;
       }
@@ -1563,7 +1591,7 @@
       const tfoot = document.getElementById('ccPOsFooter');
 
       if (!pos || pos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No purchase orders for this cost code</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">No purchase orders</div><div class="empty-state-message">No purchase orders for this cost code</div></td></tr>';
         tfoot.innerHTML = '';
         return;
       }

@@ -301,11 +301,11 @@ function renderBidTable() {
   if (!bids.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align: center; padding: 3rem;">
-          <div class="empty-state-inline">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">📋</div>
-            <strong>No Bids Found</strong>
-            <p style="color: var(--muted-foreground); margin: 0.5rem 0;">Create your first bid to start tracking vendor proposals.</p>
+        <td colspan="8">
+          <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <div class="empty-state-title">No Bids Found</div>
+            <div class="empty-state-message">Create your first bid to start tracking vendor proposals.</div>
             <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ New Bid</button>
           </div>
         </td>
@@ -348,8 +348,8 @@ function renderBidCards() {
     container.innerHTML = `
       <div class="empty-state" style="grid-column: 1 / -1;">
         <div class="empty-state-icon">📋</div>
-        <h3>No Bids Found</h3>
-        <p>Create your first bid to start tracking vendor proposals.</p>
+        <div class="empty-state-title">No Bids Found</div>
+        <div class="empty-state-message">Create your first bid to start tracking vendor proposals.</div>
         <button class="btn btn-primary" onclick="openCreateModal()">+ New Bid</button>
       </div>
     `;
@@ -1014,8 +1014,12 @@ function renderBidLines() {
   if (!currentBidLines.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
-          No line items yet. Click "Add Line" to break down this bid.
+        <td colspan="7">
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <div class="empty-state-title">No Line Items</div>
+            <div class="empty-state-message">Click "Add Line" to break down this bid.</div>
+          </div>
         </td>
       </tr>
     `;
@@ -1033,9 +1037,9 @@ function renderBidLines() {
         <td>${line.unit || 'LS'}</td>
         <td style="text-align: right;">${formatCurrency(line.unit_cost)}</td>
         <td style="text-align: right; font-weight: 600;">${formatCurrency(line.amount)}</td>
-        <td>
-          <button class="btn btn-sm btn-secondary" onclick="editBidLine('${line.id}')">Edit</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteBidLine('${line.id}')">Delete</button>
+        <td class="col-actions">
+          <button class="btn btn-ghost btn-sm" onclick="editBidLine('${line.id}')" title="Edit">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteBidLine('${line.id}')" title="Delete">🗑️</button>
         </td>
       </tr>
     `;

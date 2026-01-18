@@ -510,11 +510,11 @@ function renderEstimateTable() {
   if (!estimates.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align: center; padding: 3rem;">
-          <div class="empty-state-inline">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">📋</div>
-            <strong>No estimates yet</strong>
-            <p style="color: var(--muted-foreground); margin: 0.5rem 0;">Create your first estimate to start tracking project costs.</p>
+        <td colspan="7">
+          <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <div class="empty-state-title">No Estimates Found</div>
+            <div class="empty-state-message">Create your first estimate to start tracking project costs.</div>
             <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ Create Estimate</button>
           </div>
         </td>
@@ -550,22 +550,13 @@ function renderEstimateCards() {
 
   if (!estimates.length) {
     container.innerHTML = `
-      <div class="empty-state-enhanced" style="grid-column: 1 / -1;">
+      <div class="empty-state" style="grid-column: 1 / -1;">
         <div class="empty-state-icon">📋</div>
-        <h3>No estimates yet</h3>
-        <p class="empty-state-description">
+        <div class="empty-state-title">No Estimates Found</div>
+        <div class="empty-state-message">
           Create your first estimate to start tracking project costs and generating proposals.
-        </p>
-        <button class="btn btn-primary btn-lg" onclick="openCreateModal()">+ Create First Estimate</button>
-
-        <div class="empty-state-tips">
-          <h4>Quick tips:</h4>
-          <ul>
-            <li>Use templates for common project types</li>
-            <li>Import from accepted bids automatically</li>
-            <li>AI can generate line items from scope text</li>
-          </ul>
         </div>
+        <button class="btn btn-primary btn-lg" onclick="openCreateModal()">+ Create First Estimate</button>
       </div>
     `;
     return;
@@ -1058,7 +1049,13 @@ function renderLineItems() {
   if (!lines.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="10" class="empty-table">No line items. Click "Add Line Item" to begin.</td>
+        <td colspan="10">
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <div class="empty-state-title">No Line Items</div>
+            <div class="empty-state-message">Click "Add Line Item" to begin building this estimate.</div>
+          </div>
+        </td>
       </tr>
     `;
     document.getElementById('linesTotalAmount').textContent = '$0.00';
@@ -1545,7 +1542,13 @@ function renderVersions() {
 function renderActivity() {
   const container = document.getElementById('activityTimeline');
   if (!currentEstimate || !currentEstimate.activity?.length) {
-    container.innerHTML = '<p class="text-muted">No activity recorded yet.</p>';
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📜</div>
+        <div class="empty-state-title">No Activity</div>
+        <div class="empty-state-message">Activity will appear here as changes are made.</div>
+      </div>
+    `;
     return;
   }
 
