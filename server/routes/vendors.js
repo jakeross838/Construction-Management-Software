@@ -51,10 +51,28 @@ router.get('/check-duplicate', asyncHandler(async (req, res) => {
 
 // Get all vendors
 router.get('/', asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  const { search, trade, include_deleted } = req.query;
+
+  let query = supabase
     .from('v2_vendors')
-    .select('*')
-    .order('name');
+    .select('*');
+
+  // Filter deleted unless explicitly requested
+  if (include_deleted !== 'true') {
+    query = query.is('deleted_at', null);
+  }
+
+  // Server-side search
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+  }
+
+  // Trade filter
+  if (trade) {
+    query = query.eq('trade', trade);
+  }
+
+  const { data, error } = await query.order('name');
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
   res.json(data);
