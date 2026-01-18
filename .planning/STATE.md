@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Phase 21 — Reports Backend
+**Current focus:** Phase 22 — Reports Excel
 
 ## Current Position
 
-Phase: 21 of 23 (Reports - Backend)
-Plan: 21-01 Reports API Endpoints
-Status: Plan ready for execution
-Last activity: 2026-01-18 — Phase 21 planned (reports API endpoints)
+Phase: 22 of 23 (Reports - Excel)
+Plan: None yet
+Status: Ready for planning
+Last activity: 2026-01-18 — Phase 21 complete (reports API endpoints)
 
-Progress: █████░░░░░ 50% v1.3 (3/6 phases complete)
+Progress: ██████░░░░ 67% v1.3 (4/6 phases complete)
 
 ## Research
 
@@ -40,7 +40,7 @@ See PROJECT.md Key Decisions table for full history.
 - Reports use dedicated router file (server/routes/reports.js)
 - Three core reports: job-cost, vendor-spend, category-spend
 - All reports support date range filtering via query params
-- Category derived from first 2 digits of cost code
+- Category derived from first 2 digits of cost code (CSI MasterFormat divisions)
 
 ### Pending Todos
 
@@ -53,10 +53,11 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 21 planned
+Stopped at: Phase 21 complete
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-plan .planning/phases/21-reports-backend/21-01-PLAN.md`
-2. Then plan Phase 22 (Reports - Excel)
+1. Run `/gsd:plan-phase 22` to plan Reports Excel phase
+2. Then execute Phase 22 plan
+3. Then plan Phase 23 (Reports - PDF)
