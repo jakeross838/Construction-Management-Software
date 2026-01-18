@@ -1530,6 +1530,20 @@ const Modals = {
       buttons.push(`<button type="button" class="btn btn-warning-outline" onclick="window.Modals.unsplitInvoice()" title="Undo the split and restore original invoice">&#8634; Unsplit</button>`);
     }
 
+    // Quick corrections for needs_review status (view mode only)
+    if (status === 'needs_review' && !this.isEditMode) {
+      buttons.unshift(`
+        <div class="quick-corrections">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.Modals.showQuickJobSwap()">
+            Swap Job
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.Modals.showQuickAmountFix()">
+            Fix Amount
+          </button>
+        </div>
+      `);
+    }
+
     switch (status) {
       case 'needs_review':
         // Accountant review - full editing, job optional
@@ -4283,6 +4297,149 @@ const Modals = {
     if (callback) {
       console.log('[MODALS] Calling cancel callback');
       callback();
+    }
+  },
+
+  // =====================
+  // Quick Corrections
+  // =====================
+
+  /**
+   * Show quick job swap dialog
+   */
+  showQuickJobSwap() {
+    const currentJob = this.currentInvoice?.job?.name || 'None';
+
+    // Build job options from cache
+    const jobs = window.APICache?.cache?.get('/api/jobs')?.data || state?.jobs || [];
+    const jobOptions = jobs.map(j =>
+      `<option value="${j.id}" ${j.id === this.currentInvoice?.job_id ? 'selected' : ''}>${j.name}</option>`
+    ).join('');
+
+    this.showConfirmDialog({
+      title: 'Quick Job Swap',
+      message: `
+        <div class="form-group">
+          <label>Current Job</label>
+          <div style="padding: 8px; background: var(--card-elevated); border-radius: 4px; margin-bottom: 12px;">
+            ${currentJob}
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Change to:</label>
+          <select id="quickJobSelect" class="field-input">
+            <option value="">Select a job...</option>
+            ${jobOptions}
+          </select>
+        </div>
+      `,
+      confirmText: 'Update Job',
+      type: 'info',
+      onConfirm: async () => {
+        const newJobId = document.getElementById('quickJobSelect').value;
+        if (newJobId && newJobId !== this.currentInvoice?.job_id) {
+          await this.quickUpdateField('job_id', newJobId);
+        }
+      }
+    });
+  },
+
+  /**
+   * Show quick amount fix dialog
+   */
+  showQuickAmountFix() {
+    const currentAmount = this.currentInvoice?.amount || 0;
+
+    this.showConfirmDialog({
+      title: 'Quick Amount Fix',
+      message: `
+        <div class="form-group">
+          <label>Current Amount</label>
+          <div style="padding: 8px; background: var(--card-elevated); border-radius: 4px; margin-bottom: 12px;">
+            ${window.Validation?.formatCurrency(currentAmount)}
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Correct Amount:</label>
+          <div class="amount-input-group">
+            <span class="amount-prefix">$</span>
+            <input type="text" id="quickAmountInput" class="field-input amount-field"
+              value="${this.formatAmountInput(currentAmount)}"
+              oninput="this.value = this.value.replace(/[^0-9.,]/g, '')">
+          </div>
+        </div>
+      `,
+      confirmText: 'Update Amount',
+      type: 'info',
+      onConfirm: async () => {
+        const newAmount = parseFloat(document.getElementById('quickAmountInput').value.replace(/,/g, ''));
+        if (!isNaN(newAmount) && newAmount !== currentAmount) {
+          await this.quickUpdateField('amount', newAmount);
+        }
+      }
+    });
+  },
+
+  /**
+   * Quick update a single field on the invoice
+   */
+  async quickUpdateField(field, value) {
+    try {
+      const response = await fetch(`/api/invoices/${this.currentInvoice.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+
+      if (!response.ok) throw new Error('Update failed');
+
+      window.toasts?.success('Updated successfully');
+
+      // Refresh the modal data
+      await this.refreshCurrentInvoice();
+    } catch (err) {
+      window.toasts?.error(err.message);
+    }
+  },
+
+  /**
+   * Refresh the current invoice data and re-render the modal
+   */
+  async refreshCurrentInvoice() {
+    if (!this.currentInvoice?.id) return;
+
+    try {
+      const response = await fetch(`/api/invoices/${this.currentInvoice.id}`);
+      const invoice = await response.json();
+
+      this.currentInvoice = invoice;
+
+      // Re-fetch allocations and approval context
+      const [allocations, approvalContext] = await Promise.all([
+        this.fetchAllocations(invoice.id),
+        this.fetchApprovalContext(invoice.id)
+      ]);
+
+      this.currentAllocations = allocations.length > 0
+        ? allocations
+        : [{ cost_code_id: null, amount: invoice.amount || 0, notes: '' }];
+      this.currentApprovalContext = approvalContext;
+
+      // Re-render the modal content
+      const modal = this.buildEditModal(invoice, this.currentAllocations, this.currentActivity, approvalContext);
+      const container = document.getElementById('modal-container');
+      if (container) {
+        container.innerHTML = modal;
+        this.populateDropdowns();
+      }
+
+      // Also refresh the invoice list
+      if (typeof loadInvoices === 'function') {
+        loadInvoices();
+      }
+    } catch (err) {
+      console.error('Failed to refresh invoice:', err);
+      window.toasts?.error('Failed to refresh');
     }
   },
 

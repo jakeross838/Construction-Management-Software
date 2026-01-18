@@ -1522,6 +1522,18 @@ body {
   transform: translateY(-50%);
 }
 
+/* Quick corrections buttons in modal footer */
+.quick-corrections {
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.quick-corrections .btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
 /* Status Pills */
 .status-pill {
   display: inline-block;
