@@ -2373,6 +2373,7 @@ select.form-control-sm {
   padding: 1.25rem 1.5rem;
   margin-bottom: 1.5rem;
   border: 1px solid var(--border);
+  overflow: visible; /* Needed for picker dropdowns */
 }
 
 .form-section:last-child {
@@ -4238,23 +4239,7 @@ label.required::after,
 
 /* REMOVED: Duplicate .form-grid, .form-column, responsive rule - see FORM LAYOUTS section (line ~2300) */
 
-/* Form sections - clean card style */
-.form-section {
-  background: var(--bg-card);
-  border-radius: 12px;
-  padding: 1.25rem 1.5rem;
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.form-section h3 {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 1rem;
-}
+/* REMOVED: Duplicate .form-section, .form-section h3 - see FORM SECTIONS section (line ~2370) */
 
 /* Checkbox Group Styles */
 .checkbox-group {
@@ -4282,57 +4267,43 @@ label.required::after,
   color: var(--text-primary);
 }
 
-.form-group {
-  margin-bottom: 1rem;
-}
+/* REMOVED: Duplicate .form-group base - see unified FORMS section (line ~2060) */
 
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-group label {
-  display: block;
+/* Form section context - variant with muted labels and elevated inputs */
+.form-section .form-group label {
   font-size: 0.8rem;
-  font-weight: 500;
   color: var(--text-muted);
   margin-bottom: 0.4rem;
 }
 
-.form-group input,
-.form-group select,
-.form-group textarea {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
+.form-section .form-group input,
+.form-section .form-group select,
+.form-section .form-group textarea {
   background: var(--card-elevated);
-  border: 1px solid var(--border);
   border-radius: 8px;
-  color: var(--foreground);
   font-size: 0.95rem;
-  transition: var(--transition);
 }
 
-.form-group input:hover,
-.form-group select:hover,
-.form-group textarea:hover {
+.form-section .form-group input:hover,
+.form-section .form-group select:hover,
+.form-section .form-group textarea:hover {
   border-color: var(--border-light);
 }
 
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
+.form-section .form-group input:focus,
+.form-section .form-group select:focus,
+.form-section .form-group textarea:focus {
   border-color: var(--accent-blue);
   background: var(--card-elevated);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
-.form-group input:read-only,
-.form-group select:disabled,
-.form-group textarea:read-only {
+.form-section .form-group input:read-only,
+.form-section .form-group select:disabled,
+.form-section .form-group textarea:read-only {
   background: var(--background);
   color: var(--text-muted);
   cursor: not-allowed;
-  border-color: var(--border);
 }
 
 /* REMOVED: Duplicate .form-row - see FORM LAYOUTS section (line ~2292) */
@@ -5978,10 +5949,7 @@ label .ai-indicator {
   overflow: visible;
 }
 
-/* Modal sections need visible overflow for picker dropdowns */
-.form-section {
-  overflow: visible;
-}
+/* REMOVED: Duplicate .form-section overflow - now in FORM SECTIONS section (line ~2370) */
 
 .summary-row {
   display: flex;
@@ -11245,15 +11213,11 @@ textarea.form-control {
   min-height: 80px;
 }
 
-.form-group {
-  margin-bottom: 1rem;
-}
+/* REMOVED: Duplicate .form-group base - see unified FORMS section (line ~2060) */
 
-.form-group label {
-  display: block;
-  margin-bottom: 0.375rem;
+/* Uppercase label variant for specific contexts (draws, detailed views) */
+.form-controls-uppercase .form-group label {
   font-size: 0.8rem;
-  font-weight: 500;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.03em;
