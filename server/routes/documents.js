@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const { categorizeDocument } = require('../ai-document-processor');
+const { asyncHandler, AppError, notFoundError } = require('../errors');
 
 // Configure multer for document uploads
 const upload = multer({
@@ -74,8 +75,7 @@ async function logDocumentActivity(documentId, action, performedBy, details = {}
 // ============================================================
 
 // List documents with filters
-router.get('/', async (req, res) => {
-  try {
+router.get('/', asyncHandler(async (req, res) => {
     const { job_id, category, vendor_id, search, include_deleted } = req.query;
 
     let query = supabase
@@ -124,14 +124,10 @@ router.get('/', async (req, res) => {
     }
 
     res.json(results);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get single document
-router.get('/:id', async (req, res) => {
-  try {
+router.get('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     const { data, error } = await supabase
@@ -150,14 +146,10 @@ router.get('/:id', async (req, res) => {
     if (!data) return res.status(404).json({ error: 'Document not found' });
 
     res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get document stats for a job
-router.get('/stats/:jobId', async (req, res) => {
-  try {
+router.get('/stats/:jobId', asyncHandler(async (req, res) => {
     const { jobId } = req.params;
 
     const { data, error } = await supabase
@@ -198,10 +190,7 @@ router.get('/stats/:jobId', async (req, res) => {
       by_category: byCategory,
       expiring_soon: expiring || []
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get categories list
 router.get('/meta/categories', (req, res) => {
@@ -227,8 +216,7 @@ router.get('/meta/categories', (req, res) => {
 // ============================================================
 
 // Analyze document and suggest category
-router.post('/categorize', upload.single('file'), async (req, res) => {
-  try {
+router.post('/categorize', upload.single('file'), asyncHandler(async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
     }
@@ -249,7 +237,7 @@ router.post('/categorize', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     console.error('Document categorization error:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -258,8 +246,7 @@ router.post('/categorize', upload.single('file'), async (req, res) => {
 // ============================================================
 
 // Upload document with optional AI categorization
-router.post('/upload', upload.single('file'), async (req, res) => {
-  try {
+router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
     }
@@ -374,7 +361,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     console.error('Document upload error:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -383,8 +370,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 // ============================================================
 
 // Update document metadata
-router.patch('/:id', async (req, res) => {
-  try {
+router.patch('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const {
       name,
@@ -429,14 +415,10 @@ router.patch('/:id', async (req, res) => {
     await logDocumentActivity(id, 'updated', updated_by, updateData);
 
     res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Soft delete document
-router.delete('/:id', async (req, res) => {
-  try {
+router.delete('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { deleted_by } = req.body;
 
@@ -453,14 +435,10 @@ router.delete('/:id', async (req, res) => {
     await logDocumentActivity(id, 'deleted', deleted_by);
 
     res.json({ success: true, document: data });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Restore deleted document
-router.post('/:id/restore', async (req, res) => {
-  try {
+router.post('/:id/restore', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { restored_by } = req.body;
 
@@ -477,9 +455,6 @@ router.post('/:id/restore', async (req, res) => {
     await logDocumentActivity(id, 'restored', restored_by);
 
     res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 module.exports = router;

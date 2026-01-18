@@ -6,90 +6,75 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { asyncHandler, AppError, notFoundError } = require('../errors');
 
 // Get all vendors
-router.get('/', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('v2_vendors')
-      .select('*')
-      .order('name');
+router.get('/', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_vendors')
+    .select('*')
+    .order('name');
 
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  res.json(data);
+}));
 
 // Create vendor
-router.post('/', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('v2_vendors')
-      .insert(req.body)
-      .select()
-      .single();
+router.post('/', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_vendors')
+    .insert(req.body)
+    .select()
+    .single();
 
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  res.json(data);
+}));
 
 // Update vendor
-router.patch('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+router.patch('/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
-    const { data, error } = await supabase
-      .from('v2_vendors')
-      .update(req.body)
-      .eq('id', id)
-      .select()
-      .single();
+  const { data, error } = await supabase
+    .from('v2_vendors')
+    .update(req.body)
+    .eq('id', id)
+    .select()
+    .single();
 
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  res.json(data);
+}));
 
 // Get vendor details with stats
-router.get('/:id/details', async (req, res) => {
-  try {
-    const { id } = req.params;
+router.get('/:id/details', asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
-    // Get vendor
-    const { data: vendor, error: vendorError } = await supabase
-      .from('v2_vendors')
-      .select('*')
-      .eq('id', id)
-      .single();
+  // Get vendor
+  const { data: vendor, error: vendorError } = await supabase
+    .from('v2_vendors')
+    .select('*')
+    .eq('id', id)
+    .single();
 
-    if (vendorError || !vendor) {
-      return res.status(404).json({ error: 'Vendor not found' });
-    }
-
-    // Get invoice count and total
-    const { data: invoices } = await supabase
-      .from('v2_invoices')
-      .select('amount, status')
-      .eq('vendor_id', id)
-      .is('deleted_at', null);
-
-    const stats = {
-      invoice_count: invoices?.length || 0,
-      total_billed: (invoices || []).reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0)
-    };
-
-    res.json({ ...vendor, stats });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  if (vendorError || !vendor) {
+    throw notFoundError('vendor', id);
   }
-});
+
+  // Get invoice count and total
+  const { data: invoices } = await supabase
+    .from('v2_invoices')
+    .select('amount, status')
+    .eq('vendor_id', id)
+    .is('deleted_at', null);
+
+  const stats = {
+    invoice_count: invoices?.length || 0,
+    total_billed: (invoices || []).reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0)
+  };
+
+  res.json({ ...vendor, stats });
+}));
 
 module.exports = router;
 

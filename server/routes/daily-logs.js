@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
+const { asyncHandler, AppError, notFoundError } = require('../errors');
 
 // Configure multer for photo uploads
 const photoUpload = multer({
@@ -194,8 +195,7 @@ async function updateScheduleTaskProgress(crewEntries) {
 // ============================================================
 
 // List all daily logs with filters
-router.get('/', async (req, res) => {
-  try {
+router.get('/', asyncHandler(async (req, res) => {
     const { job_id, status, date_from, date_to, search } = req.query;
 
     let query = supabase
@@ -242,18 +242,14 @@ router.get('/', async (req, res) => {
     }));
 
     res.json(logsWithStats);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // SPECIFIC ROUTES (must come BEFORE /:id parameterized route)
 // ============================================================
 
 // Get current weather for a job's location
-router.get('/weather/:jobId', async (req, res) => {
-  try {
+router.get('/weather/:jobId', asyncHandler(async (req, res) => {
     const { jobId } = req.params;
 
     // Get job address
@@ -295,13 +291,12 @@ router.get('/weather/:jobId', async (req, res) => {
     });
   } catch (err) {
     console.error('Weather endpoint error:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
 // Get daily log statistics
-router.get('/stats/summary', async (req, res) => {
-  try {
+router.get('/stats/summary', asyncHandler(async (req, res) => {
     const { job_id } = req.query;
 
     let query = supabase
@@ -335,14 +330,10 @@ router.get('/stats/summary', async (req, res) => {
     };
 
     res.json(stats);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get weekly summary report for a job
-router.get('/report/weekly', async (req, res) => {
-  try {
+router.get('/report/weekly', asyncHandler(async (req, res) => {
     const { job_id, week_start } = req.query;
 
     if (!job_id) {
@@ -473,7 +464,7 @@ router.get('/report/weekly', async (req, res) => {
     res.json(summary);
   } catch (err) {
     console.error('Weekly report error:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -482,8 +473,7 @@ router.get('/report/weekly', async (req, res) => {
 // ============================================================
 
 // Get single daily log with all details
-router.get('/:id', async (req, res) => {
-  try {
+router.get('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     const { data: log, error: logError } = await supabase
@@ -532,18 +522,14 @@ router.get('/:id', async (req, res) => {
       ...log,
       activity: activity || []
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // CREATE/UPDATE ENDPOINTS
 // ============================================================
 
 // Create new daily log
-router.post('/', async (req, res) => {
-  try {
+router.post('/', asyncHandler(async (req, res) => {
     const {
       job_id,
       log_date,
@@ -697,14 +683,10 @@ router.post('/', async (req, res) => {
       .single();
 
     res.status(201).json(fullLog);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Update daily log
-router.patch('/:id', async (req, res) => {
-  try {
+router.patch('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const {
       weather_conditions,
@@ -865,18 +847,14 @@ router.patch('/:id', async (req, res) => {
       .single();
 
     res.json(fullLog);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // STATUS ENDPOINTS
 // ============================================================
 
 // Mark daily log as completed
-router.post('/:id/complete', async (req, res) => {
-  try {
+router.post('/:id/complete', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { completed_by } = req.body;
 
@@ -922,14 +900,10 @@ router.post('/:id/complete', async (req, res) => {
       .single();
 
     res.json(fullLog);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Reopen a completed daily log (set back to draft)
-router.post('/:id/reopen', async (req, res) => {
-  try {
+router.post('/:id/reopen', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { reopened_by } = req.body;
 
@@ -975,18 +949,14 @@ router.post('/:id/reopen', async (req, res) => {
       .single();
 
     res.json(fullLog);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // DELETE ENDPOINT
 // ============================================================
 
 // Soft delete daily log
-router.delete('/:id', async (req, res) => {
-  try {
+router.delete('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { deleted_by } = req.body;
 
@@ -1014,18 +984,14 @@ router.delete('/:id', async (req, res) => {
     await logDailyLogActivity(id, 'deleted', deleted_by || 'System', {});
 
     res.json({ success: true, message: 'Daily log deleted' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // CREW ENDPOINTS
 // ============================================================
 
 // Add crew entry to daily log
-router.post('/:id/crew', async (req, res) => {
-  try {
+router.post('/:id/crew', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { vendor_id, worker_count, hours_worked, trade, po_id, notes, added_by } = req.body;
 
@@ -1072,14 +1038,10 @@ router.post('/:id/crew', async (req, res) => {
     });
 
     res.status(201).json(newCrew);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Delete crew entry
-router.delete('/:id/crew/:crewId', async (req, res) => {
-  try {
+router.delete('/:id/crew/:crewId', asyncHandler(async (req, res) => {
     const { id, crewId } = req.params;
     const { deleted_by } = req.body;
 
@@ -1114,18 +1076,14 @@ router.delete('/:id/crew/:crewId', async (req, res) => {
     });
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // DELIVERY ENDPOINTS
 // ============================================================
 
 // Add delivery to daily log
-router.post('/:id/deliveries', async (req, res) => {
-  try {
+router.post('/:id/deliveries', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { vendor_id, po_id, description, quantity, unit, received_by, notes, added_by } = req.body;
 
@@ -1177,14 +1135,10 @@ router.post('/:id/deliveries', async (req, res) => {
     });
 
     res.status(201).json(newDelivery);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Delete delivery
-router.delete('/:id/deliveries/:deliveryId', async (req, res) => {
-  try {
+router.delete('/:id/deliveries/:deliveryId', asyncHandler(async (req, res) => {
     const { id, deliveryId } = req.params;
     const { deleted_by } = req.body;
 
@@ -1219,18 +1173,14 @@ router.delete('/:id/deliveries/:deliveryId', async (req, res) => {
     });
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // PHOTO ENDPOINTS
 // ============================================================
 
 // Upload photo to daily log
-router.post('/:id/photos', photoUpload.single('photo'), async (req, res) => {
-  try {
+router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { caption, category, uploaded_by } = req.body;
 
@@ -1303,13 +1253,12 @@ router.post('/:id/photos', photoUpload.single('photo'), async (req, res) => {
     res.status(201).json(attachment);
   } catch (err) {
     console.error('Photo upload failed:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
 // Get all photos for a daily log
-router.get('/:id/photos', async (req, res) => {
-  try {
+router.get('/:id/photos', asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     const { data: photos, error } = await supabase
@@ -1321,14 +1270,10 @@ router.get('/:id/photos', async (req, res) => {
     if (error) throw error;
 
     res.json(photos || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Update photo caption/category
-router.patch('/:id/photos/:photoId', async (req, res) => {
-  try {
+router.patch('/:id/photos/:photoId', asyncHandler(async (req, res) => {
     const { id, photoId } = req.params;
     const { caption, category } = req.body;
 
@@ -1363,14 +1308,10 @@ router.patch('/:id/photos/:photoId', async (req, res) => {
     if (error) throw error;
 
     res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Delete photo from daily log
-router.delete('/:id/photos/:photoId', async (req, res) => {
-  try {
+router.delete('/:id/photos/:photoId', asyncHandler(async (req, res) => {
     const { id, photoId } = req.params;
     const { deleted_by } = req.body;
 
@@ -1429,9 +1370,6 @@ router.delete('/:id/photos/:photoId', async (req, res) => {
     });
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 module.exports = router;

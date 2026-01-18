@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { asyncHandler, AppError, notFoundError } = require('../errors');
 
 // Helper: Log CO activity
 async function logCOActivity(changeOrderId, action, performedBy, details = {}) {
@@ -26,8 +27,7 @@ async function logCOActivity(changeOrderId, action, performedBy, details = {}) {
 // ============================================================
 
 // Get single change order with billing history
-router.get('/:id', async (req, res) => {
-  try {
+router.get('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     const { data: co, error } = await supabase
@@ -54,18 +54,14 @@ router.get('/:id', async (req, res) => {
       .order('created_at', { ascending: false });
 
     res.json({ ...co, activity: activity || [] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // CREATE/UPDATE ENDPOINTS
 // ============================================================
 
 // Update change order
-router.patch('/:id', async (req, res) => {
-  try {
+router.patch('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const {
       change_order_number, title, description, reason, amount,
@@ -113,14 +109,10 @@ router.patch('/:id', async (req, res) => {
     if (error) throw error;
     await logCOActivity(id, 'updated', updated_by, updates);
     res.json(co);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Delete change order
-router.delete('/:id', async (req, res) => {
-  try {
+router.delete('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     const { data: existing } = await supabase
@@ -145,18 +137,14 @@ router.delete('/:id', async (req, res) => {
     if (error) throw error;
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // STATUS TRANSITIONS
 // ============================================================
 
 // Submit for approval
-router.post('/:id/submit', async (req, res) => {
-  try {
+router.post('/:id/submit', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { submitted_by } = req.body;
 
@@ -174,14 +162,10 @@ router.post('/:id/submit', async (req, res) => {
     if (error) throw error;
     await logCOActivity(id, 'submitted', submitted_by);
     res.json(co);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Internal approve
-router.post('/:id/approve', async (req, res) => {
-  try {
+router.post('/:id/approve', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { approved_by } = req.body;
 
@@ -204,14 +188,10 @@ router.post('/:id/approve', async (req, res) => {
     if (error) throw error;
     await logCOActivity(id, 'approved', approved_by);
     res.json(co);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Client approve
-router.post('/:id/client-approve', async (req, res) => {
-  try {
+router.post('/:id/client-approve', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { client_approved_by, recorded_by } = req.body;
 
@@ -233,14 +213,10 @@ router.post('/:id/client-approve', async (req, res) => {
     if (error) throw error;
     await logCOActivity(id, 'client_approved', recorded_by || 'System', { client_approved_by });
     res.json(co);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Bypass client approval
-router.post('/:id/bypass-client', async (req, res) => {
-  try {
+router.post('/:id/bypass-client', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { bypass_reason, bypassed_by } = req.body;
 
@@ -264,14 +240,10 @@ router.post('/:id/bypass-client', async (req, res) => {
     if (error) throw error;
     await logCOActivity(id, 'client_bypassed', bypassed_by, { bypass_reason });
     res.json(co);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Reject
-router.post('/:id/reject', async (req, res) => {
-  try {
+router.post('/:id/reject', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { rejection_reason, rejected_by } = req.body;
 
@@ -295,18 +267,14 @@ router.post('/:id/reject', async (req, res) => {
     if (error) throw error;
     await logCOActivity(id, 'rejected', rejected_by, { rejection_reason });
     res.json(co);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // INVOICE LINKING
 // ============================================================
 
 // Get invoices linked to CO
-router.get('/:id/invoices', async (req, res) => {
-  try {
+router.get('/:id/invoices', asyncHandler(async (req, res) => {
     const { data, error } = await supabase
       .from('v2_change_order_invoices')
       .select(`
@@ -318,14 +286,10 @@ router.get('/:id/invoices', async (req, res) => {
 
     if (error) throw error;
     res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Link invoice to CO
-router.post('/:id/link-invoice', async (req, res) => {
-  try {
+router.post('/:id/link-invoice', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { invoice_id, amount, notes } = req.body;
 
@@ -359,14 +323,10 @@ router.post('/:id/link-invoice', async (req, res) => {
     if (error) throw error;
     await logCOActivity(id, 'invoice_linked', 'System', { invoice_id, amount });
     res.status(201).json(link);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Unlink invoice from CO
-router.delete('/:id/unlink-invoice/:invoiceId', async (req, res) => {
-  try {
+router.delete('/:id/unlink-invoice/:invoiceId', asyncHandler(async (req, res) => {
     const { id, invoiceId } = req.params;
 
     const { error } = await supabase
@@ -378,17 +338,13 @@ router.delete('/:id/unlink-invoice/:invoiceId', async (req, res) => {
     if (error) throw error;
     await logCOActivity(id, 'invoice_unlinked', 'System', { invoice_id: invoiceId });
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // COST CODES
 // ============================================================
 
-router.get('/:id/cost-codes', async (req, res) => {
-  try {
+router.get('/:id/cost-codes', asyncHandler(async (req, res) => {
     const { data, error } = await supabase
       .from('v2_change_order_cost_codes')
       .select('*, cost_code:v2_cost_codes(id, code, name)')
@@ -397,13 +353,9 @@ router.get('/:id/cost-codes', async (req, res) => {
 
     if (error) throw error;
     res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
-router.put('/:id/cost-codes', async (req, res) => {
-  try {
+router.put('/:id/cost-codes', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { cost_codes } = req.body;
 
@@ -423,10 +375,7 @@ router.put('/:id/cost-codes', async (req, res) => {
 
     await logCOActivity(id, 'cost_codes_updated', 'System', { count: cost_codes?.length || 0 });
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 module.exports = router;
 module.exports.logCOActivity = logCOActivity;

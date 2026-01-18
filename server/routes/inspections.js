@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
+const { asyncHandler, AppError, notFoundError } = require('../errors');
 
 // Configure multer for photo uploads
 const photoUpload = multer({
@@ -61,8 +62,7 @@ router.get('/types', (req, res) => {
 // LIST INSPECTIONS
 // ============================================================
 
-router.get('/', async (req, res) => {
-  try {
+router.get('/', asyncHandler(async (req, res) => {
     let query = supabase
       .from('v2_inspections')
       .select(`
@@ -128,18 +128,13 @@ router.get('/', async (req, res) => {
     }));
 
     res.json(enriched);
-  } catch (err) {
-    console.error('Error listing inspections:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+  }));
 
 // ============================================================
 // GET INSPECTION STATS
 // ============================================================
 
-router.get('/stats', async (req, res) => {
-  try {
+router.get('/stats', asyncHandler(async (req, res) => {
     const jobId = req.query.job_id;
     if (!jobId) {
       return res.status(400).json({ error: 'job_id is required' });
@@ -183,18 +178,13 @@ router.get('/stats', async (req, res) => {
     });
 
     res.json(stats);
-  } catch (err) {
-    console.error('Error getting inspection stats:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // GET UPCOMING INSPECTIONS (next 7 days)
 // ============================================================
 
-router.get('/upcoming', async (req, res) => {
-  try {
+router.get('/upcoming', asyncHandler(async (req, res) => {
     const now = new Date().toISOString().split('T')[0];
     const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
@@ -220,7 +210,7 @@ router.get('/upcoming', async (req, res) => {
     res.json(data || []);
   } catch (err) {
     console.error('Error getting upcoming inspections:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -236,8 +226,7 @@ router.get('/types', (req, res) => {
 // GET SINGLE INSPECTION WITH DETAILS
 // ============================================================
 
-router.get('/:id', async (req, res) => {
-  try {
+router.get('/:id', asyncHandler(async (req, res) => {
     const { data: inspection, error } = await supabase
       .from('v2_inspections')
       .select(`
@@ -282,7 +271,7 @@ router.get('/:id', async (req, res) => {
     res.json(inspection);
   } catch (err) {
     console.error('Error getting inspection:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -290,8 +279,7 @@ router.get('/:id', async (req, res) => {
 // CREATE INSPECTION
 // ============================================================
 
-router.post('/', async (req, res) => {
-  try {
+router.post('/', asyncHandler(async (req, res) => {
     const {
       job_id,
       inspection_type,
@@ -355,7 +343,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(inspection);
   } catch (err) {
     console.error('Error creating inspection:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -363,8 +351,7 @@ router.post('/', async (req, res) => {
 // UPDATE INSPECTION
 // ============================================================
 
-router.patch('/:id', async (req, res) => {
-  try {
+router.patch('/:id', asyncHandler(async (req, res) => {
     const updates = { ...req.body, updated_at: new Date().toISOString() };
     delete updates.id;
     delete updates.created_at;
@@ -396,7 +383,7 @@ router.patch('/:id', async (req, res) => {
     res.json(inspection);
   } catch (err) {
     console.error('Error updating inspection:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -404,8 +391,7 @@ router.patch('/:id', async (req, res) => {
 // DELETE INSPECTION (soft delete)
 // ============================================================
 
-router.delete('/:id', async (req, res) => {
-  try {
+router.delete('/:id', asyncHandler(async (req, res) => {
     const { data: inspection, error } = await supabase
       .from('v2_inspections')
       .update({ deleted_at: new Date().toISOString() })
@@ -431,7 +417,7 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true, message: 'Inspection deleted' });
   } catch (err) {
     console.error('Error deleting inspection:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -439,8 +425,7 @@ router.delete('/:id', async (req, res) => {
 // MARK INSPECTION AS PASSED
 // ============================================================
 
-router.post('/:id/pass', async (req, res) => {
-  try {
+router.post('/:id/pass', asyncHandler(async (req, res) => {
     const { result_notes, result_date, performed_by } = req.body;
 
     const { data: inspection, error } = await supabase
@@ -474,7 +459,7 @@ router.post('/:id/pass', async (req, res) => {
     res.json(inspection);
   } catch (err) {
     console.error('Error marking inspection passed:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -482,8 +467,7 @@ router.post('/:id/pass', async (req, res) => {
 // MARK INSPECTION AS FAILED
 // ============================================================
 
-router.post('/:id/fail', async (req, res) => {
-  try {
+router.post('/:id/fail', asyncHandler(async (req, res) => {
     const { result_notes, result_date, deficiencies, performed_by } = req.body;
 
     const { data: inspection, error } = await supabase
@@ -542,7 +526,7 @@ router.post('/:id/fail', async (req, res) => {
     res.json(fullInspection);
   } catch (err) {
     console.error('Error marking inspection failed:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -550,8 +534,7 @@ router.post('/:id/fail', async (req, res) => {
 // CANCEL INSPECTION
 // ============================================================
 
-router.post('/:id/cancel', async (req, res) => {
-  try {
+router.post('/:id/cancel', asyncHandler(async (req, res) => {
     const { result_notes, performed_by } = req.body;
 
     const { data: inspection, error } = await supabase
@@ -585,7 +568,7 @@ router.post('/:id/cancel', async (req, res) => {
     res.json(inspection);
   } catch (err) {
     console.error('Error cancelling inspection:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -593,8 +576,7 @@ router.post('/:id/cancel', async (req, res) => {
 // RESCHEDULE INSPECTION
 // ============================================================
 
-router.post('/:id/reschedule', async (req, res) => {
-  try {
+router.post('/:id/reschedule', asyncHandler(async (req, res) => {
     const { scheduled_date, scheduled_time, result_notes, performed_by } = req.body;
 
     if (!scheduled_date) {
@@ -646,7 +628,7 @@ router.post('/:id/reschedule', async (req, res) => {
     res.json(inspection);
   } catch (err) {
     console.error('Error rescheduling inspection:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -654,8 +636,7 @@ router.post('/:id/reschedule', async (req, res) => {
 // CREATE RE-INSPECTION
 // ============================================================
 
-router.post('/:id/reinspect', async (req, res) => {
-  try {
+router.post('/:id/reinspect', asyncHandler(async (req, res) => {
     const { scheduled_date, scheduled_time, created_by } = req.body;
 
     if (!scheduled_date || !created_by) {
@@ -731,7 +712,7 @@ router.post('/:id/reinspect', async (req, res) => {
     res.status(201).json(inspection);
   } catch (err) {
     console.error('Error creating re-inspection:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -739,8 +720,7 @@ router.post('/:id/reinspect', async (req, res) => {
 // ADD DEFICIENCY
 // ============================================================
 
-router.post('/:id/deficiencies', async (req, res) => {
-  try {
+router.post('/:id/deficiencies', asyncHandler(async (req, res) => {
     const { description, location, severity, assigned_vendor_id } = req.body;
 
     if (!description) {
@@ -786,7 +766,7 @@ router.post('/:id/deficiencies', async (req, res) => {
     res.status(201).json(deficiency);
   } catch (err) {
     console.error('Error adding deficiency:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -794,8 +774,7 @@ router.post('/:id/deficiencies', async (req, res) => {
 // UPDATE DEFICIENCY
 // ============================================================
 
-router.patch('/deficiencies/:id', async (req, res) => {
-  try {
+router.patch('/deficiencies/:id', asyncHandler(async (req, res) => {
     const updates = { ...req.body, updated_at: new Date().toISOString() };
     delete updates.id;
     delete updates.created_at;
@@ -829,7 +808,7 @@ router.patch('/deficiencies/:id', async (req, res) => {
     res.json(deficiency);
   } catch (err) {
     console.error('Error updating deficiency:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -837,8 +816,7 @@ router.patch('/deficiencies/:id', async (req, res) => {
 // RESOLVE DEFICIENCY
 // ============================================================
 
-router.post('/deficiencies/:id/resolve', async (req, res) => {
-  try {
+router.post('/deficiencies/:id/resolve', asyncHandler(async (req, res) => {
     const { resolved_by, resolution_notes } = req.body;
 
     const { data: deficiency, error } = await supabase
@@ -872,7 +850,7 @@ router.post('/deficiencies/:id/resolve', async (req, res) => {
     res.json(deficiency);
   } catch (err) {
     console.error('Error resolving deficiency:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -880,8 +858,7 @@ router.post('/deficiencies/:id/resolve', async (req, res) => {
 // UPLOAD PHOTO
 // ============================================================
 
-router.post('/:id/photos', photoUpload.single('photo'), async (req, res) => {
-  try {
+router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -949,7 +926,7 @@ router.post('/:id/photos', photoUpload.single('photo'), async (req, res) => {
     res.status(201).json(attachment);
   } catch (err) {
     console.error('Error uploading photo:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
@@ -957,8 +934,7 @@ router.post('/:id/photos', photoUpload.single('photo'), async (req, res) => {
 // DELETE PHOTO
 // ============================================================
 
-router.delete('/:id/photos/:photoId', async (req, res) => {
-  try {
+router.delete('/:id/photos/:photoId', asyncHandler(async (req, res) => {
     // Get attachment to find the storage path
     const { data: attachment, error: fetchError } = await supabase
       .from('v2_inspection_attachments')
@@ -1001,7 +977,7 @@ router.delete('/:id/photos/:photoId', async (req, res) => {
     res.json({ success: true, message: 'Photo deleted' });
   } catch (err) {
     console.error('Error deleting photo:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 

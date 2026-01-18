@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { asyncHandler, AppError, notFoundError } = require('../errors');
 
 // Helper: Log schedule activity
 async function logScheduleActivity(scheduleId, taskId, action, performedBy, details = {}) {
@@ -22,8 +23,7 @@ async function logScheduleActivity(scheduleId, taskId, action, performedBy, deta
 // ============================================================
 
 // List schedules (optionally filtered by job)
-router.get('/', async (req, res) => {
-  try {
+router.get('/', asyncHandler(async (req, res) => {
     const { job_id } = req.query;
 
     let query = supabase
@@ -54,14 +54,10 @@ router.get('/', async (req, res) => {
     }));
 
     res.json(schedulesWithSummary);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get schedule by job ID (convenience endpoint)
-router.get('/by-job/:jobId', async (req, res) => {
-  try {
+router.get('/by-job/:jobId', asyncHandler(async (req, res) => {
     const { jobId } = req.params;
 
     const { data: schedule, error } = await supabase
@@ -95,14 +91,10 @@ router.get('/by-job/:jobId', async (req, res) => {
     }
 
     res.json(schedule);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get single schedule with all tasks
-router.get('/:id', async (req, res) => {
-  try {
+router.get('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     const { data: schedule, error } = await supabase
@@ -148,14 +140,10 @@ router.get('/:id', async (req, res) => {
       ...schedule,
       activity: activity || []
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Create schedule for a job
-router.post('/', async (req, res) => {
-  try {
+router.post('/', asyncHandler(async (req, res) => {
     const { job_id, name, start_date, target_end_date, created_by } = req.body;
 
     if (!job_id) {
@@ -198,14 +186,10 @@ router.post('/', async (req, res) => {
     await logScheduleActivity(schedule.id, null, 'created', created_by, { name: schedule.name });
 
     res.status(201).json(schedule);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Update schedule
-router.patch('/:id', async (req, res) => {
-  try {
+router.patch('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { name, status, start_date, target_end_date, actual_end_date, updated_by } = req.body;
 
@@ -228,14 +212,10 @@ router.patch('/:id', async (req, res) => {
     await logScheduleActivity(id, null, 'updated', updated_by, updates);
 
     res.json(schedule);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Delete schedule (soft delete)
-router.delete('/:id', async (req, res) => {
-  try {
+router.delete('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { deleted_by } = req.body;
 
@@ -249,18 +229,14 @@ router.delete('/:id', async (req, res) => {
     await logScheduleActivity(id, null, 'deleted', deleted_by);
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // TASK ENDPOINTS
 // ============================================================
 
 // Get tasks for a job (for daily log task picker)
-router.get('/tasks/by-job/:jobId', async (req, res) => {
-  try {
+router.get('/tasks/by-job/:jobId', asyncHandler(async (req, res) => {
     const { jobId } = req.params;
     const { trade, status } = req.query;
 
@@ -299,14 +275,10 @@ router.get('/tasks/by-job/:jobId', async (req, res) => {
     if (error) throw error;
 
     res.json(tasks || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Add task to schedule
-router.post('/:scheduleId/tasks', async (req, res) => {
-  try {
+router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
     const { scheduleId } = req.params;
     const {
       name,
@@ -374,14 +346,10 @@ router.post('/:scheduleId/tasks', async (req, res) => {
     await logScheduleActivity(scheduleId, task.id, 'task_added', created_by, { name });
 
     res.status(201).json(task);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Update task
-router.patch('/tasks/:taskId', async (req, res) => {
-  try {
+router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
     const { taskId } = req.params;
     const {
       name,
@@ -465,14 +433,10 @@ router.patch('/tasks/:taskId', async (req, res) => {
     }
 
     res.json(task);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Delete task
-router.delete('/tasks/:taskId', async (req, res) => {
-  try {
+router.delete('/tasks/:taskId', asyncHandler(async (req, res) => {
     const { taskId } = req.params;
     const { deleted_by } = req.body;
 
@@ -507,14 +471,10 @@ router.delete('/tasks/:taskId', async (req, res) => {
     }
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Reorder tasks
-router.post('/:scheduleId/tasks/reorder', async (req, res) => {
-  try {
+router.post('/:scheduleId/tasks/reorder', asyncHandler(async (req, res) => {
     const { scheduleId } = req.params;
     const { task_order, updated_by } = req.body; // Array of { id, sort_order }
 
@@ -534,18 +494,14 @@ router.post('/:scheduleId/tasks/reorder', async (req, res) => {
     await logScheduleActivity(scheduleId, null, 'tasks_reordered', updated_by);
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // GANTT DATA ENDPOINT
 // ============================================================
 
 // Get Gantt chart data (optimized format)
-router.get('/:id/gantt', async (req, res) => {
-  try {
+router.get('/:id/gantt', asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     const { data: schedule, error } = await supabase
@@ -600,9 +556,6 @@ router.get('/:id/gantt', async (req, res) => {
       gantt_start: minDate,
       gantt_end: maxDate
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 module.exports = router;

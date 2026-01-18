@@ -7,222 +7,201 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { extractSpecsFromPlans, extractSpecsFromMultipleDocuments } = require('../ai-document-processor');
+const { asyncHandler, AppError, notFoundError } = require('../errors');
 
 // Get all jobs
-router.get('/', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('v2_jobs')
-      .select('*')
-      .order('created_at', { ascending: false });
+router.get('/', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_jobs')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  res.json(data);
+}));
 
 // Get single job
-router.get('/:id', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('v2_jobs')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
+router.get('/:id', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_jobs')
+    .select('*')
+    .eq('id', req.params.id)
+    .single();
 
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  if (error) {
+    if (error.code === 'PGRST116') throw notFoundError('job', req.params.id);
+    throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
   }
-});
+  res.json(data);
+}));
 
 // Get purchase orders for a specific job
-router.get('/:id/purchase-orders', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('v2_purchase_orders')
-      .select(`
-        id,
-        po_number,
-        description,
-        total_amount,
-        status,
-        vendor:v2_vendors(id, name)
-      `)
-      .eq('job_id', req.params.id)
-      .order('created_at', { ascending: false });
+router.get('/:id/purchase-orders', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_purchase_orders')
+    .select(`
+      id,
+      po_number,
+      description,
+      total_amount,
+      status,
+      vendor:v2_vendors(id, name)
+    `)
+    .eq('job_id', req.params.id)
+    .order('created_at', { ascending: false });
 
-    if (error) throw error;
-    
-    // Flatten vendor name for easier frontend use
-    const result = (data || []).map(po => ({
-      ...po,
-      vendor_name: po.vendor?.name || null
-    }));
-    
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Flatten vendor name for easier frontend use
+  const result = (data || []).map(po => ({
+    ...po,
+    vendor_name: po.vendor?.name || null
+  }));
+
+  res.json(result);
+}));
 
 // Get job budget
-router.get('/:id/budget', async (req, res) => {
-  try {
-    const jobId = req.params.id;
+router.get('/:id/budget', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
 
-    // Get budget lines
-    const { data: budgetLines, error: budgetError } = await supabase
-      .from('v2_budget_lines')
-      .select(`
-        *,
-        cost_code:v2_cost_codes(id, code, name, category)
-      `)
-      .eq('job_id', jobId);
+  // Get budget lines
+  const { data: budgetLines, error: budgetError } = await supabase
+    .from('v2_budget_lines')
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .eq('job_id', jobId);
 
-    if (budgetError) throw budgetError;
+  if (budgetError) throw new AppError('DATABASE_ERROR', budgetError.message, { code: budgetError.code });
 
-    // Get invoices for this job
-    const { data: invoices } = await supabase
-      .from('v2_invoices')
-      .select('amount, status')
-      .eq('job_id', jobId)
-      .in('status', ['approved', 'in_draw', 'paid']);
+  // Get invoices for this job
+  const { data: invoices } = await supabase
+    .from('v2_invoices')
+    .select('amount, status')
+    .eq('job_id', jobId)
+    .in('status', ['approved', 'in_draw', 'paid']);
 
-    // Get allocations
-    const { data: allocations } = await supabase
-      .from('v2_invoice_allocations')
-      .select('cost_code_id, amount')
-      .in('invoice_id', invoices?.map(i => i.id) || []);
+  // Get allocations
+  const { data: allocations } = await supabase
+    .from('v2_invoice_allocations')
+    .select('cost_code_id, amount')
+    .in('invoice_id', invoices?.map(i => i.id) || []);
 
-    // Calculate totals
-    const totals = {
-      budgeted: 0,
-      committed: 0,
-      billed: 0,
-      paid: 0
-    };
+  // Calculate totals
+  const totals = {
+    budgeted: 0,
+    committed: 0,
+    billed: 0,
+    paid: 0
+  };
 
-    (budgetLines || []).forEach(bl => {
-      totals.budgeted += parseFloat(bl.budgeted_amount || 0);
-      totals.committed += parseFloat(bl.committed_amount || 0);
-      totals.billed += parseFloat(bl.billed_amount || 0);
-      totals.paid += parseFloat(bl.paid_amount || 0);
-    });
+  (budgetLines || []).forEach(bl => {
+    totals.budgeted += parseFloat(bl.budgeted_amount || 0);
+    totals.committed += parseFloat(bl.committed_amount || 0);
+    totals.billed += parseFloat(bl.billed_amount || 0);
+    totals.paid += parseFloat(bl.paid_amount || 0);
+  });
 
-    res.json({
-      budget_lines: budgetLines || [],
-      totals
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  res.json({
+    budget_lines: budgetLines || [],
+    totals
+  });
+}));
 
 // Get draws for a job
-router.get('/:id/draws', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('v2_draws')
-      .select(`
-        *,
-        invoices:v2_draw_invoices(
-          invoice:v2_invoices(id, invoice_number, amount, vendor:v2_vendors(name))
-        )
-      `)
-      .eq('job_id', req.params.id)
-      .order('draw_number', { ascending: false });
+router.get('/:id/draws', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_draws')
+    .select(`
+      *,
+      invoices:v2_draw_invoices(
+        invoice:v2_invoices(id, invoice_number, amount, vendor:v2_vendors(name))
+      )
+    `)
+    .eq('job_id', req.params.id)
+    .order('draw_number', { ascending: false });
 
-    if (error) throw error;
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
 
-    // Get CO billings for all draws
-    const drawIds = data.map(d => d.id);
-    const { data: coBillings } = drawIds.length > 0 ? await supabase
-      .from('v2_job_co_draw_billings')
-      .select('draw_id, amount')
-      .in('draw_id', drawIds) : { data: [] };
+  // Get CO billings for all draws
+  const drawIds = data.map(d => d.id);
+  const { data: coBillings } = drawIds.length > 0 ? await supabase
+    .from('v2_job_co_draw_billings')
+    .select('draw_id, amount')
+    .in('draw_id', drawIds) : { data: [] };
 
-    // Calculate totals for each draw
-    const drawsWithTotals = data.map(draw => {
-      const invoiceTotal = draw.invoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
-      const invoiceCount = draw.invoices?.length || 0;
-      const coTotal = (coBillings || [])
-        .filter(b => b.draw_id === draw.id)
-        .reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
-      return {
-        ...draw,
-        total_amount: invoiceTotal + coTotal,
-        invoice_total: invoiceTotal,
-        invoice_count: invoiceCount,
-        co_total: coTotal
-      };
-    });
+  // Calculate totals for each draw
+  const drawsWithTotals = data.map(draw => {
+    const invoiceTotal = draw.invoices?.reduce((sum, di) => sum + parseFloat(di.invoice?.amount || 0), 0) || 0;
+    const invoiceCount = draw.invoices?.length || 0;
+    const coTotal = (coBillings || [])
+      .filter(b => b.draw_id === draw.id)
+      .reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
+    return {
+      ...draw,
+      total_amount: invoiceTotal + coTotal,
+      invoice_total: invoiceTotal,
+      invoice_count: invoiceCount,
+      co_total: coTotal
+    };
+  });
 
-    res.json(drawsWithTotals);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  res.json(drawsWithTotals);
+}));
 
 // Get job statistics
-router.get('/:id/stats', async (req, res) => {
-  try {
-    const jobId = req.params.id;
+router.get('/:id/stats', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
 
-    // Get job
-    const { data: job } = await supabase
-      .from('v2_jobs')
-      .select('*')
-      .eq('id', jobId)
-      .single();
+  // Get job
+  const { data: job } = await supabase
+    .from('v2_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .single();
 
-    // Get invoices
-    const { data: invoices } = await supabase
-      .from('v2_invoices')
-      .select('amount, status')
-      .eq('job_id', jobId)
-      .is('deleted_at', null);
+  // Get invoices
+  const { data: invoices } = await supabase
+    .from('v2_invoices')
+    .select('amount, status')
+    .eq('job_id', jobId)
+    .is('deleted_at', null);
 
-    const stats = {
-      total_invoices: invoices?.length || 0,
-      total_billed: 0,
-      by_status: {
-        received: 0,
-        needs_approval: 0,
-        approved: 0,
-        in_draw: 0,
-        paid: 0
-      }
-    };
+  const stats = {
+    total_invoices: invoices?.length || 0,
+    total_billed: 0,
+    by_status: {
+      received: 0,
+      needs_approval: 0,
+      approved: 0,
+      in_draw: 0,
+      paid: 0
+    }
+  };
 
-    (invoices || []).forEach(inv => {
-      stats.total_billed += parseFloat(inv.amount || 0);
-      if (stats.by_status[inv.status] !== undefined) {
-        stats.by_status[inv.status]++;
-      }
-    });
+  (invoices || []).forEach(inv => {
+    stats.total_billed += parseFloat(inv.amount || 0);
+    if (stats.by_status[inv.status] !== undefined) {
+      stats.by_status[inv.status]++;
+    }
+  });
 
-    res.json(stats);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  res.json(stats);
+}));
 
 // ============================================================
 // SPECS ENDPOINTS
 // ============================================================
 
 // Update job specifications
-router.patch('/:id/specs', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
+router.patch('/:id/specs', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
 
-    // List of allowed spec fields (comprehensive list from migration-035 and 036)
-    const allowedFields = [
+  // List of allowed spec fields (comprehensive list from migration-035 and 036)
+  const allowedFields = [
       // Basic building
       'sqft_conditioned', 'sqft_total', 'sqft_garage', 'sqft_covered',
       'lot_size_sqft', 'lot_size_acres', 'bedrooms', 'bathrooms', 'half_baths',
@@ -332,146 +311,128 @@ router.patch('/:id/specs', async (req, res) => {
       .eq('id', id)
       .single();
 
-    if (!currentJob) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
-    // Track changes for activity log
-    const fieldChanges = {};
-    for (const [key, newValue] of Object.entries(updateData)) {
-      const oldValue = currentJob[key];
-      if (oldValue !== newValue) {
-        fieldChanges[key] = { old: oldValue, new: newValue };
-      }
-    }
-
-    // Update job
-    const { data, error } = await supabase
-      .from('v2_jobs')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // Log activity if changes were made
-    if (Object.keys(fieldChanges).length > 0) {
-      const action = updates.specs_extracted_at ? 'ai_extracted' : 'updated';
-      try {
-        await supabase.from('v2_job_specs_activity').insert({
-          job_id: id,
-          action,
-          performed_by: updates.updated_by || 'User',
-          field_changes: fieldChanges,
-          source_document_id: updates.specs_source_document_id || null,
-          ai_confidence: updates.specs_ai_confidence || null
-        });
-      } catch (actErr) {
-        console.error('Failed to log specs activity:', actErr);
-      }
-    }
-
-    res.json(data);
-  } catch (err) {
-    console.error('Error updating job specs:', err);
-    res.status(500).json({ error: err.message });
+  if (!currentJob) {
+    throw notFoundError('job', id);
   }
-});
+
+  // Track changes for activity log
+  const fieldChanges = {};
+  for (const [key, newValue] of Object.entries(updateData)) {
+    const oldValue = currentJob[key];
+    if (oldValue !== newValue) {
+      fieldChanges[key] = { old: oldValue, new: newValue };
+    }
+  }
+
+  // Update job
+  const { data, error } = await supabase
+    .from('v2_jobs')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Log activity if changes were made
+  if (Object.keys(fieldChanges).length > 0) {
+    const action = updates.specs_extracted_at ? 'ai_extracted' : 'updated';
+    try {
+      await supabase.from('v2_job_specs_activity').insert({
+        job_id: id,
+        action,
+        performed_by: updates.updated_by || 'User',
+        field_changes: fieldChanges,
+        source_document_id: updates.specs_source_document_id || null,
+        ai_confidence: updates.specs_ai_confidence || null
+      });
+    } catch (actErr) {
+      console.error('Failed to log specs activity:', actErr);
+    }
+  }
+
+  res.json(data);
+}));
 
 // Get specs activity history
-router.get('/:id/specs/activity', async (req, res) => {
-  try {
-    const { id } = req.params;
+router.get('/:id/specs/activity', asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
-    const { data, error } = await supabase
-      .from('v2_job_specs_activity')
-      .select('*')
-      .eq('job_id', id)
-      .order('created_at', { ascending: false })
-      .limit(50);
+  const { data, error } = await supabase
+    .from('v2_job_specs_activity')
+    .select('*')
+    .eq('job_id', id)
+    .order('created_at', { ascending: false })
+    .limit(50);
 
-    if (error) throw error;
-    res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  res.json(data || []);
+}));
 
 // ============================================================
 // AI EXTRACTION ENDPOINT
 // ============================================================
 
 // Extract specs from a single plan document using AI
-router.post('/extract-specs', async (req, res) => {
-  try {
-    const { job_id, document_id, document_url } = req.body;
+router.post('/extract-specs', asyncHandler(async (req, res) => {
+  const { job_id, document_id, document_url } = req.body;
 
-    if (!job_id || !document_url) {
-      return res.status(400).json({ error: 'job_id and document_url are required' });
-    }
-
-    // Call AI processor
-    const result = await extractSpecsFromPlans(document_url, document_id);
-
-    res.json({
-      success: true,
-      specs: result.specs,
-      confidence: result.confidence || result.specs?._confidence || 0.5,
-      document_id: document_id,
-      notes: result.specs?._notes || null,
-      pages_analyzed: result.specs?._pages_analyzed || null
-    });
-  } catch (err) {
-    console.error('Spec extraction error:', err);
-    res.status(500).json({ error: err.message });
+  if (!job_id || !document_url) {
+    throw new AppError('VALIDATION_FAILED', 'job_id and document_url are required');
   }
-});
+
+  // Call AI processor
+  const result = await extractSpecsFromPlans(document_url, document_id);
+
+  res.json({
+    success: true,
+    specs: result.specs,
+    confidence: result.confidence || result.specs?._confidence || 0.5,
+    document_id: document_id,
+    notes: result.specs?._notes || null,
+    pages_analyzed: result.specs?._pages_analyzed || null
+  });
+}));
 
 // Extract specs from ALL plan documents for a job
-router.post('/:id/extract-all-specs', async (req, res) => {
-  try {
-    const jobId = req.params.id;
+router.post('/:id/extract-all-specs', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
 
-    // Get all plan documents for this job
-    const { data: plans, error: plansError } = await supabase
-      .from('v2_documents')
-      .select('id, name, file_url')
-      .eq('job_id', jobId)
-      .eq('category', 'plans')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+  // Get all plan documents for this job
+  const { data: plans, error: plansError } = await supabase
+    .from('v2_documents')
+    .select('id, name, file_url')
+    .eq('job_id', jobId)
+    .eq('category', 'plans')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
 
-    if (plansError) throw plansError;
+  if (plansError) throw new AppError('DATABASE_ERROR', plansError.message, { code: plansError.code });
 
-    if (!plans || plans.length === 0) {
-      return res.status(404).json({ error: 'No plan documents found for this job' });
-    }
-
-    console.log(`[SpecExtractor] Analyzing ${plans.length} plan documents for job ${jobId}`);
-
-    // Extract specs from all plans
-    const documents = plans.map(p => ({
-      id: p.id,
-      name: p.name,
-      url: p.file_url
-    }));
-
-    const result = await extractSpecsFromMultipleDocuments(documents);
-
-    res.json({
-      success: true,
-      specs: result.specs,
-      confidence: result.confidence,
-      documents_analyzed: plans.length,
-      document_names: plans.map(p => p.name),
-      notes: result.specs?._notes || null
-    });
-  } catch (err) {
-    console.error('Multi-spec extraction error:', err);
-    res.status(500).json({ error: err.message });
+  if (!plans || plans.length === 0) {
+    throw notFoundError('plan documents', jobId);
   }
-});
+
+  console.log(`[SpecExtractor] Analyzing ${plans.length} plan documents for job ${jobId}`);
+
+  // Extract specs from all plans
+  const documents = plans.map(p => ({
+    id: p.id,
+    name: p.name,
+    url: p.file_url
+  }));
+
+  const result = await extractSpecsFromMultipleDocuments(documents);
+
+  res.json({
+    success: true,
+    specs: result.specs,
+    confidence: result.confidence,
+    documents_analyzed: plans.length,
+    document_names: plans.map(p => p.name),
+    notes: result.specs?._notes || null
+  });
+}));
 
 module.exports = router;
 

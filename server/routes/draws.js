@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { logActivity, checkSplitReconciliation, stampInvoice } = require('../services/invoiceHelpers');
+const { asyncHandler, AppError, notFoundError } = require('../errors');
 // Storage and pdf-stamper functions removed - using unified stampInvoice instead
 
 // Helper: Log draw activity
@@ -50,8 +51,7 @@ async function updateDrawTotal(drawId) {
 // ============================================================
 
 // List all draws
-router.get('/', async (req, res) => {
-  try {
+router.get('/', asyncHandler(async (req, res) => {
     const { data, error } = await supabase
       .from('v2_draws')
       .select(`
@@ -85,14 +85,10 @@ router.get('/', async (req, res) => {
     });
 
     res.json(drawsWithTotals);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get single draw with G702/G703 data
-router.get('/:id', async (req, res) => {
-  try {
+router.get('/:id', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
 
     const { data: draw, error: drawError } = await supabase
@@ -390,13 +386,12 @@ router.get('/:id', async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching draw:', err);
-    res.status(500).json({ error: err.message });
+    throw err;
   }
 });
 
 // Get draw activity
-router.get('/:id/activity', async (req, res) => {
-  try {
+router.get('/:id/activity', asyncHandler(async (req, res) => {
     const { data, error } = await supabase
       .from('v2_draw_activity')
       .select('*')
@@ -406,18 +401,14 @@ router.get('/:id/activity', async (req, res) => {
 
     if (error) throw error;
     res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // CREATE/UPDATE ENDPOINTS
 // ============================================================
 
 // Update draw
-router.patch('/:id', async (req, res) => {
-  try {
+router.patch('/:id', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { draw_number, period_end, notes, g702_overrides } = req.body;
 
@@ -443,18 +434,14 @@ router.patch('/:id', async (req, res) => {
     const { data, error } = await supabase.from('v2_draws').update(updateData).eq('id', drawId).select().single();
     if (error) throw error;
     res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // INVOICE MANAGEMENT
 // ============================================================
 
 // Add invoices to draw
-router.post('/:id/add-invoices', async (req, res) => {
-  try {
+router.post('/:id/add-invoices', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { invoice_ids } = req.body;
 
@@ -613,14 +600,10 @@ router.post('/:id/add-invoices', async (req, res) => {
       partial_billed: partialInvoices.length,
       partial_invoices: partialInvoices
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Remove invoice from draw
-router.post('/:id/remove-invoice', async (req, res) => {
-  try {
+router.post('/:id/remove-invoice', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { invoice_id, performed_by = 'System' } = req.body;
 
@@ -699,18 +682,14 @@ router.post('/:id/remove-invoice', async (req, res) => {
     const newTotal = await updateDrawTotal(drawId);
 
     res.json({ success: true, new_total: newTotal, draw_number: draw.draw_number });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // STATUS TRANSITIONS
 // ============================================================
 
 // Submit draw
-router.patch('/:id/submit', async (req, res) => {
-  try {
+router.patch('/:id/submit', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { submitted_by = 'System' } = req.body;
 
@@ -742,14 +721,10 @@ router.patch('/:id/submit', async (req, res) => {
     });
 
     res.json(draw);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Unsubmit draw
-router.post('/:id/unsubmit', async (req, res) => {
-  try {
+router.post('/:id/unsubmit', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { reason, performed_by = 'System' } = req.body;
 
@@ -784,14 +759,10 @@ router.post('/:id/unsubmit', async (req, res) => {
     });
 
     res.json(draw);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Fund draw
-router.patch('/:id/fund', async (req, res) => {
-  try {
+router.patch('/:id/fund', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { funded_amount, partial_funding_note, funded_by = 'System' } = req.body;
 
@@ -910,17 +881,13 @@ router.patch('/:id/fund', async (req, res) => {
     }
 
     res.json(draw);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // DELETE
 // ============================================================
 
-router.delete('/:id', async (req, res) => {
-  try {
+router.delete('/:id', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
 
     await supabase.from('v2_draw_allocations').delete().eq('draw_id', drawId);
@@ -929,26 +896,18 @@ router.delete('/:id', async (req, res) => {
     await supabase.from('v2_draws').delete().eq('id', drawId);
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // UTILITIES
 // ============================================================
 
-router.post('/:id/recalculate', async (req, res) => {
-  try {
+router.post('/:id/recalculate', asyncHandler(async (req, res) => {
     const newTotal = await updateDrawTotal(req.params.id);
     res.json({ success: true, new_total: newTotal });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
-router.post('/fix-legacy-status', async (req, res) => {
-  try {
+router.post('/fix-legacy-status', asyncHandler(async (req, res) => {
     const { data, error } = await supabase
       .from('v2_draws')
       .update({ status: 'funded' })
@@ -957,10 +916,7 @@ router.post('/fix-legacy-status', async (req, res) => {
 
     if (error) throw error;
     res.json({ message: 'Legacy statuses fixed', updated: data?.length || 0 });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 module.exports = router;
 module.exports.logDrawActivity = logDrawActivity;
