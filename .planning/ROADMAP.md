@@ -11,7 +11,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
 
 ## Phases
 
-- [ ] **Phase 18: Invoice AI - Extraction** - Two-stage pipeline for better accuracy
+- [x] **Phase 18: Invoice AI - Extraction** - Two-stage pipeline for better accuracy
 - [ ] **Phase 19: Invoice AI - Matching** - Multi-signal PO/job matching
 - [ ] **Phase 20: Invoice AI - Workflow** - Streamlined approval with fewer clicks
 - [ ] **Phase 21: Reports - Backend** - Reports API with financial summaries
@@ -29,7 +29,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
   2. Two-stage process: extract → validate with cross-field checks
   3. Confidence scores reflect actual extraction quality
 **Research**: Unlikely (existing Claude API patterns)
-**Plans**: TBD
+**Plans**: 18-01-PLAN.md (Two-Stage Extraction Pipeline)
 
 ### Phase 19: Invoice AI - Matching
 **Goal**: Smarter PO/job matching with multi-signal confidence scoring
@@ -93,7 +93,7 @@ v1.3 Refinement improves invoice processing accuracy and adds comprehensive repo
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. Invoice AI - Extraction | 0/? | Not started | - |
+| 18. Invoice AI - Extraction | 1/1 | Complete | 2026-01-18 |
 | 19. Invoice AI - Matching | 0/? | Not started | - |
 | 20. Invoice AI - Workflow | 0/? | Not started | - |
 | 21. Reports - Backend | 0/? | Not started | - |
