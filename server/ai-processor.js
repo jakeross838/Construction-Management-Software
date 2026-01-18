@@ -34,8 +34,14 @@ const {
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Confidence thresholds
+// Confidence thresholds - tiered system for invoice processing decisions
 const CONFIDENCE_THRESHOLDS = {
+  AUTO_APPROVE: 0.95,   // High confidence - auto-accept, minimal review needed
+  HUMAN_REVIEW: 0.80,   // Medium confidence - route to review queue
+  NEEDS_ATTENTION: 0.70, // Low confidence - flag for investigation
+  REJECT: 0.50,          // Very low - likely extraction failure
+
+  // Legacy aliases for backward compatibility (used by findMatchingJob)
   HIGH: 0.90,    // Auto-assign, no review
   MEDIUM: 0.60,  // Auto-assign with review flag
   LOW: 0.60      // Don't auto-assign, show picker
