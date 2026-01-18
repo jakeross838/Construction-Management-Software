@@ -124,6 +124,16 @@ const dailyLogRoutes = require('./routes/daily-logs');
 const scheduleRoutes = require('./routes/schedules');
 const documentRoutes = require('./routes/documents');
 const inspectionRoutes = require('./routes/inspections');
+const punchListRoutes = require('./routes/punch-lists');
+const bidRoutes = require('./routes/bids');
+const estimateRoutes = require('./routes/estimates');
+const aiEstimateRoutes = require('./routes/ai-estimates');
+const budgetBuilderRoutes = require('./routes/budget-builder');
+const priceIntelligenceRoutes = require('./routes/price-intelligence');
+const orderOptimizerRoutes = require('./routes/order-optimizer');
+const photoRoutes = require('./routes/photos');
+const savingsTrackerRoutes = require('./routes/savings-tracker');
+const spendAnalyticsRoutes = require('./routes/spend-analytics');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -142,6 +152,16 @@ app.use('/api/daily-logs', dailyLogRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/inspections', inspectionRoutes);
+app.use('/api/punch-lists', punchListRoutes);
+app.use('/api/bids', bidRoutes);
+app.use('/api/estimates', estimateRoutes);
+app.use('/api/ai-estimates', aiEstimateRoutes);
+app.use('/api/budget-builder', budgetBuilderRoutes);
+app.use('/api/price-intelligence', priceIntelligenceRoutes);
+app.use('/api/order-optimizer', orderOptimizerRoutes);
+app.use('/api/photos', photoRoutes);
+app.use('/api/savings', savingsTrackerRoutes);
+app.use('/api/spend', spendAnalyticsRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete
