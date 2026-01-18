@@ -105,6 +105,66 @@ function updateBatchToolbar() {
   }
 }
 
+// Check if invoice can be batch approved
+function canBatchApprove(invoiceId) {
+  const inv = window.invoicesCache?.find(i => i.id === invoiceId);
+  if (!inv) return false;
+  // Allow batch approval for ready_for_approval (and legacy needs_approval)
+  return inv.status === 'ready_for_approval' || inv.status === 'needs_approval';
+}
+
+// Batch approve selected invoices
+async function batchApproveSelected() {
+  const ids = Array.from(selectedInvoices);
+  if (ids.length === 0) return;
+
+  // Validate all can be approved
+  const invoices = ids.map(id => window.invoicesCache?.find(i => i.id === id)).filter(Boolean);
+  const approvable = invoices.filter(i =>
+    i.status === 'ready_for_approval' || i.status === 'needs_approval'
+  );
+
+  if (approvable.length !== ids.length) {
+    const skipped = ids.length - approvable.length;
+    if (!confirm(`${skipped} invoice(s) cannot be approved (wrong status). Continue with ${approvable.length}?`)) {
+      return;
+    }
+  }
+
+  if (approvable.length === 0) {
+    window.toasts?.warning('No invoices can be approved');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/invoices/bulk/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        invoice_ids: approvable.map(i => i.id),
+        performed_by: 'Jake Ross' // TODO: get from auth
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      window.toasts?.success(`Approved ${result.approved} invoice(s)`);
+      if (result.failed > 0) {
+        window.toasts?.warning(`${result.failed} failed - check console`);
+        console.warn('Batch approve failures:', result.results?.failed);
+      }
+      clearSelection();
+      toggleSelectionMode();
+      await loadInvoices();
+    } else {
+      throw new Error(result.error || 'Batch approve failed');
+    }
+  } catch (err) {
+    window.toasts?.error('Batch approve failed: ' + err.message);
+  }
+}
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
