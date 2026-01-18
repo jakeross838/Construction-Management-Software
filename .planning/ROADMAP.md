@@ -55,11 +55,11 @@ Plans:
   4. Job status changes are logged in audit trail
   5. Job profile shows real-time budget, PO, and invoice metrics
 **Research**: Unlikely (follows existing route patterns)
-**Plans**: TBD
+**Plans**: 0/2 complete
 
 Plans:
-- [ ] 13-01: Job CRUD API routes
-- [ ] 13-02: Job profile page enhancements
+- [ ] 13-01: Job CRUD API routes (create, update, delete, status workflow, activity logging)
+- [ ] 13-02: Job profile page enhancements (financial metrics display)
 
 ---
 
