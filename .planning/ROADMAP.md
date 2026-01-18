@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.1 Field Features** — Phases 7-11 (shipped 2026-01-17)
-- 🚧 **v1.2 Gap Fixes** — Phases 12-17 (in progress)
+- ✅ **v1.2 Gap Fixes** — Phases 12-17 (shipped 2026-01-18)
 
 ---
 
@@ -22,7 +22,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 
 </details>
 
-### 🚧 v1.2 Gap Fixes (In Progress)
+### ✅ v1.2 Gap Fixes — SHIPPED 2026-01-18
 
 **Milestone Goal:** Complete existing features and improve system reliability.
 
@@ -116,19 +116,19 @@ Plans:
 
 ---
 
-### Phase 17: Document Versioning
+### Phase 17: Document Versioning ✓
 **Goal**: Add proper version tracking and comparison
 **Depends on**: Nothing (independent)
 **Requirements**: DOC-03
 **Success Criteria** (what must be TRUE):
-  1. User can view version history of document
-  2. User can compare two versions (show diffs)
-  3. User can rollback to previous version
+  1. User can view version history of document ✓
+  2. User can compare two versions (show diffs) ✓
+  3. User can rollback to previous version ✓
 **Research**: Unlikely (storage patterns exist)
-**Plans**: 0/1
+**Plans**: 1/1 complete
 
 Plans:
-- [ ] 17-01: Document version system (migration, API endpoints, version history UI, comparison view)
+- [x] 17-01: Document version system (migration, API endpoints, version history UI, comparison view)
 
 ---
 
@@ -144,7 +144,7 @@ Phases 12-17 can mostly run in parallel (12 first for foundation, then 13-17)
 | 14 | Vendors Completion | 3/3 | Complete | P1 |
 | 15 | Budget Enhancements | 1/1 | Complete | P2 |
 | 16 | Schedule Improvements | 2/2 | Complete | P2 |
-| 17 | Document Versioning | 0/1 | Planned | P2 |
+| 17 | Document Versioning | 1/1 | Complete | P2 |
 
 **Priority Legend:**
 - P0: Foundation (do first)

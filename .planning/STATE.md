@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.2 Gap Fixes — Phase 16 complete, ready for Phase 17
+**Current focus:** v1.2 Gap Fixes — COMPLETE
 
 ## Current Position
 
-Phase: 16 (Schedule Improvements) — COMPLETE
-Plan: 16-01, 16-02 executed in parallel
-Status: Phase 16 complete, ready for Phase 17
-Last activity: 2026-01-18 — Phase 16 executed (Interactive Gantt, Critical Path)
+Phase: 17 (Document Versioning) — COMPLETE
+Plan: 17-01 executed
+Status: v1.2 milestone complete, ready for /gsd:complete-milestone
+Last activity: 2026-01-18 — Phase 17 executed (Document Version System)
 
-Progress: █████████░ 83% v1.2 (5/6 phases complete)
+Progress: ██████████ 100% v1.2 (6/6 phases complete)
 
 ## Milestone History
 
@@ -56,5 +56,5 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 17` for Document Versioning
-2. Phase 17 is the final phase in v1.2 milestone
+1. Run `/gsd:complete-milestone v1.2` to archive milestone and prepare for next
+2. Alternatively, run `/gsd:discuss-milestone` to plan v1.3

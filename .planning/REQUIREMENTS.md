@@ -34,7 +34,7 @@ Gap fixes to complete existing features and improve system reliability.
 
 ### Documents
 
-- [ ] **DOC-03**: Document versioning - User can view version history, compare versions, rollback to previous version
+- [x] **DOC-03**: Document versioning - User can view version history, compare versions, rollback to previous version
 
 ## v2 Requirements
 
@@ -74,7 +74,7 @@ Which phases cover which requirements.
 | VND-03 | Phase 14 | Complete |
 | BUD-04 | Phase 15 | Complete |
 | SCH-03 | Phase 16 | Complete |
-| DOC-03 | Phase 17 | Pending |
+| DOC-03 | Phase 17 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 11 total
@@ -83,4 +83,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-01-17*
-*Last updated: 2026-01-18 after Phase 16 completion*
+*Last updated: 2026-01-18 — v1.2 milestone complete (all 11 requirements done)*
