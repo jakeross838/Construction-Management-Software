@@ -1105,18 +1105,18 @@ app.patch('/api/vendors/:id', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// Upload vendor document (COI, W-9, License)
+// Upload vendor document (COI, W-9, License, Contract, Other)
 app.post('/api/vendors/:id/documents', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { document_type, file_data, file_name } = req.body;
+  const { document_type, file_data, file_name, expiration_date, notes } = req.body;
 
   if (!document_type || !file_data) {
     return res.status(400).json({ error: 'document_type and file_data are required' });
   }
 
-  const validTypes = ['coi', 'w9', 'license'];
+  const validTypes = ['coi', 'w9', 'license', 'contract', 'other'];
   if (!validTypes.includes(document_type)) {
-    return res.status(400).json({ error: 'Invalid document_type. Must be: coi, w9, or license' });
+    return res.status(400).json({ error: `Invalid document_type. Must be: ${validTypes.join(', ')}` });
   }
 
   // Decode base64 file
@@ -1143,23 +1143,50 @@ app.post('/api/vendors/:id/documents', asyncHandler(async (req, res) => {
 
   const publicUrl = urlData.publicUrl;
 
-  // Update vendor record with document URL
+  // Mark previous version as not current
+  await supabase
+    .from('v2_vendor_documents')
+    .update({ is_current: false })
+    .eq('vendor_id', id)
+    .eq('document_type', document_type)
+    .eq('is_current', true);
+
+  // Insert new document record
+  const { data: docRecord, error: docError } = await supabase
+    .from('v2_vendor_documents')
+    .insert({
+      vendor_id: id,
+      document_type,
+      file_name: file_name || `${document_type}.pdf`,
+      file_url: publicUrl,
+      file_size: buffer.length,
+      expiration_date: expiration_date || null,
+      notes: notes || null,
+      is_current: true
+    })
+    .select()
+    .single();
+
+  if (docError) {
+    console.error('Document record error:', docError);
+    // Continue anyway - file is uploaded
+  }
+
+  // Update vendor record with document URL (backward compatibility)
   const updateField = {
     coi: { coi_url: publicUrl, coi_on_file: true },
     w9: { w9_url: publicUrl, w9_on_file: true, w9_received_date: new Date().toISOString().split('T')[0] },
     license: { license_url: publicUrl }
-  }[document_type];
+  }[document_type] || {};
 
-  const { data: vendor, error: updateError } = await supabase
-    .from('v2_vendors')
-    .update(updateField)
-    .eq('id', id)
-    .select()
-    .single();
+  if (Object.keys(updateField).length > 0) {
+    await supabase
+      .from('v2_vendors')
+      .update(updateField)
+      .eq('id', id);
+  }
 
-  if (updateError) throw updateError;
-
-  res.json({ success: true, url: publicUrl, vendor });
+  res.json({ success: true, url: publicUrl, document: docRecord });
 }));
 
 // Get vendors with expiring documents
