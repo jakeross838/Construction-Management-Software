@@ -20,9 +20,9 @@ Gap fixes to complete existing features and improve system reliability.
 
 ### Vendors
 
-- [ ] **VND-01**: Vendor management - User can delete vendors (soft delete), search by name, merge duplicates
-- [ ] **VND-02**: Vendor documents - User can upload W-9, insurance certificates, licenses with expiration tracking
-- [ ] **VND-03**: Duplicate detection - System warns on vendor create if similar vendor exists
+- [x] **VND-01**: Vendor management - User can delete vendors (soft delete), search by name, merge duplicates
+- [x] **VND-02**: Vendor documents - User can upload W-9, insurance certificates, licenses with expiration tracking
+- [x] **VND-03**: Duplicate detection - System warns on vendor create if similar vendor exists
 
 ### Budgets
 
@@ -69,9 +69,9 @@ Which phases cover which requirements.
 | JOB-01 | Phase 13 | Complete |
 | JOB-02 | Phase 13 | Complete |
 | JOB-04 | Phase 13 | Complete |
-| VND-01 | Phase 14 | Pending |
-| VND-02 | Phase 14 | Pending |
-| VND-03 | Phase 14 | Pending |
+| VND-01 | Phase 14 | Complete |
+| VND-02 | Phase 14 | Complete |
+| VND-03 | Phase 14 | Complete |
 | BUD-04 | Phase 15 | Pending |
 | SCH-03 | Phase 16 | Pending |
 | DOC-03 | Phase 17 | Pending |
