@@ -16,7 +16,7 @@ Requirements for v1.3 Refinement milestone. Each maps to roadmap phases.
 ### Reporting
 
 - [x] **RPT-01**: User can generate financial summary reports (job cost, spend by vendor, spend by category)
-- [ ] **RPT-02**: User can export any data view to Excel with professional formatting
+- [x] **RPT-02**: User can export any data view to Excel with professional formatting
 - [ ] **RPT-03**: User can generate printable PDF reports for clients and owners
 
 ## v2 Requirements
@@ -52,7 +52,7 @@ Which phases cover which requirements.
 | INV-AI-02 | Phase 19 | Complete |
 | INV-AI-03 | Phase 20 | Complete |
 | RPT-01 | Phase 21 | Complete |
-| RPT-02 | Phase 22 | Pending |
+| RPT-02 | Phase 22 | Complete |
 | RPT-03 | Phase 23 | Pending |
 
 **Coverage:**
