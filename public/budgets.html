@@ -6,6 +6,8 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Budgets</title>
   <link rel="stylesheet" href="css/styles.css?v=20260118-cream">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body>
   <div class="app">
@@ -70,6 +72,16 @@
           </div>
         </section>
 
+        <!-- Variance Alerts -->
+        <div id="varianceAlerts" class="variance-alerts" style="display: none;">
+          <div class="alerts-header">
+            <span class="alert-icon">&#9888;</span>
+            <span class="alerts-title">Budget Alerts</span>
+            <button class="btn btn-sm btn-link" onclick="toggleAlerts()">Dismiss</button>
+          </div>
+          <div id="alertsList" class="alerts-list"></div>
+        </div>
+
         <!-- Base Budget Status -->
         <section class="draw-section draw-summary-section">
           <div class="section-header">
@@ -101,7 +113,7 @@
             <h3>Forecast</h3>
             <span class="section-subtitle">Variance from closed lines + open overages</span>
           </div>
-          <div class="draw-summary-grid" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="draw-summary-grid" style="grid-template-columns: repeat(6, 1fr);">
             <div class="summary-card" id="coverageCard">
               <div class="summary-label">Closed</div>
               <div class="summary-value" id="summaryCoverage">0%</div>
@@ -121,6 +133,35 @@
               <div class="summary-label">Open Overages</div>
               <div class="summary-value" id="summaryPotentialSavings">$0</div>
               <div class="summary-hint">Over budget on open lines</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Weekly Burn Rate</div>
+              <div class="summary-value" id="burnRate">$0</div>
+              <div class="summary-hint">Avg spend per week</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Est. Completion</div>
+              <div class="summary-value" id="estCompletion">--</div>
+              <div class="summary-hint">At current burn rate</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Budget Analysis Charts -->
+        <section class="draw-section detail-card">
+          <div class="section-header">
+            <h3>Budget Analysis</h3>
+            <div class="chart-toggle-group">
+              <button class="chart-toggle active" data-chart="category">By Category</button>
+              <button class="chart-toggle" data-chart="trend">Spend Trend</button>
+            </div>
+          </div>
+          <div class="charts-container">
+            <div id="categoryChartContainer" class="chart-panel active">
+              <canvas id="categoryChart" height="300"></canvas>
+            </div>
+            <div id="trendChartContainer" class="chart-panel">
+              <canvas id="trendChart" height="300"></canvas>
             </div>
           </div>
         </section>
@@ -494,6 +535,7 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
       setupEventListeners();
+      setupChartToggles();
 
       // Load jobs first, then setup sidebar listener
       await loadJobs();
@@ -667,6 +709,12 @@
 
       // Change orders (PCCOs - job change orders)
       renderChangeOrders(data.jobChangeOrders || []);
+
+      // Budget visualization - charts and alerts
+      checkVarianceAlerts(data.lines);
+      renderCategoryChart(data.lines);
+      renderTrendChart(state.currentJob.id, data.totals).catch(console.error);
+      updateForecastMetrics(data.totals, state.currentJob.id).catch(console.error);
     }
 
     // Category sort order - follows construction flow, General Conditions at bottom
@@ -1745,6 +1793,402 @@
       } catch (err) {
         console.error('Error reopening budget line:', err);
         showToast(err.message || 'Failed to reopen budget line', 'error');
+      }
+    }
+
+    // ============================================================
+    // BUDGET VISUALIZATION - Charts, Alerts, Forecasting
+    // ============================================================
+
+    let categoryChart = null;
+    let trendChart = null;
+    let alertsDismissed = false;
+
+    // Toggle variance alerts visibility
+    function toggleAlerts() {
+      alertsDismissed = true;
+      document.getElementById('varianceAlerts').style.display = 'none';
+    }
+
+    // Check budget lines for variance alerts
+    function checkVarianceAlerts(lines) {
+      if (alertsDismissed) return; // Don't show if user dismissed
+
+      const alerts = [];
+      const thresholds = { warning: 0.8, danger: 1.0, critical: 1.15 };
+
+      for (const line of lines) {
+        if (line.budgeted <= 0) continue;
+
+        const usageRatio = (line.committed + line.pending) / line.budgeted;
+
+        if (usageRatio >= thresholds.critical) {
+          alerts.push({
+            severity: 'critical',
+            costCode: line.costCode,
+            description: line.description,
+            message: `${Math.round(usageRatio * 100)}% of budget used`,
+            variance: line.variance,
+            budgeted: line.budgeted,
+            spent: line.committed + line.pending
+          });
+        } else if (usageRatio >= thresholds.danger) {
+          alerts.push({
+            severity: 'danger',
+            costCode: line.costCode,
+            description: line.description,
+            message: 'At or over budget',
+            variance: line.variance,
+            budgeted: line.budgeted,
+            spent: line.committed + line.pending
+          });
+        } else if (usageRatio >= thresholds.warning) {
+          alerts.push({
+            severity: 'warning',
+            costCode: line.costCode,
+            description: line.description,
+            message: `${Math.round(usageRatio * 100)}% of budget used`,
+            variance: line.variance,
+            budgeted: line.budgeted,
+            spent: line.committed + line.pending
+          });
+        }
+      }
+
+      renderAlerts(alerts);
+    }
+
+    function renderAlerts(alerts) {
+      const container = document.getElementById('varianceAlerts');
+      const list = document.getElementById('alertsList');
+
+      if (alerts.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      // Sort by severity (critical first)
+      const severityOrder = { critical: 0, danger: 1, warning: 2 };
+      alerts.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+      list.innerHTML = alerts.map(alert => `
+        <div class="alert-item alert-${alert.severity}">
+          <div class="alert-badge">${alert.severity.toUpperCase()}</div>
+          <div class="alert-content">
+            <span class="alert-code">${alert.costCode}</span>
+            <span class="alert-desc">${alert.description}</span>
+            <span class="alert-message">${alert.message}</span>
+          </div>
+          <div class="alert-amounts">
+            <span class="alert-spent">${formatMoney(alert.spent)}</span>
+            <span class="alert-budget">of ${formatMoney(alert.budgeted)}</span>
+          </div>
+        </div>
+      `).join('');
+
+      container.style.display = 'block';
+    }
+
+    // Render category comparison bar chart
+    function renderCategoryChart(lines) {
+      // Group by category
+      const categories = {};
+      for (const line of lines) {
+        const cat = line.category || 'Other';
+        if (!categories[cat]) {
+          categories[cat] = { budgeted: 0, committed: 0, billed: 0 };
+        }
+        categories[cat].budgeted += line.budgeted || 0;
+        categories[cat].committed += (line.committed || 0) + (line.pending || 0);
+        categories[cat].billed += line.billed || 0;
+      }
+
+      const labels = Object.keys(categories);
+      const budgetData = labels.map(c => categories[c].budgeted);
+      const committedData = labels.map(c => categories[c].committed);
+      const billedData = labels.map(c => categories[c].billed);
+
+      const ctx = document.getElementById('categoryChart').getContext('2d');
+
+      if (categoryChart) {
+        categoryChart.destroy();
+      }
+
+      categoryChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Budget',
+              data: budgetData,
+              backgroundColor: 'rgba(59, 111, 212, 0.7)',
+              borderColor: 'rgba(59, 111, 212, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'Committed',
+              data: committedData,
+              backgroundColor: 'rgba(217, 119, 6, 0.7)',
+              borderColor: 'rgba(217, 119, 6, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'Billed',
+              data: billedData,
+              backgroundColor: 'rgba(22, 163, 74, 0.7)',
+              borderColor: 'rgba(22, 163, 74, 1)',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: { color: '#2d2a26' }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return context.dataset.label + ': ' + formatMoney(context.raw);
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#78716c' },
+              grid: { color: 'rgba(221, 217, 210, 0.5)' }
+            },
+            y: {
+              ticks: {
+                color: '#78716c',
+                callback: function(value) {
+                  return '$' + (value / 1000).toFixed(0) + 'k';
+                }
+              },
+              grid: { color: 'rgba(221, 217, 210, 0.5)' }
+            }
+          }
+        }
+      });
+    }
+
+    // Render spend trend chart with forecast
+    async function renderTrendChart(jobId, totals) {
+      try {
+        // Fetch invoice history for trend data
+        const res = await fetch(`/api/invoices?job_id=${jobId}&status=approved,in_draw,paid`);
+        const invoices = await res.json();
+
+        // Group invoices by week
+        const weeklySpend = {};
+        const now = new Date();
+
+        for (const inv of invoices) {
+          const date = new Date(inv.approved_at || inv.created_at);
+          const weekStart = getWeekStart(date);
+          const key = weekStart.toISOString().split('T')[0];
+
+          if (!weeklySpend[key]) {
+            weeklySpend[key] = 0;
+          }
+          weeklySpend[key] += inv.amount || 0;
+        }
+
+        // Sort weeks and calculate cumulative
+        const sortedWeeks = Object.keys(weeklySpend).sort();
+        let cumulative = 0;
+        const cumulativeData = sortedWeeks.map(week => {
+          cumulative += weeklySpend[week];
+          return { x: week, y: cumulative };
+        });
+
+        // Calculate forecast (simple linear projection)
+        const totalBudget = totals.budgeted || 0;
+        const currentSpend = totals.billed || 0;
+        const remainingBudget = totalBudget - currentSpend;
+
+        // Calculate average weekly spend
+        const weekCount = sortedWeeks.length || 1;
+        const avgWeeklySpend = currentSpend / weekCount;
+
+        // Project future weeks
+        const forecastData = [...cumulativeData];
+        if (avgWeeklySpend > 0 && remainingBudget > 0) {
+          const weeksToComplete = Math.ceil(remainingBudget / avgWeeklySpend);
+          let forecastCumulative = currentSpend;
+
+          for (let i = 1; i <= Math.min(weeksToComplete, 12); i++) {
+            const futureDate = new Date(now);
+            futureDate.setDate(futureDate.getDate() + (i * 7));
+            const futureWeek = futureDate.toISOString().split('T')[0];
+            forecastCumulative += avgWeeklySpend;
+            forecastData.push({ x: futureWeek, y: Math.min(forecastCumulative, totalBudget) });
+          }
+        }
+
+        const ctx = document.getElementById('trendChart').getContext('2d');
+
+        if (trendChart) {
+          trendChart.destroy();
+        }
+
+        // Handle empty data
+        const startDate = sortedWeeks[0] || now.toISOString().split('T')[0];
+        const endDate = forecastData.length > 0 ? forecastData[forecastData.length - 1]?.x : startDate;
+
+        trendChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            datasets: [
+              {
+                label: 'Actual Spend',
+                data: cumulativeData,
+                borderColor: 'rgba(22, 163, 74, 1)',
+                backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                fill: true,
+                tension: 0.3
+              },
+              {
+                label: 'Forecast',
+                data: forecastData.length > cumulativeData.length ? forecastData.slice(cumulativeData.length - 1) : [],
+                borderColor: 'rgba(217, 119, 6, 1)',
+                borderDash: [5, 5],
+                fill: false,
+                tension: 0.3
+              },
+              {
+                label: 'Budget',
+                data: [
+                  { x: startDate, y: totalBudget },
+                  { x: endDate, y: totalBudget }
+                ],
+                borderColor: 'rgba(59, 111, 212, 0.7)',
+                borderDash: [10, 5],
+                fill: false,
+                pointRadius: 0
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+                labels: { color: '#2d2a26' }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + formatMoney(context.raw.y);
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                type: 'time',
+                time: {
+                  unit: 'week',
+                  displayFormats: { week: 'MMM d' }
+                },
+                ticks: { color: '#78716c' },
+                grid: { color: 'rgba(221, 217, 210, 0.5)' }
+              },
+              y: {
+                ticks: {
+                  color: '#78716c',
+                  callback: function(value) {
+                    return '$' + (value / 1000).toFixed(0) + 'k';
+                  }
+                },
+                grid: { color: 'rgba(221, 217, 210, 0.5)' }
+              }
+            }
+          }
+        });
+      } catch (err) {
+        console.error('Error rendering trend chart:', err);
+      }
+    }
+
+    function getWeekStart(date) {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day;
+      return new Date(d.setDate(diff));
+    }
+
+    // Setup chart toggle functionality
+    function setupChartToggles() {
+      const toggles = document.querySelectorAll('.chart-toggle');
+      toggles.forEach(toggle => {
+        toggle.addEventListener('click', () => {
+          // Update active toggle
+          toggles.forEach(t => t.classList.remove('active'));
+          toggle.classList.add('active');
+
+          // Show corresponding chart panel
+          const chartType = toggle.dataset.chart;
+          document.querySelectorAll('.chart-panel').forEach(panel => {
+            panel.classList.remove('active');
+          });
+          document.getElementById(`${chartType}ChartContainer`).classList.add('active');
+        });
+      });
+    }
+
+    // Update forecast metrics (burn rate and estimated completion)
+    async function updateForecastMetrics(totals, jobId) {
+      try {
+        // Fetch invoices for this job
+        const res = await fetch(`/api/invoices?job_id=${jobId}`);
+        const invoices = await res.json();
+
+        // Filter to approved/paid invoices
+        const approvedInvoices = invoices.filter(i =>
+          ['approved', 'in_draw', 'paid'].includes(i.status)
+        );
+
+        if (approvedInvoices.length === 0) {
+          document.getElementById('burnRate').textContent = '$0/wk';
+          document.getElementById('estCompletion').textContent = '--';
+          return;
+        }
+
+        // Find date range
+        const dates = approvedInvoices.map(i => new Date(i.approved_at || i.created_at));
+        const minDate = new Date(Math.min(...dates));
+        const maxDate = new Date(Math.max(...dates));
+        const weekCount = Math.max(1, (maxDate - minDate) / (7 * 24 * 60 * 60 * 1000));
+
+        const totalSpent = totals.billed || 0;
+        const burnRate = totalSpent / weekCount;
+
+        document.getElementById('burnRate').textContent = formatMoney(burnRate) + '/wk';
+
+        // Estimate completion
+        const remaining = (totals.budgeted || 0) - totalSpent;
+        if (burnRate > 0 && remaining > 0) {
+          const weeksRemaining = Math.ceil(remaining / burnRate);
+          const estDate = new Date();
+          estDate.setDate(estDate.getDate() + (weeksRemaining * 7));
+          document.getElementById('estCompletion').textContent =
+            estDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } else if (remaining <= 0) {
+          document.getElementById('estCompletion').textContent = 'Complete';
+        } else {
+          document.getElementById('estCompletion').textContent = '--';
+        }
+      } catch (err) {
+        console.error('Error updating forecast metrics:', err);
+        document.getElementById('burnRate').textContent = '--';
+        document.getElementById('estCompletion').textContent = '--';
       }
     }
 
