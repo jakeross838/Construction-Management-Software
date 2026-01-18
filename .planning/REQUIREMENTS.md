@@ -44,21 +44,21 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Updated by create-roadmap.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INV-AI-01 | — | Pending |
-| INV-AI-02 | — | Pending |
-| INV-AI-03 | — | Pending |
-| RPT-01 | — | Pending |
-| RPT-02 | — | Pending |
-| RPT-03 | — | Pending |
+| INV-AI-01 | Phase 18 | Pending |
+| INV-AI-02 | Phase 19 | Pending |
+| INV-AI-03 | Phase 20 | Pending |
+| RPT-01 | Phase 21 | Pending |
+| RPT-02 | Phase 22 | Pending |
+| RPT-03 | Phase 23 | Pending |
 
 **Coverage:**
 - v1.3 requirements: 6 total
-- Mapped to phases: 0
-- Unmapped: 6 ⚠️
+- Mapped to phases: 6
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-01-18*
