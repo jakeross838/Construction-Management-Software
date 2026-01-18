@@ -290,6 +290,126 @@ router.get('/:id/draws', asyncHandler(async (req, res) => {
   res.json(drawsWithTotals);
 }));
 
+// Get job financial metrics (consolidated)
+router.get('/:id/metrics', validateRequest({
+  params: { id: { type: 'uuid' } }
+}), asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+
+  // Verify job exists
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id, name, contract_amount')
+    .eq('id', jobId)
+    .is('deleted_at', null)
+    .single();
+
+  if (jobError?.code === 'PGRST116' || !job) throw notFoundError('job', jobId);
+  if (jobError) throw new AppError('DATABASE_ERROR', jobError.message);
+
+  // Get budget totals
+  const { data: budgetLines } = await supabase
+    .from('v2_budget_lines')
+    .select('budgeted_amount, committed_amount, billed_amount, paid_amount')
+    .eq('job_id', jobId);
+
+  const budget = {
+    budgeted: 0,
+    committed: 0,
+    billed: 0,
+    paid: 0
+  };
+  (budgetLines || []).forEach(bl => {
+    budget.budgeted += parseFloat(bl.budgeted_amount || 0);
+    budget.committed += parseFloat(bl.committed_amount || 0);
+    budget.billed += parseFloat(bl.billed_amount || 0);
+    budget.paid += parseFloat(bl.paid_amount || 0);
+  });
+
+  // Get PO summary
+  const { data: pos } = await supabase
+    .from('v2_purchase_orders')
+    .select('id, total_amount, status')
+    .eq('job_id', jobId)
+    .is('deleted_at', null);
+
+  const poSummary = {
+    total_count: pos?.length || 0,
+    total_amount: 0,
+    open_count: 0,
+    closed_count: 0
+  };
+  (pos || []).forEach(po => {
+    poSummary.total_amount += parseFloat(po.total_amount || 0);
+    if (po.status === 'open') poSummary.open_count++;
+    else if (po.status === 'closed') poSummary.closed_count++;
+  });
+
+  // Get invoice summary
+  const { data: invoices } = await supabase
+    .from('v2_invoices')
+    .select('id, amount, status')
+    .eq('job_id', jobId)
+    .is('deleted_at', null);
+
+  const invoiceSummary = {
+    total_count: invoices?.length || 0,
+    total_amount: 0,
+    by_status: {
+      received: { count: 0, amount: 0 },
+      needs_approval: { count: 0, amount: 0 },
+      approved: { count: 0, amount: 0 },
+      in_draw: { count: 0, amount: 0 },
+      paid: { count: 0, amount: 0 }
+    }
+  };
+  (invoices || []).forEach(inv => {
+    const amount = parseFloat(inv.amount || 0);
+    invoiceSummary.total_amount += amount;
+    if (invoiceSummary.by_status[inv.status]) {
+      invoiceSummary.by_status[inv.status].count++;
+      invoiceSummary.by_status[inv.status].amount += amount;
+    }
+  });
+
+  // Get draws summary
+  const { data: draws } = await supabase
+    .from('v2_draws')
+    .select('id, total_amount, status, funded_amount')
+    .eq('job_id', jobId);
+
+  const drawSummary = {
+    total_count: draws?.length || 0,
+    total_drawn: 0,
+    total_funded: 0,
+    draft_count: 0,
+    submitted_count: 0,
+    funded_count: 0
+  };
+  (draws || []).forEach(d => {
+    drawSummary.total_drawn += parseFloat(d.total_amount || 0);
+    drawSummary.total_funded += parseFloat(d.funded_amount || 0);
+    if (d.status === 'draft') drawSummary.draft_count++;
+    else if (d.status === 'submitted') drawSummary.submitted_count++;
+    else if (d.status === 'funded') drawSummary.funded_count++;
+  });
+
+  // Calculate completion percentage
+  const contractAmount = parseFloat(job.contract_amount || 0);
+  const completionPercent = contractAmount > 0
+    ? Math.min(100, Math.round((budget.billed / contractAmount) * 100))
+    : 0;
+
+  res.json({
+    contract_amount: contractAmount,
+    budget,
+    purchase_orders: poSummary,
+    invoices: invoiceSummary,
+    draws: drawSummary,
+    completion_percent: completionPercent
+  });
+}));
+
 // Get job statistics
 router.get('/:id/stats', asyncHandler(async (req, res) => {
   const jobId = req.params.id;
