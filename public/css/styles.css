@@ -19531,6 +19531,48 @@ textarea.form-control {
   white-space: nowrap;
 }
 
+/* Gantt Drag-and-Drop */
+.gantt-bar-pending,
+.gantt-bar-in_progress,
+.gantt-bar-completed,
+.gantt-bar-blocked {
+  cursor: grab;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.gantt-bar-pending:hover,
+.gantt-bar-in_progress:hover,
+.gantt-bar-completed:hover,
+.gantt-bar-blocked:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.gantt-bar-pending.dragging,
+.gantt-bar-in_progress.dragging,
+.gantt-bar-completed.dragging,
+.gantt-bar-blocked.dragging {
+  cursor: grabbing;
+  opacity: 0.8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.drag-tooltip {
+  position: fixed;
+  background: var(--bg-card-elevated);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 1000;
+  display: none;
+  border: 1px solid var(--border);
+}
+
 .gantt-empty {
   padding: 3rem;
   text-align: center;

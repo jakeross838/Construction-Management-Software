@@ -13,7 +13,24 @@ let state = {
     trade: '',
     status: ''
   },
-  currentView: 'list'  // 'list' or 'gantt'
+  currentView: 'list',  // 'list' or 'gantt'
+  showCriticalPath: true,  // Toggle for critical path highlighting
+  criticalPath: new Set(),  // Set of critical task IDs
+  taskMetrics: {}  // ES, EF, LS, LF, slack per task
+};
+
+// ============================================================
+// DRAG-AND-DROP STATE
+// ============================================================
+
+let dragState = {
+  isDragging: false,
+  taskId: null,
+  startX: 0,
+  originalLeft: 0,
+  barElement: null,
+  dayWidth: 30,
+  minDate: null
 };
 
 // Construction trades (shared with daily logs)
@@ -254,6 +271,7 @@ function setView(view) {
   // Render the appropriate view
   if (view === 'gantt') {
     renderGantt();
+    initDragHandlers();
   } else {
     renderTaskList();
   }
@@ -398,6 +416,11 @@ function renderGantt() {
     return;
   }
 
+  // Calculate critical path (use all tasks to get accurate path, not just filtered)
+  const { criticalTaskIds, taskMetrics } = calculateCriticalPath(state.tasks);
+  state.criticalPath = criticalTaskIds;
+  state.taskMetrics = taskMetrics;
+
   // Calculate date range
   const { minDate, maxDate } = getDateRange(tasks);
   const days = getDaysBetween(minDate, maxDate);
@@ -405,8 +428,8 @@ function renderGantt() {
   // Render header with dates
   renderGanttHeader(minDate, days);
 
-  // Render task bars
-  renderGanttRows(tasks, minDate, days);
+  // Render task bars with critical path info
+  renderGanttRows(tasks, minDate, days, criticalTaskIds);
 }
 
 function getDateRange(tasks) {
@@ -479,7 +502,8 @@ function renderGanttHeader(minDate, days) {
     const isWeekend = day.getDay() === 0 || day.getDay() === 6;
     const isToday = isSameDay(day, new Date());
     const dayNum = day.getDate();
-    headerHTML += `<div class="gantt-day ${isWeekend ? 'weekend' : ''} ${isToday ? 'today' : ''}">${dayNum}</div>`;
+    const dateStr = day.toISOString().split('T')[0];
+    headerHTML += `<div class="gantt-day gantt-header-day ${isWeekend ? 'weekend' : ''} ${isToday ? 'today' : ''}" data-date="${dateStr}">${dayNum}</div>`;
   });
   headerHTML += '</div>';
 
@@ -487,7 +511,7 @@ function renderGanttHeader(minDate, days) {
   header.innerHTML = headerHTML;
 }
 
-function renderGanttRows(tasks, minDate, days) {
+function renderGanttRows(tasks, minDate, days, criticalTaskIds = new Set()) {
   const body = document.getElementById('ganttBody');
 
   // Sort tasks
@@ -499,13 +523,14 @@ function renderGanttRows(tasks, minDate, days) {
 
   let bodyHTML = '';
   tasks.forEach(task => {
-    bodyHTML += renderGanttRow(task, minDate, days);
+    const isCritical = state.showCriticalPath && criticalTaskIds.has(task.id);
+    bodyHTML += renderGanttRow(task, minDate, days, isCritical);
   });
 
   body.innerHTML = bodyHTML;
 }
 
-function renderGanttRow(task, minDate, days) {
+function renderGanttRow(task, minDate, days, isCritical = false) {
   const totalDays = days.length;
   const dayWidth = 30; // pixels per day
 
@@ -513,6 +538,11 @@ function renderGanttRow(task, minDate, days) {
   let barLeft = 0;
   let barWidth = dayWidth;
   let barClass = 'gantt-bar-' + task.status;
+
+  // Add critical path class if task is on critical path
+  if (isCritical) {
+    barClass += ' critical-path';
+  }
 
   if (task.planned_start) {
     const start = new Date(task.planned_start);
@@ -538,14 +568,22 @@ function renderGanttRow(task, minDate, days) {
     gridHTML += `<div class="gantt-cell ${isWeekend ? 'weekend' : ''} ${isToday ? 'today' : ''}"></div>`;
   });
 
+  // Build tooltip with critical path info
+  const criticalInfo = isCritical ? '\nCRITICAL PATH - Zero slack' : '';
+  const tooltipText = `${escapeHtml(task.name)}\n${formatDate(task.planned_start)} - ${formatDate(task.planned_end)}${criticalInfo}`;
+
+  // Build critical badge for task label
+  const criticalBadge = isCritical ? '<span class="critical-badge">Critical</span>' : '';
+
   return `
-    <div class="gantt-row" onclick="openTaskModal('${task.id}')">
-      <div class="gantt-label-col">
+    <div class="gantt-row${isCritical ? ' critical-path' : ''}">
+      <div class="gantt-label-col" onclick="openTaskModal('${task.id}')">
         <span class="gantt-task-name">${escapeHtml(truncate(task.name, 25))}</span>
+        ${criticalBadge}
       </div>
       <div class="gantt-timeline">
         <div class="gantt-grid">${gridHTML}</div>
-        <div class="gantt-bar ${barClass}" style="left: ${barLeft}px; width: ${barWidth}px;">
+        <div class="gantt-bar ${barClass}" data-task-id="${task.id}" style="left: ${barLeft}px; width: ${barWidth}px;" title="${tooltipText}">
           <div class="gantt-progress" style="width: ${progressWidth}px;"></div>
           <span class="gantt-bar-label">${task.completion_percent || 0}%</span>
         </div>
@@ -945,4 +983,329 @@ function getWeekStart(date) {
   const day = d.getDay();
   const diff = d.getDate() - day;
   return new Date(d.setDate(diff));
+}
+
+// ============================================================
+// DRAG-AND-DROP FUNCTIONALITY
+// ============================================================
+
+function initDragHandlers() {
+  const ganttBody = document.getElementById('ganttBody');
+  if (!ganttBody) return;
+
+  // Delegate mouse events to gantt body container
+  ganttBody.addEventListener('mousedown', handleDragStart);
+  document.addEventListener('mousemove', handleDragMove);
+  document.addEventListener('mouseup', handleDragEnd);
+}
+
+function handleDragStart(e) {
+  // Find the gantt bar element (check multiple class patterns)
+  const bar = e.target.closest('.gantt-bar-pending, .gantt-bar-in_progress, .gantt-bar-completed, .gantt-bar-blocked');
+  if (!bar) return;
+
+  const taskId = bar.dataset.taskId;
+  if (!taskId) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Calculate day width from gantt header
+  const headerDays = document.querySelectorAll('.gantt-header-day');
+  let dayWidth = 30; // default fallback
+  if (headerDays.length > 1) {
+    dayWidth = headerDays[1].offsetLeft - headerDays[0].offsetLeft;
+  } else if (headerDays.length === 1) {
+    dayWidth = headerDays[0].offsetWidth;
+  }
+
+  // Get min date from first header cell
+  const firstCell = document.querySelector('.gantt-header-day');
+  const minDate = firstCell && firstCell.dataset.date ? new Date(firstCell.dataset.date) : new Date();
+
+  dragState = {
+    isDragging: true,
+    taskId: taskId,
+    startX: e.clientX,
+    originalLeft: bar.offsetLeft,
+    barElement: bar,
+    dayWidth: dayWidth,
+    minDate: minDate
+  };
+
+  bar.classList.add('dragging');
+  document.body.style.cursor = 'grabbing';
+  document.body.style.userSelect = 'none';
+}
+
+function handleDragMove(e) {
+  if (!dragState.isDragging || !dragState.barElement) return;
+
+  const deltaX = e.clientX - dragState.startX;
+  const newLeft = Math.max(0, dragState.originalLeft + deltaX);
+
+  dragState.barElement.style.left = `${newLeft}px`;
+
+  // Show date preview tooltip
+  const dayOffset = Math.round(newLeft / dragState.dayWidth);
+  const newDate = new Date(dragState.minDate);
+  newDate.setDate(newDate.getDate() + dayOffset);
+  showDragTooltip(e, newDate);
+}
+
+function handleDragEnd(e) {
+  if (!dragState.isDragging) return;
+
+  const bar = dragState.barElement;
+  if (bar) {
+    bar.classList.remove('dragging');
+
+    // Calculate new start date from final position
+    const newLeft = bar.offsetLeft;
+    const dayOffset = Math.round(newLeft / dragState.dayWidth);
+    const newStartDate = new Date(dragState.minDate);
+    newStartDate.setDate(newStartDate.getDate() + dayOffset);
+
+    // Get task to calculate duration
+    const task = state.tasks.find(t => t.id === dragState.taskId);
+    if (task) {
+      const duration = task.planned_duration_days || 1;
+      const newEndDate = new Date(newStartDate);
+      newEndDate.setDate(newEndDate.getDate() + duration - 1);
+
+      // Update task via API
+      updateTaskDates(dragState.taskId, newStartDate, newEndDate);
+    }
+  }
+
+  hideDragTooltip();
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+
+  dragState = {
+    isDragging: false,
+    taskId: null,
+    startX: 0,
+    originalLeft: 0,
+    barElement: null,
+    dayWidth: 30,
+    minDate: null
+  };
+}
+
+async function updateTaskDates(taskId, startDate, endDate) {
+  try {
+    const res = await fetch(`/api/schedules/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        planned_start: startDate.toISOString().split('T')[0],
+        planned_end: endDate.toISOString().split('T')[0]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.message || 'Failed to update task', 'error');
+      await loadSchedule(); // Revert to server state
+      return;
+    }
+
+    showToast('Task rescheduled', 'success');
+    await loadSchedule(); // Refresh to show updated state
+  } catch (err) {
+    console.error('Failed to update task dates:', err);
+    showToast('Failed to update task', 'error');
+    await loadSchedule();
+  }
+}
+
+function showDragTooltip(e, date) {
+  let tooltip = document.getElementById('dragTooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.id = 'dragTooltip';
+    tooltip.className = 'drag-tooltip';
+    document.body.appendChild(tooltip);
+  }
+
+  const formatted = date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  tooltip.textContent = formatted;
+  tooltip.style.display = 'block';
+  tooltip.style.left = `${e.clientX + 15}px`;
+  tooltip.style.top = `${e.clientY - 35}px`;
+}
+
+function hideDragTooltip() {
+  const tooltip = document.getElementById('dragTooltip');
+  if (tooltip) {
+    tooltip.style.display = 'none';
+  }
+}
+
+// ============================================================
+// CRITICAL PATH CALCULATION
+// ============================================================
+
+/**
+ * Calculate critical path using forward/backward pass algorithm.
+ * Critical path = tasks with zero slack (any delay impacts project end date).
+ *
+ * Algorithm:
+ * 1. Build task dependency graph from depends_on array
+ * 2. Forward pass: Calculate ES (Earliest Start) and EF (Earliest Finish)
+ * 3. Backward pass: Calculate LS (Latest Start) and LF (Latest Finish)
+ * 4. Slack = LS - ES
+ * 5. Critical path = all tasks with Slack = 0
+ */
+function calculateCriticalPath(tasks) {
+  if (!tasks || tasks.length === 0) {
+    return { criticalTaskIds: new Set(), taskMetrics: {} };
+  }
+
+  // Build lookup maps
+  const taskMap = new Map();
+  const dependents = new Map(); // taskId -> array of tasks that depend on it
+
+  tasks.forEach(task => {
+    taskMap.set(task.id, task);
+    dependents.set(task.id, []);
+  });
+
+  // Build dependents map (reverse of depends_on)
+  tasks.forEach(task => {
+    const deps = task.depends_on || [];
+    deps.forEach(depId => {
+      if (dependents.has(depId)) {
+        dependents.get(depId).push(task.id);
+      }
+    });
+  });
+
+  // Calculate duration in days for each task
+  function getDuration(task) {
+    if (task.planned_duration_days) return task.planned_duration_days;
+    if (task.planned_start && task.planned_end) {
+      const start = new Date(task.planned_start);
+      const end = new Date(task.planned_end);
+      return Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
+    }
+    return 1;
+  }
+
+  // Initialize metrics object
+  const metrics = {};
+
+  // Forward pass: Calculate ES (Earliest Start) and EF (Earliest Finish)
+  function calculateES(taskId, visited = new Set()) {
+    if (visited.has(taskId)) return 0; // Circular dependency protection
+    if (metrics[taskId]?.es !== undefined) return metrics[taskId].es;
+
+    visited.add(taskId);
+    const task = taskMap.get(taskId);
+    if (!task) return 0;
+
+    const deps = task.depends_on || [];
+    let es = 0;
+
+    if (deps.length === 0) {
+      // No dependencies - can start at project start (day 0)
+      es = 0;
+    } else {
+      // ES = max(EF of all dependencies)
+      deps.forEach(depId => {
+        const depEF = calculateEF(depId, new Set(visited));
+        es = Math.max(es, depEF);
+      });
+    }
+
+    const duration = getDuration(task);
+    const ef = es + duration;
+
+    if (!metrics[taskId]) metrics[taskId] = {};
+    metrics[taskId].es = es;
+    metrics[taskId].ef = ef;
+    metrics[taskId].duration = duration;
+
+    return es;
+  }
+
+  function calculateEF(taskId, visited = new Set()) {
+    calculateES(taskId, visited);
+    return metrics[taskId]?.ef || 0;
+  }
+
+  // Calculate ES/EF for all tasks
+  tasks.forEach(task => calculateES(task.id, new Set()));
+
+  // Find project end (max EF)
+  const projectEnd = Math.max(...Object.values(metrics).map(m => m.ef || 0));
+
+  // Backward pass: Calculate LF (Latest Finish) and LS (Latest Start)
+  function calculateLF(taskId, visited = new Set()) {
+    if (visited.has(taskId)) return projectEnd;
+    if (metrics[taskId]?.lf !== undefined) return metrics[taskId].lf;
+
+    visited.add(taskId);
+    const taskDependents = dependents.get(taskId) || [];
+    let lf = projectEnd;
+
+    if (taskDependents.length === 0) {
+      // No dependents - can finish at project end
+      lf = projectEnd;
+    } else {
+      // LF = min(LS of all dependents)
+      taskDependents.forEach(depId => {
+        const depLS = calculateLS(depId, new Set(visited));
+        lf = Math.min(lf, depLS);
+      });
+    }
+
+    const duration = metrics[taskId]?.duration || 1;
+    const ls = lf - duration;
+
+    metrics[taskId].lf = lf;
+    metrics[taskId].ls = ls;
+    metrics[taskId].slack = ls - metrics[taskId].es;
+
+    return lf;
+  }
+
+  function calculateLS(taskId, visited = new Set()) {
+    calculateLF(taskId, visited);
+    return metrics[taskId]?.ls || 0;
+  }
+
+  // Calculate LF/LS for all tasks
+  tasks.forEach(task => calculateLF(task.id, new Set()));
+
+  // Identify critical path (tasks with slack = 0)
+  const criticalTaskIds = new Set();
+  Object.entries(metrics).forEach(([taskId, m]) => {
+    if (Math.abs(m.slack) < 0.001) { // Float comparison tolerance
+      criticalTaskIds.add(taskId);
+    }
+  });
+
+  return { criticalTaskIds, taskMetrics: metrics };
+}
+
+/**
+ * Toggle critical path highlighting on/off
+ */
+function toggleCriticalPath() {
+  const checkbox = document.getElementById('showCriticalPath');
+  state.showCriticalPath = checkbox ? checkbox.checked : true;
+
+  // Re-render current view
+  if (state.currentView === 'gantt') {
+    renderGantt();
+  } else {
+    renderTaskList();
+  }
 }
