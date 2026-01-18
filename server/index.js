@@ -3307,7 +3307,29 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
         result.matchedJob = await findMatchingJob(extracted.job);
       }
       if (result.vendor && result.matchedJob) {
-        result.po = await findOrCreatePO(result.vendor, result.matchedJob, result.extracted.totalAmount, extracted.job?.poNumber);
+        // Use multi-signal PO matching
+        const poResult = await findOrCreatePO(
+          result.matchedJob.id,
+          result.vendor.id,
+          extracted,
+          result.matchedJob.name
+        );
+        if (poResult) {
+          result.po = poResult.po;
+          result.po_match = {
+            matched: !!poResult.po,
+            po_id: poResult.po?.id || null,
+            po_number: poResult.po?.po_number || null,
+            confidence: poResult.matchConfidence || 0,
+            needs_review: poResult.needsReview || false,
+            explanation: poResult.explanation || '',
+            breakdown: poResult.matchBreakdown || null,
+            candidates: poResult.candidates || []
+          };
+          if (poResult.needsReview) {
+            result.review_flags.push('po_match_needs_review');
+          }
+        }
       }
 
       // Generate standardized filename
@@ -3366,7 +3388,29 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
         result.matchedJob = await findMatchingJob(extracted.job);
       }
       if (result.vendor && result.matchedJob) {
-        result.po = await findOrCreatePO(result.vendor, result.matchedJob, result.extracted.totalAmount, extracted.job?.poNumber);
+        // Use multi-signal PO matching
+        const poResult = await findOrCreatePO(
+          result.matchedJob.id,
+          result.vendor.id,
+          extracted,
+          result.matchedJob.name
+        );
+        if (poResult) {
+          result.po = poResult.po;
+          result.po_match = {
+            matched: !!poResult.po,
+            po_id: poResult.po?.id || null,
+            po_number: poResult.po?.po_number || null,
+            confidence: poResult.matchConfidence || 0,
+            needs_review: poResult.needsReview || false,
+            explanation: poResult.explanation || '',
+            breakdown: poResult.matchBreakdown || null,
+            candidates: poResult.candidates || []
+          };
+          if (poResult.needsReview) {
+            result.review_flags.push('po_match_needs_review');
+          }
+        }
       }
 
       // Generate standardized filename
@@ -3628,6 +3672,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       let vendor = null;
       let matchedJob = null;
       let po = null;
+      let poMatch = null;
 
       if (extracted.vendor?.companyName) {
         vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
@@ -3636,7 +3681,31 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
         matchedJob = await findMatchingJob(extracted.job);
       }
       if (vendor && matchedJob) {
-        po = await findOrCreatePO(vendor, matchedJob, extracted.amounts?.totalAmount, extracted.job?.poNumber);
+        // Use multi-signal PO matching
+        const poResult = await findOrCreatePO(
+          matchedJob.id,
+          vendor.id,
+          extracted,
+          matchedJob.name
+        );
+        if (poResult) {
+          po = poResult.po;
+          poMatch = {
+            matched: !!poResult.po,
+            po_id: poResult.po?.id || null,
+            po_number: poResult.po?.po_number || null,
+            confidence: poResult.matchConfidence || 0,
+            needs_review: poResult.needsReview || false,
+            explanation: poResult.explanation || '',
+            breakdown: poResult.matchBreakdown || null,
+            candidates: poResult.candidates || []
+          };
+        }
+      }
+
+      const reviewFlags = ['image_source'];
+      if (poMatch?.needs_review) {
+        reviewFlags.push('po_match_needs_review');
       }
 
       result = {
@@ -3656,9 +3725,10 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
           vendor,
           matchedJob,
           po,
+          po_match: poMatch,
           ai_confidence: extracted.extractionConfidence || {},
           needs_review: true,
-          review_flags: ['image_source'],
+          review_flags: reviewFlags,
           standardizedFilename: standards.generateInvoiceFilename(
             matchedJob?.name || 'Unassigned',
             vendor?.name || extracted.vendor?.companyName || 'Unknown',
@@ -3686,6 +3756,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       let vendor = null;
       let matchedJob = null;
       let po = null;
+      let poMatch = null;
 
       if (extracted.vendor?.companyName) {
         vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
@@ -3694,7 +3765,31 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
         matchedJob = await findMatchingJob(extracted.job);
       }
       if (vendor && matchedJob) {
-        po = await findOrCreatePO(vendor, matchedJob, extracted.amounts?.totalAmount, extracted.job?.poNumber);
+        // Use multi-signal PO matching
+        const poResult = await findOrCreatePO(
+          matchedJob.id,
+          vendor.id,
+          extracted,
+          matchedJob.name
+        );
+        if (poResult) {
+          po = poResult.po;
+          poMatch = {
+            matched: !!poResult.po,
+            po_id: poResult.po?.id || null,
+            po_number: poResult.po?.po_number || null,
+            confidence: poResult.matchConfidence || 0,
+            needs_review: poResult.needsReview || false,
+            explanation: poResult.explanation || '',
+            breakdown: poResult.matchBreakdown || null,
+            candidates: poResult.candidates || []
+          };
+        }
+      }
+
+      const reviewFlags = [`${converted.fileType.toLowerCase()}_source`];
+      if (poMatch?.needs_review) {
+        reviewFlags.push('po_match_needs_review');
       }
 
       result = {
@@ -3714,9 +3809,10 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
           vendor,
           matchedJob,
           po,
+          po_match: poMatch,
           ai_confidence: extracted.extractionConfidence || {},
           needs_review: true,
-          review_flags: [`${converted.fileType.toLowerCase()}_source`],
+          review_flags: reviewFlags,
           standardizedFilename: standards.generateInvoiceFilename(
             matchedJob?.name || 'Unassigned',
             vendor?.name || extracted.vendor?.companyName || 'Unknown',

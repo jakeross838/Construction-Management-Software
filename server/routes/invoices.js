@@ -456,7 +456,29 @@ router.post('/process', upload.single('file'), async (req, res) => {
         result.matchedJob = await findMatchingJob(extracted.job);
       }
       if (result.vendor && result.matchedJob) {
-        result.po = await findOrCreatePO(result.vendor, result.matchedJob, result.extracted.totalAmount, extracted.job?.poNumber);
+        // Use multi-signal PO matching
+        const poResult = await findOrCreatePO(
+          result.matchedJob.id,
+          result.vendor.id,
+          extracted,
+          result.matchedJob.name
+        );
+        if (poResult) {
+          result.po = poResult.po;
+          result.po_match = {
+            matched: !!poResult.po,
+            po_id: poResult.po?.id || null,
+            po_number: poResult.po?.po_number || null,
+            confidence: poResult.matchConfidence || 0,
+            needs_review: poResult.needsReview || false,
+            explanation: poResult.explanation || '',
+            breakdown: poResult.matchBreakdown || null,
+            candidates: poResult.candidates || []
+          };
+          if (poResult.needsReview) {
+            result.review_flags.push('po_match_needs_review');
+          }
+        }
       }
 
       const vendorName = result.vendor?.name || extracted.vendor?.companyName || 'Unknown';
@@ -506,7 +528,29 @@ router.post('/process', upload.single('file'), async (req, res) => {
         result.matchedJob = await findMatchingJob(extracted.job);
       }
       if (result.vendor && result.matchedJob) {
-        result.po = await findOrCreatePO(result.vendor, result.matchedJob, result.extracted.totalAmount, extracted.job?.poNumber);
+        // Use multi-signal PO matching
+        const poResult = await findOrCreatePO(
+          result.matchedJob.id,
+          result.vendor.id,
+          extracted,
+          result.matchedJob.name
+        );
+        if (poResult) {
+          result.po = poResult.po;
+          result.po_match = {
+            matched: !!poResult.po,
+            po_id: poResult.po?.id || null,
+            po_number: poResult.po?.po_number || null,
+            confidence: poResult.matchConfidence || 0,
+            needs_review: poResult.needsReview || false,
+            explanation: poResult.explanation || '',
+            breakdown: poResult.matchBreakdown || null,
+            candidates: poResult.candidates || []
+          };
+          if (poResult.needsReview) {
+            result.review_flags.push('po_match_needs_review');
+          }
+        }
       }
 
       const vendorName = result.vendor?.name || extracted.vendor?.companyName || 'Unknown';
