@@ -9542,12 +9542,7 @@ label .ai-indicator {
   gap: 1.5rem;
 }
 
-.form-section {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-}
+/* REMOVED: Duplicate .form-section base - see FORM SECTIONS section (line ~2370) */
 
 .form-section .section-header {
   display: flex;
@@ -16806,30 +16801,8 @@ textarea.form-control {
   display: block;
 }
 
-.form-section {
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.form-section:last-child {
-  margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: none;
-}
-
-.form-section h4 {
-  margin: 0 0 1rem 0;
-  font-size: 0.95rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.form-row.three-col {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-}
+/* REMOVED: Duplicate .form-section, .form-section:last-child, .form-section h4, .form-row.three-col
+   - See FORM SECTIONS section (line ~2370) and FORM LAYOUTS section (line ~2292) */
 
 .checkbox-label {
   display: flex;
@@ -21221,17 +21194,7 @@ textarea.form-control {
   border-radius: 4px;
 }
 
-/* Form Section Divider */
-.form-section-divider {
-  position: relative;
-  text-align: left;
-  margin: 1.5rem 0 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--accent-blue);
-}
+/* REMOVED: Duplicate .form-section-divider - see FORM SECTIONS section (line ~2404) */
 
 /* REMOVED: Duplicate .form-row and responsive rule - see FORM LAYOUTS section (line ~2292) */
 
