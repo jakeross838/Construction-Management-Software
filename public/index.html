@@ -43,7 +43,13 @@
           <input type="text" id="invoiceSearchInput" placeholder="Search invoices..." class="form-control search-input">
           <button class="search-clear-btn" id="invoiceSearchClear" style="display: none;" onclick="clearInvoiceSearch()">&times;</button>
         </div>
+        <button id="selectModeBtn" class="btn btn-ghost btn-sm" onclick="toggleSelectionMode()">
+          Select
+        </button>
       </div>
+
+      <!-- Batch Toolbar -->
+      <div id="batchToolbar" class="batch-toolbar" style="display: none;"></div>
 
       <!-- Invoice List -->
       <div class="invoice-list" id="invoiceList">

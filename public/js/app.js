@@ -13,6 +13,98 @@ let state = {
   searchQuery: ''
 };
 
+// Batch selection state
+let selectedInvoices = new Set();
+let selectionMode = false;
+
+// Cache invoices for batch operations
+window.invoicesCache = [];
+
+function toggleSelectionMode() {
+  selectionMode = !selectionMode;
+  selectedInvoices.clear();
+  renderInvoiceList();
+  updateBatchToolbar();
+
+  // Update select button text
+  const selectBtn = document.getElementById('selectModeBtn');
+  if (selectBtn) {
+    selectBtn.textContent = selectionMode ? 'Cancel' : 'Select';
+    selectBtn.classList.toggle('active', selectionMode);
+  }
+}
+
+function toggleInvoiceSelection(invoiceId, event) {
+  event.stopPropagation(); // Don't open modal
+  if (selectedInvoices.has(invoiceId)) {
+    selectedInvoices.delete(invoiceId);
+  } else {
+    selectedInvoices.add(invoiceId);
+  }
+  updateBatchToolbar();
+  updateCardSelection(invoiceId);
+}
+
+function updateCardSelection(invoiceId) {
+  const card = document.querySelector(`.invoice-card[data-invoice-id="${invoiceId}"]`);
+  if (card) {
+    card.classList.toggle('selected', selectedInvoices.has(invoiceId));
+  }
+  // Also update checkbox state
+  const checkbox = card?.querySelector('.batch-checkbox');
+  if (checkbox) {
+    checkbox.checked = selectedInvoices.has(invoiceId);
+  }
+}
+
+function selectAllVisible() {
+  const visibleCards = document.querySelectorAll('.invoice-card[data-invoice-id]');
+  visibleCards.forEach(card => {
+    const id = card.dataset.invoiceId;
+    if (canBatchApprove(id)) {
+      selectedInvoices.add(id);
+      card.classList.add('selected');
+      const checkbox = card.querySelector('.batch-checkbox');
+      if (checkbox) checkbox.checked = true;
+    }
+  });
+  updateBatchToolbar();
+}
+
+function clearSelection() {
+  selectedInvoices.clear();
+  document.querySelectorAll('.invoice-card.selected').forEach(card => {
+    card.classList.remove('selected');
+    const checkbox = card.querySelector('.batch-checkbox');
+    if (checkbox) checkbox.checked = false;
+  });
+  updateBatchToolbar();
+}
+
+function updateBatchToolbar() {
+  const toolbar = document.getElementById('batchToolbar');
+  if (!toolbar) return;
+
+  const count = selectedInvoices.size;
+  if (count > 0) {
+    toolbar.innerHTML = `
+      <span class="batch-count">${count} selected</span>
+      <button class="btn btn-success btn-sm" onclick="batchApproveSelected()">
+        Approve All
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="selectAllVisible()">
+        Select All
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="clearSelection()">
+        Clear
+      </button>
+    `;
+    toolbar.style.display = 'flex';
+  } else {
+    toolbar.style.display = 'none';
+  }
+}
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -105,6 +197,8 @@ async function loadInvoices() {
       ...inv,
       draw: inv.draw_invoices?.[0]?.draw || null
     }));
+    // Cache for batch operations
+    window.invoicesCache = state.invoices;
     renderInvoiceList();
 
     // Check for openInvoice query parameter (from PO modal linking)
@@ -354,8 +448,18 @@ function renderInvoiceCard(inv) {
     // Partial approval badge (uses isPartialApproval from above)
     const partialBadge = isPartialApproval ? `<span class="badge badge-partial" title="Partially allocated approval">Partial</span>` : '';
 
+    // Selection mode checkbox
+    const canSelect = selectionMode && canBatchApprove(inv.id);
+    const isSelected = selectedInvoices.has(inv.id);
+    const checkboxHtml = canSelect ? `
+      <input type="checkbox" class="batch-checkbox"
+        ${isSelected ? 'checked' : ''}
+        onclick="toggleInvoiceSelection('${inv.id}', event)">
+    ` : '';
+
     return `
-    <div class="invoice-card status-${inv.status}${isCredit ? ' is-credit' : ''}" onclick="openEditModal('${inv.id}')">
+    <div class="invoice-card status-${inv.status}${isCredit ? ' is-credit' : ''}${isSelected ? ' selected' : ''}" data-invoice-id="${inv.id}" onclick="openEditModal('${inv.id}')">
+      ${checkboxHtml}
       <div class="invoice-main">
         <div class="invoice-header">
           <span class="invoice-vendor">${inv.vendor?.name || 'Unknown Vendor'}</span>
