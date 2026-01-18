@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Between milestones — v1.2 complete, ready for v1.3 planning
+**Current focus:** v1.3 Refinement — Invoice AI improvements and reporting suite
 
 ## Current Position
 
-Phase: None (milestone complete)
-Plan: N/A
-Status: v1.2 shipped, ready for next milestone
-Last activity: 2026-01-18 — v1.2 milestone archived
+Phase: Not started (run /gsd:define-requirements → /gsd:create-roadmap)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-01-18 — v1.3 milestone started
 
-Progress: ██████████ 100% v1.2
+Progress: ░░░░░░░░░░ 0% v1.3
 
 ## Milestone History
 
@@ -38,12 +38,11 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: v1.2 milestone complete
+Stopped at: v1.3 milestone started
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:discuss-milestone` to figure out what to build in v1.3
-2. Then `/gsd:new-milestone` to update PROJECT.md with new goals
-3. Then `/gsd:define-requirements` to scope the next milestone
-4. Then `/gsd:create-roadmap` to plan phases
+1. Run `/gsd:define-requirements` to scope v1.3 requirements
+2. Then `/gsd:create-roadmap` to plan phases
+3. Then `/gsd:plan-phase 18` for first phase

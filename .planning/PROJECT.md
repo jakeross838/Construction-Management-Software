@@ -6,6 +6,14 @@ Construction management software for Ross Built Custom Homes. Manages the full l
 
 **Last Milestone:** v1.2 - Gap Fixes (shipped 2026-01-18)
 
+## Current Milestone: v1.3 Refinement
+
+**Goal:** Improve invoice processing accuracy and add comprehensive reporting capabilities.
+
+**Target features:**
+- Invoice AI improvements (extraction accuracy, PO/job matching, approval workflow)
+- Reporting suite (financial summaries, Excel exports, PDF reports)
+
 ## Core Value
 
 **Streamline construction financial workflows** - from receiving vendor bids through final payment, with AI-powered invoice processing and AIA G702/G703 pay application generation.
@@ -29,14 +37,12 @@ Shipped v1.2 with ~99,000 lines of JavaScript across 76+ files.
 - Dashboard Alerts - Inspections, budget overruns, approvals, punch items (v1.1)
 - Mobile Responsive - Hamburger menu, scrollable tables, full-screen modals (v1.1)
 - Global Search - Cmd/Ctrl+K across jobs, vendors, invoices, POs (v1.1)
-- **Error Handling** - Consistent API responses, request validation (v1.2)
-- **Jobs** - Full CRUD, soft delete, audit logging, profile metrics (v1.2)
-- **Vendors** - Soft delete, documents, duplicate detection, merge (v1.2)
-- **Budgets** - Chart visualizations, variance alerts, spend forecasting (v1.2)
-- **Schedules** - Drag-and-drop Gantt, critical path highlighting (v1.2)
-- **Documents** - Version tracking, history UI, rollback, comparison (v1.2)
-
-**Gap Fixes Complete** - All v1.2 requirements shipped.
+- Error Handling - Consistent API responses, request validation (v1.2)
+- Jobs - Full CRUD, soft delete, audit logging, profile metrics (v1.2)
+- Vendors - Soft delete, documents, duplicate detection, merge (v1.2)
+- Budgets - Chart visualizations, variance alerts, spend forecasting (v1.2)
+- Schedules - Drag-and-drop Gantt, critical path highlighting (v1.2)
+- Documents - Version tracking, history UI, rollback, comparison (v1.2)
 
 ## Tech Stack
 
@@ -64,7 +70,7 @@ Shipped v1.2 with ~99,000 lines of JavaScript across 76+ files.
 2. **Dark theme only** - Use CSS variables, no hardcoded colors
 3. **Existing patterns** - Follow conventions in CLAUDE.md
 4. **Supabase** - All data through Supabase client
-5. **Migration numbering** - Continue from migration-049
+5. **Migration numbering** - Continue from migration-050
 
 ## Requirements
 
@@ -88,9 +94,17 @@ Shipped v1.2 with ~99,000 lines of JavaScript across 76+ files.
 - ✓ INS-01 to INS-04 — v1.0 (inspections)
 - ✓ PUN-01 to PUN-06 — v1.0 (punch lists)
 
-### Active (Next Milestone)
+### Active (v1.3 Refinement)
 
-TBD - run `/gsd:discuss-milestone` to define v1.3 scope
+**Invoice AI Improvements:**
+- [ ] INV-AI-01: Improve extraction accuracy for amounts, dates, and vendor names
+- [ ] INV-AI-02: Smarter auto-matching to POs and jobs with better confidence scoring
+- [ ] INV-AI-03: Streamline approval workflow to reduce clicks and confusion
+
+**Reporting Suite:**
+- [ ] RPT-01: Financial summaries (job cost reports, spend by vendor, spend by category)
+- [ ] RPT-02: Custom Excel exports (export any data view to Excel)
+- [ ] RPT-03: PDF reports (printable professional reports for clients/owners)
 
 ### Out of Scope
 
@@ -122,4 +136,4 @@ TBD - run `/gsd:discuss-milestone` to define v1.3 scope
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-18 after v1.2 milestone*
+*Last updated: 2026-01-18 — v1.3 Refinement milestone started*
