@@ -81,13 +81,11 @@
           </div>
         </div>
 
-        <!-- Action Items -->
+        <!-- Alert Cards -->
         <div class="dashboard-section">
-          <h2>Action Items</h2>
-          <div class="action-items" id="actionItems">
-            <div class="empty-state">
-              <p>Loading action items...</p>
-            </div>
+          <h2>Needs Attention</h2>
+          <div class="alert-cards" id="alertCards">
+            <div class="empty-state"><p>Loading alerts...</p></div>
           </div>
         </div>
 
@@ -274,6 +272,65 @@
       padding: 2rem;
       color: var(--muted-foreground);
     }
+
+    .alert-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .alert-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      cursor: pointer;
+      transition: var(--transition);
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .alert-card:hover {
+      border-color: var(--accent-blue);
+      background: var(--accent);
+    }
+
+    .alert-card.warning {
+      border-left: 3px solid var(--accent-orange);
+    }
+
+    .alert-card.danger {
+      border-left: 3px solid var(--accent-red);
+    }
+
+    .alert-card.info {
+      border-left: 3px solid var(--accent-blue);
+    }
+
+    .alert-card-icon {
+      font-size: 1.5rem;
+    }
+
+    .alert-card-content {
+      flex: 1;
+    }
+
+    .alert-card-count {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .alert-card-label {
+      font-size: 0.875rem;
+      color: var(--muted-foreground);
+    }
+
+    .activity-icon {
+      margin-right: 0.25rem;
+    }
   </style>
 
   <script src="js/toasts.js"></script>
@@ -296,13 +353,13 @@
         const expiring = await vendorsRes.json();
 
         // Update stat cards
-        document.getElementById('pendingInvoices').textContent = stats.needs_approval || 0;
-        document.getElementById('approvedAmount').textContent = formatMoney(stats.approved_amount || 0);
+        document.getElementById('pendingInvoices').textContent = stats.invoices?.needs_approval?.count || 0;
+        document.getElementById('approvedAmount').textContent = formatMoney(stats.invoices?.approved?.amount || 0);
         document.getElementById('openPOs').textContent = posStats.total_count || 0;
         document.getElementById('expiringVendors').textContent = expiring.length || 0;
 
-        // Load action items
-        loadActionItems(stats, expiring);
+        // Load alerts
+        loadAlerts();
 
         // Load activity
         loadActivity();
@@ -312,72 +369,127 @@
       }
     }
 
-    function loadActionItems(stats, expiring) {
-      const container = document.getElementById('actionItems');
-      const items = [];
+    async function loadAlerts() {
+      const container = document.getElementById('alertCards');
+      try {
+        const res = await fetch('/api/dashboard/alerts');
+        const alerts = await res.json();
 
-      if (stats.needs_approval > 0) {
-        items.push({
-          icon: '📄',
-          iconBg: 'rgba(59, 130, 246, 0.15)',
-          title: `${stats.needs_approval} invoice${stats.needs_approval > 1 ? 's' : ''} need approval`,
-          subtitle: 'Review and approve pending invoices',
-          href: 'index.html?status=needs_approval'
-        });
+        const cards = [];
+
+        // Upcoming inspections
+        if (alerts.inspections?.count > 0) {
+          cards.push({
+            icon: '🔍',
+            count: alerts.inspections.count,
+            label: 'Upcoming Inspections',
+            type: 'info',
+            href: 'inspections.html?filter=scheduled'
+          });
+        }
+
+        // Budget overruns
+        if (alerts.budgetOverruns?.count > 0) {
+          cards.push({
+            icon: '💰',
+            count: alerts.budgetOverruns.count,
+            label: 'Budget Overruns',
+            type: 'danger',
+            href: 'budgets.html'
+          });
+        }
+
+        // Pending approvals
+        const pendingTotal = (alerts.pendingApprovals?.invoices || 0) + (alerts.pendingApprovals?.pos || 0);
+        if (pendingTotal > 0) {
+          cards.push({
+            icon: '✅',
+            count: pendingTotal,
+            label: 'Pending Approvals',
+            type: 'warning',
+            href: 'index.html?status=needs_approval'
+          });
+        }
+
+        // Open punch items
+        if (alerts.punchItems?.count > 0) {
+          cards.push({
+            icon: '📝',
+            count: alerts.punchItems.count,
+            label: 'Open Punch Items',
+            type: 'warning',
+            href: 'punch-lists.html'
+          });
+        }
+
+        // Overdue inspections
+        if (alerts.overdueInspections?.count > 0) {
+          cards.push({
+            icon: '⚠️',
+            count: alerts.overdueInspections.count,
+            label: 'Overdue Inspections',
+            type: 'danger',
+            href: 'inspections.html?filter=overdue'
+          });
+        }
+
+        if (cards.length === 0) {
+          container.innerHTML = '<div class="empty-state"><p>No items need attention - you\'re all caught up!</p></div>';
+          return;
+        }
+
+        container.innerHTML = cards.map(card => `
+          <a href="${card.href}" class="alert-card ${card.type}">
+            <div class="alert-card-icon">${card.icon}</div>
+            <div class="alert-card-content">
+              <div class="alert-card-count">${card.count}</div>
+              <div class="alert-card-label">${card.label}</div>
+            </div>
+          </a>
+        `).join('');
+      } catch (err) {
+        console.error('Failed to load alerts:', err);
+        container.innerHTML = '<div class="empty-state"><p>Failed to load alerts</p></div>';
       }
-
-      if (expiring.length > 0) {
-        items.push({
-          icon: '⚠️',
-          iconBg: 'rgba(245, 158, 11, 0.15)',
-          title: `${expiring.length} vendor${expiring.length > 1 ? 's' : ''} with expiring documents`,
-          subtitle: 'Insurance or licenses expiring within 30 days',
-          href: 'vendors.html'
-        });
-      }
-
-      if (items.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>No action items - you\'re all caught up!</p></div>';
-        return;
-      }
-
-      container.innerHTML = items.map(item => `
-        <a href="${item.href}" class="action-item">
-          <div class="action-item-icon" style="background: ${item.iconBg}">${item.icon}</div>
-          <div class="action-item-content">
-            <div class="action-item-title">${item.title}</div>
-            <div class="action-item-subtitle">${item.subtitle}</div>
-          </div>
-        </a>
-      `).join('');
     }
 
     async function loadActivity() {
       const container = document.getElementById('activityFeed');
-
       try {
-        const res = await fetch('/api/invoices?limit=5');
-        const invoices = await res.json();
+        const res = await fetch('/api/dashboard/activity?limit=10');
+        const activities = await res.json();
 
-        if (!invoices || invoices.length === 0) {
+        if (!activities || activities.length === 0) {
           container.innerHTML = '<div class="empty-state"><p>No recent activity</p></div>';
           return;
         }
 
-        container.innerHTML = invoices.slice(0, 5).map(inv => `
+        container.innerHTML = activities.map(act => `
           <div class="activity-item">
-            <div class="activity-dot"></div>
+            <div class="activity-dot" style="background: ${getActivityColor(act.type)}"></div>
             <div class="activity-content">
               <div class="activity-text">
-                Invoice <strong>#${inv.invoice_number || 'N/A'}</strong> from ${inv.vendor?.name || 'Unknown'} - ${formatMoney(inv.amount)}
+                <span class="activity-icon">${act.icon}</span>
+                ${act.text}
               </div>
-              <div class="activity-time">${formatDate(inv.created_at)}</div>
+              <div class="activity-time">${formatDate(act.timestamp)}</div>
             </div>
           </div>
         `).join('');
       } catch (err) {
+        console.error('Failed to load activity:', err);
         container.innerHTML = '<div class="empty-state"><p>Failed to load activity</p></div>';
       }
+    }
+
+    function getActivityColor(type) {
+      const colors = {
+        invoice: 'var(--accent-blue)',
+        po: 'var(--accent-green)',
+        inspection: '#a855f7',
+        punch: 'var(--accent-orange)'
+      };
+      return colors[type] || 'var(--accent-blue)';
     }
 
     function formatMoney(amount) {
