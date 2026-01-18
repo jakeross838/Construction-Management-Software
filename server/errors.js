@@ -310,6 +310,49 @@ function asyncHandler(fn) {
   };
 }
 
+/**
+ * Validate request body/params against a schema
+ * @param {Object} schema - { body?: {...}, params?: {...} }
+ * Returns middleware that validates and throws AppError on failure
+ */
+function validateRequest(schema) {
+  return (req, res, next) => {
+    const errors = [];
+
+    if (schema.body) {
+      for (const [field, rules] of Object.entries(schema.body)) {
+        const value = req.body?.[field];
+        if (rules.required && (value === undefined || value === null || value === '')) {
+          errors.push({ field, message: `${field} is required` });
+        }
+        if (rules.type === 'uuid' && value && !/^[0-9a-f-]{36}$/i.test(value)) {
+          errors.push({ field, message: `${field} must be a valid UUID` });
+        }
+        if (rules.type === 'number' && value !== undefined && isNaN(Number(value))) {
+          errors.push({ field, message: `${field} must be a number` });
+        }
+      }
+    }
+
+    if (schema.params) {
+      for (const [field, rules] of Object.entries(schema.params)) {
+        const value = req.params?.[field];
+        if (rules.required && !value) {
+          errors.push({ field, message: `${field} param is required` });
+        }
+        if (rules.type === 'uuid' && value && !/^[0-9a-f-]{36}$/i.test(value)) {
+          errors.push({ field, message: `${field} must be a valid UUID` });
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new AppError('VALIDATION_FAILED', 'Request validation failed', { fields: errors });
+    }
+    next();
+  };
+}
+
 module.exports = {
   AppError,
   ERROR_CODES,
@@ -320,5 +363,6 @@ module.exports = {
   versionConflictError,
   notFoundError,
   errorMiddleware,
-  asyncHandler
+  asyncHandler,
+  validateRequest
 };
