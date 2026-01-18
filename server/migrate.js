@@ -64,21 +64,87 @@ function getMigrationFiles() {
   return files;
 }
 
+/**
+ * Split SQL into statements, properly handling:
+ * - Single-quoted strings ('text')
+ * - Dollar-quoted strings ($$...$$, $tag$...$tag$)
+ * - Comments (-- line comments)
+ */
+function splitSqlStatements(sql) {
+  const statements = [];
+  let current = '';
+  let inSingleQuote = false;
+  let inDollarQuote = false;
+  let dollarTag = '';
+
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    const nextChar = sql[i + 1] || '';
+
+    // Check for dollar-quote start/end
+    if (char === '$' && !inSingleQuote) {
+      // Look for dollar-quote tag like $$ or $tag$
+      let j = i + 1;
+      while (j < sql.length && sql[j] !== '$' && /[a-zA-Z0-9_]/.test(sql[j])) {
+        j++;
+      }
+      if (sql[j] === '$') {
+        const tag = sql.slice(i, j + 1);
+        if (!inDollarQuote) {
+          inDollarQuote = true;
+          dollarTag = tag;
+        } else if (tag === dollarTag) {
+          inDollarQuote = false;
+          dollarTag = '';
+        }
+        current += sql.slice(i, j + 1);
+        i = j;
+        continue;
+      }
+    }
+
+    // Check for single quote (but not escaped)
+    if (char === "'" && !inDollarQuote) {
+      // Check if it's escaped (doubled single quote)
+      if (nextChar === "'") {
+        current += "''";
+        i++;
+        continue;
+      }
+      inSingleQuote = !inSingleQuote;
+    }
+
+    // Check for semicolon (statement end)
+    if (char === ';' && !inSingleQuote && !inDollarQuote) {
+      const trimmed = current.trim();
+      // Skip empty statements and comment-only statements
+      const withoutComments = trimmed.replace(/--.*$/gm, '').trim();
+      if (withoutComments.length > 0) {
+        statements.push(trimmed);
+      }
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  // Handle any remaining content
+  const trimmed = current.trim();
+  const withoutComments = trimmed.replace(/--.*$/gm, '').trim();
+  if (withoutComments.length > 0) {
+    statements.push(trimmed);
+  }
+
+  return statements;
+}
+
 async function runMigration(filename) {
   const filepath = path.join(MIGRATIONS_DIR, filename);
   const sql = fs.readFileSync(filepath, 'utf8');
 
-  // Split by semicolons but be careful with strings
-  const statements = sql
-    .split(/;(?=(?:[^']*'[^']*')*[^']*$)/)
-    .map(s => s.trim())
-    .filter(s => {
-      // Remove empty statements
-      if (s.length === 0) return false;
-      // Remove statements that are ONLY comments
-      const withoutComments = s.replace(/--.*$/gm, '').trim();
-      return withoutComments.length > 0;
-    });
+  // Split by semicolons, handling both single quotes and dollar-quoted strings
+  const statements = splitSqlStatements(sql);
 
   console.log(`  Running ${statements.length} statements...`);
 

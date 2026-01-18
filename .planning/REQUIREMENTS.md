@@ -75,10 +75,10 @@ Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PRC-01 | Phase 25, 28 | Backend Complete |
-| PRC-02 | Phase 26, 28 | Backend Complete |
-| PRC-03 | Phase 27, 28 | Backend Complete |
-| PRC-04 | Phase 27, 28 | Backend Complete |
+| PRC-01 | Phase 25, 28 | Complete |
+| PRC-02 | Phase 26, 28 | Complete |
+| PRC-03 | Phase 27, 28 | Complete |
+| PRC-04 | Phase 27, 28 | Complete |
 | PRC-05 | Phase 29 | Pending |
 
 **Coverage:**
