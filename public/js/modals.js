@@ -2954,16 +2954,26 @@ const Modals = {
       // Partial approval requires a note
       this.showPartialApprovalDialog(totalAllocated, invoiceAmount);
     } else {
-      console.log('[APPROVE] Showing regular confirm dialog');
-      this.showConfirmDialog({
-        title: 'Approve Invoice',
-        message: `Approve invoice #${this.currentInvoice?.invoice_number || 'N/A'} for ${window.Validation?.formatCurrency(this.currentInvoice?.amount)}?`,
-        confirmText: 'Approve',
-        type: 'info',
-        onConfirm: async () => {
-          await this.saveWithStatus('approved', 'Invoice approved');
-        }
-      });
+      // Check if high-confidence - skip confirmation
+      const confidence = this.currentInvoice?.ai_confidence?.overall || 0;
+      const isHighConfidence = confidence >= 0.95;
+
+      if (isHighConfidence && !this.currentInvoice?.needs_review) {
+        // Direct approve for high-confidence, no review flags
+        console.log('[APPROVE] High confidence - direct approve');
+        await this.saveWithStatus('approved', 'Invoice approved');
+      } else {
+        console.log('[APPROVE] Showing regular confirm dialog');
+        this.showConfirmDialog({
+          title: 'Approve Invoice',
+          message: `Approve invoice #${this.currentInvoice?.invoice_number || 'N/A'} for ${window.Validation?.formatCurrency(this.currentInvoice?.amount)}?`,
+          confirmText: 'Approve',
+          type: 'info',
+          onConfirm: async () => {
+            await this.saveWithStatus('approved', 'Invoice approved');
+          }
+        });
+      }
     }
   },
 
