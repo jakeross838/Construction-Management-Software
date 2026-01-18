@@ -4352,11 +4352,7 @@ label.required::after,
   border-color: var(--border);
 }
 
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
+/* REMOVED: Duplicate .form-row - see FORM LAYOUTS section (line ~2292) */
 
 /* ============================================================
    FIELD ERROR STYLING - Unified error display patterns
@@ -7671,7 +7667,7 @@ label .ai-indicator {
 }
 
 #createCOModal .required {
-  color: var(--danger);
+  color: var(--destructive);
 }
 
 #createCOModal .form-control {
@@ -9645,7 +9641,7 @@ label .ai-indicator {
 
 .form-group.required label::after {
   content: ' *';
-  color: #ef4444;
+  color: var(--destructive);
 }
 
 .form-group label {
@@ -11294,14 +11290,7 @@ textarea.form-control {
   letter-spacing: 0.03em;
 }
 
-.form-row {
-  display: flex;
-  gap: 1rem;
-}
-
-.form-row .flex-1 {
-  flex: 1;
-}
+/* REMOVED: Duplicate .form-row and .form-row .flex-1 - see FORM LAYOUTS section (line ~2292) */
 
 /* ============================================================
    LOADING & EMPTY STATES
@@ -14904,7 +14893,7 @@ textarea.form-control {
 }
 
 .line-item-co-picker .co-picker-label .required {
-  color: #ef4444;
+  color: var(--destructive);
 }
 
 .line-item-co-picker .co-select {
