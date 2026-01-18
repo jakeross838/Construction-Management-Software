@@ -8,7 +8,8 @@
   'use strict';
 
   // Navigation structure - groups with sub-items
-  // Flow: Dashboard → Job Profile → Preconstruction → Commitments → Operations → Billing → Admin
+  // Flow: Dashboard → Job Profile → Preconstruction → Financial → Operations → Admin
+  // Organized to follow construction project workflow
   const navGroups = [
     {
       id: 'dashboard',
@@ -26,17 +27,22 @@
       id: 'preconstruction',
       label: 'Preconstruction',
       items: [
-        { id: 'bids', label: 'Bids', href: 'bids.html', badge: 'Soon' },
-        { id: 'estimates', label: 'Estimates', href: 'estimates.html', badge: 'Soon' }
+        { id: 'bids', label: 'Bids', href: 'bids.html' },
+        { id: 'estimates', label: 'Estimates', href: 'estimates.html' },
+        { id: 'budget-builder', label: 'Budget Builder', href: 'budget-builder.html' }
       ]
     },
     {
-      id: 'commitments',
-      label: 'Commitments',
+      id: 'financial',
+      label: 'Financial',
       items: [
+        { id: 'budget', label: 'Budget', href: 'budgets.html' },
         { id: 'pos', label: 'Purchase Orders', href: 'pos.html' },
         { id: 'cos', label: 'Change Orders', href: 'change-orders.html' },
-        { id: 'budget', label: 'Budget', href: 'budgets.html' }
+        { id: 'invoices', label: 'Invoices', href: 'index.html' },
+        { id: 'draws', label: 'Draws', href: 'draws.html' },
+        { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' },
+        { id: 'price-intel', label: 'Price Intelligence', href: 'price-intelligence.html' }
       ]
     },
     {
@@ -45,19 +51,10 @@
       items: [
         { id: 'schedule', label: 'Schedule', href: 'schedule.html' },
         { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' },
-        { id: 'documents', label: 'Documents', href: 'documents.html' },
-        { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' },
+        { id: 'inspections', label: 'Inspections', href: 'inspections.html' },
         { id: 'photos', label: 'Photos', href: 'photos.html' },
-        { id: 'inspections', label: 'Inspections', href: 'inspections.html' }
-      ]
-    },
-    {
-      id: 'billing',
-      label: 'Billing',
-      items: [
-        { id: 'invoices', label: 'Invoices', href: 'index.html' },
-        { id: 'draws', label: 'Draws', href: 'draws.html' },
-        { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' }
+        { id: 'documents', label: 'Documents', href: 'documents.html' },
+        { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' }
       ]
     },
     {
@@ -88,7 +85,7 @@
         }
       }
     }
-    return { groupId: 'financial', itemId: 'invoices' }; // Default
+    return { groupId: 'dashboard', itemId: 'dashboard' }; // Default to Dashboard
   }
 
   // Create the navigation HTML

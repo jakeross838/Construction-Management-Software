@@ -100,7 +100,7 @@ Plans:
 ### Phase 7: Bids
 **Goal**: Users can collect vendor bids, compare them, and convert to POs
 **Requirements**: BID-01, BID-02, BID-03, BID-04, BID-05
-**Status**: Not started
+**Status**: COMPLETE
 **Success Criteria:**
   1. User can create a bid request linked to a job
   2. User can upload bid documents from vendors
@@ -109,8 +109,8 @@ Plans:
   5. User can convert an accepted bid to a Purchase Order
 
 Plans:
-- [ ] 07-01: Database schema and API routes
-- [ ] 07-02: Frontend page and modals
+- [x] 07-01: Database schema and API routes (COMPLETE)
+- [x] 07-02: Frontend page and modals (COMPLETE)
 
 ---
 
@@ -118,7 +118,7 @@ Plans:
 **Goal**: Users can create cost estimates and convert to budgets
 **Depends on**: Phase 7 (import from bids)
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05
-**Status**: Not started
+**Status**: COMPLETE
 **Success Criteria:**
   1. User can create an estimate for a job
   2. User can add line items by cost code
@@ -127,8 +127,7 @@ Plans:
   5. User can convert approved estimate to job budget
 
 Plans:
-- [ ] 08-01: Database schema and API routes
-- [ ] 08-02: Frontend page with line item editing
+- [x] 08-01: Database schema, API routes, and frontend (COMPLETE - discovered pre-implemented)
 
 ---
 
@@ -194,8 +193,8 @@ Option B (New features first): 7-9 → 1-6 → 10-11
 | 4 | Budget Enhancements | 0/1 | Not started | P2 |
 | 5 | Schedule Improvements | 0/1 | Not started | P2 |
 | 6 | Document Versioning | 0/1 | Not started | P2 |
-| 7 | Bids | 0/2 | Not started | **P0** |
-| 8 | Estimates | 0/2 | Not started | **P0** |
+| 7 | Bids | 2/2 | **COMPLETE** | **P0** |
+| 8 | Estimates | 1/1 | **COMPLETE** | **P0** |
 | 9 | Photos | 0/2 | Not started | **P0** |
 | 10 | Dashboard | 0/1 | Not started | P2 |
 | 11 | UX Polish | 0/2 | Not started | P2 |

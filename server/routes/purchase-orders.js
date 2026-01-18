@@ -111,6 +111,69 @@ router.get('/stats', asyncHandler(async (req, res) => {
   res.json(stats);
 }));
 
+// Price check for PO line items (must be before /:id route)
+// Compares proposed prices against current best prices in the database
+router.post('/price-check', asyncHandler(async (req, res) => {
+  const { vendor_id, items } = req.body;
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.json({ warnings: [] });
+  }
+
+  const priceMatcher = require('../price-matcher');
+  const warnings = [];
+
+  for (const item of items) {
+    const { description, quantity, unit_price } = item;
+    if (!description || unit_price === undefined) continue;
+
+    // Try to match to a master item
+    const match = await priceMatcher.findMasterItem(description, vendor_id);
+
+    if (match.masterItem) {
+      // Get price comparison
+      const comparison = await priceMatcher.compareVendorPrices(match.masterItem.id);
+
+      if (comparison.bestVendor && comparison.prices.length > 0) {
+        const bestPrice = comparison.bestVendor.unit_price;
+        const proposedPrice = parseFloat(unit_price);
+
+        // Check if proposed price is more than 10% higher than best available
+        if (proposedPrice > bestPrice * 1.1) {
+          const savings = (proposedPrice - bestPrice) * (quantity || 1);
+          const betterOptions = comparison.prices
+            .filter(p => p.unit_price < proposedPrice)
+            .slice(0, 3)
+            .map(p => ({
+              vendor_name: p.vendor_name,
+              unit_price: p.unit_price,
+              savings_per_unit: proposedPrice - p.unit_price,
+              lead_days: p.lead_days
+            }));
+
+          warnings.push({
+            item: description,
+            master_item: match.masterItem.standard_name,
+            proposed_price: proposedPrice,
+            best_price: bestPrice,
+            best_vendor: comparison.bestVendor.vendor_name,
+            potential_savings: savings,
+            percent_higher: ((proposedPrice - bestPrice) / bestPrice * 100).toFixed(1),
+            better_options: betterOptions,
+            match_confidence: match.confidence
+          });
+        }
+      }
+    }
+  }
+
+  res.json({
+    warnings,
+    items_checked: items.length,
+    warnings_count: warnings.length
+  });
+}));
+
 // Get single purchase order
 router.get('/:id', async (req, res) => {
   try {
@@ -795,7 +858,7 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
 // Complete PO (mark as completed/closed)
 router.post('/:id/complete', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { completed_by } = req.body;
+  const { completed_by, force } = req.body;
 
   const { data: po, error: fetchError } = await supabase
     .from('v2_purchase_orders')
@@ -810,6 +873,29 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
 
   if (!['approved', 'active', 'sent'].includes(po.status_detail) && po.approval_status !== 'approved') {
     throw new AppError('VALIDATION_FAILED', 'Only sent or approved POs can be completed');
+  }
+
+  // Check for unverified punch list items (unless force is true)
+  if (!force) {
+    const { data: punchLists } = await supabase
+      .from('v2_punch_lists')
+      .select('id')
+      .eq('po_id', id)
+      .is('deleted_at', null);
+
+    if (punchLists && punchLists.length > 0) {
+      const punchListIds = punchLists.map(pl => pl.id);
+      const { data: unverifiedItems } = await supabase
+        .from('v2_punch_list_items')
+        .select('id, status')
+        .in('punch_list_id', punchListIds)
+        .neq('status', 'verified');
+
+      if (unverifiedItems && unverifiedItems.length > 0) {
+        throw new AppError('PUNCH_ITEMS_BLOCKING',
+          `Cannot complete: ${unverifiedItems.length} punch list item(s) not verified.`);
+      }
+    }
   }
 
   const { data: updated, error } = await supabase
@@ -1249,6 +1335,95 @@ router.get('/:id/pdf', asyncHandler(async (req, res) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${po.po_number || 'PO'}.pdf"`);
   res.send(Buffer.from(pdfBytes));
+}));
+
+// ============================================================
+// PUNCH LIST STATUS
+// ============================================================
+
+// Get punch list status for a PO
+router.get('/:id/punch-status', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get PO
+  const { data: po, error: poError } = await supabase
+    .from('v2_purchase_orders')
+    .select('id, total_amount')
+    .eq('id', id)
+    .single();
+
+  if (poError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Get punch lists for this PO
+  const { data: punchLists } = await supabase
+    .from('v2_punch_lists')
+    .select(`
+      id, title, status,
+      items:v2_punch_list_items(id, status, priority)
+    `)
+    .eq('po_id', id)
+    .is('deleted_at', null);
+
+  // Calculate stats
+  const stats = {
+    po_id: id,
+    total_amount: parseFloat(po.total_amount) || 0,
+    punch_lists: (punchLists || []).length,
+    items: {
+      total: 0,
+      open: 0,
+      in_progress: 0,
+      resolved: 0,
+      verified: 0
+    },
+    can_complete: false
+  };
+
+  // Count items
+  for (const list of (punchLists || [])) {
+    const items = list.items || [];
+    stats.items.total += items.length;
+    for (const item of items) {
+      stats.items[item.status] = (stats.items[item.status] || 0) + 1;
+    }
+  }
+
+  // Check if PO can be completed (all items verified)
+  const unverified = stats.items.total - stats.items.verified;
+  stats.can_complete = unverified === 0;
+  stats.blocking_items = unverified;
+
+  res.json(stats);
+}));
+
+// Get punch lists for a PO
+router.get('/:id/punch-lists', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_punch_lists')
+    .select(`
+      *,
+      vendor:v2_vendors(id, name),
+      items:v2_punch_list_items(id, status, priority, description)
+    `)
+    .eq('po_id', id)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Add item counts
+  const result = (data || []).map(list => ({
+    ...list,
+    item_count: (list.items || []).length,
+    open_items: (list.items || []).filter(i => i.status === 'open').length,
+    verified_items: (list.items || []).filter(i => i.status === 'verified').length
+  }));
+
+  res.json(result);
 }));
 
 module.exports = router;

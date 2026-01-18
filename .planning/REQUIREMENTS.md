@@ -509,39 +509,41 @@ Comprehensive requirements for the construction management system with granular 
 
 ---
 
-## 14. Estimates (NOT IMPLEMENTED)
+## 14. Estimates
 
 ### EST-01: Estimate CRUD
-**Status:** Not Started
-- [ ] Create estimate linked to job
-- [ ] Update estimate
-- [ ] Delete estimate
-- [ ] List estimates
+**Status:** Complete
+- [x] Create estimate linked to job
+- [x] Update estimate
+- [x] Delete estimate (soft delete)
+- [x] List estimates with filters
 
 ### EST-02: Estimate Line Items
-**Status:** Not Started
-- [ ] Add line items by cost code
-- [ ] Quantity, unit cost, total
-- [ ] Subtotals by category
-- [ ] Grand total calculation
+**Status:** Complete
+- [x] Add line items by cost code
+- [x] Quantity, unit cost, total
+- [x] Subtotals by category
+- [x] Grand total calculation
+- [x] Assembly groupings
+- [x] Line item reordering
 
 ### EST-03: Import from Bids
-**Status:** Not Started
-- [ ] Import accepted bid amounts
-- [ ] Map to cost codes
-- [ ] Bulk import
+**Status:** Complete
+- [x] Import accepted bid amounts
+- [x] Map to cost codes
+- [x] Bulk import via /import-from-bid route
 
 ### EST-04: Estimate Versions
-**Status:** Not Started
-- [ ] Version control (v1, v2, etc.)
-- [ ] Version comparison
-- [ ] Version notes
+**Status:** Complete
+- [x] Version control (v1, v2, etc.)
+- [x] Version comparison via parent_estimate_id
+- [x] Version notes
 
 ### EST-05: Convert to Budget
-**Status:** Not Started
-- [ ] Convert approved estimate to budget
-- [ ] Create budget lines from estimate
-- [ ] Link budget to source estimate
+**Status:** Complete
+- [x] Convert approved estimate to budget
+- [x] Create budget lines from estimate
+- [x] Link budget to source estimate (source_estimate_id)
 
 ---
 
@@ -639,14 +641,14 @@ Comprehensive requirements for the construction management system with granular 
 | DOC-01 to DOC-03 | 9 | P0 | 80% |
 | INS-01 to INS-04 | 10 | P0 | 100% |
 | PUN-01 to PUN-06 | 11 | P0 | 100% |
-| BID-01 to BID-05 | 12 | P1 | 0% |
-| EST-01 to EST-05 | 13 | P1 | 0% |
+| BID-01 to BID-05 | 12 | P0 | 100% |
+| EST-01 to EST-05 | 13 | P0 | 100% |
 | PHO-01 to PHO-04 | 14 | P1 | 0% |
 | DASH-01 to DASH-02 | 15 | P2 | 30% |
 | UX-01 to UX-03 | 16 | P2 | 50% |
 
 **Summary:**
-- Fully Complete: Invoices, POs, Draws, Daily Logs, Inspections, Punch Lists
+- Fully Complete: Invoices, POs, Draws, Daily Logs, Inspections, Punch Lists, Bids, Estimates
 - Mostly Complete: Foundation, Schedules, Documents, Budgets
 - Needs Work: Jobs, Vendors, Dashboard, UX
-- Not Started: Bids, Estimates, Photos
+- Not Started: Photos

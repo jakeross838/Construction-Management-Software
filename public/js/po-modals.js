@@ -10,8 +10,99 @@ class POModals {
     this.changeOrders = [];
     this.jobChangeOrders = []; // Job-level COs for linking to line items
     this.pendingFiles = []; // Files to upload after saving new PO
+    this.punchLists = []; // Punch lists linked to this PO
+    this.punchStatus = null; // Punch list status info
     this.isEditing = false;
     this.selectedChangeOrderId = null; // PO-level CO link
+    this.priceWarnings = []; // Price warnings from price intelligence
+    this.priceWarningsDismissed = false; // If user dismissed price warnings
+  }
+
+  // Check price warnings for line items
+  async checkPriceWarnings() {
+    const vendorId = this.selectedVendorId || this.currentPO?.vendor_id;
+    if (!vendorId || this.currentLineItems.length === 0) {
+      this.priceWarnings = [];
+      return;
+    }
+
+    try {
+      const items = this.currentLineItems
+        .filter(li => li.title || li.description)
+        .map(li => ({
+          description: li.title || li.description,
+          quantity: 1,
+          unit_price: parseFloat(li.amount || 0)
+        }));
+
+      if (items.length === 0) {
+        this.priceWarnings = [];
+        return;
+      }
+
+      const res = await fetch('/api/purchase-orders/price-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendor_id: vendorId, items })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        this.priceWarnings = data.warnings || [];
+      } else {
+        this.priceWarnings = [];
+      }
+    } catch (err) {
+      console.error('Failed to check prices:', err);
+      this.priceWarnings = [];
+    }
+  }
+
+  // Render price warnings banner
+  renderPriceWarnings() {
+    const container = document.getElementById('priceWarningsContainer');
+    if (!container) return;
+
+    if (this.priceWarnings.length === 0 || this.priceWarningsDismissed) {
+      container.style.display = 'none';
+      return;
+    }
+
+    const totalSavings = this.priceWarnings.reduce((sum, w) => sum + (w.potential_savings || 0), 0);
+
+    container.innerHTML = `
+      <div class="price-warning-banner">
+        <div class="price-warning-header">
+          <span class="price-warning-icon">&#9888;</span>
+          <strong>Better Pricing Available</strong>
+          <span class="price-warning-total">Potential savings: ${this.formatMoney(totalSavings)}</span>
+          <button class="price-warning-dismiss" onclick="window.poModals.dismissPriceWarnings()">&times;</button>
+        </div>
+        <div class="price-warning-items">
+          ${this.priceWarnings.map(w => `
+            <div class="price-warning-item">
+              <div class="price-warning-item-name">${this.escapeHtml(w.item)}</div>
+              <div class="price-warning-item-detail">
+                Your price: ${this.formatMoney(w.proposed_price)} |
+                Best: ${this.formatMoney(w.best_price)} at ${this.escapeHtml(w.best_vendor)}
+                (${w.percent_higher}% higher)
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="price-warning-actions">
+          <a href="price-intelligence.html" target="_blank" class="btn btn-sm btn-secondary">View Price Database</a>
+          <button class="btn btn-sm btn-primary" onclick="window.poModals.dismissPriceWarnings()">Continue Anyway</button>
+        </div>
+      </div>
+    `;
+    container.style.display = 'block';
+  }
+
+  dismissPriceWarnings() {
+    this.priceWarningsDismissed = true;
+    const container = document.getElementById('priceWarningsContainer');
+    if (container) container.style.display = 'none';
   }
 
   // Check if a cost code is a CO cost code (ends with 'C')
@@ -110,6 +201,8 @@ class POModals {
     this.changeOrders = [];
     this.jobChangeOrders = [];
     this.pendingFiles = [];
+    this.punchLists = [];
+    this.punchStatus = null;
     this.isEditing = false;
     this.selectedChangeOrderId = null;
   }
@@ -129,22 +222,28 @@ class POModals {
       this.currentPO = await res.json();
       this.currentLineItems = this.currentPO.line_items || [];
 
-      const [invRes, actRes, attRes, coRes] = await Promise.all([
+      const [invRes, actRes, attRes, coRes, plRes, psRes] = await Promise.all([
         fetch(`/api/purchase-orders/${poId}/invoices`),
         fetch(`/api/purchase-orders/${poId}/activity`),
         fetch(`/api/purchase-orders/${poId}/attachments`),
-        fetch(`/api/purchase-orders/${poId}/change-orders`)
+        fetch(`/api/purchase-orders/${poId}/change-orders`),
+        fetch(`/api/purchase-orders/${poId}/punch-lists`),
+        fetch(`/api/purchase-orders/${poId}/punch-status`)
       ]);
 
       const invoicesData = await invRes.json();
       const activityData = await actRes.json();
       const attachmentsData = await attRes.json();
       const changeOrdersData = await coRes.json();
+      const punchListsData = await plRes.json();
+      const punchStatusData = await psRes.json();
 
       this.currentPO.invoices = Array.isArray(invoicesData) ? invoicesData : [];
       this.currentPO.activity = Array.isArray(activityData) ? activityData : [];
       this.attachments = Array.isArray(attachmentsData) ? attachmentsData : [];
       this.changeOrders = Array.isArray(changeOrdersData) ? changeOrdersData : [];
+      this.punchLists = Array.isArray(punchListsData) ? punchListsData : [];
+      this.punchStatus = punchStatusData || null;
 
       this.renderPOModal();
     } catch (err) {
@@ -367,6 +466,7 @@ class POModals {
     const total = this.currentLineItems.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
 
     return `
+      <div id="priceWarningsContainer" style="display: none;"></div>
       <div class="po-card">
         <h4>PO Details</h4>
         <div class="form-group">
@@ -585,6 +685,8 @@ class POModals {
       ` : ''}
 
       ${this.renderChangeOrdersSection()}
+
+      ${this.renderPunchListSection()}
 
       ${this.renderAttachmentsSection()}
 
@@ -907,6 +1009,136 @@ class POModals {
       },
       { label: 'Reason for rejection', placeholder: 'Enter reason...', required: false }
     );
+  }
+
+  // ============================================================
+  // PUNCH LIST SECTION
+  // ============================================================
+
+  renderPunchListSection() {
+    const isNew = !this.currentPO.id;
+    if (isNew) return '';
+
+    const punchLists = this.punchLists || [];
+    const status = this.punchStatus || {};
+    const totalItems = status.items?.total || 0;
+    const verifiedItems = status.items?.verified || 0;
+    const openItems = (status.items?.open || 0) + (status.items?.in_progress || 0);
+    const pendingVerify = status.items?.resolved || 0;
+
+    return `
+      <div class="po-card punch-list-section">
+        <div class="card-title-row">
+          <h4>Punch Lists</h4>
+          <div class="punch-header-actions">
+            ${punchLists.length > 0 ? `<span class="count-badge">${punchLists.length}</span>` : ''}
+            <button type="button" class="btn-add" onclick="window.poModals.createPunchList()">+ Add Punch List</button>
+          </div>
+        </div>
+
+        <!-- Punch List Items Summary -->
+        ${totalItems > 0 ? `
+        <div class="punch-progress-summary">
+          <div class="punch-progress-bar">
+            <div class="punch-progress-fill verified" style="width: ${totalItems > 0 ? (verifiedItems / totalItems * 100) : 0}%"></div>
+            <div class="punch-progress-fill pending" style="width: ${totalItems > 0 ? (pendingVerify / totalItems * 100) : 0}%"></div>
+          </div>
+          <div class="punch-progress-stats">
+            <span class="stat-verified">${verifiedItems} verified</span>
+            <span class="stat-pending">${pendingVerify} pending</span>
+            <span class="stat-open">${openItems} open</span>
+          </div>
+        </div>
+        ` : ''}
+
+        <!-- Punch Lists -->
+        ${punchLists.length === 0 ? `
+          <p class="empty-text">No punch lists linked to this PO</p>
+        ` : `
+          <div class="punch-lists-compact">
+            ${punchLists.map(pl => this.renderPunchListCompact(pl)).join('')}
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  renderPunchListCompact(pl) {
+    const items = pl.items || [];
+    const total = items.length;
+    const verified = items.filter(i => i.status === 'verified').length;
+    const open = items.filter(i => i.status === 'open' || i.status === 'in_progress').length;
+    const pending = items.filter(i => i.status === 'resolved').length;
+    const progress = total > 0 ? Math.round((verified / total) * 100) : 0;
+
+    const statusClass = pl.status === 'closed' ? 'closed' : pl.status === 'resolved' ? 'resolved' : 'open';
+
+    return `
+      <div class="punch-list-compact" onclick="window.poModals.openPunchList('${pl.id}')">
+        <div class="pl-header">
+          <span class="pl-title">${this.escapeHtml(pl.title)}</span>
+          <span class="pl-status-badge ${statusClass}">${this.formatPunchStatus(pl.status)}</span>
+        </div>
+        <div class="pl-progress">
+          <div class="pl-progress-bar">
+            <div class="pl-progress-fill" style="width: ${progress}%"></div>
+          </div>
+          <span class="pl-progress-text">${verified}/${total}</span>
+        </div>
+        <div class="pl-meta">
+          ${pl.vendor ? `<span class="pl-vendor">${this.escapeHtml(pl.vendor.name)}</span>` : ''}
+          ${open > 0 ? `<span class="pl-open">${open} open</span>` : ''}
+          ${pending > 0 ? `<span class="pl-pending">${pending} pending</span>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  formatPunchStatus(status) {
+    const labels = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved', closed: 'Closed' };
+    return labels[status] || status;
+  }
+
+  async createPunchList() {
+    const po = this.currentPO;
+    if (!po) return;
+
+    const title = prompt('Punch list title:', `${po.po_number} Punch Items`);
+    if (!title) return;
+
+    try {
+      const res = await fetch('/api/punch-lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: po.job_id,
+          po_id: po.id,
+          title,
+          assigned_vendor_id: po.vendor_id,
+          created_by: 'Jake Ross'
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to create punch list');
+      }
+
+      const created = await res.json();
+      window.showToast?.('Punch list created', 'success');
+
+      // Refresh and open the punch list
+      await this.openPO(po.id);
+      this.openPunchList(created.id);
+    } catch (err) {
+      console.error('Error creating punch list:', err);
+      window.showToast?.(err.message || 'Failed to create punch list', 'error');
+    }
+  }
+
+  openPunchList(punchListId) {
+    // Navigate to punch lists page with this ID
+    window.location.href = `/punch-lists.html?open=${punchListId}`;
   }
 
   renderAttachmentPreview(att) {
@@ -1426,6 +1658,17 @@ class POModals {
 
       window.showToast?.(`CO cost codes require a Change Order: ${missingCodes}`, 'error');
       return;
+    }
+
+    // Check for better pricing (only if not already dismissed)
+    if (!this.priceWarningsDismissed) {
+      await this.checkPriceWarnings();
+      if (this.priceWarnings.length > 0) {
+        this.renderPriceWarnings();
+        // Show warnings but don't block - user can dismiss and continue
+        window.showToast?.('Price warnings found - review or continue', 'warning');
+        return;
+      }
     }
 
     const data = {
