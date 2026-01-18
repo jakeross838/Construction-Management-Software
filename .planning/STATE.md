@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.2 Gap Fixes — Phases 12-13 complete, Phase 14 in progress
+**Current focus:** v1.2 Gap Fixes — Phase 14 complete, continuing with phases 15-17
 
 ## Current Position
 
-Phase: 14 (Vendors Completion) — IN PROGRESS
-Plan: 14-01 and 14-02 complete, 14-03 pending
-Status: Vendor CRUD and documents complete, duplicate detection next
-Last activity: 2026-01-17 — Plan 14-02 executed
+Phase: 14 (Vendors Completion) — COMPLETE
+Plan: 14-01, 14-02, 14-03 all executed
+Status: Phase 14 complete, ready for phases 15-17
+Last activity: 2026-01-17 — Plan 14-03 executed (Duplicate Detection Enhancement)
 
-Progress: ██░░░░░░░░ 33% v1.2 (2/6 phases complete)
+Progress: ██████░░░░ 50% v1.2 (3/6 phases complete)
 
 ## Milestone History
 
@@ -36,22 +36,27 @@ Progress: ██░░░░░░░░ 33% v1.2 (2/6 phases complete)
 - 2026-01-17: ALREADY_DELETED error code (409) added for idempotent delete attempts
 - 2026-01-17: Vendor documents use version tracking (is_current flag) to preserve history
 - 2026-01-17: Document upload stores in v2_vendor_documents AND updates vendor URL fields for backward compatibility
+- 2026-01-17: Duplicate detection uses calculateVendorSimilarity from standards.js (threshold 75%)
+- 2026-01-17: POST /api/vendors returns 409 DUPLICATE_WARNING when similar vendor exists
+- 2026-01-17: Real-time duplicate check in vendor modal (500ms debounce) for early warning
 
 ### Pending Todos
 
-None — continuing with Phase 14.
+None — Phase 14 complete.
 
 ### Blockers/Concerns
 
-None — Plan 14-02 complete, ready for 14-03.
+None — ready for phases 15-17.
 
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Plan 14-02 complete
+Stopped at: Phase 14 complete
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-plan .planning/phases/14-vendors-completion/14-03-PLAN.md` for duplicate detection
-2. Phases 15-17 can also proceed in parallel
+1. Run `/gsd:execute-phase 15` for Purchase Orders Completion
+2. Or run `/gsd:execute-phase 16` for Invoices Completion
+3. Or run `/gsd:execute-phase 17` for Draws Completion
+4. Phases 15-17 can proceed in parallel
