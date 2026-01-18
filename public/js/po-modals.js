@@ -1,4 +1,14 @@
 // ============================================================
+// STATUS CLASS NORMALIZATION
+// ============================================================
+
+// Use global normalizeStatusClass if available (from app.js), otherwise define locally
+const normalizeStatusClass = window.normalizeStatusClass || function(status) {
+  if (!status) return '';
+  return status.toString().toLowerCase().replace(/_/g, '-');
+};
+
+// ============================================================
 // PO MODALS - Unified Two Panel Layout
 // ============================================================
 
@@ -296,7 +306,7 @@ class POModals {
         statusBadge.style.display = 'none';
       } else {
         statusBadge.style.display = '';
-        statusBadge.className = `status-badge status-${this.getStatusClass(po.status_detail, po.approval_status)}`;
+        statusBadge.className = `status-badge status-${normalizeStatusClass(this.getStatusClass(po.status_detail, po.approval_status))}`;
         statusBadge.textContent = this.getStatusLabel(po.status_detail, po.approval_status);
       }
     }
@@ -445,7 +455,7 @@ class POModals {
                     <span class="inv-amount">${this.formatMoney(invAmount)}</span>
                     <span class="inv-percent">(${invPercent}%)</span>
                   </div>
-                  <span class="inv-status status-${inv.status}">${this.formatStatus(inv.status)}</span>
+                  <span class="inv-status status-${normalizeStatusClass(inv.status)}">${this.formatStatus(inv.status)}</span>
                 </div>
               </div>
             `}).join('')}
@@ -860,7 +870,7 @@ class POModals {
           <div class="co-amount ${amountClass}">${amountPrefix}${this.formatMoney(co.amount)}</div>
         </div>
         <div class="co-meta">
-          <span class="co-status status-${statusClass}">${statusLabel}</span>
+          <span class="co-status status-${normalizeStatusClass(statusClass)}">${statusLabel}</span>
           <span class="co-date">${this.formatDate(co.created_at)}</span>
           ${co.status === 'pending' ? `
             <div class="co-actions">
@@ -1077,7 +1087,7 @@ class POModals {
       <div class="punch-list-compact" onclick="window.poModals.openPunchList('${pl.id}')">
         <div class="pl-header">
           <span class="pl-title">${this.escapeHtml(pl.title)}</span>
-          <span class="pl-status-badge ${statusClass}">${this.formatPunchStatus(pl.status)}</span>
+          <span class="pl-status-badge ${normalizeStatusClass(statusClass)}">${this.formatPunchStatus(pl.status)}</span>
         </div>
         <div class="pl-progress">
           <div class="pl-progress-bar">
