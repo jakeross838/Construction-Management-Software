@@ -2,11 +2,14 @@
 // STATUS CLASS NORMALIZATION
 // ============================================================
 
-// Use global normalizeStatusClass if available (from app.js), otherwise define locally
-const normalizeStatusClass = window.normalizeStatusClass || function(status) {
-  if (!status) return '';
-  return status.toString().toLowerCase().replace(/_/g, '-');
-};
+// Ensure global normalizeStatusClass exists (po-modals.js may define it first)
+if (!window.normalizeStatusClass) {
+  window.normalizeStatusClass = function(status) {
+    if (!status) return '';
+    return status.toString().toLowerCase().replace(/_/g, '-');
+  };
+}
+// Use window.normalizeStatusClass directly throughout this file
 
 // ============================================================
 // PO APP STATE
@@ -262,7 +265,7 @@ function renderPORow(po) {
         <span class="vendor-name">${vendor?.name || 'Unknown Vendor'}</span>
         <span class="job-name">${job?.name || 'No Job'}</span>
       </div>
-      <div><span class="status-badge status-${normalizeStatusClass(statusClass)}">${statusLabel}</span></div>
+      <div><span class="status-badge status-${window.normalizeStatusClass(statusClass)}">${statusLabel}</span></div>
       <div class="amount">${formatMoney(totalAmount)}</div>
       <div class="billed">${formatMoney(billedAmount)}</div>
       <div class="remaining ${remainingAmount < 0 ? 'negative' : ''}">${formatMoney(remainingAmount)}</div>
@@ -298,7 +301,7 @@ function renderPOCard(po) {
     <div class="po-card" onclick="window.poModals.openPO('${po.id}')">
       <div class="po-card-header">
         <span class="po-number">${po.po_number || 'Draft PO'}</span>
-        <span class="status-badge status-${normalizeStatusClass(statusClass)}">${statusLabel}</span>
+        <span class="status-badge status-${window.normalizeStatusClass(statusClass)}">${statusLabel}</span>
       </div>
       <div class="po-card-body">
         <div class="po-vendor">${vendor?.name || 'Unknown Vendor'}</div>

@@ -22,11 +22,14 @@ let state = {
   collapsedSubcategories: new Set()  // Track collapsed subcategory groups
 };
 
-// Normalize status strings to hyphen-based CSS class names
-const normalizeStatusClass = window.normalizeStatusClass || function(status) {
-  if (!status) return '';
-  return status.toString().toLowerCase().replace(/_/g, '-');
-};
+// Ensure global normalizeStatusClass exists
+if (!window.normalizeStatusClass) {
+  window.normalizeStatusClass = function(status) {
+    if (!status) return '';
+    return status.toString().toLowerCase().replace(/_/g, '-');
+  };
+}
+// Use window.normalizeStatusClass directly throughout this file
 
 // ============================================================
 // INITIALIZATION
@@ -471,8 +474,8 @@ function renderItemHistory(history) {
     const hasSource = h.source_id && h.source_type !== 'manual';
     const sourceClass = h.source_type === 'invoice' ? 'approved' : 'pending';
     const sourceLink = hasSource
-      ? `<a href="#" onclick="viewPriceSource('${h.id}'); return false;" class="status-badge status-${normalizeStatusClass(sourceClass)}" style="cursor: pointer;">${h.source_type}</a>`
-      : `<span class="status-badge status-${normalizeStatusClass(sourceClass)}">${h.source_type}</span>`;
+      ? `<a href="#" onclick="viewPriceSource('${h.id}'); return false;" class="status-badge status-${window.normalizeStatusClass(sourceClass)}" style="cursor: pointer;">${h.source_type}</a>`
+      : `<span class="status-badge status-${window.normalizeStatusClass(sourceClass)}">${h.source_type}</span>`;
 
     return `
       <tr>

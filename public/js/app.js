@@ -3,13 +3,14 @@
 // ============================================================
 
 // Normalize status value for CSS class names (underscores to hyphens)
-function normalizeStatusClass(status) {
-  if (!status) return '';
-  return status.toString().toLowerCase().replace(/_/g, '-');
+// Note: modals.js may define this first, so we just ensure the global exists
+if (!window.normalizeStatusClass) {
+  window.normalizeStatusClass = function(status) {
+    if (!status) return '';
+    return status.toString().toLowerCase().replace(/_/g, '-');
+  };
 }
-
-// Make available globally for other modules
-window.normalizeStatusClass = normalizeStatusClass;
+// Use window.normalizeStatusClass directly throughout this file (no local redeclaration)
 
 // ============================================================
 // STATE
@@ -357,8 +358,9 @@ async function loadInvoices() {
 
 function renderInvoiceList() {
   const container = document.getElementById('invoiceList');
+  if (!container) return;
 
-  let filtered = state.invoices;
+  let filtered = state.invoices || [];
 
   // Status filter
   if (state.currentStatusFilter === 'archive') {
@@ -628,7 +630,7 @@ function renderInvoiceCard(inv) {
     }
 
     return `
-    <div class="invoice-card status-${normalizeStatusClass(inv.status)}${isCredit ? ' is-credit' : ''}${isSelected ? ' selected' : ''}" data-invoice-id="${inv.id}" onclick="openEditModal('${inv.id}')">
+    <div class="invoice-card status-${window.normalizeStatusClass(inv.status)}${isCredit ? ' is-credit' : ''}${isSelected ? ' selected' : ''}" data-invoice-id="${inv.id}" onclick="openEditModal('${inv.id}')">
       ${checkboxHtml}
       <div class="invoice-main">
         <div class="invoice-header">
@@ -643,7 +645,7 @@ function renderInvoiceCard(inv) {
       </div>
       <div class="invoice-amount ${amountClass}">${formatMoney(displayAmount)}${amountSubtext}</div>
       <div class="invoice-status">
-        <span class="status-pill ${normalizeStatusClass(inv.status)}">${formatStatus(inv.status, inv)}</span>
+        <span class="status-pill ${window.normalizeStatusClass(inv.status)}">${formatStatus(inv.status, inv)}</span>
       </div>
       ${quickActionsHtml}
     </div>
@@ -846,7 +848,7 @@ function renderInvoiceModal(invoice, activity, approvalContext = {}) {
       </div>
       <div class="detail-row">
         <span class="detail-label">Status</span>
-        <span class="status-pill ${normalizeStatusClass(invoice.status)}">${formatStatus(invoice.status, invoice)}</span>
+        <span class="status-pill ${window.normalizeStatusClass(invoice.status)}">${formatStatus(invoice.status, invoice)}</span>
       </div>
     </div>
 

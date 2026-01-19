@@ -86,19 +86,19 @@
 
     if (!header || !main) return;
 
-    // Create app-body wrapper
-    const appBody = document.createElement('div');
-    appBody.className = 'app-body';
+    // Check if app-body already exists (HTML may already have it)
+    let appBody = app.querySelector('.app-body');
+    if (!appBody) {
+      // Create app-body wrapper only if it doesn't exist
+      appBody = document.createElement('div');
+      appBody.className = 'app-body';
+      appBody.appendChild(main);
+      header.after(appBody);
+    }
 
-    // Create sidebar
+    // Create sidebar and insert at beginning of app-body
     const sidebar = createSidebarElement();
-
-    // Restructure DOM
-    appBody.appendChild(sidebar);
-    appBody.appendChild(main);
-
-    // Insert after header
-    header.after(appBody);
+    appBody.insertBefore(sidebar, appBody.firstChild);
 
     // Add mobile toggle to header
     addMobileToggle(header);

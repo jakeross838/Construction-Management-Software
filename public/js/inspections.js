@@ -23,11 +23,14 @@ let state = {
 // Current user (hardcoded for now)
 const CURRENT_USER = 'Jake Ross';
 
-// Normalize status strings to hyphen-based CSS class names
-const normalizeStatusClass = window.normalizeStatusClass || function(status) {
-  if (!status) return '';
-  return status.toString().toLowerCase().replace(/_/g, '-');
-};
+// Ensure global normalizeStatusClass exists
+if (!window.normalizeStatusClass) {
+  window.normalizeStatusClass = function(status) {
+    if (!status) return '';
+    return status.toString().toLowerCase().replace(/_/g, '-');
+  };
+}
+// Use window.normalizeStatusClass directly throughout this file
 
 // ============================================================
 // INITIALIZATION
@@ -534,7 +537,7 @@ function renderDetailContent(inspection) {
 
   // Update header
   document.getElementById('detailTitle').textContent = typeLabel;
-  document.getElementById('detailStatus').className = `status-badge status-${normalizeStatusClass(getStatusClass(inspection.result))}`;
+  document.getElementById('detailStatus').className = `status-badge status-${window.normalizeStatusClass(getStatusClass(inspection.result))}`;
   document.getElementById('detailStatus').textContent = inspection.result.charAt(0).toUpperCase() + inspection.result.slice(1);
 
   let html = `
