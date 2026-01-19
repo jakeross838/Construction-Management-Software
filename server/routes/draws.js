@@ -443,6 +443,7 @@ router.post('/:id/add-invoices', validateRequest({
 }), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { invoice_ids } = req.body;
+    let missingBudgetLines = null;
 
     // GUARDRAIL: Validate that all invoices have allocations before adding to draw
     const { data: invoicesToValidate } = await supabase
@@ -570,17 +571,16 @@ router.post('/:id/add-invoices', validateRequest({
               .update({ billed_amount: newBilled })
               .eq('id', budgetLine.id);
           } else {
-            // Create budget line if doesn't exist
-            await supabase
-              .from('v2_budget_lines')
-              .insert({
-                job_id: inv.job_id,
-                cost_code_id: alloc.cost_code_id,
-                budgeted_amount: 0,
-                committed_amount: 0,
-                billed_amount: parseFloat(alloc.amount) || 0,
-                paid_amount: 0
-              });
+            // Budget line must exist before invoicing
+            // Log warning but don't fail the operation
+            console.warn(`[DRAW] No budget line found for job=${inv.job_id} cost_code=${alloc.cost_code_id}. Skipping billed_amount update.`);
+            // Collect for response so user knows
+            if (!missingBudgetLines) missingBudgetLines = [];
+            missingBudgetLines.push({
+              invoice_id: inv.id,
+              cost_code_id: alloc.cost_code_id,
+              amount: alloc.amount
+            });
           }
         }
       }
@@ -597,7 +597,11 @@ router.post('/:id/add-invoices', validateRequest({
       success: true,
       fully_billed: fullyBilledInvoices.length,
       partial_billed: partialInvoices.length,
-      partial_invoices: partialInvoices
+      partial_invoices: partialInvoices,
+      warnings: missingBudgetLines ? {
+        missing_budget_lines: missingBudgetLines,
+        message: 'Some allocations could not update budget because no budget line exists. Please add budget for these cost codes.'
+      } : undefined
     });
 }));
 
