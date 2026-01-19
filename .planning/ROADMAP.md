@@ -33,8 +33,8 @@
 **Plans:** 3 plans
 
 Plans:
-- [ ] 43-01-PLAN.md - Create RPC functions for atomic budget updates
-- [ ] 43-02-PLAN.md - Wire PO approval/void/CO to use RPC functions
+- [x] 43-01-PLAN.md - Create RPC functions for atomic budget updates
+- [x] 43-02-PLAN.md - Wire PO approval/void/CO to use RPC functions
 - [ ] 43-03-PLAN.md - Fix draws.js to not create zero-budget lines
 
 **Key Files:**
