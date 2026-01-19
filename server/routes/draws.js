@@ -663,6 +663,9 @@ router.post('/:id/remove-invoice', asyncHandler(async (req, res) => {
             .from('v2_budget_lines')
             .update({ billed_amount: newBilled })
             .eq('id', budgetLine.id);
+        } else {
+          // This shouldn't happen if add-invoices worked correctly
+          console.warn(`[DRAW] No budget line found when removing invoice allocation job=${invoice.job.id} cost_code=${alloc.cost_code_id}`);
         }
       }
     }
