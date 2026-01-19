@@ -5,7 +5,7 @@
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
 **Last Milestone:** v1.6 - Module Expansion (shipped 2026-01-19)
-**Current Milestone:** Planning next milestone
+**Current Milestone:** v1.7 - Data Integrity & AI Accuracy
 
 ## Core Value
 
@@ -151,6 +151,37 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 **Navigation & Organization:**
 - [x] NAV-01: Reorganize sidebar into logical groups (Sales, Pre-Con, Execution, Field, Finance, Comms)
 
+### v1.7 Data Integrity & AI Accuracy (Active)
+
+**Budget Integrity:**
+- [ ] BUD-INT-01: Create `increment_committed_amount` RPC function for PO approval
+- [ ] BUD-INT-02: Create `decrement_committed_amount` RPC function for PO voiding
+- [ ] BUD-INT-03: Fix budget line creation to require non-zero budgeted_amount
+- [ ] BUD-INT-04: Add committed_amount tracking when POs approved/voided
+
+**Invoice Pipeline:**
+- [ ] INV-INT-01: Add allocation cleanup on invoice status transitions (deny, delete)
+- [ ] INV-INT-02: Add transaction wrapping for critical invoice operations
+- [ ] INV-INT-03: Fix billed_amount recalculation when allocations change post-draw
+- [ ] INV-INT-04: Validate allocation sum equals invoice amount before approval
+
+**Draw Accuracy:**
+- [ ] DRW-INT-01: Always recalculate draw total on GET (don't trust stored value)
+- [ ] DRW-INT-02: Include zero-billed cost codes in G703 with 0% progress
+- [ ] DRW-INT-03: Validate draw allocations match invoice allocations
+
+**PO/CO Linking:**
+- [ ] PO-INT-01: Fix PO line item invoiced_amount sync on allocation changes
+- [ ] PO-INT-02: Fix CO invoiced_amount tracking on invoice approval
+- [ ] PO-INT-03: Reverse committed_amount when PO voided
+- [ ] PO-INT-04: Validate CO mutual exclusivity (manual vs allocated vs unlinked)
+
+**AI Accuracy:**
+- [ ] AI-INT-01: Tune job matching confidence thresholds (raise minimum)
+- [ ] AI-INT-02: Improve text scanning for job names in invoice content
+- [ ] AI-INT-03: Add validation for extracted dates (reject invalid dates)
+- [ ] AI-INT-04: Improve vendor name extraction from invoice headers
+
 ### Out of Scope
 
 - Mobile native app — web works on mobile now
@@ -184,4 +215,4 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-19 — v1.6 Module Expansion shipped*
+*Last updated: 2026-01-19 — v1.7 Data Integrity & AI Accuracy started*
