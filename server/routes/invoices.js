@@ -987,8 +987,10 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
 // Allocate invoice to cost codes
 router.post('/:id/allocate', async (req, res) => {
+  const invoiceId = req.params.id;
+  let rollbackData = null;
+
   try {
-    const invoiceId = req.params.id;
     const { allocations } = req.body;
 
     const { data: invoice } = await supabase
@@ -1013,11 +1015,26 @@ router.post('/:id/allocate', async (req, res) => {
       }
     }
 
-    // Get old allocations to subtract PO/CO amounts
+    // Get old allocations for potential rollback
     const { data: oldAllocations } = await supabase
       .from('v2_invoice_allocations')
-      .select('id, amount, po_id, po_line_item_id, change_order_id, cost_code_id')
+      .select('*')
       .eq('invoice_id', invoiceId);
+
+    // Store for rollback - remove generated fields that can't be re-inserted
+    rollbackData = {
+      oldAllocations: (oldAllocations || []).map(a => ({
+        invoice_id: a.invoice_id,
+        cost_code_id: a.cost_code_id,
+        amount: a.amount,
+        notes: a.notes,
+        job_id: a.job_id,
+        po_id: a.po_id,
+        po_line_item_id: a.po_line_item_id,
+        change_order_id: a.change_order_id,
+        pending_co: a.pending_co
+      }))
+    };
 
     // Subtract old amounts
     for (const alloc of (oldAllocations || []).filter(a => a.po_id)) {
@@ -1103,6 +1120,18 @@ router.post('/:id/allocate', async (req, res) => {
           );
         }
       }
+
+      // If invoice is in draw, update its billed_amount to match new allocations
+      const newBilledAmount = (allocations || []).reduce(
+        (sum, a) => sum + parseFloat(a.amount || 0), 0
+      );
+
+      await supabase
+        .from('v2_invoices')
+        .update({ billed_amount: newBilledAmount })
+        .eq('id', invoiceId);
+
+      console.log(`[ALLOCATE] Updated invoice ${invoiceId} billed_amount to $${newBilledAmount.toFixed(2)}`);
     }
 
     res.json({ success: true });
