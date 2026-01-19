@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 44 of 4 (invoice-pipeline)
-Plan: 4 of 4 in current phase (3 summaries exist)
-Status: In progress
-Last activity: 2026-01-19 — Completed 44-04-PLAN.md (Billed Amount Recalculation)
+Plan: 4 of 4 in current phase (4 summaries exist)
+Status: Phase complete
+Last activity: 2026-01-19 — Completed 44-03-PLAN.md (Transaction Wrapping)
 
-Progress: [==============--] 7/12 plans (v1.7)
+Progress: [===============-] 8/12 plans (v1.7)
 
 ## Milestone History
 
@@ -58,6 +58,8 @@ Critical issues identified:
 - **Reuse updatePOLineItemsForAllocations for cleanup**: Uses existing function to decrement PO amounts
 - **Query draw_allocations for accurate totals**: Recalculation queries actual draw_allocations to ensure accuracy
 - **Collect affected cost codes from old and new allocations**: Both old and new allocations checked to ensure all affected budget lines are updated
+- **Best-effort rollback pattern**: Manual state tracking and restoration since Supabase JS lacks native transactions
+- **Rollback in reverse order**: Multi-step operations rolled back in reverse order of completion
 
 ### Pending Todos
 
@@ -69,15 +71,14 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19T17:29:10Z
-Stopped at: Completed 44-04-PLAN.md (Billed Amount Recalculation)
+Last session: 2026-01-19T17:31:05Z
+Stopped at: Completed 44-03-PLAN.md (Transaction Wrapping)
 Resume file: None
 
 ## Next Actions
 
-1. Complete 44-03-SUMMARY.md if not yet done
-2. Transition to Phase 45 (Draw/PO linking)
-3. Continue v1.7 milestone
+1. Transition to Phase 45 (Draw/PO linking)
+2. Continue v1.7 milestone
 
 ## Research
 
