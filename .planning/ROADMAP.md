@@ -14,8 +14,9 @@
 
 ---
 
-## Phase 43: Budget Integrity
+## Phase 43: Budget Integrity ✓
 
+**Status:** Complete (2026-01-19)
 **Goal:** Create missing RPC functions and fix committed_amount tracking so PO approval correctly updates budget lines.
 
 **Requirements:**
@@ -35,7 +36,7 @@
 Plans:
 - [x] 43-01-PLAN.md - Create RPC functions for atomic budget updates
 - [x] 43-02-PLAN.md - Wire PO approval/void/CO to use RPC functions
-- [ ] 43-03-PLAN.md - Fix draws.js to not create zero-budget lines
+- [x] 43-03-PLAN.md - Fix draws.js to not create zero-budget lines
 
 **Key Files:**
 - `database/migration-064-budget-rpc.sql` (new)

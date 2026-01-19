@@ -63,10 +63,10 @@ Deferred to future release.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BUD-INT-01 | Phase 43 | Pending |
-| BUD-INT-02 | Phase 43 | Pending |
-| BUD-INT-03 | Phase 43 | Pending |
-| BUD-INT-04 | Phase 43 | Pending |
+| BUD-INT-01 | Phase 43 | Complete |
+| BUD-INT-02 | Phase 43 | Complete |
+| BUD-INT-03 | Phase 43 | Complete |
+| BUD-INT-04 | Phase 43 | Complete |
 | INV-INT-01 | Phase 44 | Pending |
 | INV-INT-02 | Phase 44 | Pending |
 | INV-INT-03 | Phase 44 | Pending |
@@ -90,4 +90,4 @@ Deferred to future release.
 
 ---
 *Requirements defined: 2026-01-19*
-*Last updated: 2026-01-19 after audit findings*
+*Last updated: 2026-01-19 after Phase 43 complete*
