@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 44 of 4 (invoice-pipeline)
-Plan: 2 of 4 in current phase
+Plan: 4 of 4 in current phase (3 summaries exist)
 Status: In progress
-Last activity: 2026-01-19 — Completed 44-01-PLAN.md (Invoice Allocation Cleanup)
+Last activity: 2026-01-19 — Completed 44-04-PLAN.md (Billed Amount Recalculation)
 
-Progress: [=============---] 5/12 plans (v1.7)
+Progress: [==============--] 7/12 plans (v1.7)
 
 ## Milestone History
 
@@ -40,7 +40,7 @@ Critical issues identified:
 1. ~~`increment_committed_amount` RPC function called but never created~~ FIXED (43-01)
 2. ~~Budget lines created with $0 budgeted_amount when invoice allocated~~ FIXED (43-03)
 3. ~~No allocation cleanup on invoice denial/deletion~~ FIXED (44-01)
-4. Draw totals stored but not always recalculated
+4. ~~Draw totals stored but not always recalculated~~ FIXED (44-04)
 5. Job matching confidence threshold too low (50%)
 
 ### Phase 43 Decisions
@@ -56,6 +56,8 @@ Critical issues identified:
 - **Separate NO_ALLOCATIONS and ALLOCATION_MISMATCH errors**: Clearer UX for different validation failures
 - **Cleanup before soft-delete**: Allocation cleanup happens after undo snapshot but before soft-delete
 - **Reuse updatePOLineItemsForAllocations for cleanup**: Uses existing function to decrement PO amounts
+- **Query draw_allocations for accurate totals**: Recalculation queries actual draw_allocations to ensure accuracy
+- **Collect affected cost codes from old and new allocations**: Both old and new allocations checked to ensure all affected budget lines are updated
 
 ### Pending Todos
 
@@ -67,14 +69,14 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19T17:28:00Z
-Stopped at: Completed 44-01-PLAN.md (Invoice Allocation Cleanup)
+Last session: 2026-01-19T17:29:10Z
+Stopped at: Completed 44-04-PLAN.md (Billed Amount Recalculation)
 Resume file: None
 
 ## Next Actions
 
-1. Execute 44-03-PLAN.md (Transaction wrapping)
-2. Execute 44-04-PLAN.md (Billed_amount recalculation)
+1. Complete 44-03-SUMMARY.md if not yet done
+2. Transition to Phase 45 (Draw/PO linking)
 3. Continue v1.7 milestone
 
 ## Research
