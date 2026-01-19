@@ -357,6 +357,23 @@ function renderLogCard(log) {
   const totalWorkers = log.total_workers || 0;
   const deliveryCount = log.delivery_count || 0;
 
+  // Build photo strip if there are attachments
+  let photoStrip = '';
+  if (log.attachments && log.attachments.length > 0) {
+    const maxPhotos = 4;
+    const photos = log.attachments.slice(0, maxPhotos);
+    const remaining = log.attachments.length - maxPhotos;
+
+    photoStrip = `
+      <div class="log-card-photos">
+        ${photos.map(photo => `
+          <div class="log-card-photo" style="background-image: url('${photo.file_url}')"></div>
+        `).join('')}
+        ${remaining > 0 ? `<div class="log-card-photo-more">+${remaining}</div>` : ''}
+      </div>
+    `;
+  }
+
   return `
     <div class="daily-log-card" onclick="viewLog('${log.id}')">
       <div class="log-card-header">
@@ -379,6 +396,7 @@ function renderLogCard(log) {
         <span class="status-badge ${statusClass}">${statusLabel}</span>
       </div>
       ${log.work_completed ? `<div class="log-card-work">${truncateText(log.work_completed, 150)}</div>` : ''}
+      ${photoStrip}
     </div>
   `;
 }

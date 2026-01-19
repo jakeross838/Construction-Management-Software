@@ -210,7 +210,8 @@ router.get('/', asyncHandler(async (req, res) => {
         deliveries:v2_daily_log_deliveries(
           id, vendor_id, description, quantity, unit,
           vendor:v2_vendors(id, name)
-        )
+        ),
+        attachments:v2_daily_log_attachments(id, file_url, category, caption)
       `)
       .is('deleted_at', null)
       .order('log_date', { ascending: false });

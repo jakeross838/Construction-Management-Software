@@ -18606,6 +18606,41 @@ textarea.form-control {
   line-height: 1.5;
 }
 
+/* Daily Log Card Photos */
+.log-card-photos {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.log-card-photo {
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.log-card-photo-more {
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
 /* Filter Date Inputs */
 .filter-date {
   width: 140px;
