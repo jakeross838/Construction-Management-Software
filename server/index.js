@@ -139,6 +139,7 @@ const spendAnalyticsRoutes = require('./routes/spend-analytics');
 const searchRoutes = require('./routes/search');
 const reportsRoutes = require('./routes/reports');
 const leadsRoutes = require('./routes/leads');
+const selectionsRoutes = require('./routes/selections');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -171,6 +172,7 @@ app.use('/api/spend', spendAnalyticsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/leads', leadsRoutes);
+app.use('/api/selections', selectionsRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete
