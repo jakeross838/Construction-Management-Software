@@ -10,18 +10,25 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 47 (Variance Detection Polish)
-Plan: Not started
-Status: v1.8 milestone initialized, ready to plan Phase 47
-Last activity: 2026-01-19 — v1.8 roadmap created
+Plan: 1 of 2 complete
+Status: In progress - executing Phase 47 plans
+Last activity: 2026-01-19 - Completed 47-01-PLAN.md (Variance Action Buttons)
 
-Progress: 0/5 phases complete
+Progress: 1/2 Phase 47 plans complete
+
+### Phase 47 Plans
+
+| Plan | Name | Status |
+|------|------|--------|
+| 47-01 | Variance Action Buttons | **Complete** |
+| 47-02 | Variance Detector Tests | Pending |
 
 ## Milestone History
 
 - **v1.8 Invoice Variance & Data Linkage** (active): 5 phases (47-51), 17 requirements
-- **v1.7 Data Integrity & AI Accuracy** (shipped 2026-01-19): 4 phases (43-46), 16 plans — Budget RPC, Invoice pipeline, Draw/PO linking, AI accuracy
-- **v1.6 Module Expansion** (shipped 2026-01-19): 6 phases, 17 plans — Leads/CRM, Selections, 7 scaffold modules, navigation reorganization
-- **v1.5 UI Cleanup** (shipped 2026-01-18): 7 phases, 19 plans — CSS standardization, component uniformity
+- **v1.7 Data Integrity & AI Accuracy** (shipped 2026-01-19): 4 phases (43-46), 16 plans - Budget RPC, Invoice pipeline, Draw/PO linking, AI accuracy
+- **v1.6 Module Expansion** (shipped 2026-01-19): 6 phases, 17 plans - Leads/CRM, Selections, 7 scaffold modules, navigation reorganization
+- **v1.5 UI Cleanup** (shipped 2026-01-18): 7 phases, 19 plans - CSS standardization, component uniformity
 - **v1.4 Price Intelligence** (2026-01-18): Price tracking, order optimization, savings analytics, PO warnings
 - **v1.3 Refinement** (2026-01-18): Invoice AI improvements, Financial reports (JSON, Excel, PDF)
 - **v1.2 Gap Fixes** (2026-01-18): Error handling, Jobs, Vendors, Budgets, Schedules, Documents
@@ -37,6 +44,9 @@ Progress: 0/5 phases complete
 - **RPC for budget atomicity**: increment/decrement functions for committed_amount
 - **Best-effort rollback**: Manual state tracking since Supabase JS lacks transactions
 - **VPO quick adds**: v1.8 includes verbal purchase orders for quick additional work authorization
+- **47-01**: Show only "Create CO" button if description suggests change order, otherwise show both "Quick VPO" and "Create CO"
+- **47-01**: Auto-approve COs created from variance (status='approved') since they resolve known variance
+- **47-01**: Refresh invoice via openInvoice() after VPO/CO creation to update variance banner
 
 ### Pending Todos
 
@@ -49,12 +59,12 @@ None
 ## Session Continuity
 
 Last session: 2026-01-19
-Stopped at: v1.8 milestone initialized
+Stopped at: Completed 47-01-PLAN.md (Variance Action Buttons)
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 47` to plan Variance Detection Polish phase
+1. Run `/gsd:execute-plan 47-02` to execute Variance Detector Tests plan
 
 ## Research
 
@@ -62,3 +72,4 @@ Resume file: None
 - VPO database migration and API already implemented (migration-065-vpo.sql)
 - VPO UI added to PO modal
 - Variance detector service exists (server/services/varianceDetector.js)
+- Variance action buttons now complete - users can create VPO/CO from invoice modal
