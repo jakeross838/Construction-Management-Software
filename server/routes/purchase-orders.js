@@ -14,6 +14,37 @@ const { logPOActivity } = require('../services/activityLogger');
 // Multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });
 
+/**
+ * Get validation warnings for a PO (non-blocking)
+ * @param {Object} po - The purchase order
+ * @param {Array} lineItems - The line items
+ * @returns {Array} Array of warning objects
+ */
+function getPOWarnings(po, lineItems) {
+  const warnings = [];
+
+  // Check for line items with amounts but no cost codes
+  const itemsWithAmounts = (lineItems || []).filter(li => {
+    const amount = parseFloat(li.amount) || 0;
+    return amount > 0;
+  });
+
+  const missingCostCodes = itemsWithAmounts.filter(li => !li.cost_code_id);
+
+  if (missingCostCodes.length > 0) {
+    warnings.push({
+      type: 'missing_cost_codes',
+      severity: 'warning',
+      count: missingCostCodes.length,
+      items: missingCostCodes.map(li => li.title || li.description || 'Unnamed item').slice(0, 5),
+      message: `${missingCostCodes.length} line item(s) need cost codes before sending PO`
+    });
+  }
+
+  return warnings;
+}
+
+
 // Get all purchase orders
 router.get('/', async (req, res) => {
   try {
@@ -242,7 +273,11 @@ router.post('/', async (req, res) => {
       if (itemsError) throw itemsError;
     }
 
-    res.json(po);
+
+    // Get warnings for frontend display
+    const warnings = getPOWarnings(po, line_items);
+
+    res.json({ ...po, warnings });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -321,7 +356,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   // Broadcast update via SSE
   broadcastInvoiceUpdate(id, 'po_updated', { po: updated });
 
-  res.json(updated);
+
+  // Get current line items for warning check
+  const finalLineItems = line_items || existing.line_items || [];
+
+  // Get warnings for frontend display
+  const warnings = getPOWarnings(updated, finalLineItems);
+
+  res.json({ ...updated, warnings });
 }));
 
 // Delete (soft delete) purchase order
