@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notifications | Ross Built CMS</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-top">
+      <div class="header-brand">
+        <h1>Ross Built</h1>
+      </div>
+      <nav class="main-nav"></nav>
+      <div class="header-actions">
+        <span class="user-info">Jake Ross</span>
+      </div>
+    </div>
+    <div class="header-sub">
+      <nav class="sub-nav"></nav>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <div class="scaffold-page">
+      <div class="scaffold-icon">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+      </div>
+      <h2>Notifications</h2>
+      <p class="scaffold-description">
+        Centralized notification center for all system alerts and updates.
+        Configure preferences for email and in-app notifications.
+      </p>
+      <div class="scaffold-features">
+        <h4>Planned Features</h4>
+        <ul>
+          <li>Unified notification inbox</li>
+          <li>Real-time in-app alerts</li>
+          <li>Email digest options (instant, daily, weekly)</li>
+          <li>Per-category notification preferences</li>
+          <li>Mark as read/unread, archive</li>
+        </ul>
+      </div>
+      <div class="scaffold-badge">
+        <span class="badge badge-info">Coming in v2.0</span>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast-container"></div>
+  <script src="js/toasts.js"></script>
+  <script defer src="js/nav-sidebar.js"></script>
+</body>
+</html>

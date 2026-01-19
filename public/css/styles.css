@@ -27367,3 +27367,87 @@ td.empty-state {
 .co-row.total span:last-child {
   color: var(--accent-green);
 }
+
+/* ============================================
+   SCAFFOLD / PLACEHOLDER PAGES
+   ============================================ */
+
+.scaffold-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 60vh;
+  padding: 3rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.scaffold-icon {
+  margin-bottom: 1.5rem;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.scaffold-icon svg {
+  stroke-width: 1;
+}
+
+.scaffold-page h2 {
+  margin: 0 0 0.75rem 0;
+  font-size: 2rem;
+  color: var(--text-primary);
+}
+
+.scaffold-description {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+  max-width: 500px;
+}
+
+.scaffold-features {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  text-align: left;
+  width: 100%;
+  max-width: 400px;
+  margin-bottom: 1.5rem;
+}
+
+.scaffold-features h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.scaffold-features ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.scaffold-features li {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.scaffold-features li:last-child {
+  margin-bottom: 0;
+}
+
+.scaffold-badge {
+  margin-top: 0.5rem;
+}
+
+.scaffold-badge .badge {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
