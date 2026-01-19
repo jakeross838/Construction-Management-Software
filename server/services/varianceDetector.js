@@ -8,9 +8,9 @@
  * - Description mismatches
  *
  * MATCHING ALGORITHM:
- * - Text similarity uses Jaccard coefficient (word overlap between descriptions)
+ * - Text similarity uses Jaccard coefficient enhanced with Levenshtein-based fuzzy matching
  * - Words with 3 or fewer characters are filtered out to reduce noise
- * - Combined score = 70% text similarity + 30% amount match
+ * - Combined score = 60% text similarity + 25% amount match + 15% cost code boost
  *
  * THRESHOLDS:
  * - 0.2 minimum Jaccard similarity for initial match consideration
@@ -19,6 +19,7 @@
  * - $1 tolerance for CO/VPO amount matching
  * - 5% + $50 minimum for flagging amount mismatches
  * - 90% threshold for "approaching limit" warnings
+ * - 85% similarity threshold for fuzzy word matching
  *
  * MATCHING PRIORITY:
  * 1. PO Line Items (original scope)
@@ -33,6 +34,30 @@
  */
 
 const { supabase } = require('../../config');
+/**
+ * Calculate Levenshtein distance between two strings
+ * Used for fuzzy word matching in text similarity calculations
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @returns {number} Edit distance between the strings
+ */
+function levenshteinDistance(str1, str2) {
+  const m = str1.length;
+  const n = str2.length;
+  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = str1[i - 1] === str2[j - 1]
+        ? dp[i - 1][j - 1]
+        : Math.min(dp[i - 1][j - 1], dp[i][j - 1], dp[i - 1][j]) + 1;
+    }
+  }
+  return dp[m][n];
+}
 
 /**
  * Common construction abbreviations mapped to full forms.
@@ -104,7 +129,12 @@ function normalizeText(text, expandAbbreviations = true) {
 }
 
 /**
- * Calculate similarity between two strings (simple word overlap)
+ * Calculate similarity between two strings using Jaccard coefficient
+ * enhanced with Levenshtein-based fuzzy word matching.
+ *
+ * @param {string} str1 - First string to compare
+ * @param {string} str2 - Second string to compare
+ * @returns {number} Similarity score between 0 and 1
  */
 function calculateSimilarity(str1, str2) {
   const words1 = new Set(normalizeText(str1).split(' ').filter(w => w.length > 2));
@@ -112,14 +142,52 @@ function calculateSimilarity(str1, str2) {
 
   if (words1.size === 0 || words2.size === 0) return 0;
 
+  // Exact Jaccard similarity (existing)
   const intersection = [...words1].filter(w => words2.has(w)).length;
   const union = new Set([...words1, ...words2]).size;
+  const jaccardScore = union > 0 ? intersection / union : 0;
 
-  return intersection / union; // Jaccard similarity
+  // Fuzzy word matching (new)
+  let fuzzyMatches = 0;
+  for (const w1 of words1) {
+    // Check if already exact match (avoid double counting)
+    if (words2.has(w1)) continue;
+
+    for (const w2 of words2) {
+      if (words1.has(w2)) continue; // Skip exact matches
+
+      // Calculate similarity using Levenshtein
+      const maxLen = Math.max(w1.length, w2.length);
+      if (maxLen < 4) continue; // Skip short words
+
+      const distance = levenshteinDistance(w1, w2);
+      const similarity = 1 - (distance / maxLen);
+
+      if (similarity > 0.85) {
+        fuzzyMatches++;
+        break; // Found match for w1, move to next
+      }
+    }
+  }
+
+  // Calculate fuzzy contribution (fuzzy matches as fraction of non-exact words)
+  const nonExactWords = words1.size - intersection;
+  const fuzzyScore = nonExactWords > 0
+    ? (intersection + fuzzyMatches) / words1.size
+    : jaccardScore;
+
+  // Return the higher of exact Jaccard or fuzzy-enhanced score
+  return Math.max(jaccardScore, fuzzyScore);
 }
 
 /**
- * Try to match an invoice line item to a PO line item
+ * Try to match an invoice line item to a PO line item.
+ * Uses text similarity, amount matching, and cost code matching boost.
+ *
+ * @param {Object} invoiceLineItem - Invoice line item with description, amount, and optionally cost_code_id
+ * @param {Array} poLineItems - Array of PO line items to match against
+ * @param {Set} usedMatches - Set of already-used PO line item IDs
+ * @returns {Object|null} Best match with score details, or null if no match found
  */
 function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) {
   const invDesc = invoiceLineItem.description || '';
@@ -134,15 +202,44 @@ function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) 
     const poDesc = `${poLine.title || ''} ${poLine.description || ''}`;
     const poAmount = parseFloat(poLine.amount) || 0;
 
-    // Calculate description similarity
+    // Text similarity (enhanced with fuzzy matching)
     const descSimilarity = calculateSimilarity(invDesc, poDesc);
 
-    // Calculate amount match (within 10% = high score)
-    const amountDiff = Math.abs(invAmount - poAmount);
-    const amountMatch = poAmount > 0 ? Math.max(0, 1 - (amountDiff / poAmount)) : 0;
+    // Amount match with partial billing support
+    let amountMatch = 0;
+    if (poAmount > 0) {
+      const amountDiff = Math.abs(invAmount - poAmount);
 
-    // Combined score (description weighted more heavily)
-    const score = (descSimilarity * 0.7) + (amountMatch * 0.3);
+      // Exact match (within $1) gets full score
+      if (amountDiff <= 1) {
+        amountMatch = 1.0;
+      }
+      // Partial billing: invoice <= PO (common case) gets good score
+      else if (invAmount <= poAmount && invAmount > 0) {
+        // Scale based on how much of PO is being billed
+        const billedRatio = invAmount / poAmount;
+        amountMatch = 0.5 + (billedRatio * 0.4); // 0.5-0.9 range
+      }
+      // Over-billing: invoice > PO gets penalized
+      else {
+        amountMatch = Math.max(0, 1 - (amountDiff / poAmount));
+      }
+    }
+
+    // Cost code match boost
+    let costCodeBoost = 0;
+    const invCostCodeId = invoiceLineItem.cost_code_id;
+    const poCostCodeId = poLine.cost_code_id || poLine.cost_code?.id;
+    if (invCostCodeId && poCostCodeId) {
+      if (invCostCodeId === poCostCodeId) {
+        costCodeBoost = 0.15; // Strong signal they're related
+      }
+    }
+
+    // Combined score: 60% text + 25% amount + 15% cost code (if both have codes)
+    // If no cost codes, it's 70% text + 30% amount (original weights, costCodeBoost = 0)
+    const baseScore = (descSimilarity * 0.6) + (amountMatch * 0.25);
+    const score = baseScore + costCodeBoost;
 
     if (score > bestScore && score > 0.2) { // Minimum threshold
       bestScore = score;
@@ -150,6 +247,7 @@ function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) 
         poLineItem: poLine,
         similarity: descSimilarity,
         amountMatch,
+        costCodeMatch: costCodeBoost > 0,
         score
       };
     }
@@ -190,7 +288,7 @@ async function detectVariances(invoice) {
       .select(`
         id, po_number, total_amount, status,
         line_items:v2_po_line_items(
-          id, title, description, amount, invoiced_amount, cost_type,
+          id, title, description, amount, invoiced_amount, cost_type, cost_code_id,
           cost_code:v2_cost_codes(id, code, name)
         )
       `)
@@ -302,6 +400,7 @@ async function detectVariances(invoice) {
             poDescription: match.poLineItem.description,
             poAmount: poAmount,
             similarity: match.similarity,
+            costCodeMatch: match.costCodeMatch,
             amountDifference: amountDiff
           });
 
@@ -513,5 +612,6 @@ module.exports = {
   normalizeText,
   calculateSimilarity,
   findBestPOMatch,
+  levenshteinDistance,
   ABBREVIATIONS
 };
