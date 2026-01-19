@@ -4,8 +4,8 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.6 - Module Expansion (shipped 2026-01-19)
-**Current Milestone:** v1.7 - Data Integrity & AI Accuracy
+**Last Milestone:** v1.7 - Data Integrity & AI Accuracy (shipped 2026-01-19)
+**Current Milestone:** Planning next milestone
 
 ## Core Value
 
@@ -151,36 +151,13 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 **Navigation & Organization:**
 - [x] NAV-01: Reorganize sidebar into logical groups (Sales, Pre-Con, Execution, Field, Finance, Comms)
 
-### v1.7 Data Integrity & AI Accuracy (Active)
+### v1.7 Data Integrity & AI Accuracy (Shipped)
 
-**Budget Integrity:**
-- [ ] BUD-INT-01: Create `increment_committed_amount` RPC function for PO approval
-- [ ] BUD-INT-02: Create `decrement_committed_amount` RPC function for PO voiding
-- [ ] BUD-INT-03: Fix budget line creation to require non-zero budgeted_amount
-- [ ] BUD-INT-04: Add committed_amount tracking when POs approved/voided
-
-**Invoice Pipeline:**
-- [ ] INV-INT-01: Add allocation cleanup on invoice status transitions (deny, delete)
-- [ ] INV-INT-02: Add transaction wrapping for critical invoice operations
-- [ ] INV-INT-03: Fix billed_amount recalculation when allocations change post-draw
-- [ ] INV-INT-04: Validate allocation sum equals invoice amount before approval
-
-**Draw Accuracy:**
-- [ ] DRW-INT-01: Always recalculate draw total on GET (don't trust stored value)
-- [ ] DRW-INT-02: Include zero-billed cost codes in G703 with 0% progress
-- [ ] DRW-INT-03: Validate draw allocations match invoice allocations
-
-**PO/CO Linking:**
-- [ ] PO-INT-01: Fix PO line item invoiced_amount sync on allocation changes
-- [ ] PO-INT-02: Fix CO invoiced_amount tracking on invoice approval
-- [ ] PO-INT-03: Reverse committed_amount when PO voided
-- [ ] PO-INT-04: Validate CO mutual exclusivity (manual vs allocated vs unlinked)
-
-**AI Accuracy:**
-- [ ] AI-INT-01: Tune job matching confidence thresholds (raise minimum)
-- [ ] AI-INT-02: Improve text scanning for job names in invoice content
-- [ ] AI-INT-03: Add validation for extracted dates (reject invalid dates)
-- [ ] AI-INT-04: Improve vendor name extraction from invoice headers
+- [x] BUD-INT-01 to BUD-INT-04 — Budget RPC functions and committed_amount tracking
+- [x] INV-INT-01 to INV-INT-04 — Invoice pipeline cleanup and transaction safety
+- [x] DRW-INT-01 to DRW-INT-03 — Draw accuracy and G703 improvements
+- [x] PO-INT-01 to PO-INT-04 — PO/CO linking and invoiced_amount sync
+- [x] AI-INT-01 to AI-INT-04 — AI accuracy improvements (70% threshold, date validation)
 
 ### Out of Scope
 
@@ -215,4 +192,4 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-19 — v1.7 Data Integrity & AI Accuracy started*
+*Last updated: 2026-01-19 after v1.7 milestone complete*

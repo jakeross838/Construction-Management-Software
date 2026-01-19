@@ -2,6 +2,36 @@
 
 Historical record of shipped milestones.
 
+## v1.7 Data Integrity & AI Accuracy
+
+**Shipped:** 2026-01-19
+**Phases:** 4 (43-46)
+**Plans executed:** 16
+
+### Highlights
+
+- **Budget RPC Functions**: Atomic `increment_committed_amount` and `decrement_committed_amount` for PO approval/void
+- **Invoice Pipeline Safety**: Allocation cleanup on deny/delete, transaction wrapping with best-effort rollback
+- **Draw Accuracy**: Total recalculation on GET, zero-billed cost codes in G703, allocation validation
+- **PO/CO Linking**: Bidirectional invoiced_amount sync, CO mutual exclusivity validation
+- **AI Improvements**: 70% confidence threshold (was 50%), robust date validation, better vendor extraction
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Phases | 4 (43-46) |
+| Plans | 16 |
+| Requirements | 19 (BUD-INT-*, INV-INT-*, DRW-INT-*, PO-INT-*, AI-INT-*) |
+| Timeline | 1 day |
+
+### Archive
+
+- `.planning/milestones/v1.7-ROADMAP.md`
+- `.planning/milestones/v1.7-REQUIREMENTS.md`
+
+---
+
 ## v1.6 Module Expansion
 
 **Shipped:** 2026-01-19

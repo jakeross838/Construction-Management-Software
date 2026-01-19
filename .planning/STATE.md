@@ -5,20 +5,20 @@
 See: .planning/PROJECT.md (updated 2026-01-19)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.7 Data Integrity & AI Accuracy
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 44 of 4 (invoice-pipeline)
-Plan: 4 of 4 in current phase (4 summaries exist)
-Status: Phase complete
-Last activity: 2026-01-19 — Completed 44-03-PLAN.md (Transaction Wrapping)
+Phase: Ready for next milestone
+Plan: Not started
+Status: v1.7 shipped, ready to plan v1.8
+Last activity: 2026-01-19 — v1.7 milestone complete
 
-Progress: [===============-] 8/12 plans (v1.7)
+Progress: Ready for next milestone
 
 ## Milestone History
 
-- **v1.7 Data Integrity & AI Accuracy** (active): 4 phases planned (43-46) — Budget RPC, Invoice pipeline, Draw/PO linking, AI accuracy
+- **v1.7 Data Integrity & AI Accuracy** (shipped 2026-01-19): 4 phases (43-46), 16 plans — Budget RPC, Invoice pipeline, Draw/PO linking, AI accuracy
 - **v1.6 Module Expansion** (shipped 2026-01-19): 6 phases, 17 plans — Leads/CRM, Selections, 7 scaffold modules, navigation reorganization
 - **v1.5 UI Cleanup** (shipped 2026-01-18): 7 phases, 19 plans — CSS standardization, component uniformity
 - **v1.4 Price Intelligence** (2026-01-18): Price tracking, order optimization, savings analytics, PO warnings
@@ -31,35 +31,10 @@ Progress: [===============-] 8/12 plans (v1.7)
 
 ### Decisions
 
-- **No retainage**: User explicitly excluded retainage calculations from v1.7 scope
+- **No retainage**: User explicitly excluded retainage calculations
 - **Audit-driven scope**: v1.7 requirements derived from comprehensive system audit
-
-### Audit Findings (2026-01-19)
-
-Critical issues identified:
-1. ~~`increment_committed_amount` RPC function called but never created~~ FIXED (43-01)
-2. ~~Budget lines created with $0 budgeted_amount when invoice allocated~~ FIXED (43-03)
-3. ~~No allocation cleanup on invoice denial/deletion~~ FIXED (44-01)
-4. ~~Draw totals stored but not always recalculated~~ FIXED (44-04)
-5. Job matching confidence threshold too low (50%)
-
-### Phase 43 Decisions
-
-- **increment raises exception if budget line missing**: Prevents committing to non-existent budget lines
-- **decrement is no-op for missing budget lines**: Voiding PO succeeds even if budget line was deleted
-- **RPC failures logged but don't fail operations**: PO operations complete even if budget updates fail (graceful degradation)
-- **Graceful degradation for draw operations**: Log warnings for missing budget lines, include in API response, but don't fail operations
-
-### Phase 44 Decisions
-
-- **0.01 tolerance for allocation sum validation**: Handles floating point rounding in amount comparisons
-- **Separate NO_ALLOCATIONS and ALLOCATION_MISMATCH errors**: Clearer UX for different validation failures
-- **Cleanup before soft-delete**: Allocation cleanup happens after undo snapshot but before soft-delete
-- **Reuse updatePOLineItemsForAllocations for cleanup**: Uses existing function to decrement PO amounts
-- **Query draw_allocations for accurate totals**: Recalculation queries actual draw_allocations to ensure accuracy
-- **Collect affected cost codes from old and new allocations**: Both old and new allocations checked to ensure all affected budget lines are updated
-- **Best-effort rollback pattern**: Manual state tracking and restoration since Supabase JS lacks native transactions
-- **Rollback in reverse order**: Multi-step operations rolled back in reverse order of completion
+- **RPC for budget atomicity**: increment/decrement functions for committed_amount
+- **Best-effort rollback**: Manual state tracking since Supabase JS lacks transactions
 
 ### Pending Todos
 
@@ -71,15 +46,14 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19T17:31:05Z
-Stopped at: Completed 44-03-PLAN.md (Transaction Wrapping)
+Last session: 2026-01-19T21:30:00Z
+Stopped at: v1.7 milestone completed, ready for v1.8
 Resume file: None
 
 ## Next Actions
 
-1. Transition to Phase 45 (Draw/PO linking)
-2. Continue v1.7 milestone
+1. Run `/gsd:new-milestone` to start v1.8 planning
 
 ## Research
 
-- Audit findings from today's comprehensive system review
+- v1.7 audit findings fully addressed
