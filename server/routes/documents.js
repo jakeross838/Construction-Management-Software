@@ -235,11 +235,7 @@ router.post('/categorize', upload.single('file'), asyncHandler(async (req, res) 
       mimeType: req.file.mimetype,
       size: req.file.size
     });
-  } catch (err) {
-    console.error('Document categorization error:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // UPLOAD & CREATE
@@ -359,11 +355,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
         suggestedName: aiCategorization.suggestedName
       } : null
     });
-  } catch (err) {
-    console.error('Document upload error:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // UPDATE & DELETE

@@ -384,11 +384,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
         currentPaymentDue
       }
     });
-  } catch (err) {
-    console.error('Error fetching draw:', err);
-    throw err;
-  }
-});
+}));
 
 // Get draw activity
 router.get('/:id/activity', asyncHandler(async (req, res) => {

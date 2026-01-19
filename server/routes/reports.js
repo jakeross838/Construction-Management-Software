@@ -8,7 +8,7 @@ const router = express.Router();
 const ExcelJS = require('exceljs');
 const pdfMake = require('pdfmake/build/pdfmake');
 const pdfFonts = require('pdfmake/build/vfs_fonts');
-pdfMake.vfs = pdfFonts.pdfMake.vfs;
+pdfMake.vfs = pdfFonts.vfs;
 const { supabase } = require('../../config');
 const { asyncHandler, AppError } = require('../errors');
 

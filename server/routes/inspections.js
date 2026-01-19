@@ -208,11 +208,7 @@ router.get('/upcoming', asyncHandler(async (req, res) => {
     if (error) throw error;
 
     res.json(data || []);
-  } catch (err) {
-    console.error('Error getting upcoming inspections:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // GET INSPECTION TYPES (for dropdown)
@@ -269,11 +265,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     inspection.reinspections = reInspections || [];
 
     res.json(inspection);
-  } catch (err) {
-    console.error('Error getting inspection:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // CREATE INSPECTION
@@ -341,11 +333,7 @@ router.post('/', asyncHandler(async (req, res) => {
       });
 
     res.status(201).json(inspection);
-  } catch (err) {
-    console.error('Error creating inspection:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // UPDATE INSPECTION
@@ -381,11 +369,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       });
 
     res.json(inspection);
-  } catch (err) {
-    console.error('Error updating inspection:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // DELETE INSPECTION (soft delete)
@@ -415,11 +399,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
       });
 
     res.json({ success: true, message: 'Inspection deleted' });
-  } catch (err) {
-    console.error('Error deleting inspection:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // MARK INSPECTION AS PASSED
@@ -457,11 +437,7 @@ router.post('/:id/pass', asyncHandler(async (req, res) => {
       });
 
     res.json(inspection);
-  } catch (err) {
-    console.error('Error marking inspection passed:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // MARK INSPECTION AS FAILED
@@ -524,11 +500,7 @@ router.post('/:id/fail', asyncHandler(async (req, res) => {
       .single();
 
     res.json(fullInspection);
-  } catch (err) {
-    console.error('Error marking inspection failed:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // CANCEL INSPECTION
@@ -566,11 +538,7 @@ router.post('/:id/cancel', asyncHandler(async (req, res) => {
       });
 
     res.json(inspection);
-  } catch (err) {
-    console.error('Error cancelling inspection:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // RESCHEDULE INSPECTION
@@ -626,11 +594,7 @@ router.post('/:id/reschedule', asyncHandler(async (req, res) => {
       });
 
     res.json(inspection);
-  } catch (err) {
-    console.error('Error rescheduling inspection:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // CREATE RE-INSPECTION
@@ -710,11 +674,7 @@ router.post('/:id/reinspect', asyncHandler(async (req, res) => {
       ]);
 
     res.status(201).json(inspection);
-  } catch (err) {
-    console.error('Error creating re-inspection:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // ADD DEFICIENCY
@@ -764,11 +724,7 @@ router.post('/:id/deficiencies', asyncHandler(async (req, res) => {
       });
 
     res.status(201).json(deficiency);
-  } catch (err) {
-    console.error('Error adding deficiency:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // UPDATE DEFICIENCY
@@ -806,11 +762,7 @@ router.patch('/deficiencies/:id', asyncHandler(async (req, res) => {
       });
 
     res.json(deficiency);
-  } catch (err) {
-    console.error('Error updating deficiency:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // RESOLVE DEFICIENCY
@@ -848,11 +800,7 @@ router.post('/deficiencies/:id/resolve', asyncHandler(async (req, res) => {
       });
 
     res.json(deficiency);
-  } catch (err) {
-    console.error('Error resolving deficiency:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // UPLOAD PHOTO
@@ -924,11 +872,7 @@ router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req,
       });
 
     res.status(201).json(attachment);
-  } catch (err) {
-    console.error('Error uploading photo:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // DELETE PHOTO
@@ -975,10 +919,6 @@ router.delete('/:id/photos/:photoId', asyncHandler(async (req, res) => {
       });
 
     res.json({ success: true, message: 'Photo deleted' });
-  } catch (err) {
-    console.error('Error deleting photo:', err);
-    throw err;
-  }
-});
+}));
 
 module.exports = router;

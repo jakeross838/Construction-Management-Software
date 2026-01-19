@@ -289,11 +289,7 @@ router.get('/weather/:jobId', asyncHandler(async (req, res) => {
       },
       weather
     });
-  } catch (err) {
-    console.error('Weather endpoint error:', err);
-    throw err;
-  }
-});
+}));
 
 // Get daily log statistics
 router.get('/stats/summary', asyncHandler(async (req, res) => {
@@ -462,11 +458,7 @@ router.get('/report/weekly', asyncHandler(async (req, res) => {
     };
 
     res.json(summary);
-  } catch (err) {
-    console.error('Weekly report error:', err);
-    throw err;
-  }
-});
+}));
 
 // ============================================================
 // PARAMETERIZED ROUTES (must come AFTER specific routes above)
@@ -1251,11 +1243,7 @@ router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req,
     });
 
     res.status(201).json(attachment);
-  } catch (err) {
-    console.error('Photo upload failed:', err);
-    throw err;
-  }
-});
+}));
 
 // Get all photos for a daily log
 router.get('/:id/photos', asyncHandler(async (req, res) => {
