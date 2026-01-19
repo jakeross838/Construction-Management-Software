@@ -515,6 +515,41 @@ async function recalculateBilledAmounts(jobId, costCodeIds) {
 }
 
 /**
+ * Execute multiple database operations with rollback on failure.
+ * Since Supabase doesn't support transactions in JS client, we track
+ * operations and manually reverse on failure.
+ *
+ * @param {Array} operations - Array of {execute: async fn, rollback: async fn}
+ * @returns {Object} { success: boolean, error?: string, results?: Array }
+ */
+async function executeWithRollback(operations) {
+  const completed = [];
+
+  try {
+    for (const op of operations) {
+      const result = await op.execute();
+      completed.push({ op, result });
+    }
+    return { success: true, results: completed.map(c => c.result) };
+  } catch (error) {
+    console.error('[ROLLBACK] Operation failed, rolling back:', error.message);
+
+    // Roll back in reverse order
+    for (let i = completed.length - 1; i >= 0; i--) {
+      try {
+        if (completed[i].op.rollback) {
+          await completed[i].op.rollback(completed[i].result);
+        }
+      } catch (rollbackError) {
+        console.error('[ROLLBACK] Rollback operation failed:', rollbackError.message);
+      }
+    }
+
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Get or create a draft draw for a job
  */
 async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
@@ -573,5 +608,6 @@ module.exports = {
   checkSplitReconciliation,
   getOrCreateDraftDraw,
   cleanupInvoiceAllocations,
-  recalculateBilledAmounts
+  recalculateBilledAmounts,
+  executeWithRollback
 };
