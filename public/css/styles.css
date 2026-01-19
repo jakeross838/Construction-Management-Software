@@ -307,7 +307,9 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* Legacy support for old nav-link class */
+/* Legacy support - scheduled for removal
+   Used by: sidebar.js (.header-left)
+   Alias to: main-nav-link styling patterns */
 .header-left {
   display: flex;
   align-items: center;
@@ -329,6 +331,7 @@ body {
   border-radius: var(--radius-sm);
 }
 
+/* Legacy nav-link - alias to main-nav-link active pattern */
 .nav-link {
   padding: 0.375rem 0.875rem;
   text-decoration: none;
