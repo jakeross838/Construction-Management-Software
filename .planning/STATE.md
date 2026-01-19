@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Position
 
 Phase: 35 of 36 — Navigation & Layout
-Plan: 2 plans created (01, 02)
-Status: PLANNING COMPLETE
-Last activity: 2026-01-18 — Phase 35 planned (sidebar active states, page headers, responsive breakpoints)
+Plan: 01 COMPLETE, 02 pending
+Status: EXECUTING
+Last activity: 2026-01-18 — Plan 35-01 complete (sidebar/navigation active states unified, legacy classes cleaned)
 
 Progress: █████░░░░░ 71% v1.5 (5/7 phases)
 
@@ -46,6 +46,10 @@ Progress: █████░░░░░ 71% v1.5 (5/7 phases)
 - Form layouts unified in FORM LAYOUTS section (line ~2292): `.form-row`, `.form-grid`, `.form-grid-2/3`
 - Form sections unified in FORM SECTIONS section (line ~2370): `.form-section`, `.form-section-divider`
 - Input prefix/suffix unified in INPUT PREFIX/SUFFIX section (line ~2420): `.input-with-prefix`, `.input-group`
+- Sidebar active states use `var(--primary)` and `var(--primary-foreground)` for unified styling
+- Navigation active states: `.main-nav-link.active` has `border-bottom: 2px solid var(--primary)`
+- Hover states for non-active items use `var(--muted)` consistently
+- Legacy `.header-left`, `.header-nav`, `.nav-link` marked for removal (used by sidebar.js)
 
 ### Pending Todos
 
@@ -58,10 +62,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 34 complete
+Stopped at: Plan 35-01 complete
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-phase 35` to execute Navigation & Layout CSS standardization
+1. Execute Plan 35-02 (page headers, responsive breakpoints)
 2. Continue with Phase 36 (Polish & Final Pass)
