@@ -724,6 +724,110 @@ router.post('/:id/remove-invoice', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// VALIDATION
+// ============================================================
+
+/**
+ * GET /api/draws/:id/validate
+ * Validates G703 cost code accuracy before submission
+ * CCL-04: Returns validation errors (blocking) and warnings (informational)
+ */
+router.get('/:id/validate', asyncHandler(async (req, res) => {
+  const drawId = req.params.id;
+  const errors = [];
+  const warnings = [];
+
+  // Get draw with job info
+  const { data: draw, error: drawError } = await supabase
+    .from('v2_draws')
+    .select('*, job:v2_jobs(id, name)')
+    .eq('id', drawId)
+    .single();
+
+  if (drawError || !draw) {
+    return res.status(404).json({ error: 'Draw not found' });
+  }
+
+  // Get all allocations for this draw
+  const { data: allocations } = await supabase
+    .from('v2_draw_allocations')
+    .select(`
+      id,
+      cost_code_id,
+      amount,
+      cost_code:v2_cost_codes(id, code, name)
+    `)
+    .eq('draw_id', drawId);
+
+  // Get budget lines for this job
+  const { data: budgetLines } = await supabase
+    .from('v2_budget_lines')
+    .select('cost_code_id, budgeted_amount')
+    .eq('job_id', draw.job_id);
+
+  const budgetCodes = new Set((budgetLines || []).map(bl => bl.cost_code_id));
+  const allocByCostCode = {};
+
+  // Check each allocation
+  for (const alloc of (allocations || [])) {
+    const ccId = alloc.cost_code_id;
+    const amount = parseFloat(alloc.amount || 0);
+
+    // Sum by cost code
+    allocByCostCode[ccId] = (allocByCostCode[ccId] || 0) + amount;
+
+    // Check: allocation has budget line
+    if (!budgetCodes.has(ccId)) {
+      const codeName = alloc.cost_code?.code || ccId;
+      errors.push({
+        type: 'missing_budget_line',
+        cost_code_id: ccId,
+        cost_code: codeName,
+        amount: amount,
+        message: `Cost code ${codeName} has no budget line for this job`
+      });
+    }
+  }
+
+  // Check: totals match
+  const allocTotal = Object.values(allocByCostCode).reduce((sum, amt) => sum + amt, 0);
+  const storedTotal = parseFloat(draw.total_amount || 0);
+  const diff = Math.abs(allocTotal - storedTotal);
+
+  if (diff > 0.01) {
+    warnings.push({
+      type: 'total_mismatch',
+      calculated: allocTotal,
+      stored: storedTotal,
+      difference: allocTotal - storedTotal,
+      message: `Draw total (${storedTotal.toFixed(2)}) doesn't match allocation sum (${allocTotal.toFixed(2)})`
+    });
+  }
+
+  // Check: empty draw
+  if ((allocations || []).length === 0) {
+    warnings.push({
+      type: 'empty_draw',
+      message: 'Draw has no allocations - add invoices before submitting'
+    });
+  }
+
+  res.json({
+    valid: errors.length === 0,
+    draw_id: drawId,
+    draw_number: draw.draw_number,
+    job: draw.job?.name,
+    errors,
+    warnings,
+    summary: {
+      allocation_count: (allocations || []).length,
+      cost_codes_used: Object.keys(allocByCostCode).length,
+      total_amount: allocTotal
+    }
+  });
+}));
+
+// ============================================================
 // STATUS TRANSITIONS
 // ============================================================
 
@@ -732,20 +836,61 @@ router.patch('/:id/submit', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { submitted_by = 'System' } = req.body;
 
-    const { data: drawInfo } = await supabase
+    // CCL-04: Run validation before allowing submit
+    const { data: draw } = await supabase
       .from('v2_draws')
-      .select('draw_number, status')
+      .select('*, job:v2_jobs(id, name)')
       .eq('id', drawId)
       .single();
 
-    if (!drawInfo) return res.status(404).json({ error: 'Draw not found' });
-    if (drawInfo.status !== 'draft') {
-      return res.status(400).json({ error: `Cannot submit a draw that is already ${drawInfo.status}` });
+    if (!draw) return res.status(404).json({ error: 'Draw not found' });
+    if (draw.status !== 'draft') {
+      return res.status(400).json({ error: `Cannot submit a draw that is already ${draw.status}` });
+    }
+
+    // Get allocations for validation
+    const { data: allocations } = await supabase
+      .from('v2_draw_allocations')
+      .select('cost_code_id, amount')
+      .eq('draw_id', drawId);
+
+    // Get budget lines
+    const { data: budgetLines } = await supabase
+      .from('v2_budget_lines')
+      .select('cost_code_id')
+      .eq('job_id', draw.job_id);
+
+    const budgetCodes = new Set((budgetLines || []).map(bl => bl.cost_code_id));
+
+    // Check for cost codes without budget lines (blocking error)
+    const missingBudget = (allocations || []).filter(a => !budgetCodes.has(a.cost_code_id));
+    if (missingBudget.length > 0) {
+      // Get cost code details for better error message
+      const missingCodeIds = [...new Set(missingBudget.map(a => a.cost_code_id))];
+      const { data: costCodes } = await supabase
+        .from('v2_cost_codes')
+        .select('id, code, name')
+        .in('id', missingCodeIds);
+
+      const codeMap = {};
+      (costCodes || []).forEach(cc => { codeMap[cc.id] = cc; });
+
+      return res.status(400).json({
+        error: 'Cannot submit draw with allocations to cost codes without budget lines',
+        validation_errors: missingBudget.map(a => ({
+          type: 'missing_budget_line',
+          cost_code_id: a.cost_code_id,
+          cost_code: codeMap[a.cost_code_id]?.code || a.cost_code_id,
+          cost_code_name: codeMap[a.cost_code_id]?.name,
+          amount: parseFloat(a.amount || 0)
+        })),
+        hint: 'Add budget lines for these cost codes or remove the allocations'
+      });
     }
 
     const now = new Date().toISOString();
 
-    const { data: draw, error } = await supabase
+    const { data: updatedDraw, error } = await supabase
       .from('v2_draws')
       .update({ status: 'submitted', submitted_at: now, locked_at: now })
       .eq('id', drawId)
@@ -755,11 +900,11 @@ router.patch('/:id/submit', asyncHandler(async (req, res) => {
     if (error) throw error;
 
     await logDrawActivity(drawId, 'submitted', submitted_by, {
-      draw_number: draw.draw_number,
-      total_amount: draw.total_amount
+      draw_number: updatedDraw.draw_number,
+      total_amount: updatedDraw.total_amount
     });
 
-    res.json(draw);
+    res.json(updatedDraw);
 }));
 
 // Unsubmit draw
