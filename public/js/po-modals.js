@@ -22,6 +22,7 @@ class POModals {
     this.attachments = [];
     this.changeOrders = [];
     this.jobChangeOrders = []; // Job-level COs for linking to line items
+    this.vpos = []; // Verbal Purchase Orders
     this.pendingFiles = []; // Files to upload after saving new PO
     this.punchLists = []; // Punch lists linked to this PO
     this.punchStatus = null; // Punch list status info
@@ -235,13 +236,14 @@ class POModals {
       this.currentPO = await res.json();
       this.currentLineItems = this.currentPO.line_items || [];
 
-      const [invRes, actRes, attRes, coRes, plRes, psRes] = await Promise.all([
+      const [invRes, actRes, attRes, coRes, plRes, psRes, vpoRes] = await Promise.all([
         fetch(`/api/purchase-orders/${poId}/invoices`),
         fetch(`/api/purchase-orders/${poId}/activity`),
         fetch(`/api/purchase-orders/${poId}/attachments`),
         fetch(`/api/purchase-orders/${poId}/change-orders`),
         fetch(`/api/purchase-orders/${poId}/punch-lists`),
-        fetch(`/api/purchase-orders/${poId}/punch-status`)
+        fetch(`/api/purchase-orders/${poId}/punch-status`),
+        fetch(`/api/purchase-orders/${poId}/vpos`)
       ]);
 
       const invoicesData = await invRes.json();
@@ -250,6 +252,7 @@ class POModals {
       const changeOrdersData = await coRes.json();
       const punchListsData = await plRes.json();
       const punchStatusData = await psRes.json();
+      const vposData = await vpoRes.json();
 
       this.currentPO.invoices = Array.isArray(invoicesData) ? invoicesData : [];
       this.currentPO.activity = Array.isArray(activityData) ? activityData : [];
@@ -257,6 +260,7 @@ class POModals {
       this.changeOrders = Array.isArray(changeOrdersData) ? changeOrdersData : [];
       this.punchLists = Array.isArray(punchListsData) ? punchListsData : [];
       this.punchStatus = punchStatusData || null;
+      this.vpos = Array.isArray(vposData) ? vposData : [];
 
       this.renderPOModal();
     } catch (err) {
@@ -580,11 +584,13 @@ class POModals {
             <option value="">Type...</option>
             ${costTypes.map(t => `<option value="${t}" ${item.cost_type === t ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
-          <input type="text" placeholder="Description" value="${this.escapeHtml(item.description || '')}" class="form-input description-input"
-            onchange="window.poModals.updateLineItem(${index}, 'description', this.value)">
           <input type="number" placeholder="0.00" value="${item.amount || ''}" step="0.01" class="form-input amount"
             onchange="window.poModals.updateLineItem(${index}, 'amount', this.value)">
           <button type="button" class="btn-remove" onclick="window.poModals.removeLineItem(${index})">×</button>
+        </div>
+        <div class="line-item-description-row">
+          <textarea placeholder="Description (details for invoice matching)" rows="5" class="form-input line-item-description"
+            onchange="window.poModals.updateLineItem(${index}, 'description', this.value)">${this.escapeHtml(item.description || '')}</textarea>
         </div>
         ${coPickerHtml}
       </div>
@@ -659,17 +665,19 @@ class POModals {
               const statusClass = pct >= 100 ? 'fully-billed' : pct > 0 ? 'partial-billed' : 'not-billed';
               const costType = item.cost_type ? `<span class="li-cost-type">${item.cost_type}</span>` : '';
               const itemTitle = item.title ? `<div class="li-title">${this.escapeHtml(item.title)}</div>` : '';
+              const itemDesc = item.description ? `<div class="li-description">${this.escapeHtml(item.description)}</div>` : '';
               return `
                 <div class="line-item-view ${statusClass}">
-                  ${itemTitle}
                   <div class="li-header">
+                    ${itemTitle}
                     <div class="li-info">
                       <span class="li-code">${cc?.code || '—'}</span>
                       ${costType}
-                      <span class="li-name">${cc?.name || item.description || 'No description'}</span>
+                      <span class="li-name">${cc?.name || 'No cost code'}</span>
                     </div>
                     <span class="li-amount">${this.formatMoney(budgeted)}</span>
                   </div>
+                  ${itemDesc}
                   <div class="li-billing-row">
                     <div class="li-progress-bar">
                       <div class="li-progress-fill" style="width: ${Math.min(pct, 100)}%"></div>
@@ -698,6 +706,8 @@ class POModals {
       ` : ''}
 
       ${this.renderChangeOrdersSection()}
+
+      ${this.renderVPOsSection()}
 
       ${this.renderPunchListSection()}
 
@@ -1021,6 +1031,290 @@ class POModals {
         }
       },
       { label: 'Reason for rejection', placeholder: 'Enter reason...', required: false }
+    );
+  }
+
+  // ============================================================
+  // VPO (VERBAL PURCHASE ORDERS) SECTION
+  // ============================================================
+
+  renderVPOsSection() {
+    const isNew = !this.currentPO.id;
+    if (isNew) return '';
+
+    const approved = this.vpos.filter(v => v.status === 'approved');
+    const voided = this.vpos.filter(v => v.status === 'voided');
+
+    const totalApproved = approved.reduce((sum, v) => sum + parseFloat(v.amount || 0), 0);
+
+    return `
+      <div class="po-card">
+        <div class="card-title-row">
+          <h4>Verbal Purchase Orders</h4>
+          <div class="vpo-header-actions">
+            ${this.vpos.length > 0 ? `<span class="count-badge">${approved.length}</span>` : ''}
+            <button type="button" class="btn-add" onclick="window.poModals.showAddVPOModal()">+ Add VPO</button>
+          </div>
+        </div>
+
+        ${totalApproved !== 0 ? `
+          <div class="vpo-summary">
+            <span class="vpo-summary-label">Approved VPOs:</span>
+            <span class="vpo-summary-amount ${totalApproved >= 0 ? 'positive' : 'negative'}">${totalApproved >= 0 ? '+' : ''}${this.formatMoney(totalApproved)}</span>
+          </div>
+        ` : ''}
+
+        <p class="vpo-hint">VPOs are quick verbal authorizations for additional work without full CO paperwork.</p>
+
+        ${this.vpos.length === 0 ? `
+          <p class="empty-text">No verbal purchase orders</p>
+        ` : `
+          <div class="vpo-list">
+            ${approved.map(v => this.renderVPOItem(v)).join('')}
+            ${voided.length > 0 ? `
+              <div class="vpo-voided-section">
+                <div class="vpo-voided-header" onclick="this.parentElement.classList.toggle('expanded')">
+                  <span>Voided VPOs (${voided.length})</span>
+                  <span class="expand-icon">▸</span>
+                </div>
+                <div class="vpo-voided-list">
+                  ${voided.map(v => this.renderVPOItem(v)).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  renderVPOItem(vpo) {
+    const isVoided = vpo.status === 'voided';
+    const amountClass = parseFloat(vpo.amount) >= 0 ? 'positive' : 'negative';
+    const amountPrefix = parseFloat(vpo.amount) >= 0 ? '+' : '';
+
+    return `
+      <div class="vpo-item ${isVoided ? 'voided' : ''}">
+        <div class="vpo-main">
+          <div class="vpo-info">
+            <span class="vpo-number">VPO-${vpo.vpo_number}</span>
+            <span class="vpo-description">${this.escapeHtml(vpo.description || 'No description')}</span>
+          </div>
+          <div class="vpo-amount ${amountClass}">${amountPrefix}${this.formatMoney(vpo.amount)}</div>
+        </div>
+        <div class="vpo-meta">
+          <span class="vpo-status status-${isVoided ? 'voided' : 'approved'}">${isVoided ? 'Voided' : 'Approved'}</span>
+          <span class="vpo-date">${this.formatDate(vpo.authorized_date || vpo.created_at)}</span>
+          ${vpo.authorized_by ? `<span class="vpo-auth">by ${this.escapeHtml(vpo.authorized_by)}</span>` : ''}
+          ${!isVoided ? `
+            <div class="vpo-actions">
+              <button class="btn-sm btn-secondary" onclick="window.poModals.editVPO('${vpo.id}')">Edit</button>
+              <button class="btn-sm btn-danger" onclick="window.poModals.voidVPO('${vpo.id}')">Void</button>
+            </div>
+          ` : ''}
+        </div>
+        ${vpo.reason ? `<div class="vpo-reason">Reason: ${this.escapeHtml(vpo.reason)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  showAddVPOModal() {
+    const poId = this.currentPO.id;
+    const existingCount = this.vpos.filter(v => v.status !== 'voided').length;
+    const nextNum = existingCount + 1;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'vpoFormOverlay';
+    overlay.className = 'attachment-viewer-overlay';
+    overlay.innerHTML = `
+      <div class="vpo-form-container">
+        <div class="vpo-form-header">
+          <h3>Add Verbal Purchase Order</h3>
+          <button class="btn-close-viewer" onclick="window.poModals.closeVPOForm()">×</button>
+        </div>
+        <div class="vpo-form-body">
+          <div class="vpo-form-hint">
+            VPOs are quick verbal authorizations for additional work. They update the PO total immediately without requiring formal CO approval.
+          </div>
+          <div class="form-group">
+            <label>VPO Number</label>
+            <input type="text" id="vpoNumber" value="VPO-${nextNum}" class="form-input" readonly>
+          </div>
+          <div class="form-group">
+            <label>Description *</label>
+            <input type="text" id="vpoDescription" placeholder="Describe the additional work..." class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Amount *</label>
+            <input type="number" id="vpoAmount" step="0.01" placeholder="0.00" class="form-input">
+            <small class="form-hint">Use negative for credits</small>
+          </div>
+          <div class="form-group">
+            <label>Reason</label>
+            <textarea id="vpoReason" rows="2" placeholder="Reason for this VPO..." class="form-input"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Authorized By</label>
+            <input type="text" id="vpoAuthorizedBy" placeholder="Name of authorizer" class="form-input">
+          </div>
+        </div>
+        <div class="vpo-form-footer">
+          <button class="btn btn-secondary" onclick="window.poModals.closeVPOForm()">Cancel</button>
+          <button class="btn btn-primary" onclick="window.poModals.submitVPO()">Create VPO</button>
+        </div>
+      </div>
+    `;
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) this.closeVPOForm();
+    });
+
+    document.body.appendChild(overlay);
+    document.getElementById('vpoDescription').focus();
+  }
+
+  closeVPOForm() {
+    const overlay = document.getElementById('vpoFormOverlay');
+    if (overlay) overlay.remove();
+  }
+
+  async submitVPO() {
+    const poId = this.currentPO.id;
+    const description = document.getElementById('vpoDescription')?.value?.trim();
+    const amount = parseFloat(document.getElementById('vpoAmount')?.value) || 0;
+    const reason = document.getElementById('vpoReason')?.value?.trim();
+    const authorizedBy = document.getElementById('vpoAuthorizedBy')?.value?.trim();
+
+    if (!description) {
+      window.showToast?.('Description is required', 'error');
+      return;
+    }
+    if (amount === 0) {
+      window.showToast?.('Amount is required', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/purchase-orders/${poId}/vpos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description, amount, reason, authorized_by: authorizedBy })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create VPO');
+      }
+
+      window.showToast?.('VPO created successfully', 'success');
+      this.closeVPOForm();
+      if (window.loadPOs) window.loadPOs();
+      window.poModals.openPO(poId);
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  editVPO(vpoId) {
+    const vpo = this.vpos.find(v => v.id === vpoId);
+    if (!vpo) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'vpoFormOverlay';
+    overlay.className = 'attachment-viewer-overlay';
+    overlay.innerHTML = `
+      <div class="vpo-form-container">
+        <div class="vpo-form-header">
+          <h3>Edit VPO-${vpo.vpo_number}</h3>
+          <button class="btn-close-viewer" onclick="window.poModals.closeVPOForm()">×</button>
+        </div>
+        <div class="vpo-form-body">
+          <div class="form-group">
+            <label>Description *</label>
+            <input type="text" id="vpoDescription" value="${this.escapeHtml(vpo.description || '')}" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Amount *</label>
+            <input type="number" id="vpoAmount" step="0.01" value="${vpo.amount || 0}" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Reason</label>
+            <textarea id="vpoReason" rows="2" class="form-input">${this.escapeHtml(vpo.reason || '')}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Authorized By</label>
+            <input type="text" id="vpoAuthorizedBy" value="${this.escapeHtml(vpo.authorized_by || '')}" class="form-input">
+          </div>
+        </div>
+        <div class="vpo-form-footer">
+          <button class="btn btn-secondary" onclick="window.poModals.closeVPOForm()">Cancel</button>
+          <button class="btn btn-primary" onclick="window.poModals.updateVPO('${vpoId}')">Save Changes</button>
+        </div>
+      </div>
+    `;
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) this.closeVPOForm();
+    });
+
+    document.body.appendChild(overlay);
+    document.getElementById('vpoDescription').focus();
+  }
+
+  async updateVPO(vpoId) {
+    const poId = this.currentPO.id;
+    const description = document.getElementById('vpoDescription')?.value?.trim();
+    const amount = parseFloat(document.getElementById('vpoAmount')?.value) || 0;
+    const reason = document.getElementById('vpoReason')?.value?.trim();
+    const authorizedBy = document.getElementById('vpoAuthorizedBy')?.value?.trim();
+
+    if (!description) {
+      window.showToast?.('Description is required', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/purchase-orders/${poId}/vpos/${vpoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description, amount, reason, authorized_by: authorizedBy })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to update VPO');
+      }
+
+      window.showToast?.('VPO updated successfully', 'success');
+      this.closeVPOForm();
+      if (window.loadPOs) window.loadPOs();
+      window.poModals.openPO(poId);
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  voidVPO(vpoId) {
+    const poId = this.currentPO.id;
+    const vpo = this.vpos.find(v => v.id === vpoId);
+    if (!vpo) return;
+
+    window.showConfirmModal?.(
+      'Void VPO',
+      `Are you sure you want to void VPO-${vpo.vpo_number}? This will reduce the PO total by ${this.formatMoney(vpo.amount)}.`,
+      'Void VPO',
+      'btn-danger',
+      async () => {
+        try {
+          const res = await fetch(`/api/purchase-orders/${poId}/vpos/${vpoId}/void`, { method: 'POST' });
+          if (!res.ok) throw new Error('Failed to void VPO');
+          window.showToast?.('VPO voided', 'success');
+          if (window.loadPOs) window.loadPOs();
+          window.poModals.openPO(poId);
+        } catch (err) {
+          window.showToast?.(err.message, 'error');
+        }
+      }
     );
   }
 
@@ -1643,46 +1937,58 @@ class POModals {
     const isNew = !po.id;
     const jobId = this.selectedJobId || po.job_id;
     const vendorId = this.selectedVendorId || po.vendor_id;
+    const title = document.getElementById('poTitle')?.value?.trim();
 
-    // Validate required fields
-    if (!jobId) {
-      window.toasts?.error('Please select a job') || alert('Please select a job');
-      return;
-    }
-    if (!vendorId) {
-      window.toasts?.error('Please select a vendor') || alert('Please select a vendor');
-      return;
-    }
-    if (this.currentLineItems.length === 0 || !this.currentLineItems.some(li => li.amount > 0)) {
-      window.toasts?.error('Please add at least one line item with an amount') || alert('Please add at least one line item');
-      return;
-    }
-
-    // Validate CO cost code line items have a CO assigned
-    const coLineItemsWithoutCO = this.currentLineItems.filter((item, index) => {
-      const isCO = this.isCOCostCode(item.cost_code_id);
-      return isCO && !item.change_order_id;
-    });
-
-    if (coLineItemsWithoutCO.length > 0) {
-      const costCodes = window.poState?.costCodes || [];
-      const missingCodes = coLineItemsWithoutCO.map(item => {
-        const cc = costCodes.find(c => c.id === item.cost_code_id);
-        return cc?.code || 'Unknown';
-      }).join(', ');
-
-      window.showToast?.(`CO cost codes require a Change Order: ${missingCodes}`, 'error');
-      return;
-    }
-
-    // Check for better pricing (only if not already dismissed)
-    if (!this.priceWarningsDismissed) {
-      await this.checkPriceWarnings();
-      if (this.priceWarnings.length > 0) {
-        this.renderPriceWarnings();
-        // Show warnings but don't block - user can dismiss and continue
-        window.showToast?.('Price warnings found - review or continue', 'warning');
+    // For drafts, only title is required. Full validation only when sending.
+    if (andSend) {
+      if (!jobId) {
+        window.toasts?.error('Please select a job') || alert('Please select a job');
         return;
+      }
+      if (!vendorId) {
+        window.toasts?.error('Please select a vendor') || alert('Please select a vendor');
+        return;
+      }
+      if (this.currentLineItems.length === 0 || !this.currentLineItems.some(li => li.amount > 0)) {
+        window.toasts?.error('Please add at least one line item with an amount') || alert('Please add at least one line item');
+        return;
+      }
+    } else {
+      // For drafts, at least require a title or job
+      if (!title && !jobId) {
+        window.toasts?.error('Please enter a title or select a job') || alert('Please enter a title or select a job');
+        return;
+      }
+    }
+
+    // These validations only apply when sending, not for drafts
+    if (andSend) {
+      // Validate CO cost code line items have a CO assigned
+      const coLineItemsWithoutCO = this.currentLineItems.filter((item, index) => {
+        const isCO = this.isCOCostCode(item.cost_code_id);
+        return isCO && !item.change_order_id;
+      });
+
+      if (coLineItemsWithoutCO.length > 0) {
+        const costCodes = window.poState?.costCodes || [];
+        const missingCodes = coLineItemsWithoutCO.map(item => {
+          const cc = costCodes.find(c => c.id === item.cost_code_id);
+          return cc?.code || 'Unknown';
+        }).join(', ');
+
+        window.showToast?.(`CO cost codes require a Change Order: ${missingCodes}`, 'error');
+        return;
+      }
+
+      // Check for better pricing (only if not already dismissed)
+      if (!this.priceWarningsDismissed) {
+        await this.checkPriceWarnings();
+        if (this.priceWarnings.length > 0) {
+          this.renderPriceWarnings();
+          // Show warnings but don't block - user can dismiss and continue
+          window.showToast?.('Price warnings found - review or continue', 'warning');
+          return;
+        }
       }
     }
 
@@ -1962,6 +2268,254 @@ class POModals {
     return 'Draft';
   }
   getFileIcon(t) { if (!t) return '📎'; if (t.includes('pdf')) return '📄'; if (t.includes('image')) return '🖼️'; if (t.includes('excel')||t.includes('spreadsheet')) return '📊'; return '📎'; }
+
+
+  // ============================================================
+  // AI DOCUMENT PROCESSING
+  // ============================================================
+
+  aiProcessingResult = null;
+
+  async processAIDocument(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    // Reset input for next use
+    input.value = '';
+
+    // Show modal
+    const modal = document.getElementById('aiProcessingModal');
+    const body = document.getElementById('aiProcessingBody');
+    const btn = document.getElementById('aiCreatePOBtn');
+
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+    body.innerHTML = '<div class="loading">Processing document with AI...</div>';
+    btn.disabled = true;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/purchase-orders/process-document', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await res.json();
+      this.aiProcessingResult = result;
+
+      if (result.success) {
+        this.renderAIResults(result);
+        btn.disabled = false;
+      } else {
+        body.innerHTML = `
+          <div class="ai-error">
+            <h3>Processing Failed</h3>
+            <p>${result.messages?.join('<br>') || 'Unknown error'}</p>
+          </div>
+        `;
+      }
+    } catch (err) {
+      body.innerHTML = `
+        <div class="ai-error">
+          <h3>Error</h3>
+          <p>${err.message}</p>
+        </div>
+      `;
+    }
+  }
+
+  renderAIResults(result) {
+    const body = document.getElementById('aiProcessingBody');
+    const btn = document.getElementById('aiCreatePOBtn');
+    const ext = result.extracted || {};
+    const vendor = result.vendor || ext.vendor || {};
+    const job = result.matchedJob;
+    const lineItems = result.lineItems || ext.lineItems || [];
+    const total = ext.totalAmount || lineItems.reduce((s, li) => s + (parseFloat(li.amount) || 0), 0);
+
+    // If PO was auto-created, show success
+    if (result.po) {
+      body.innerHTML = `
+        <div class="ai-success">
+          <h3>PO Created Successfully</h3>
+          <p>Created <strong>${result.po.po_number}</strong> for ${this.formatMoney(result.po.total_amount)}</p>
+          <div class="ai-messages">
+            ${result.messages.map(m => `<div class="ai-message">${m}</div>`).join('')}
+          </div>
+          <button class="btn btn-primary" onclick="window.poModals.closeAIModal(); window.poModals.openPO('${result.po.id}');">View PO</button>
+        </div>
+      `;
+      btn.style.display = 'none';
+      if (window.loadPOs) window.loadPOs();
+      return;
+    }
+
+    body.innerHTML = `
+      <div class="ai-results">
+        <div class="ai-section">
+          <h3>Extracted Information</h3>
+          <div class="ai-messages">
+            ${result.messages.map(m => `<div class="ai-message">${m}</div>`).join('')}
+          </div>
+        </div>
+
+        <div class="ai-section">
+          <h4>Vendor</h4>
+          <div class="ai-field">
+            <label>Company:</label>
+            <span>${vendor.name || vendor.companyName || 'Not found'}</span>
+            ${vendor.name ? '<span class="ai-badge success">Matched</span>' : ''}
+          </div>
+          ${vendor.phone ? `<div class="ai-field"><label>Phone:</label><span>${vendor.phone}</span></div>` : ''}
+          ${vendor.email ? `<div class="ai-field"><label>Email:</label><span>${vendor.email}</span></div>` : ''}
+        </div>
+
+        <div class="ai-section">
+          <h4>Job</h4>
+          ${job ? `
+            <div class="ai-field">
+              <label>Matched:</label>
+              <span>${job.name}</span>
+              <span class="ai-badge success">Auto-matched</span>
+            </div>
+          ` : `
+            <div class="ai-field">
+              <label>Reference:</label>
+              <span>${ext.job?.reference || ext.job?.address || 'Not found'}</span>
+              <span class="ai-badge warning">Manual selection required</span>
+            </div>
+          `}
+        </div>
+
+        <div class="ai-section">
+          <h4>Line Items</h4>
+          <table class="ai-line-items">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Cost Code</th>
+                <th style="text-align:right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lineItems.map(li => `
+                <tr>
+                  <td>${li.description || '-'}</td>
+                  <td>${li.cost_code ? `${li.cost_code} - ${li.cost_code_name || ''}` : '<em>Not assigned</em>'}</td>
+                  <td style="text-align:right">${this.formatMoney(li.amount)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2"><strong>Total</strong></td>
+                <td style="text-align:right"><strong>${this.formatMoney(total)}</strong></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        ${ext.scopeOfWork ? `
+          <div class="ai-section">
+            <h4>Scope of Work</h4>
+            <p class="ai-scope">${ext.scopeOfWork}</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    // Enable create button only if we have job and vendor
+    btn.disabled = !job || !result.vendor;
+    btn.textContent = result.po ? 'View PO' : (job && result.vendor ? 'Create PO' : 'Manual Entry Required');
+  }
+
+  async createPOFromAI() {
+    const result = this.aiProcessingResult;
+    if (!result || !result.matchedJob || !result.vendor) {
+      // Open manual PO creation with pre-filled data
+      this.closeAIModal();
+      this.showCreateModal();
+      // Pre-fill what we have
+      if (result?.extracted) {
+        setTimeout(() => {
+          const ext = result.extracted;
+          if (result.vendor) {
+            const vendorSelect = document.querySelector('#poVendorPicker');
+            if (vendorSelect) vendorSelect.value = result.vendor.id;
+          }
+          if (ext.lineItems?.length > 0) {
+            this.currentLineItems = ext.lineItems.map(li => ({
+              title: li.description,
+              amount: li.amount,
+              cost_code_id: li.cost_code_id
+            }));
+            this.renderPOModal();
+          }
+        }, 100);
+      }
+      return;
+    }
+
+    // Create PO via API
+    const body = document.getElementById('aiProcessingBody');
+    body.innerHTML = '<div class="loading">Creating PO...</div>';
+
+    try {
+      const ext = result.extracted;
+      const lineItems = result.lineItems || ext.lineItems || [];
+
+      const poData = {
+        job_id: result.matchedJob.id,
+        vendor_id: result.vendor.id,
+        description: ext.scopeOfWork || `${result.vendor.name} - ${ext.vendor?.tradeType || 'Work'}`,
+        scope_of_work: ext.scopeOfWork || null,
+        notes: ext.notes || null,
+        total_amount: ext.totalAmount || lineItems.reduce((s, li) => s + (parseFloat(li.amount) || 0), 0),
+        line_items: lineItems.map(li => ({
+          title: li.title || li.description || 'Unnamed Item',
+          description: li.description || '',
+          cost_type: li.cost_type || 'Materials & Labor',
+          amount: parseFloat(li.amount) || 0,
+          cost_code_id: li.cost_code_id || null
+        }))
+      };
+
+      const res = await fetch('/api/purchase-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(poData)
+      });
+
+      if (!res.ok) throw new Error('Failed to create PO');
+      const po = await res.json();
+
+      window.showToast?.('PO created successfully', 'success');
+      this.closeAIModal();
+      if (window.loadPOs) window.loadPOs();
+      this.openPO(po.id);
+    } catch (err) {
+      body.innerHTML = `<div class="ai-error"><h3>Error</h3><p>${err.message}</p></div>`;
+      window.showToast?.(err.message, 'error');
+    }
+  }
+
+  closeAIModal() {
+    const modal = document.getElementById('aiProcessingModal');
+    if (modal) {
+      modal.classList.remove('show');
+      modal.style.display = 'none';
+    }
+    this.aiProcessingResult = null;
+    const btn = document.getElementById('aiCreatePOBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Create PO';
+      btn.style.display = '';
+    }
+  }
+
 }
 
 window.poModals = new POModals();

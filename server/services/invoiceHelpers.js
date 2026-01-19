@@ -124,8 +124,10 @@ async function updatePOInvoicedAmounts(allocations) {
 
 /**
  * Update CO invoiced amounts when allocations are linked to COs.
+ * PO-INT-02: Only count allocations from approved/in_draw/paid invoices
  */
 async function updateCOInvoicedAmounts(allocations) {
+  const validStatuses = ['approved', 'in_draw', 'paid'];
   const byCO = {};
   for (const alloc of allocations) {
     if (!alloc.change_order_id) continue;
@@ -134,19 +136,108 @@ async function updateCOInvoicedAmounts(allocations) {
   }
 
   for (const coId of Object.keys(byCO)) {
+    // PO-INT-02: Only count allocations from invoices with valid status
     const { data: allCOAllocations } = await supabase
       .from('v2_invoice_allocations')
-      .select('amount')
+      .select(`
+        amount,
+        invoice:v2_invoices!inner(status)
+      `)
       .eq('change_order_id', coId);
 
-    const totalInvoiced = (allCOAllocations || []).reduce(
-      (sum, a) => sum + (parseFloat(a.amount) || 0), 0
-    );
+    const totalInvoiced = (allCOAllocations || [])
+      .filter(a => validStatuses.includes(a.invoice?.status))
+      .reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
 
     await supabase
       .from('v2_job_change_orders')
       .update({ invoiced_amount: totalInvoiced })
       .eq('id', coId);
+
+    console.log(`[CO-SYNC] Updated CO ${coId} invoiced_amount: $${totalInvoiced.toFixed(2)}`);
+  }
+}
+
+/**
+ * PO-INT-01: Recalculate PO line item invoiced_amount from actual allocations.
+ * Only counts allocations from approved/in_draw/paid invoices.
+ */
+async function recalculatePOLineItemInvoiced(poId, costCodeId = null) {
+  const validStatuses = ['approved', 'in_draw', 'paid'];
+
+  // Get all line items for this PO
+  let query = supabase
+    .from('v2_po_line_items')
+    .select('id, cost_code_id, invoiced_amount')
+    .eq('po_id', poId);
+
+  if (costCodeId) {
+    query = query.eq('cost_code_id', costCodeId);
+  }
+
+  const { data: lineItems, error: liError } = await query;
+  if (liError || !lineItems) return;
+
+  for (const li of lineItems) {
+    // Sum all allocations linked to this PO and cost code
+    const { data: allocations } = await supabase
+      .from('v2_invoice_allocations')
+      .select(`
+        amount,
+        invoice:v2_invoices!inner(status)
+      `)
+      .eq('po_id', poId)
+      .eq('cost_code_id', li.cost_code_id);
+
+    // Only count allocations from approved/in_draw/paid invoices
+    const totalInvoiced = (allocations || [])
+      .filter(a => validStatuses.includes(a.invoice?.status))
+      .reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+    // Update line item
+    const { error: updateError } = await supabase
+      .from('v2_po_line_items')
+      .update({ invoiced_amount: totalInvoiced })
+      .eq('id', li.id);
+
+    if (updateError) {
+      console.error(`[PO-SYNC] Failed to update PO line item ${li.id}:`, updateError.message);
+    } else {
+      console.log(`[PO-SYNC] Updated PO line item ${li.id} invoiced_amount: $${totalInvoiced.toFixed(2)}`);
+    }
+  }
+}
+
+/**
+ * PO-INT-02: Recalculate CO invoiced_amount from allocations.
+ * Only counts allocations from approved/in_draw/paid invoices.
+ */
+async function recalculateCOInvoiced(coId) {
+  const validStatuses = ['approved', 'in_draw', 'paid'];
+
+  // Sum all allocations linked to this CO from valid invoices
+  const { data: allocations } = await supabase
+    .from('v2_invoice_allocations')
+    .select(`
+      amount,
+      invoice:v2_invoices!inner(status)
+    `)
+    .eq('change_order_id', coId);
+
+  const totalInvoiced = (allocations || [])
+    .filter(a => validStatuses.includes(a.invoice?.status))
+    .reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+  // Update CO
+  const { error: updateError } = await supabase
+    .from('v2_job_change_orders')
+    .update({ invoiced_amount: totalInvoiced })
+    .eq('id', coId);
+
+  if (updateError) {
+    console.error(`[CO-SYNC] Failed to update CO ${coId}:`, updateError.message);
+  } else {
+    console.log(`[CO-SYNC] Updated CO ${coId} invoiced_amount: $${totalInvoiced.toFixed(2)}`);
   }
 }
 
@@ -603,6 +694,8 @@ module.exports = {
   syncPOLineItemsOnAllocationChange,
   updatePOInvoicedAmounts,
   updateCOInvoicedAmounts,
+  recalculatePOLineItemInvoiced,
+  recalculateCOInvoiced,
   stampInvoice,
   restampInvoice,
   checkSplitReconciliation,

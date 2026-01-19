@@ -648,12 +648,12 @@
       document.getElementById('budgetPageTitle').textContent = `Budget - ${job?.name || 'Unknown Job'}`;
 
       // Contract Overview
-      const baseBudget = data.totals.budgeted;
+      const baseContract = parseFloat(data.job?.contract_amount) || 0; const budgetedTotal = data.totals.budgeted || 0;
       const changeOrderTotal = data.totals.changeOrderTotal || 0;
-      const totalContract = baseBudget + changeOrderTotal;
+      const totalContract = baseContract + changeOrderTotal;
       const coCount = (data.jobChangeOrders || []).filter(co => co.status === 'approved').length;
 
-      document.getElementById('summaryBudget').textContent = formatMoney(baseBudget);
+      document.getElementById('summaryBudget').textContent = formatMoney(baseContract);
       document.getElementById('summaryTotalContract').textContent = formatMoney(totalContract);
 
       // Show CO count badge and hint if there are approved COs
@@ -673,7 +673,7 @@
       const committed = data.totals.committed || 0;
       const inReview = data.totals.pending || 0;
       const projected = committed + inReview;
-      const budgetRemaining = baseBudget - projected; // What's not yet committed
+      const budgetRemaining = budgetedTotal - projected; // What's not yet committed (from budget lines)
 
       document.getElementById('summaryBilled').textContent = formatMoney(data.totals.billed || 0);
       document.getElementById('summaryProjected').textContent = formatMoney(projected);

@@ -257,6 +257,59 @@ function validateAmounts(extracted) {
 // ============================================================
 
 /**
+ * AI-INT-03: Check if a date string is actually valid (not just parseable)
+ * JavaScript Date() accepts invalid dates like "2024-05-34" by overflowing
+ * This function validates that day/month are actually valid
+ *
+ * @param {string} dateStr - Date string to validate
+ * @returns {boolean} True if date is valid, false if invalid
+ */
+function isValidDate(dateStr) {
+  if (!dateStr) return false;
+
+  // Try to parse the date
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return false;
+
+  // Check if the date overflowed by comparing input to output
+  // If input was "2024-05-34", Date creates June 3, 2024 (overflow)
+  const parts = dateStr.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (parts) {
+    const [, year, month, day] = parts;
+    const parsedYear = date.getFullYear();
+    const parsedMonth = date.getMonth() + 1; // 0-indexed
+    const parsedDay = date.getDate();
+
+    // If parsed date differs from input, it overflowed
+    if (parseInt(year) !== parsedYear ||
+        parseInt(month) !== parsedMonth ||
+        parseInt(day) !== parsedDay) {
+      return false;
+    }
+
+    // Also validate month is 1-12 and day is 1-31 directly
+    if (parseInt(month) < 1 || parseInt(month) > 12) return false;
+    if (parseInt(day) < 1 || parseInt(day) > 31) return false;
+  }
+
+  // Check for MM/DD/YYYY format
+  const usFormatParts = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (usFormatParts) {
+    const [, month, day, year] = usFormatParts;
+
+    // Basic sanity: month 1-12, day 1-31
+    if (parseInt(month) < 1 || parseInt(month) > 12) return false;
+    if (parseInt(day) < 1 || parseInt(day) > 31) return false;
+
+    // Days in month validation
+    const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+    if (parseInt(day) > daysInMonth) return false;
+  }
+
+  return true;
+}
+
+/**
  * Validate invoice dates
  * @param {Object} extracted - Extracted invoice data
  * @returns {Object} { valid: boolean, issues: string[], corrections: Object }
@@ -271,6 +324,12 @@ function validateDates(extracted) {
   // Check 1: Invoice date exists and is valid
   if (!invoiceDate) {
     result.issues.push('Missing invoice date');
+    result.score -= 0.2;
+    result.valid = false;
+  } else if (!isValidDate(invoiceDate)) {
+    // AI-INT-03: Robust date validation - reject impossible dates like "2024-05-34"
+    result.issues.push(`Invalid invoice date (impossible date): ${invoiceDate}`);
+    result.corrections.invoiceDate = null;
     result.score -= 0.2;
     result.valid = false;
   } else {
@@ -395,6 +454,42 @@ function validateVendor(extracted) {
     result.issues.push('Vendor name contains "Ross Built" - this is likely the customer, not vendor');
     result.score -= 0.3;
     result.valid = false;
+  }
+
+  // AI-INT-04: Detect if vendor name looks like a job/customer name
+  // Common patterns that suggest customer confusion:
+  const jobPatterns = [
+    /\d+\s+(st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|way|blvd)/i,  // Address pattern
+    /^[A-Z][a-z]+-\d+/,  // "Drummond-501" pattern (client-address)
+    /^(mr|mrs|ms|dr)\.\s/i,  // Personal titles
+    /residence|home|property/i  // Property references
+  ];
+
+  const looksLikeJob = jobPatterns.some(pattern => pattern.test(companyName));
+  if (looksLikeJob) {
+    result.issues.push(`Vendor name "${companyName}" looks like a job/address reference - may be customer, not vendor`);
+    result.score -= 0.25;
+    result.valid = false;
+  }
+
+  // Check if vendor name contains common job client names
+  const suspiciousClientNames = ['drummond', 'crews', 'smith residence', 'johnson home'];
+  const lowerName = companyName.toLowerCase();
+  if (suspiciousClientNames.some(client => lowerName.includes(client) && lowerName.length < 30)) {
+    result.issues.push(`Vendor name may be confused with known client: "${companyName}"`);
+    result.score -= 0.2;
+  }
+
+  // AI-INT-04: Check for positive vendor indicators (boost confidence)
+  const vendorIndicators = [
+    /\b(inc|llc|corp|ltd|co|company|services|contractors|construction|supply|supplies)\b/i,
+    /\b(plumbing|electrical|hvac|roofing|painting|flooring|carpentry)\b/i
+  ];
+
+  const hasVendorIndicator = vendorIndicators.some(pattern => pattern.test(companyName));
+  if (hasVendorIndicator) {
+    // Boost score if name looks like a business
+    result.score = Math.min(result.score + 0.1, 1.0);
   }
 
   result.score = Math.max(0, result.score);
@@ -676,6 +771,7 @@ module.exports = {
   validateConsistency,
   applyOCRCorrections,
   correctAmount,
+  isValidDate,
   OCR_CORRECTIONS,
   VALID_TRADE_TYPES
 };

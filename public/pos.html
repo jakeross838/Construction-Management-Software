@@ -22,6 +22,10 @@
           <!-- Filled by nav-sidebar.js -->
         </nav>
         <div class="header-actions">
+          <button class="btn btn-secondary" onclick="document.getElementById('aiDocUpload').click()" title="Upload proposal/quote to auto-create PO">
+            <span>AI Upload</span>
+          </button>
+          <input type="file" id="aiDocUpload" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="window.poModals.processAIDocument(this)">
           <button class="btn btn-primary" onclick="window.poModals.showCreateModal()">+ New PO</button>
         </div>
       </div>
@@ -102,6 +106,25 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
         <button class="btn btn-primary" id="confirmBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Processing Modal -->
+  <div id="aiProcessingModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <h2>AI Document Processing</h2>
+        </div>
+        <button class="close-btn" onclick="window.poModals.closeAIModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="aiProcessingBody">
+        <div class="loading">Processing document...</div>
+      </div>
+      <div class="modal-footer" id="aiProcessingFooter">
+        <button class="btn btn-secondary" onclick="window.poModals.closeAIModal()">Cancel</button>
+        <button class="btn btn-primary" id="aiCreatePOBtn" disabled onclick="window.poModals.createPOFromAI()">Create PO</button>
       </div>
     </div>
   </div>

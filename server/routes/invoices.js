@@ -20,8 +20,11 @@ const {
   checkSplitReconciliation,
   getOrCreateDraftDraw,
   cleanupInvoiceAllocations,
-  recalculateBilledAmounts
+  recalculateBilledAmounts,
+  recalculatePOLineItemInvoiced,
+  recalculateCOInvoiced
 } = require('../services/invoiceHelpers');
+const { detectVariances, quickVarianceCheck } = require('../services/varianceDetector');
 const {
   uploadPDF,
   uploadStampedPDFById,
@@ -199,6 +202,12 @@ router.get('/:id', async (req, res) => {
       data.draw = data.draw_invoices[0].draw;
     }
 
+    // Detect variances if invoice is linked to a PO
+    if (data.po_id) {
+      const variance = await detectVariances(data);
+      data.variance = variance;
+    }
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -258,6 +267,28 @@ router.get('/:id/version', asyncHandler(async (req, res) => {
     version: invoice.version,
     updated_at: invoice.updated_at
   });
+}));
+
+// Quick variance check - for real-time feedback when linking invoice to PO
+router.get('/:id/variance-check', asyncHandler(async (req, res) => {
+  const { poId } = req.query;
+
+  if (!poId) {
+    return res.json({ warning: false, message: 'No PO specified' });
+  }
+
+  const { data: invoice, error } = await supabase
+    .from('v2_invoices')
+    .select('id, amount')
+    .eq('id', req.params.id)
+    .single();
+
+  if (error || !invoice) {
+    throw notFoundError('invoice', req.params.id);
+  }
+
+  const result = await quickVarianceCheck(poId, parseFloat(invoice.amount) || 0, invoice.id);
+  res.json(result || { warning: false });
 }));
 
 // Get invoice family (parent + children for split invoices)
@@ -995,7 +1026,7 @@ router.post('/:id/allocate', async (req, res) => {
 
     const { data: invoice } = await supabase
       .from('v2_invoices')
-      .select('amount, billed_amount, paid_amount')
+      .select('amount, billed_amount, paid_amount, status')
       .eq('id', invoiceId)
       .single();
 
@@ -1134,7 +1165,65 @@ router.post('/:id/allocate', async (req, res) => {
       console.log(`[ALLOCATE] Updated invoice ${invoiceId} billed_amount to $${newBilledAmount.toFixed(2)}`);
     }
 
-    res.json({ success: true });
+    // PO-INT-01 & PO-INT-02: Full recalculation for approved+ invoices
+    const validStatuses = ['approved', 'in_draw', 'paid'];
+    let coOverlapWarnings = [];
+
+    if (validStatuses.includes(invoice?.status)) {
+      // Get affected POs and COs
+      const affectedPOs = new Set();
+      const affectedCOs = new Set();
+
+      (oldAllocations || []).forEach(a => {
+        if (a.po_id) affectedPOs.add(a.po_id);
+        if (a.change_order_id) affectedCOs.add(a.change_order_id);
+      });
+      (allocations || []).forEach(a => {
+        if (a.po_id) affectedPOs.add(a.po_id);
+        if (a.change_order_id) affectedCOs.add(a.change_order_id);
+      });
+
+      // Recalculate PO line items
+      for (const poId of affectedPOs) {
+        await recalculatePOLineItemInvoiced(poId);
+      }
+
+      // Recalculate COs
+      for (const coId of affectedCOs) {
+        await recalculateCOInvoiced(coId);
+      }
+
+      // PO-INT-04: Check for CO overlap with manual billings
+      if (drawInvoice?.draw_id) {
+        const coIdsInAllocations = (allocations || [])
+          .filter(a => a.change_order_id)
+          .map(a => a.change_order_id);
+
+        if (coIdsInAllocations.length > 0) {
+          const { data: manualBillings } = await supabase
+            .from('v2_job_co_draw_billings')
+            .select('change_order_id, amount')
+            .eq('draw_id', drawInvoice.draw_id)
+            .in('change_order_id', coIdsInAllocations);
+
+          if (manualBillings && manualBillings.length > 0) {
+            for (const mb of manualBillings) {
+              coOverlapWarnings.push({
+                change_order_id: mb.change_order_id,
+                manual_amount: mb.amount,
+                message: `CO has manual billing of $${parseFloat(mb.amount).toFixed(2)} in this draw - potential double-count`
+              });
+            }
+            console.warn(`[ALLOCATE] CO overlap warning:`, coOverlapWarnings);
+          }
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      warnings: coOverlapWarnings.length > 0 ? { co_overlap: coOverlapWarnings } : undefined
+    });
   } catch (err) {
     console.error('[ALLOCATE] Error:', err.message);
 
@@ -1282,6 +1371,26 @@ router.post('/:id/transition', asyncHandler(async (req, res) => {
             allocations_updated: updatedAllocs.length
           });
         }
+      }
+    }
+
+    // PO-INT-01 & PO-INT-02: Sync PO/CO invoiced amounts after approval
+    const { data: approvedAllocations } = await supabase
+      .from('v2_invoice_allocations')
+      .select('po_id, cost_code_id, change_order_id')
+      .eq('invoice_id', invoiceId);
+
+    if (approvedAllocations && approvedAllocations.length > 0) {
+      // Sync PO line items
+      const poIds = [...new Set(approvedAllocations.filter(a => a.po_id).map(a => a.po_id))];
+      for (const poId of poIds) {
+        await recalculatePOLineItemInvoiced(poId);
+      }
+
+      // Sync COs
+      const coIds = [...new Set(approvedAllocations.filter(a => a.change_order_id).map(a => a.change_order_id))];
+      for (const coId of coIds) {
+        await recalculateCOInvoiced(coId);
       }
     }
   } else if (new_status === 'denied') {
