@@ -61,11 +61,17 @@ Plans:
 3. Approve, allocate, add-to-draw operations are atomic (all-or-nothing)
 4. Cannot approve invoice if allocations don't sum to invoice amount
 
-**Plans:** (created by /gsd:plan-phase)
+**Plans:** 4 plans
+
+Plans:
+- [ ] 44-01-PLAN.md - Allocation cleanup on denied/deleted transitions
+- [ ] 44-02-PLAN.md - Validate allocation sum before approval
+- [ ] 44-03-PLAN.md - Transaction wrapping for critical operations
+- [ ] 44-04-PLAN.md - Billed_amount recalculation on allocation changes
 
 **Key Files:**
 - `server/routes/invoices.js`
-- `server/invoiceHelpers.js`
+- `server/services/invoiceHelpers.js`
 
 ---
 
