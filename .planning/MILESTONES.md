@@ -2,6 +2,37 @@
 
 Historical record of shipped milestones.
 
+## v1.6 Module Expansion
+
+**Shipped:** 2026-01-19
+**Phases:** 6 (37-42)
+**Plans executed:** 17
+
+### Highlights
+
+- **Leads/CRM**: Full pipeline management with 7 stages (Inquiry → Won/Lost), qualification scoring (hot/warm/cool/cold), activity tracking (calls, emails, meetings), tasks with due dates, job conversion
+- **Selections/Allowances**: Categories, allowance budgets per job, catalog of options, client selections with pricing, automatic variance calculation, change order creation from overages
+- **7 Scaffold Modules**: Full implementations (not just placeholders) for RFIs, Submittals, Tasks, Messaging, Notifications, Warranties, Closeout
+- **Navigation Reorganization**: 9 logical groups following construction lifecycle (Dashboard, Sales, Pre-Con, Execution, Field, Finance, Closeout, Admin, Comms)
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Phases | 6 (37-42) |
+| Plans | 17 |
+| Requirements | 34 (LED-*, SEL-*, SCF-*, NAV-*) |
+| New Tables | 10 (leads, selections, scaffold modules) |
+| Core Files | ~5,400 lines |
+| Timeline | 2 days |
+
+### Archive
+
+- `.planning/milestones/v1.6-ROADMAP.md`
+- `.planning/milestones/v1.6-REQUIREMENTS.md`
+
+---
+
 ## v1.5 UI Cleanup & Uniformity
 
 **Shipped:** 2026-01-18

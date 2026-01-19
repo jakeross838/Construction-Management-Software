@@ -5,20 +5,20 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** v1.6 Module Expansion - Phase 37 (Leads Database & API)
+**Current focus:** Planning next milestone (v1.7)
 
 ## Current Position
 
-Phase: 37 of 42 (Leads Database & API)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-01-18 — Roadmap created
+Phase: —
+Plan: —
+Status: Between milestones
+Last activity: 2026-01-19 — v1.6 milestone shipped
 
-Progress: ░░░░░░░░░░ 0%
+Progress: Ready for next milestone
 
 ## Milestone History
 
-- **v1.6 Module Expansion** (started 2026-01-18): Leads/CRM, Selections, scaffold remaining modules
+- **v1.6 Module Expansion** (shipped 2026-01-19): 6 phases, 17 plans — Leads/CRM, Selections, 7 scaffold modules, navigation reorganization
 - **v1.5 UI Cleanup** (shipped 2026-01-18): 7 phases, 19 plans — CSS standardization, component uniformity
 - **v1.4 Price Intelligence** (2026-01-18): Price tracking, order optimization, savings analytics, PO warnings
 - **v1.3 Refinement** (2026-01-18): Invoice AI improvements, Financial reports (JSON, Excel, PDF)
@@ -30,7 +30,11 @@ Progress: ░░░░░░░░░░ 0%
 
 ### Decisions
 
-(New milestone — no decisions yet)
+- **Entire v1.6 milestone was pre-built**: All phases (37-42) found already complete in codebase
+  - Phase 37-38: Leads (migration-055, routes, HTML, JS)
+  - Phase 39-40: Selections (migration-056, routes, HTML, JS)
+  - Phase 41: All 7 scaffold modules fully implemented (RFIs, Submittals, Tasks, Messaging, Notifications, Warranties, Closeout)
+  - Phase 42: Navigation reorganized with grouped two-level nav (nav-sidebar.js)
 
 ### Pending Todos
 
@@ -48,8 +52,8 @@ Resume file: None
 
 ## Next Actions
 
-1. `/gsd:plan-phase 37` — Plan Leads Database & API
-2. `/gsd:execute-phase 37` — Execute the phase
+1. `/gsd:discuss-milestone` — Think through what to build next
+2. `/gsd:new-milestone` — Start v1.7 with fresh REQUIREMENTS.md and ROADMAP.md
 
 ## Research
 

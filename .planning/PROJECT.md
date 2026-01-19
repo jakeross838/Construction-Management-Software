@@ -4,8 +4,8 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.5 - UI Cleanup & Uniformity (shipped 2026-01-18)
-**Current Milestone:** v1.6 - Module Expansion
+**Last Milestone:** v1.6 - Module Expansion (shipped 2026-01-19)
+**Current Milestone:** Planning next milestone
 
 ## Core Value
 
@@ -13,7 +13,7 @@ Construction management software for Ross Built Custom Homes. Manages the full l
 
 ## Current State
 
-Shipped v1.5 with ~105,000+ lines of JavaScript across 85+ files. CSS standardized at 25,947 lines.
+Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardized at 25,947 lines.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
@@ -40,6 +40,10 @@ Shipped v1.5 with ~105,000+ lines of JavaScript across 85+ files. CSS standardiz
 - Documents - Version tracking, history UI, rollback, comparison (v1.2)
 - Price Intelligence - Master items, vendor prices, order optimizer, savings tracker (v1.4)
 - Spend Analytics - Vendor spend breakdown, negotiation insights (v1.4)
+- Leads/CRM - 7-stage pipeline, qualification scoring, activities, job conversion (v1.6)
+- Selections/Allowances - Categories, budgets, variance tracking, change orders (v1.6)
+- RFIs, Submittals, Tasks, Messaging, Notifications, Warranties, Closeout - Full modules (v1.6)
+- Grouped Navigation - 9 groups following construction lifecycle (v1.6)
 
 ## Tech Stack
 
@@ -126,26 +130,26 @@ Shipped v1.5 with ~105,000+ lines of JavaScript across 85+ files. CSS standardiz
 - [x] UI-09: Loading and empty states are consistent
 - [x] UI-10: Mobile experience is uniform across all pages
 
-### v1.6 Module Expansion (Active)
+### v1.6 Module Expansion (Shipped)
 
 **Fully Built Modules:**
-- [ ] LED-01: Leads/CRM - Pipeline stages, lead capture, qualification, follow-ups
-- [ ] LED-02: Leads/CRM - Conversion to Job when won, contact history, notes
-- [ ] SEL-01: Selections - Categories (flooring, fixtures, appliances), allowance budgets
-- [ ] SEL-02: Selections - Client choices with pricing, over/under tracking
-- [ ] SEL-03: Selections - Change order integration for overages, PDF export
+- [x] LED-01: Leads/CRM - Pipeline stages, lead capture, qualification, follow-ups
+- [x] LED-02: Leads/CRM - Conversion to Job when won, contact history, notes
+- [x] SEL-01: Selections - Categories (flooring, fixtures, appliances), allowance budgets
+- [x] SEL-02: Selections - Client choices with pricing, over/under tracking
+- [x] SEL-03: Selections - Change order integration for overages, PDF export
 
-**Scaffolded Modules (placeholder pages + basic routes):**
-- [ ] SCF-01: RFIs - Request for Information placeholder page and routes
-- [ ] SCF-02: Submittals - Shop drawings, samples, product data placeholder
-- [ ] SCF-03: Tasks - Assignable work items placeholder
-- [ ] SCF-04: Messaging - In-app messaging placeholder
-- [ ] SCF-05: Notifications - Centralized notifications placeholder
-- [ ] SCF-06: Warranties - Product/workmanship warranty tracking placeholder
-- [ ] SCF-07: Closeout - Final documents, certificates, handover placeholder
+**Scaffolded Modules (full implementations):**
+- [x] SCF-01: RFIs - Request for Information with full CRUD
+- [x] SCF-02: Submittals - Shop drawings, samples, product data
+- [x] SCF-03: Tasks - Assignable work items
+- [x] SCF-04: Messaging - In-app messaging
+- [x] SCF-05: Notifications - Centralized notifications
+- [x] SCF-06: Warranties - Product/workmanship warranty tracking
+- [x] SCF-07: Closeout - Final documents, certificates, handover
 
 **Navigation & Organization:**
-- [ ] NAV-01: Reorganize sidebar into logical groups (Sales, Pre-Con, Execution, Field, Finance, Comms)
+- [x] NAV-01: Reorganize sidebar into logical groups (Sales, Pre-Con, Execution, Field, Finance, Comms)
 
 ### Out of Scope
 
@@ -180,4 +184,4 @@ Shipped v1.5 with ~105,000+ lines of JavaScript across 85+ files. CSS standardiz
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-18 — v1.6 Module Expansion milestone started*
+*Last updated: 2026-01-19 — v1.6 Module Expansion shipped*
