@@ -408,6 +408,73 @@ async function checkSplitReconciliation(parentInvoiceId) {
 }
 
 /**
+ * Clean up all allocations for an invoice when it is denied or deleted.
+ * This reverses PO line item and CO invoiced amounts, then removes all allocations.
+ */
+async function cleanupInvoiceAllocations(invoiceId) {
+  if (!invoiceId) return { success: true, allocations_removed: 0 };
+
+  // Fetch all allocations for this invoice
+  const { data: allocations, error: fetchError } = await supabase
+    .from('v2_invoice_allocations')
+    .select('id, amount, po_id, po_line_item_id, change_order_id, cost_code_id')
+    .eq('invoice_id', invoiceId);
+
+  if (fetchError) {
+    console.error('[CLEANUP] Error fetching allocations:', fetchError.message);
+    return { success: false, error: fetchError.message };
+  }
+
+  if (!allocations || allocations.length === 0) {
+    return { success: true, allocations_removed: 0 };
+  }
+
+  // Group allocations by PO and decrement PO line item invoiced_amount
+  const poAllocations = allocations.filter(a => a.po_id);
+  const poGroups = {};
+  for (const alloc of poAllocations) {
+    if (!poGroups[alloc.po_id]) poGroups[alloc.po_id] = [];
+    poGroups[alloc.po_id].push(alloc);
+  }
+
+  for (const [poId, poAllocs] of Object.entries(poGroups)) {
+    await updatePOLineItemsForAllocations(poId, poAllocs, false);
+  }
+
+  // Decrement CO invoiced_amount for each CO allocation
+  const coAllocations = allocations.filter(a => a.change_order_id);
+  for (const alloc of coAllocations) {
+    const { data: coData } = await supabase
+      .from('v2_job_change_orders')
+      .select('invoiced_amount')
+      .eq('id', alloc.change_order_id)
+      .single();
+
+    if (coData) {
+      const newAmount = Math.max(0, (parseFloat(coData.invoiced_amount) || 0) - (parseFloat(alloc.amount) || 0));
+      await supabase
+        .from('v2_job_change_orders')
+        .update({ invoiced_amount: newAmount })
+        .eq('id', alloc.change_order_id);
+    }
+  }
+
+  // Delete all allocations for this invoice
+  const { error: deleteError } = await supabase
+    .from('v2_invoice_allocations')
+    .delete()
+    .eq('invoice_id', invoiceId);
+
+  if (deleteError) {
+    console.error('[CLEANUP] Error deleting allocations:', deleteError.message);
+    return { success: false, error: deleteError.message };
+  }
+
+  console.log(`[CLEANUP] Removed ${allocations.length} allocations for invoice ${invoiceId}`);
+  return { success: true, allocations_removed: allocations.length };
+}
+
+/**
  * Get or create a draft draw for a job
  */
 async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
@@ -464,5 +531,6 @@ module.exports = {
   stampInvoice,
   restampInvoice,
   checkSplitReconciliation,
-  getOrCreateDraftDraw
+  getOrCreateDraftDraw,
+  cleanupInvoiceAllocations
 };
