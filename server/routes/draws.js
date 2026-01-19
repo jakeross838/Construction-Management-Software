@@ -858,6 +858,8 @@ router.patch('/:id/fund', asyncHandler(async (req, res) => {
             if (budgetLine) {
               const newBudgetPaid = (parseFloat(budgetLine.paid_amount) || 0) + parseFloat(alloc.amount || 0);
               await supabase.from('v2_budget_lines').update({ paid_amount: newBudgetPaid }).eq('id', budgetLine.id);
+            } else {
+              console.warn(`[DRAW FUND] No budget line found for job=${inv.job_id} cost_code=${alloc.cost_code_id}. Skipping paid_amount update.`);
             }
           }
         }
