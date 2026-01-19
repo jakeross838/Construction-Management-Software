@@ -19689,6 +19689,8 @@ textarea.form-control {
 }
 
 .view-btn {
+  width: auto;
+  height: auto;
   padding: 0.5rem 1rem;
   background: transparent;
   border: none;
@@ -19700,6 +19702,7 @@ textarea.form-control {
   gap: 0.5rem;
   font-size: 0.9rem;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .view-btn:first-child {
@@ -25996,6 +25999,7 @@ td.empty-state {
   cursor: pointer;
   transition: var(--transition);
   font-size: 0.875rem;
+  white-space: nowrap;
 }
 
 .view-toggle-btn:first-child {
