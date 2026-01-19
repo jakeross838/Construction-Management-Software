@@ -444,6 +444,7 @@ router.post('/:id/add-invoices', validateRequest({
     const drawId = req.params.id;
     const { invoice_ids } = req.body;
     let missingBudgetLines = null;
+    const processedInvoices = [];
 
     // GUARDRAIL: Validate that all invoices have allocations before adding to draw
     const { data: invoicesToValidate } = await supabase
@@ -476,9 +477,13 @@ router.post('/:id/add-invoices', validateRequest({
       .eq('id', drawId)
       .single();
 
-    await supabase
-      .from('v2_draw_invoices')
-      .insert(invoice_ids.map(id => ({ draw_id: drawId, invoice_id: id })));
+    try {
+      // Insert all draw_invoices first
+      const { error: insertError } = await supabase
+        .from('v2_draw_invoices')
+        .insert(invoice_ids.map(id => ({ draw_id: drawId, invoice_id: id })));
+
+      if (insertError) throw insertError;
 
     const { data: invoices } = await supabase
       .from('v2_invoices')
@@ -552,6 +557,9 @@ router.post('/:id/add-invoices', validateRequest({
 
       await supabase.from('v2_invoices').update(updateData).eq('id', inv.id);
 
+      // Track this invoice as processed for potential rollback
+      processedInvoices.push(inv.id);
+
       // Update budget billed_amount for each allocation
       if (inv.job_id && inv.allocations && inv.allocations.length > 0) {
         for (const alloc of inv.allocations) {
@@ -603,6 +611,31 @@ router.post('/:id/add-invoices', validateRequest({
         message: 'Some allocations could not update budget because no budget line exists. Please add budget for these cost codes.'
       } : undefined
     });
+
+    } catch (err) {
+      console.error('[ADD-TO-DRAW] Error:', err.message);
+
+      // Rollback: Remove all inserted draw_invoices and draw_allocations
+      if (processedInvoices.length > 0 || invoice_ids.length > 0) {
+        try {
+          await supabase.from('v2_draw_invoices')
+            .delete()
+            .eq('draw_id', drawId)
+            .in('invoice_id', invoice_ids);
+
+          await supabase.from('v2_draw_allocations')
+            .delete()
+            .eq('draw_id', drawId)
+            .in('invoice_id', invoice_ids);
+
+          console.log('[ADD-TO-DRAW] Rolled back draw_invoices and draw_allocations');
+        } catch (rollbackErr) {
+          console.error('[ADD-TO-DRAW] Rollback failed:', rollbackErr.message);
+        }
+      }
+
+      throw err; // Re-throw so asyncHandler sends error response
+    }
 }));
 
 // Remove invoice from draw
