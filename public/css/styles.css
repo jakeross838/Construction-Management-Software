@@ -6813,37 +6813,6 @@ label .ai-indicator {
   --po-rejected: #ef4444;
 }
 
-/* Header Navigation */
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-}
-
-.header-nav {
-  display: flex;
-  gap: 1rem;
-}
-
-.nav-link {
-  color: var(--text-secondary);
-  text-decoration: none;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius);
-  transition: var(--transition);
-}
-
-.nav-link:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.nav-link.active {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-  font-weight: 500;
-}
-
 /* Stats Cards */
 .po-stats,
 .stats-row {
@@ -24066,6 +24035,10 @@ textarea.form-control {
   /* Adjust main content padding */
   .main {
     padding: 1rem;
+  }
+
+  .content-section {
+    margin-bottom: 1rem;
   }
 
   .app-body {
