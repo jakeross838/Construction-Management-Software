@@ -15450,8 +15450,23 @@ textarea.form-control {
 }
 
 .job-item.active {
-  background: var(--accent-blue);
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.job-item.active .job-item-icon,
+.job-item.active .job-item-name,
+.job-item.active .job-item-count {
+  color: var(--primary-foreground);
+}
+
+.job-item.active .job-item-status {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Hover state for non-active items */
+.job-item:not(.active):hover {
+  background: var(--muted);
 }
 
 .job-item-icon {
@@ -15477,10 +15492,6 @@ textarea.form-control {
   padding: 0.125rem 0.5rem;
   border-radius: 10px;
   flex-shrink: 0;
-}
-
-.job-item.active .job-item-count {
-  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Status Indicator for Jobs */
