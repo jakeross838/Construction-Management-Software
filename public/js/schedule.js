@@ -183,6 +183,14 @@ async function loadSchedule() {
     if (!res.ok) throw new Error('Failed to load schedule');
 
     state.schedule = await res.json();
+
+    // Handle case where API returns null (no schedule exists)
+    if (!state.schedule) {
+      state.tasks = [];
+      showNoSchedule();
+      return;
+    }
+
     state.tasks = state.schedule.tasks || [];
 
     showSchedule();
