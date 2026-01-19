@@ -24,6 +24,12 @@
       items: [] // No sub-items, direct link
     },
     {
+      id: 'selections',
+      label: 'Selections',
+      href: 'selections.html',
+      items: [] // No sub-items, direct link
+    },
+    {
       id: 'job-profile',
       label: 'Job Profile',
       href: 'job-profile.html',

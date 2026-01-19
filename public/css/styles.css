@@ -26778,3 +26778,592 @@ td.empty-state {
   margin-bottom: 0.5rem;
   opacity: 0.4;
 }
+
+/* ============================================
+   SELECTIONS / ALLOWANCES PAGE
+   ============================================ */
+
+/* Summary Cards */
+.selections-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+  .selections-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .selections-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.selections-summary .summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+
+.selections-summary .summary-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.selections-summary .summary-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.selections-summary .summary-value.over {
+  color: var(--danger);
+}
+
+.selections-summary .summary-value.under {
+  color: var(--accent-green);
+}
+
+.selections-summary .variance-card {
+  border-left: 3px solid var(--accent-orange);
+}
+
+.selections-summary .summary-breakdown {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.selections-summary .summary-breakdown span {
+  color: var(--text-muted);
+}
+
+.selections-summary .summary-breakdown .pending { color: var(--accent-orange); }
+.selections-summary .summary-breakdown .in-progress { color: var(--accent-blue); }
+.selections-summary .summary-breakdown .complete { color: var(--accent-green); }
+
+/* Selections Filters */
+.selections-filters {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.selections-filters select,
+.selections-filters input {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  min-width: 150px;
+}
+
+.selections-filters input[type="search"] {
+  min-width: 250px;
+}
+
+/* Allowances Grid */
+.allowances-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+/* Allowance Card */
+.allowance-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.allowance-card:hover {
+  border-color: var(--text-muted);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.allowance-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.allowance-card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.allowance-card-title .category-icon {
+  font-size: 1.5rem;
+}
+
+.allowance-card-title h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.allowance-card-title .job-name {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.allowance-card-amounts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.allowance-card-amounts .amount-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.allowance-card-amounts .label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.allowance-card-amounts .value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.allowance-card-amounts .variance.over .value {
+  color: var(--danger);
+}
+
+.allowance-card-amounts .variance.under .value {
+  color: var(--accent-green);
+}
+
+.allowance-card-amounts .variance.on-budget .value {
+  color: var(--text-muted);
+}
+
+/* Allowance Progress Bar */
+.allowance-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.allowance-progress .progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-hover);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.allowance-progress .progress-fill {
+  height: 100%;
+  background: var(--accent-blue);
+  transition: width 0.3s ease;
+}
+
+.allowance-progress .progress-fill.over {
+  background: var(--danger);
+}
+
+.allowance-progress .progress-fill.under {
+  background: var(--accent-green);
+}
+
+.allowance-progress .progress-pct {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 35px;
+  text-align: right;
+}
+
+.allowance-deadline {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.allowance-deadline.overdue {
+  color: var(--danger);
+}
+
+/* Allowance Detail Modal Layout */
+.allowance-detail-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 1.5rem;
+  height: 100%;
+}
+
+@media (max-width: 1024px) {
+  .allowance-detail-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.allowance-detail-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.allowance-detail-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-card {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.detail-card h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+/* Budget Summary */
+.budget-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.budget-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.budget-row .label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.budget-row .value {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.budget-row.variance-row {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.budget-row .value.over {
+  color: var(--danger);
+}
+
+.budget-row .value.under {
+  color: var(--accent-green);
+}
+
+/* Variance Bar */
+.variance-bar-container {
+  height: 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  margin-top: 0.75rem;
+  overflow: hidden;
+}
+
+.variance-bar {
+  height: 100%;
+  background: var(--accent-blue);
+  transition: width 0.3s ease;
+}
+
+.variance-bar.over {
+  background: var(--danger);
+}
+
+.variance-bar.under {
+  background: var(--accent-green);
+}
+
+/* Detail Info */
+.detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.info-row .label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.info-row .value {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+/* Overage Card */
+.overage-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.overage-text strong {
+  color: var(--danger);
+}
+
+/* Selections List */
+.selections-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.selections-header h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.selection-count {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.selections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.selection-item {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.selection-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.selection-info h5 {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.selection-meta {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.selection-pricing {
+  text-align: right;
+}
+
+.selection-pricing .unit-price {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: block;
+}
+
+.selection-pricing .total-price {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.selection-item-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.selection-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.empty-selections {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+}
+
+/* Selection Form */
+.divider-text {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 1rem 0;
+  position: relative;
+}
+
+.divider-text::before,
+.divider-text::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 60px);
+  height: 1px;
+  background: var(--border);
+}
+
+.divider-text::before { left: 0; }
+.divider-text::after { right: 0; }
+
+.price-summary {
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin: 1rem 0;
+}
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+.price-row.markup-row {
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.price-row.total-row {
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+  font-weight: 600;
+}
+
+.inline-input {
+  width: 60px;
+  padding: 0.25rem 0.5rem;
+  text-align: center;
+}
+
+/* Catalog Results */
+.catalog-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-top: 0.25rem;
+}
+
+.catalog-item {
+  padding: 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: var(--transition);
+}
+
+.catalog-item:last-child {
+  border-bottom: none;
+}
+
+.catalog-item:hover {
+  background: var(--bg-hover);
+}
+
+.catalog-item-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.catalog-item-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.catalog-item-price {
+  font-size: 0.85rem;
+  color: var(--accent-green);
+  margin-top: 0.25rem;
+}
+
+.catalog-no-results {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* CO Modal Summary */
+.co-summary {
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.co-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.co-row.total {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.co-row.total span:last-child {
+  color: var(--accent-green);
+}

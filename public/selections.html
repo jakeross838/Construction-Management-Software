@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Selections & Allowances | Ross Built CMS</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    /* Page-specific overrides */
+    .main-content {
+      padding: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-top">
+      <div class="header-brand">
+        <h1>Ross Built</h1>
+      </div>
+      <nav class="main-nav">
+        <!-- Filled by nav-sidebar.js -->
+      </nav>
+      <div class="header-actions">
+        <span class="user-info">Jake Ross</span>
+      </div>
+    </div>
+    <div class="header-sub">
+      <nav class="sub-nav">
+        <!-- Filled by nav-sidebar.js -->
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Page Header -->
+    <div class="page-header">
+      <div class="page-header-left">
+        <h2 class="page-title">Selections & Allowances</h2>
+        <p class="page-subtitle">Track client selections and allowance budgets</p>
+      </div>
+      <div class="page-header-right">
+        <button class="btn btn-secondary" id="btnExportPDF">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="12" y1="18" x2="12" y2="12"></line>
+            <line x1="9" y1="15" x2="15" y2="15"></line>
+          </svg>
+          Export PDF
+        </button>
+        <button class="btn btn-primary" id="btnNewAllowance">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          New Allowance
+        </button>
+      </div>
+    </div>
+
+    <!-- Job Summary Card -->
+    <div class="selections-summary" id="selectionsSummary">
+      <div class="summary-card">
+        <div class="summary-label">Total Budget</div>
+        <div class="summary-value" id="totalBudget">$0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Total Selected</div>
+        <div class="summary-value" id="totalSelected">$0</div>
+      </div>
+      <div class="summary-card variance-card">
+        <div class="summary-label">Variance</div>
+        <div class="summary-value" id="totalVariance">$0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Allowances</div>
+        <div class="summary-value" id="allowanceCount">0</div>
+        <div class="summary-breakdown" id="allowanceBreakdown"></div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="selections-filters">
+      <select id="jobFilter" class="form-select">
+        <option value="">All Jobs</option>
+      </select>
+      <select id="categoryFilter" class="form-select">
+        <option value="">All Categories</option>
+      </select>
+      <select id="statusFilter" class="form-select">
+        <option value="">All Statuses</option>
+        <option value="pending">Pending</option>
+        <option value="in_progress">In Progress</option>
+        <option value="complete">Complete</option>
+      </select>
+      <input type="search" id="searchInput" class="form-input" placeholder="Search allowances...">
+    </div>
+
+    <!-- Allowances Grid -->
+    <div class="allowances-grid" id="allowancesGrid">
+      <!-- Allowance cards will be rendered here -->
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState" style="display: none;">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="9" y1="9" x2="15" y2="9"></line>
+        <line x1="9" y1="13" x2="15" y2="13"></line>
+        <line x1="9" y1="17" x2="12" y2="17"></line>
+      </svg>
+      <h3>No Allowances Found</h3>
+      <p>Create an allowance to start tracking client selections.</p>
+    </div>
+  </main>
+
+  <!-- Create/Edit Allowance Modal -->
+  <div id="allowanceModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3 id="allowanceModalTitle">New Allowance</h3>
+        <button class="modal-close" onclick="closeAllowanceModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="allowanceForm">
+          <input type="hidden" id="allowanceId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="allowanceJob">Job *</label>
+              <select id="allowanceJob" class="form-select" required>
+                <option value="">Select a job</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="allowanceCategory">Category *</label>
+              <select id="allowanceCategory" class="form-select" required>
+                <option value="">Select a category</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="allowanceName">Allowance Name *</label>
+            <input type="text" id="allowanceName" class="form-input" required placeholder="e.g., Master Bath Flooring">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="allowanceAmount">Budgeted Amount *</label>
+              <input type="number" id="allowanceAmount" class="form-input" required min="0" step="0.01" placeholder="0.00">
+            </div>
+            <div class="form-group">
+              <label for="allowanceType">Allowance Type</label>
+              <select id="allowanceType" class="form-select">
+                <option value="material_only">Material Only</option>
+                <option value="installed">Installed (Material + Labor)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="allowanceDeadline">Selection Deadline</label>
+              <input type="date" id="allowanceDeadline" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="allowanceDeadlineNotes">Deadline Notes</label>
+              <input type="text" id="allowanceDeadlineNotes" class="form-input" placeholder="e.g., Before tile installation">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="allowanceDescription">Description</label>
+            <textarea id="allowanceDescription" class="form-input" rows="2" placeholder="Additional details..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeAllowanceModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveAllowance()">Save Allowance</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Allowance Detail Modal (Fullscreen) -->
+  <div id="allowanceDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <h3 id="detailAllowanceName">Allowance</h3>
+          <span class="badge" id="detailAllowanceStatus">Pending</span>
+        </div>
+        <div class="modal-header-right">
+          <button class="btn btn-secondary" onclick="editCurrentAllowance()">Edit</button>
+          <button class="btn btn-primary" onclick="addSelection()">Add Selection</button>
+          <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="allowance-detail-layout">
+          <!-- Left: Info & Variance -->
+          <div class="allowance-detail-sidebar">
+            <div class="detail-card">
+              <h4>Budget Summary</h4>
+              <div class="budget-summary">
+                <div class="budget-row">
+                  <span class="label">Budgeted</span>
+                  <span class="value" id="detailBudget">$0</span>
+                </div>
+                <div class="budget-row">
+                  <span class="label">Selected</span>
+                  <span class="value" id="detailSelected">$0</span>
+                </div>
+                <div class="budget-row variance-row">
+                  <span class="label">Variance</span>
+                  <span class="value" id="detailVariance">$0</span>
+                </div>
+              </div>
+              <div class="variance-bar-container">
+                <div class="variance-bar" id="detailVarianceBar"></div>
+              </div>
+            </div>
+
+            <div class="detail-card">
+              <h4>Details</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Job</span>
+                  <span class="value" id="detailJob">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Category</span>
+                  <span class="value" id="detailCategory">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Type</span>
+                  <span class="value" id="detailType">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Deadline</span>
+                  <span class="value" id="detailDeadline">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-card" id="overageCard" style="display: none;">
+              <h4>Overage</h4>
+              <p class="overage-text">This allowance is over budget by <strong id="overageAmount">$0</strong></p>
+              <button class="btn btn-warning btn-block" onclick="createChangeOrder()">Create Change Order</button>
+            </div>
+          </div>
+
+          <!-- Right: Selections List -->
+          <div class="allowance-detail-main">
+            <div class="selections-header">
+              <h4>Selections</h4>
+              <span class="selection-count" id="selectionCount">0 items</span>
+            </div>
+            <div class="selections-list" id="selectionsList">
+              <!-- Selection items rendered here -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Selection Modal -->
+  <div id="selectionModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3 id="selectionModalTitle">Add Selection</h3>
+        <button class="modal-close" onclick="closeSelectionModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="selectionForm">
+          <input type="hidden" id="selectionId">
+          <input type="hidden" id="selectionAllowanceId">
+
+          <!-- Catalog Search -->
+          <div class="form-group">
+            <label>Search Catalog</label>
+            <input type="search" id="catalogSearch" class="form-input" placeholder="Search catalog items...">
+            <div id="catalogResults" class="catalog-results" style="display: none;"></div>
+          </div>
+
+          <div class="divider-text">or enter custom selection</div>
+
+          <div class="form-group">
+            <label for="selectionName">Item Name *</label>
+            <input type="text" id="selectionName" class="form-input" required placeholder="e.g., Carrara Marble Tile">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="selectionVendor">Vendor</label>
+              <input type="text" id="selectionVendor" class="form-input" placeholder="e.g., Home Depot">
+            </div>
+            <div class="form-group">
+              <label for="selectionModel">Model/SKU</label>
+              <input type="text" id="selectionModel" class="form-input" placeholder="e.g., CMT-2424">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="selectionQty">Quantity *</label>
+              <input type="number" id="selectionQty" class="form-input" required min="0.01" step="0.01" value="1">
+            </div>
+            <div class="form-group">
+              <label for="selectionUnit">Unit</label>
+              <select id="selectionUnit" class="form-select">
+                <option value="each">Each</option>
+                <option value="sqft">Sq Ft</option>
+                <option value="lnft">Linear Ft</option>
+                <option value="box">Box</option>
+                <option value="pallet">Pallet</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="selectionPrice">Unit Price *</label>
+              <input type="number" id="selectionPrice" class="form-input" required min="0" step="0.01" placeholder="0.00">
+            </div>
+          </div>
+
+          <div class="price-summary">
+            <div class="price-row">
+              <span>Subtotal</span>
+              <span id="selectionSubtotal">$0.00</span>
+            </div>
+            <div class="price-row markup-row">
+              <span>Markup %</span>
+              <input type="number" id="selectionMarkup" class="form-input inline-input" min="0" step="1" value="0">
+            </div>
+            <div class="price-row total-row">
+              <span>Total</span>
+              <span id="selectionTotal">$0.00</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="selectionNotes">Notes</label>
+            <textarea id="selectionNotes" class="form-input" rows="2" placeholder="Client notes or internal notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeSelectionModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveSelection()">Save Selection</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Order Modal -->
+  <div id="coModal" class="modal modal-centered">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h3>Create Change Order</h3>
+        <button class="modal-close" onclick="closeCOModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Create a change order for the allowance overage.</p>
+        <div class="co-summary">
+          <div class="co-row">
+            <span>Overage Amount</span>
+            <span id="coOverage">$0</span>
+          </div>
+          <div class="form-group">
+            <label for="coMarkup">Markup %</label>
+            <input type="number" id="coMarkup" class="form-input" value="15" min="0" step="1">
+          </div>
+          <div class="co-row total">
+            <span>Change Order Total</span>
+            <span id="coTotal">$0</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="coDescription">Description</label>
+          <textarea id="coDescription" class="form-input" rows="2" placeholder="Optional description..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCOModal()">Cancel</button>
+        <button type="button" class="btn btn-warning" onclick="submitChangeOrder()">Create CO</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/toasts.js"></script>
+  <script defer src="js/nav-sidebar.js"></script>
+  <script src="js/selections.js"></script>
+</body>
+</html>
