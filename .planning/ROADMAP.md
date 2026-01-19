@@ -65,7 +65,7 @@ Plans:
 
 Plans:
 - [ ] 44-01-PLAN.md - Allocation cleanup on denied/deleted transitions
-- [ ] 44-02-PLAN.md - Validate allocation sum before approval
+- [x] 44-02-PLAN.md - Validate allocation sum before approval
 - [ ] 44-03-PLAN.md - Transaction wrapping for critical operations
 - [ ] 44-04-PLAN.md - Billed_amount recalculation on allocation changes
 

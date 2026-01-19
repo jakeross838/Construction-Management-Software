@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 
 ## Current Position
 
-Phase: 43 of 4 (budget-integrity) COMPLETE
-Plan: 3 of 3 complete
-Status: Phase complete
-Last activity: 2026-01-19 — Completed 43-03-PLAN.md (Draw Budget Line Fixes)
+Phase: 44 of 4 (invoice-pipeline)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-19 — Completed 44-02-PLAN.md (Allocation Sum Validation)
 
-Progress: [============] 3/12 plans (v1.7)
+Progress: [============----] 4/12 plans (v1.7)
 
 ## Milestone History
 
@@ -50,6 +50,11 @@ Critical issues identified:
 - **RPC failures logged but don't fail operations**: PO operations complete even if budget updates fail (graceful degradation)
 - **Graceful degradation for draw operations**: Log warnings for missing budget lines, include in API response, but don't fail operations
 
+### Phase 44 Decisions
+
+- **0.01 tolerance for allocation sum validation**: Handles floating point rounding in amount comparisons
+- **Separate NO_ALLOCATIONS and ALLOCATION_MISMATCH errors**: Clearer UX for different validation failures
+
 ### Pending Todos
 
 None
@@ -60,14 +65,16 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19T17:15:00Z
-Stopped at: Completed 43-03-PLAN.md (Phase 43 complete)
+Last session: 2026-01-19T17:21:47Z
+Stopped at: Completed 44-02-PLAN.md (Allocation Sum Validation)
 Resume file: None
 
 ## Next Actions
 
-1. Execute phase 44 (invoice-pipeline) — Allocation cleanup on invoice denial/deletion
-2. Continue v1.7 milestone
+1. Execute 44-01-PLAN.md (Allocation cleanup on denied/deleted)
+2. Execute 44-03-PLAN.md (Transaction wrapping)
+3. Execute 44-04-PLAN.md (Billed_amount recalculation)
+4. Continue v1.7 milestone
 
 ## Research
 
