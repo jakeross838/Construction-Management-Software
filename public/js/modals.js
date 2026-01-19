@@ -5274,6 +5274,131 @@ const Modals = {
   },
 
   /**
+   * Create CO from variance warning - opens a form pre-filled with line item data
+   */
+  createCOFromVariance(description, amount, jobId) {
+    if (!jobId) {
+      window.showToast?.('No job linked - cannot create CO', 'error');
+      return;
+    }
+
+    const title = (description || '').substring(0, 50);
+    const baseAmount = amount || 0;
+
+    // Create modal - simplified version of showCreateCOModal for variance context
+    const modalHtml = `
+      <div id="create-co-variance-modal" class="modal" style="display: flex; z-index: 10003;">
+        <div class="modal-content" style="max-width: 600px;">
+          <div class="modal-header">
+            <h2>Create Change Order from Variance</h2>
+            <button class="close-btn" onclick="window.Modals.closeCOVarianceForm()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p class="form-hint" style="color: var(--text-secondary); margin-bottom: 16px; font-size: 0.9rem;">
+              Creating CO to authorize this unmatched invoice line item.
+            </p>
+            <div class="form-group">
+              <label>Title *</label>
+              <input type="text" id="co-var-title" class="field-input" value="${this.escapeHtml(title)}">
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <textarea id="co-var-description" class="field-input" rows="2">${this.escapeHtml(description || '')}</textarea>
+            </div>
+            <div class="form-group">
+              <label>Reason</label>
+              <select id="co-var-reason" class="field-input">
+                <option value="owner_request">Owner Request</option>
+                <option value="design_change">Design Change</option>
+                <option value="scope_change" selected>Scope Change</option>
+                <option value="unforeseen_conditions">Unforeseen Conditions</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Amount *</label>
+              <div class="amount-input-group">
+                <span class="amount-prefix">$</span>
+                <input type="text" id="co-var-amount" class="field-input" value="${this.formatAmountInput(baseAmount)}">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="window.Modals.closeCOVarianceForm()">Cancel</button>
+            <button class="btn btn-primary" onclick="window.Modals.submitCOFromVariance('${jobId}')">Create CO</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = document.getElementById('create-co-variance-modal');
+    modal.classList.add('show');
+    document.getElementById('co-var-title').focus();
+  },
+
+  /**
+   * Close the CO variance form modal
+   */
+  closeCOVarianceForm() {
+    const modal = document.getElementById('create-co-variance-modal');
+    if (modal) {
+      modal.classList.remove('show');
+      modal.remove();
+    }
+  },
+
+  /**
+   * Submit CO creation from variance form
+   */
+  async submitCOFromVariance(jobId) {
+    const title = document.getElementById('co-var-title')?.value?.trim();
+    const description = document.getElementById('co-var-description')?.value?.trim();
+    const reason = document.getElementById('co-var-reason')?.value;
+    const amountStr = document.getElementById('co-var-amount')?.value;
+    const amount = parseFloat(amountStr?.replace(/[^0-9.-]/g, '')) || 0;
+
+    if (!title) {
+      window.showToast?.('Title is required', 'error');
+      return;
+    }
+    if (amount === 0) {
+      window.showToast?.('Amount is required', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/change-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description,
+          reason,
+          status: 'approved', // Auto-approve since it's to resolve variance
+          base_amount: amount,
+          amount: amount,
+          days_added: 0
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create CO');
+      }
+
+      window.showToast?.('Change Order created - variance resolved', 'success');
+      this.closeCOVarianceForm();
+
+      // Refresh invoice to update variance banner
+      if (this.currentInvoice?.id) {
+        await this.openInvoice(this.currentInvoice.id);
+      }
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  },
+
+  /**
    * Escape HTML
    */
   escapeHtml(str) {
