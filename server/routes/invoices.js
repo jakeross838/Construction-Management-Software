@@ -1802,6 +1802,9 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
   await createUndoSnapshot('invoice', invoiceId, 'deleted', invoice, performedBy);
 
+  // Clean up allocations before soft-delete
+  await cleanupInvoiceAllocations(invoiceId);
+
   const { error } = await supabase
     .from('v2_invoices')
     .update({ deleted_at: new Date().toISOString() })
