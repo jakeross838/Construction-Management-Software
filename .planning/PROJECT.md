@@ -5,7 +5,7 @@
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
 **Last Milestone:** v1.7 - Data Integrity & AI Accuracy (shipped 2026-01-19)
-**Current Milestone:** Planning next milestone
+**Current Milestone:** v1.8 - Invoice Variance & Data Linkage
 
 ## Core Value
 
@@ -159,6 +159,32 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 - [x] PO-INT-01 to PO-INT-04 — PO/CO linking and invoiced_amount sync
 - [x] AI-INT-01 to AI-INT-04 — AI accuracy improvements (70% threshold, date validation)
 
+### v1.8 Invoice Variance & Data Linkage (Active)
+
+**Goal:** Comprehensive data linkage with variance detection, quick fixes, and correlated data across POs, invoices, draws, and budgets.
+
+**Variance Detection:**
+- [ ] VAR-01: Polish variance detection service (test, refine matching algorithms)
+- [ ] VAR-02: Add UI to create CO or VPO directly from variance warnings
+- [ ] VAR-03: Complete VPO UI integration in invoice and PO modals
+
+**Cost Code Linkage:**
+- [ ] CCL-01: Improve AI cost code assignment accuracy on invoice processing
+- [ ] CCL-02: Ensure PO line items have proper cost codes (validation)
+- [ ] CCL-03: Fix line item matching between invoices and PO line items
+- [ ] CCL-04: Validate G703 cost code accuracy and completeness
+
+**Data Correlation:**
+- [ ] COR-01: Validate PO ↔ Invoice ↔ Draw linkage consistency
+- [ ] COR-02: Ensure CO/VPO totals reflected correctly everywhere
+- [ ] COR-03: Integrate variance detection with price intelligence (flag overpriced)
+- [ ] COR-04: Budget vs actual accuracy validation
+
+**Quick Fixes:**
+- [ ] FIX-01: One-click to fix broken linkages from error displays
+- [ ] FIX-02: Bulk correction tools for common issues
+- [ ] FIX-03: Clear error messages showing what's wrong and how to fix
+
 ### Out of Scope
 
 - Mobile native app — web works on mobile now
@@ -192,4 +218,4 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-19 after v1.7 milestone complete*
+*Last updated: 2026-01-19 — v1.8 Invoice Variance & Data Linkage started*
