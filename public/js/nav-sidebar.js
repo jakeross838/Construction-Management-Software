@@ -18,6 +18,12 @@
       items: [] // No sub-items, direct link
     },
     {
+      id: 'leads',
+      label: 'Leads',
+      href: 'leads.html',
+      items: [] // No sub-items, direct link
+    },
+    {
       id: 'job-profile',
       label: 'Job Profile',
       href: 'job-profile.html',

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Leads</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260118-leads">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New Lead</button>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav"></nav>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <main class="main">
+        <!-- Page Header with Stats -->
+        <div class="page-header-bar">
+          <div class="page-header-stats">
+            <div class="stat-chip">
+              <span class="stat-chip-value" id="statTotal">0</span>
+              <span class="stat-chip-label">Total</span>
+            </div>
+            <div class="stat-chip stat-chip-info">
+              <span class="stat-chip-value" id="statActive">0</span>
+              <span class="stat-chip-label">Active</span>
+            </div>
+            <div class="stat-chip stat-chip-success">
+              <span class="stat-chip-value" id="statWon">0</span>
+              <span class="stat-chip-label">Won</span>
+            </div>
+            <div class="stat-chip stat-chip-danger">
+              <span class="stat-chip-value" id="statLost">0</span>
+              <span class="stat-chip-label">Lost</span>
+            </div>
+            <div class="stat-chip-divider"></div>
+            <div class="stat-chip stat-chip-warning">
+              <span class="stat-chip-value" id="statHot">0</span>
+              <span class="stat-chip-label">Hot Leads</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="data-toolbar">
+          <div class="toolbar-left">
+            <div class="filter-group">
+              <select id="stageFilter" class="form-control form-control-sm">
+                <option value="">All Stages</option>
+                <option value="inquiry">Inquiry</option>
+                <option value="qualification">Qualification</option>
+                <option value="consultation">Consultation</option>
+                <option value="design_agreement">Design Agreement</option>
+                <option value="proposal">Proposal</option>
+                <option value="contract">Contract</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+              </select>
+              <select id="sourceFilter" class="form-control form-control-sm">
+                <option value="">All Sources</option>
+              </select>
+            </div>
+            <div class="search-input-wrap">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="searchInput" placeholder="Search leads..." class="form-control form-control-sm search-input-inline">
+              <button class="search-clear-btn" id="searchClear" style="display: none;" onclick="clearSearch()">&times;</button>
+            </div>
+          </div>
+          <div class="toolbar-right">
+            <div class="view-toggle">
+              <button class="view-btn active" data-view="table" onclick="setView('table')" title="Table view">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14 1H2v4h4V3h4v4h4V3zM2 8v5h4V8H2zm5 0v5h4V8H7zm5 0v5h4V8h-4z"/></svg>
+              </button>
+              <button class="view-btn" data-view="pipeline" onclick="setView('pipeline')" title="Pipeline view">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 012.5 1h3A1.5 1.5 0 017 2.5v3A1.5 1.5 0 015.5 7h-3A1.5 1.5 0 011 5.5v-3zm8 0A1.5 1.5 0 0110.5 1h3A1.5 1.5 0 0115 2.5v3A1.5 1.5 0 0113.5 7h-3A1.5 1.5 0 019 5.5v-3zm-8 8A1.5 1.5 0 012.5 9h3A1.5 1.5 0 017 10.5v3A1.5 1.5 0 015.5 15h-3A1.5 1.5 0 011 13.5v-3zm8 0A1.5 1.5 0 0110.5 9h3a1.5 1.5 0 011.5 1.5v3a1.5 1.5 0 01-1.5 1.5h-3A1.5 1.5 0 019 13.5v-3z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lead Table View -->
+        <div class="data-table-container" id="leadTableView">
+          <table class="data-table data-table-hover" id="leadTable">
+            <thead>
+              <tr>
+                <th class="col-name">Name</th>
+                <th class="col-contact">Contact</th>
+                <th class="col-source">Source</th>
+                <th class="col-stage">Stage</th>
+                <th class="col-score">Score</th>
+                <th class="col-budget">Budget</th>
+                <th class="col-tasks">Tasks</th>
+                <th class="col-date">Created</th>
+              </tr>
+            </thead>
+            <tbody id="leadTableBody">
+              <tr class="skeleton-row">
+                <td colspan="8">
+                  <div class="skeleton-line long"></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pipeline View (Kanban-style) -->
+        <div class="pipeline-container" id="pipelineView" style="display: none;">
+          <div class="pipeline-columns" id="pipelineColumns">
+            <!-- Columns will be rendered by JS -->
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit Lead Modal -->
+  <div id="leadModal" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2 id="modalTitle">New Lead</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="leadForm">
+          <input type="hidden" id="leadId">
+
+          <div class="form-section">
+            <h4>Contact Information</h4>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label for="formFirstName">First Name *</label>
+                <input type="text" id="formFirstName" class="form-control" required>
+              </div>
+              <div class="form-group form-group-half">
+                <label for="formLastName">Last Name *</label>
+                <input type="text" id="formLastName" class="form-control" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label for="formEmail">Email</label>
+                <input type="email" id="formEmail" class="form-control">
+              </div>
+              <div class="form-group form-group-half">
+                <label for="formPhone">Phone</label>
+                <input type="tel" id="formPhone" class="form-control">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label for="formSource">Lead Source</label>
+                <select id="formSource" class="form-control">
+                  <option value="">Select Source...</option>
+                </select>
+              </div>
+              <div class="form-group form-group-half">
+                <label for="formReferralSource">Referral Source</label>
+                <input type="text" id="formReferralSource" class="form-control" placeholder="Who referred them?">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>Project Details</h4>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label for="formProjectType">Project Type</label>
+                <select id="formProjectType" class="form-control">
+                  <option value="">Select Type...</option>
+                  <option value="new_construction">New Construction</option>
+                  <option value="major_renovation">Major Renovation</option>
+                  <option value="addition">Addition</option>
+                  <option value="remodel">Remodel</option>
+                </select>
+              </div>
+              <div class="form-group form-group-half">
+                <label for="formBudgetRange">Budget Range</label>
+                <select id="formBudgetRange" class="form-control">
+                  <option value="">Select Budget...</option>
+                  <option value="under_500k">Under $500K</option>
+                  <option value="500k_1m">$500K - $1M</option>
+                  <option value="1m_2m">$1M - $2M</option>
+                  <option value="2m_5m">$2M - $5M</option>
+                  <option value="over_5m">Over $5M</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="formProjectAddress">Project Address</label>
+              <input type="text" id="formProjectAddress" class="form-control" placeholder="Project location or lot address">
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group-third">
+                <label for="formTimeline">Timeline</label>
+                <select id="formTimeline" class="form-control">
+                  <option value="">Select Timeline...</option>
+                  <option value="immediate">Immediate</option>
+                  <option value="3_6_months">3-6 Months</option>
+                  <option value="6_12_months">6-12 Months</option>
+                  <option value="12_plus_months">12+ Months</option>
+                </select>
+              </div>
+              <div class="form-group form-group-third">
+                <label for="formSquareFootage">Square Footage</label>
+                <input type="number" id="formSquareFootage" class="form-control" placeholder="Approximate SF">
+              </div>
+              <div class="form-group form-group-third">
+                <label for="formStyle">Architectural Style</label>
+                <input type="text" id="formStyle" class="form-control" placeholder="Modern, Craftsman, etc.">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>Qualification</h4>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label>
+                  <input type="checkbox" id="formIsDecisionMaker"> Is Decision Maker
+                </label>
+              </div>
+              <div class="form-group form-group-half">
+                <label>
+                  <input type="checkbox" id="formHasLot"> Has Lot/Property
+                </label>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label>
+                  <input type="checkbox" id="formHasArchitect"> Has Architect
+                </label>
+              </div>
+              <div class="form-group form-group-half">
+                <label>
+                  <input type="checkbox" id="formHasPlans"> Has Plans
+                </label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="formFinancingStatus">Financing Status</label>
+              <select id="formFinancingStatus" class="form-control">
+                <option value="">Unknown</option>
+                <option value="pre_approved">Pre-Approved</option>
+                <option value="exploring">Exploring Options</option>
+                <option value="cash">Cash</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="formNotes">Notes</label>
+            <textarea id="formNotes" class="form-control" rows="3" placeholder="Additional notes about this lead..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveLead()">Save Lead</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lead Detail Modal -->
+  <div id="leadDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <h2 id="detailTitle">Lead Details</h2>
+          <div class="header-badges" id="detailBadges"></div>
+        </div>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="tabs">
+          <button class="tab active" data-tab="overview" onclick="switchDetailTab('overview')">Overview</button>
+          <button class="tab" data-tab="activities" onclick="switchDetailTab('activities')">Activities</button>
+          <button class="tab" data-tab="tasks" onclick="switchDetailTab('tasks')">Tasks</button>
+          <button class="tab" data-tab="documents" onclick="switchDetailTab('documents')">Documents</button>
+          <button class="tab" data-tab="history" onclick="switchDetailTab('history')">History</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="tab-overview" class="tab-content active">
+          <div class="detail-grid">
+            <div class="detail-section">
+              <h4>Contact Information</h4>
+              <div class="detail-row">
+                <span class="detail-label">Name</span>
+                <span class="detail-value" id="detailName">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Email</span>
+                <span class="detail-value" id="detailEmail">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Phone</span>
+                <span class="detail-value" id="detailPhone">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Source</span>
+                <span class="detail-value" id="detailSource">-</span>
+              </div>
+            </div>
+            <div class="detail-section">
+              <h4>Project Details</h4>
+              <div class="detail-row">
+                <span class="detail-label">Type</span>
+                <span class="detail-value" id="detailProjectType">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Budget</span>
+                <span class="detail-value" id="detailBudget">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Timeline</span>
+                <span class="detail-value" id="detailTimeline">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Address</span>
+                <span class="detail-value" id="detailAddress">-</span>
+              </div>
+            </div>
+            <div class="detail-section">
+              <h4>Qualification</h4>
+              <div class="detail-row">
+                <span class="detail-label">Score</span>
+                <span class="detail-value" id="detailScore">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Decision Maker</span>
+                <span class="detail-value" id="detailDecisionMaker">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Financing</span>
+                <span class="detail-value" id="detailFinancing">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Has Plans</span>
+                <span class="detail-value" id="detailHasPlans">-</span>
+              </div>
+            </div>
+            <div class="detail-section">
+              <h4>Pipeline</h4>
+              <div class="detail-row">
+                <span class="detail-label">Stage</span>
+                <span class="detail-value" id="detailStage">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">In Stage Since</span>
+                <span class="detail-value" id="detailStageSince">-</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Created</span>
+                <span class="detail-value" id="detailCreated">-</span>
+              </div>
+              <div id="detailJobLink" style="display: none;">
+                <div class="detail-row">
+                  <span class="detail-label">Converted to Job</span>
+                  <span class="detail-value"><a href="#" id="detailJobLinkAnchor">View Job</a></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="detail-section">
+            <h4>Notes</h4>
+            <p id="detailNotes" class="detail-notes">-</p>
+          </div>
+          <div class="stage-actions" id="stageActions">
+            <label>Change Stage:</label>
+            <select id="stageSelect" class="form-control form-control-sm" style="width: auto; display: inline-block;" onchange="changeStage()">
+              <option value="inquiry">Inquiry</option>
+              <option value="qualification">Qualification</option>
+              <option value="consultation">Consultation</option>
+              <option value="design_agreement">Design Agreement</option>
+              <option value="proposal">Proposal</option>
+              <option value="contract">Contract</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Activities Tab -->
+        <div id="tab-activities" class="tab-content">
+          <div class="tab-header">
+            <h4>Contact History</h4>
+            <button class="btn btn-sm btn-primary" onclick="openActivityModal()">+ Log Activity</button>
+          </div>
+          <div class="activity-list" id="activityList">
+            <div class="empty-state">
+              <p>No activities logged yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tasks Tab -->
+        <div id="tab-tasks" class="tab-content">
+          <div class="tab-header">
+            <h4>Follow-up Tasks</h4>
+            <button class="btn btn-sm btn-primary" onclick="openTaskModal()">+ Add Task</button>
+          </div>
+          <div class="task-list" id="taskList">
+            <div class="empty-state">
+              <p>No tasks created yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Documents Tab -->
+        <div id="tab-documents" class="tab-content">
+          <div class="tab-header">
+            <h4>Documents</h4>
+            <button class="btn btn-sm btn-primary" onclick="triggerDocumentUpload()">+ Upload</button>
+            <input type="file" id="documentUploadInput" style="display: none;" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp" onchange="uploadDocument()">
+          </div>
+          <div class="document-list" id="documentList">
+            <div class="empty-state">
+              <p>No documents uploaded yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="tab-history" class="tab-content">
+          <div class="tab-header">
+            <h4>Stage History</h4>
+          </div>
+          <div class="history-list" id="historyList">
+            <div class="empty-state">
+              <p>No stage changes recorded yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left">
+          <button class="btn btn-secondary" onclick="editLead()">Edit Lead</button>
+          <button class="btn btn-danger" onclick="deleteLead()">Delete</button>
+        </div>
+        <div class="modal-footer-right" id="conversionButtons">
+          <button class="btn btn-danger" onclick="openLostModal()">Mark Lost</button>
+          <button class="btn btn-success" onclick="convertToJob()">Convert to Job</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity Modal -->
+  <div id="activityModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Log Activity</h2>
+        <button class="close-btn" onclick="closeActivityModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="activityType">Activity Type *</label>
+          <select id="activityType" class="form-control" required>
+            <option value="">Select Type...</option>
+            <option value="call">Phone Call</option>
+            <option value="email">Email</option>
+            <option value="meeting">Meeting</option>
+            <option value="site_visit">Site Visit</option>
+            <option value="text">Text Message</option>
+            <option value="note">Note</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="activityDirection">Direction</label>
+          <select id="activityDirection" class="form-control">
+            <option value="">N/A</option>
+            <option value="outbound">Outbound</option>
+            <option value="inbound">Inbound</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="activitySubject">Subject</label>
+          <input type="text" id="activitySubject" class="form-control" placeholder="Brief description">
+        </div>
+        <div class="form-group">
+          <label for="activityDescription">Details</label>
+          <textarea id="activityDescription" class="form-control" rows="3" placeholder="What happened?"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="activityOutcome">Outcome</label>
+          <select id="activityOutcome" class="form-control">
+            <option value="">Select Outcome...</option>
+            <option value="connected">Connected</option>
+            <option value="voicemail">Left Voicemail</option>
+            <option value="no_answer">No Answer</option>
+            <option value="scheduled">Scheduled Meeting</option>
+            <option value="sent">Sent</option>
+            <option value="received">Received</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeActivityModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveActivity()">Save Activity</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Modal -->
+  <div id="taskModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2 id="taskModalTitle">Add Task</h2>
+        <button class="close-btn" onclick="closeTaskModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="taskId">
+        <div class="form-group">
+          <label for="taskType">Task Type *</label>
+          <select id="taskType" class="form-control" required>
+            <option value="">Select Type...</option>
+            <option value="call">Follow-up Call</option>
+            <option value="email">Send Email</option>
+            <option value="meeting">Schedule Meeting</option>
+            <option value="send_info">Send Information</option>
+            <option value="proposal">Send Proposal</option>
+            <option value="follow_up">General Follow-up</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="taskTitle">Title *</label>
+          <input type="text" id="taskTitle" class="form-control" placeholder="What needs to be done?" required>
+        </div>
+        <div class="form-group">
+          <label for="taskDueDate">Due Date *</label>
+          <input type="date" id="taskDueDate" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label for="taskPriority">Priority</label>
+          <select id="taskPriority" class="form-control">
+            <option value="normal">Normal</option>
+            <option value="low">Low</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="taskDescription">Description</label>
+          <textarea id="taskDescription" class="form-control" rows="2" placeholder="Additional details..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveTask()">Save Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lost Modal -->
+  <div id="lostModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Mark Lead as Lost</h2>
+        <button class="close-btn" onclick="closeLostModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="lostReason">Reason *</label>
+          <select id="lostReason" class="form-control" required>
+            <option value="">Select Reason...</option>
+            <option value="budget_mismatch">Budget Mismatch</option>
+            <option value="timing">Timing Not Right</option>
+            <option value="competitor">Chose Competitor</option>
+            <option value="project_cancelled">Project Cancelled</option>
+            <option value="different_direction">Went Different Direction</option>
+            <option value="unresponsive">Unresponsive</option>
+            <option value="location">Outside Service Area</option>
+            <option value="scope_mismatch">Scope Mismatch</option>
+            <option value="financing">Financing Fell Through</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="lostCompetitor">Competitor (if applicable)</label>
+          <input type="text" id="lostCompetitor" class="form-control" placeholder="Which competitor?">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeLostModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="markAsLost()">Mark as Lost</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/sidebar.js"></script>
+  <script src="js/toasts.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/leads.js"></script>
+</body>
+</html>
