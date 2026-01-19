@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 
 ## Current Position
 
-Phase: 43 of 4 (budget-integrity)
-Plan: 2 of 3 complete
-Status: In progress
-Last activity: 2026-01-19 — Completed 43-02-PLAN.md (PO Budget Sync)
+Phase: 43 of 4 (budget-integrity) COMPLETE
+Plan: 3 of 3 complete
+Status: Phase complete
+Last activity: 2026-01-19 — Completed 43-03-PLAN.md (Draw Budget Line Fixes)
 
-Progress: [==----------] 2/12 plans (v1.7)
+Progress: [============] 3/12 plans (v1.7)
 
 ## Milestone History
 
@@ -38,7 +38,7 @@ Progress: [==----------] 2/12 plans (v1.7)
 
 Critical issues identified:
 1. ~~`increment_committed_amount` RPC function called but never created~~ FIXED (43-01)
-2. Budget lines created with $0 budgeted_amount when invoice allocated
+2. ~~Budget lines created with $0 budgeted_amount when invoice allocated~~ FIXED (43-03)
 3. No allocation cleanup on invoice denial/deletion
 4. Draw totals stored but not always recalculated
 5. Job matching confidence threshold too low (50%)
@@ -48,6 +48,7 @@ Critical issues identified:
 - **increment raises exception if budget line missing**: Prevents committing to non-existent budget lines
 - **decrement is no-op for missing budget lines**: Voiding PO succeeds even if budget line was deleted
 - **RPC failures logged but don't fail operations**: PO operations complete even if budget updates fail (graceful degradation)
+- **Graceful degradation for draw operations**: Log warnings for missing budget lines, include in API response, but don't fail operations
 
 ### Pending Todos
 
@@ -59,14 +60,14 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19T17:09:21Z
-Stopped at: Completed 43-02-PLAN.md
-Resume file: .planning/phases/43-budget-integrity/43-03-PLAN.md
+Last session: 2026-01-19T17:15:00Z
+Stopped at: Completed 43-03-PLAN.md (Phase 43 complete)
+Resume file: None
 
 ## Next Actions
 
-1. Execute 43-03-PLAN.md — Fix draws.js to not create zero-budget lines
-2. Complete phase 43, then proceed to phase 44
+1. Execute phase 44 (invoice-pipeline) — Allocation cleanup on invoice denial/deletion
+2. Continue v1.7 milestone
 
 ## Research
 
