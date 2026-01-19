@@ -211,7 +211,8 @@ body {
 
 .main-nav-link.active {
   color: var(--primary);
-  background: rgba(59, 111, 212, 0.08);
+  background: rgba(59, 111, 212, 0.1);
+  border-bottom: 2px solid var(--primary);
   font-weight: 600;
 }
 
@@ -663,6 +664,60 @@ body {
 }
 .stat-chip-accent .stat-chip-value,
 .stat-chip-accent .stat-chip-label { color: white; }
+
+/* ============================================================
+   PAGE HEADER - Unified page header pattern
+   Standard pattern for all page headers across the application
+   ============================================================ */
+
+/* Page header - standard pattern */
+.page-header {
+  margin-bottom: 1.5rem;
+}
+
+.page-header h1,
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.page-subtitle {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  margin-top: 0.25rem;
+}
+
+/* Page header with actions */
+.page-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* Page header row - title + actions */
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+/* Aliases for existing header patterns */
+.budget-page-header,
+.dashboard-header {
+  margin-bottom: 1.5rem;
+}
+
+.budget-page-header h1,
+.budget-page-header h2,
+.dashboard-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+}
 
 /* Data Toolbar - Horizontal filter/action bar */
 .data-toolbar {
