@@ -51,6 +51,8 @@ const {
   findMatchingJob,
   findOrCreateVendor,
   findOrCreatePO,
+  analyzeMultiInvoicePDF,
+  processMultiInvoicePDF,
   CONFIDENCE_THRESHOLDS
 } = require('../ai-processor');
 const { convertDocument, getSupportedExtensions } = require('../document-converter');
@@ -729,6 +731,195 @@ router.post('/process', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     console.error('AI processing error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// MULTI-INVOICE BATCH PROCESSING
+// ============================================================
+
+/**
+ * Analyze a PDF for multiple invoices (preview before splitting)
+ * Returns detected invoice boundaries without processing
+ */
+router.post('/analyze-multi', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const originalFilename = req.file.originalname;
+    const fileBuffer = req.file.buffer;
+
+    console.log(`[MultiInvoice] Analyzing: ${originalFilename}`);
+
+    const analysis = await analyzeMultiInvoicePDF(fileBuffer, originalFilename);
+
+    res.json({
+      success: true,
+      filename: originalFilename,
+      totalPages: analysis.totalPages,
+      isMultiInvoice: analysis.isMultiInvoice,
+      invoicesDetected: analysis.invoices.length,
+      invoices: analysis.invoices,
+      message: analysis.isMultiInvoice
+        ? `Detected ${analysis.invoices.length} separate invoices`
+        : 'Single invoice detected'
+    });
+
+  } catch (err) {
+    console.error('Multi-invoice analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Process a multi-invoice PDF: split and process each invoice
+ * Returns results for all detected invoices
+ */
+router.post('/process-batch', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const originalFilename = req.file.originalname;
+    const fileBuffer = req.file.buffer;
+
+    console.log(`[MultiInvoice] Batch processing: ${originalFilename}`);
+
+    // Process the multi-invoice PDF
+    const batchResult = await processMultiInvoicePDF(fileBuffer, originalFilename);
+
+    if (!batchResult.isMultiInvoice) {
+      // Single invoice - redirect to normal flow response
+      const singleResult = batchResult.invoicesProcessed[0]?.result;
+      if (singleResult) {
+        return res.json({
+          success: true,
+          isMultiInvoice: false,
+          message: 'Single invoice processed normally',
+          invoice: singleResult
+        });
+      }
+    }
+
+    // Helper to validate dates - returns null if invalid
+    const validateDate = (dateStr) => {
+      if (!dateStr) return null;
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return null;
+      // Check for obviously invalid dates (day > 31, month > 12)
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const month = parseInt(parts[1]);
+        const day = parseInt(parts[2]);
+        if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+      }
+      return dateStr;
+    };
+
+    // For each successfully processed invoice, save to database
+    const savedInvoices = [];
+    const failedSaves = [];
+
+    for (const processed of batchResult.invoicesProcessed) {
+      const result = processed.result;
+
+      try {
+        // Upload PDF for this split
+        let pdf_url = null;
+        const jobId = result.matchedJob?.id;
+        const storagePath = result.standardizedFilename || `batch_${processed.invoiceIndex}.pdf`;
+        const bufferToUpload = result.pdfBuffer;
+
+        if (bufferToUpload) {
+          try {
+            if (jobId) {
+              const uploadResult = await uploadPDF(bufferToUpload, storagePath, jobId);
+              pdf_url = uploadResult.url;
+            } else {
+              const uploadResult = await uploadPDF(bufferToUpload, `unassigned/${storagePath}`, null);
+              pdf_url = uploadResult.url;
+            }
+          } catch (uploadErr) {
+            console.error(`[MultiInvoice] PDF upload failed for invoice ${processed.invoiceIndex}:`, uploadErr.message);
+            // Continue without PDF - still save the invoice record
+          }
+        }
+
+        // Validate dates before saving
+        const invoiceDate = validateDate(result.extracted?.invoiceDate);
+        const dueDate = validateDate(result.extracted?.dueDate);
+
+        // Create invoice record
+        const { data: invoice, error: invError } = await supabase
+          .from('v2_invoices')
+          .insert({
+            job_id: jobId || null,
+            vendor_id: result.vendor?.id || null,
+            po_id: result.po?.id || null,
+            invoice_number: result.extracted?.invoiceNumber || processed.detectedMetadata?.invoiceNumber,
+            invoice_date: invoiceDate,
+            due_date: dueDate,
+            amount: result.extracted?.totalAmount || processed.detectedMetadata?.approximateAmount || 0,
+            invoice_type: result.extracted?.invoiceType || 'standard',
+            pdf_url,
+            status: 'needs_review',
+            notes: `Batch processed from: ${originalFilename}\nPages: ${processed.pageRange}\n${result.messages?.join('\n') || ''}`,
+            ai_processed: true,
+            ai_confidence: result.ai_confidence || null,
+            ai_extracted_data: result.ai_extracted_data || null,
+            needs_review: true,
+            review_flags: [...(result.review_flags || []), 'batch_processed', ...(invoiceDate ? [] : ['invalid_date'])]
+          })
+          .select()
+          .single();
+
+        if (invError) throw invError;
+
+        // Log activity
+        await logActivity(invoice.id, 'uploaded', 'Batch Processor', {
+          originalFilename,
+          pageRange: processed.pageRange,
+          batchIndex: processed.invoiceIndex,
+          detectedVendor: processed.detectedMetadata?.vendor
+        });
+
+        savedInvoices.push({
+          invoiceIndex: processed.invoiceIndex,
+          pageRange: processed.pageRange,
+          invoice,
+          vendor: result.vendor,
+          matchedJob: result.matchedJob
+        });
+
+      } catch (saveErr) {
+        console.error(`[MultiInvoice] Failed to save invoice ${processed.invoiceIndex}:`, saveErr);
+        failedSaves.push({
+          invoiceIndex: processed.invoiceIndex,
+          pageRange: processed.pageRange,
+          error: saveErr.message
+        });
+      }
+    }
+
+    res.json({
+      success: batchResult.success && failedSaves.length === 0,
+      isMultiInvoice: true,
+      totalPages: batchResult.totalPages,
+      invoicesDetected: batchResult.invoicesDetected,
+      invoicesSaved: savedInvoices.length,
+      invoicesFailed: batchResult.invoicesFailed.length + failedSaves.length,
+      savedInvoices,
+      failedSaves,
+      processingFailed: batchResult.invoicesFailed,
+      messages: batchResult.messages
+    });
+
+  } catch (err) {
+    console.error('Batch processing error:', err);
     res.status(500).json({ error: err.message });
   }
 });

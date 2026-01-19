@@ -655,6 +655,144 @@ function calculateJobConfidence(job) {
 }
 
 // ============================================================
+// SMART JOB DETECTION - SCAN TEXT FOR KNOWN JOBS
+// ============================================================
+
+/**
+ * Scan raw text and filename for known job names/addresses
+ * This is a fallback when AI extraction fails to find the job reference
+ * @param {string} rawText - The raw extracted text from the document
+ * @param {string} filename - Original filename (may contain job hints)
+ * @returns {Object} { job, confidence, matchedText, matchStrategy }
+ */
+async function scanTextForKnownJobs(rawText, filename = '') {
+  // Get all active jobs
+  const { data: jobs, error } = await supabase
+    .from('v2_jobs')
+    .select('id, name, address, client_name, status')
+    .eq('status', 'active');
+
+  if (error || !jobs || jobs.length === 0) {
+    return null;
+  }
+
+  // Normalize text for searching (lowercase, remove extra whitespace)
+  const normalizedText = (rawText || '').toLowerCase().replace(/\s+/g, ' ');
+  const normalizedFilename = (filename || '').toLowerCase().replace(/[_-]/g, ' ');
+  const combinedText = `${normalizedFilename} ${normalizedText}`;
+
+  let bestMatch = null;
+  let bestConfidence = 0;
+  let matchedText = '';
+  let matchStrategy = '';
+
+  for (const job of jobs) {
+    // Extract search patterns from job
+    const jobName = (job.name || '').toLowerCase();
+    const jobAddress = (job.address || '').toLowerCase();
+    const clientName = (job.client_name || '').toLowerCase();
+
+    // Extract client name from job name (e.g., "Drummond-501 74th St" -> "drummond")
+    const nameParts = jobName.split(/[-–\s]+/);
+    const clientFromName = nameParts[0] || '';
+
+    // Extract street number and name from address (e.g., "501 74th St" -> "501", "74th")
+    const addressMatch = jobAddress.match(/(\d+)\s+(.+)/);
+    const streetNumber = addressMatch ? addressMatch[1] : '';
+    const streetName = addressMatch ? addressMatch[2].split(/\s+/)[0] : '';
+
+    // Also extract from job name if it contains address
+    const nameAddressMatch = jobName.match(/(\d+)\s+(\d+\w*)\s*(st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|way|blvd)/i);
+    const nameStreetNumber = nameAddressMatch ? nameAddressMatch[1] : '';
+    const nameStreetNum2 = nameAddressMatch ? nameAddressMatch[2] : '';
+
+    // Search strategies with confidence scores
+    const strategies = [
+      // Strategy 1: Exact client name match (highest confidence)
+      { pattern: clientFromName, confidence: 0.95, strategy: 'client_name_exact', minLength: 3 },
+
+      // Strategy 2: Full job name match
+      { pattern: jobName, confidence: 0.98, strategy: 'job_name_exact', minLength: 5 },
+
+      // Strategy 3: Address match
+      { pattern: jobAddress, confidence: 0.92, strategy: 'address_exact', minLength: 5 },
+
+      // Strategy 4: Street number + partial street name
+      { pattern: `${streetNumber} ${streetName}`, confidence: 0.88, strategy: 'street_match', minLength: 4 },
+      { pattern: `${nameStreetNumber} ${nameStreetNum2}`, confidence: 0.88, strategy: 'name_street_match', minLength: 4 },
+
+      // Strategy 5: Just the street number (if unique enough)
+      { pattern: streetNumber, confidence: 0.70, strategy: 'street_number', minLength: 3 },
+      { pattern: nameStreetNumber, confidence: 0.70, strategy: 'name_street_number', minLength: 3 },
+
+      // Strategy 6: Client name variations
+      { pattern: clientName, confidence: 0.90, strategy: 'client_name_db', minLength: 3 },
+    ];
+
+    for (const { pattern, confidence, strategy, minLength } of strategies) {
+      if (!pattern || pattern.length < minLength) continue;
+
+      // Check if pattern exists in combined text
+      if (combinedText.includes(pattern)) {
+        // Boost confidence if found in filename (more intentional)
+        let adjustedConfidence = confidence;
+        if (normalizedFilename.includes(pattern)) {
+          adjustedConfidence = Math.min(confidence + 0.05, 0.99);
+        }
+
+        if (adjustedConfidence > bestConfidence) {
+          bestConfidence = adjustedConfidence;
+          bestMatch = job;
+          matchedText = pattern;
+          matchStrategy = strategy;
+        }
+      }
+
+      // Also check for word boundary matches (e.g., "Drummond" not "Drummonder")
+      const wordBoundaryRegex = new RegExp(`\\b${escapeRegex(pattern)}\\b`, 'i');
+      if (wordBoundaryRegex.test(combinedText)) {
+        const adjustedConfidence = Math.min(confidence + 0.03, 0.99);
+        if (adjustedConfidence > bestConfidence) {
+          bestConfidence = adjustedConfidence;
+          bestMatch = job;
+          matchedText = pattern;
+          matchStrategy = strategy + '_word_boundary';
+        }
+      }
+    }
+  }
+
+  if (bestMatch && bestConfidence > 0.5) {
+    return {
+      job: {
+        id: bestMatch.id,
+        name: bestMatch.name,
+        address: bestMatch.address,
+        client_name: bestMatch.client_name
+      },
+      confidence: bestConfidence,
+      matchedText,
+      matchStrategy,
+      possibleMatches: [{
+        id: bestMatch.id,
+        name: bestMatch.name,
+        confidence: bestConfidence,
+        matchType: matchStrategy
+      }]
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Escape special regex characters in a string
+ */
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ============================================================
 // JOB MATCHING WITH CONFIDENCE
 // ============================================================
 
@@ -1653,44 +1791,66 @@ async function processInvoice(pdfBuffer, originalFilename) {
 
     results.messages.push(`Extracted: ${extracted.vendor?.companyName || 'Unknown vendor'}, $${extracted.totalAmount || 0}`);
 
-    // 4. Match job with confidence - use full job object with reference, address, clientName, poNumber
-    const jobData = extracted.job;
+    // 4. SMART JOB MATCHING - Multi-strategy approach
+    // Strategy 1: Use AI-extracted job reference
+    // Strategy 2: Scan raw text/filename for known job names/addresses
+    // Strategy 3: Use filename hints (e.g., "Drummond November 2025.pdf")
+
+    let jobData = extracted.job;
+    let jobMatch = null;
+    let matchStrategy = 'ai_extracted';
+
+    // First try: AI-extracted job reference
     const hasJobReference = jobData && (jobData.reference || jobData.address || jobData.clientName || jobData.poNumber);
 
     if (hasJobReference) {
-      const jobMatch = await findMatchingJob(jobData);
-      results.ai_confidence.job = jobMatch.confidence;
-      results.suggestions.possible_jobs = jobMatch.possibleMatches;
+      jobMatch = await findMatchingJob(jobData);
+    }
 
-      const searchDesc = jobData.reference || jobData.clientName || jobData.address || 'unknown';
-      results.messages.push(`Job reference found: "${searchDesc}"`);
+    // If no good match from AI extraction, try scanning raw text for known job names
+    if (!jobMatch || jobMatch.confidence < CONFIDENCE_THRESHOLDS.MEDIUM) {
+      const textScanMatch = await scanTextForKnownJobs(
+        results.ai_extracted_data?.raw_text || '',
+        originalFilename
+      );
+
+      if (textScanMatch && textScanMatch.confidence > (jobMatch?.confidence || 0)) {
+        jobMatch = textScanMatch;
+        matchStrategy = textScanMatch.matchStrategy || 'text_scan';
+        results.messages.push(`Text scan found job: "${textScanMatch.matchedText}" → ${textScanMatch.job?.name}`);
+      }
+    }
+
+    // Apply job match results
+    if (jobMatch && jobMatch.confidence > 0) {
+      results.ai_confidence.job = jobMatch.confidence;
+      results.suggestions.possible_jobs = jobMatch.possibleMatches || [];
+
+      const searchDesc = jobMatch.matchedText || jobData?.reference || jobData?.clientName || jobData?.address || 'text scan';
 
       if (jobMatch.confidence >= CONFIDENCE_THRESHOLDS.HIGH) {
         // High confidence - auto-assign
         results.matchedJob = jobMatch.job;
-        results.messages.push(`Matched to job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}% confidence via ${jobMatch.matchType})`);
+        results.messages.push(`Matched to job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}% via ${matchStrategy})`);
       } else if (jobMatch.confidence >= CONFIDENCE_THRESHOLDS.MEDIUM) {
         // Medium confidence - auto-assign with review flag
         results.matchedJob = jobMatch.job;
         results.needs_review = true;
         results.review_flags.push('verify_job');
-        results.messages.push(`Matched to job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}% confidence - needs verification)`);
-      } else if (jobMatch.confidence > 0) {
+        results.messages.push(`Matched to job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}% via ${matchStrategy} - verify)`);
+      } else {
         // Low confidence - don't auto-assign, show suggestions
         results.matchedJob = null;
         results.needs_review = true;
         results.review_flags.push('select_job');
         results.messages.push(`Low confidence job match (${Math.round(jobMatch.confidence * 100)}%) - manual selection required`);
-      } else {
-        // No match
-        results.needs_review = true;
-        results.review_flags.push('no_job_match');
-        results.messages.push(`No matching job found for: ${searchDesc}`);
       }
     } else {
+      // No match found
       results.needs_review = true;
-      results.review_flags.push('missing_job_reference');
-      results.messages.push('No job reference found on invoice');
+      results.review_flags.push('no_job_match');
+      const searchDesc = jobData?.reference || jobData?.clientName || jobData?.address || 'no reference';
+      results.messages.push(`No matching job found for: ${searchDesc}`);
     }
 
     // 5. Check for low confidence fields
@@ -2691,10 +2851,403 @@ Return JSON:
 }
 
 // ============================================================
-// PDF SPLITTING FOR COMBINED DOCUMENTS
+// MULTI-INVOICE PDF DETECTION AND SPLITTING
 // ============================================================
 
 const { PDFDocument } = require('pdf-lib');
+
+/**
+ * Analyze a multi-page PDF to detect invoice boundaries
+ * Uses Claude Vision to identify where each invoice starts/ends
+ * @param {Buffer} pdfBuffer - The combined PDF buffer
+ * @param {string} filename - Original filename for context
+ * @returns {Promise<{invoices: Array<{startPage: number, endPage: number, invoiceNumber: string, vendor: string, amount: number}>, totalPages: number}>}
+ */
+async function analyzeMultiInvoicePDF(pdfBuffer, filename = 'document.pdf') {
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const totalPages = pdfDoc.getPageCount();
+
+  console.log(`[MultiInvoice] Analyzing ${totalPages} pages for invoice boundaries...`);
+
+  // For small PDFs (≤3 pages), assume single invoice
+  if (totalPages <= 3) {
+    console.log('[MultiInvoice] Small document, treating as single invoice');
+    return {
+      invoices: [{ startPage: 1, endPage: totalPages, invoiceNumber: null, vendor: null, amount: null }],
+      totalPages,
+      isMultiInvoice: false
+    };
+  }
+
+  // Convert pages to images for analysis
+  const pageImages = await convertPDFPagesToImages(pdfBuffer, totalPages);
+
+  if (pageImages.length === 0) {
+    console.log('[MultiInvoice] Could not convert pages to images, treating as single invoice');
+    return {
+      invoices: [{ startPage: 1, endPage: totalPages, invoiceNumber: null, vendor: null, amount: null }],
+      totalPages,
+      isMultiInvoice: false
+    };
+  }
+
+  // Use Claude Vision to analyze pages and detect boundaries
+  const boundaries = await detectInvoiceBoundaries(pageImages, filename);
+
+  return {
+    invoices: boundaries.invoices,
+    totalPages,
+    isMultiInvoice: boundaries.invoices.length > 1
+  };
+}
+
+/**
+ * Convert PDF pages to base64 images for Vision analysis
+ * @param {Buffer} pdfBuffer
+ * @param {number} totalPages
+ * @returns {Promise<Array<{pageNumber: number, base64: string, mediaType: string}>>}
+ */
+async function convertPDFPagesToImages(pdfBuffer, totalPages) {
+  const images = [];
+
+  try {
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const sharp = require('sharp');
+
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(pdfBuffer),
+      useSystemFonts: true,
+      disableFontFace: true
+    });
+
+    const pdf = await loadingTask.promise;
+
+    // Process all pages (or limit for very large documents)
+    const maxPages = Math.min(totalPages, 50);
+
+    for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+      try {
+        const page = await pdf.getPage(pageNum);
+        const ops = await page.getOperatorList();
+
+        // Try to extract embedded images
+        for (let i = 0; i < ops.fnArray.length; i++) {
+          if (ops.fnArray[i] === pdfjsLib.OPS.paintImageXObject) {
+            const imgName = ops.argsArray[i][0];
+            try {
+              const img = await page.objs.get(imgName);
+              if (img && img.data && img.width > 100 && img.height > 100) {
+                const width = img.width;
+                const height = img.height;
+                const channels = img.data.length / (width * height);
+
+                if (channels >= 3 && channels <= 4) {
+                  // Resize for faster processing (max 800px wide)
+                  const imageBuffer = await sharp(Buffer.from(img.data), {
+                    raw: { width, height, channels: Math.round(channels) }
+                  })
+                  .resize(800, null, { fit: 'inside', withoutEnlargement: true })
+                  .jpeg({ quality: 70 })
+                  .toBuffer();
+
+                  images.push({
+                    pageNumber: pageNum,
+                    base64: imageBuffer.toString('base64'),
+                    mediaType: 'image/jpeg'
+                  });
+                  break; // One image per page is enough
+                }
+              }
+            } catch (imgErr) {
+              // Skip problematic images
+            }
+          }
+        }
+      } catch (pageErr) {
+        console.log(`[MultiInvoice] Could not process page ${pageNum}: ${pageErr.message}`);
+      }
+    }
+
+    console.log(`[MultiInvoice] Converted ${images.length} of ${maxPages} pages to images`);
+
+  } catch (err) {
+    console.error('[MultiInvoice] PDF to image conversion failed:', err.message);
+  }
+
+  return images;
+}
+
+/**
+ * Use Claude Vision to detect invoice boundaries in page images
+ * @param {Array} pageImages - Array of {pageNumber, base64, mediaType}
+ * @param {string} filename - Original filename
+ * @returns {Promise<{invoices: Array}>}
+ */
+async function detectInvoiceBoundaries(pageImages, filename) {
+  if (pageImages.length === 0) {
+    return { invoices: [{ startPage: 1, endPage: 1, invoiceNumber: null, vendor: null, amount: null }] };
+  }
+
+  // For efficiency, sample pages if there are too many
+  let samplesToAnalyze = pageImages;
+  if (pageImages.length > 15) {
+    // Sample every Nth page plus first and last
+    const step = Math.ceil(pageImages.length / 12);
+    samplesToAnalyze = pageImages.filter((_, i) => i === 0 || i === pageImages.length - 1 || i % step === 0);
+    console.log(`[MultiInvoice] Sampling ${samplesToAnalyze.length} of ${pageImages.length} pages for analysis`);
+  }
+
+  // Build the vision request with multiple images
+  const imageContent = samplesToAnalyze.map(img => ({
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: img.mediaType,
+      data: img.base64
+    }
+  }));
+
+  // Add page number labels
+  const pageLabels = samplesToAnalyze.map(img => `Page ${img.pageNumber}`).join(', ');
+
+  const prompt = `You are analyzing a PDF document that may contain multiple separate invoices combined into one file.
+The document has ${pageImages.length} total pages. You are seeing pages: ${pageLabels}
+
+IMPORTANT: This is a construction/contractor invoice bundle. Each separate invoice typically has:
+- A distinct vendor name/company letterhead at the top
+- Its own invoice number
+- Its own total amount
+- May be 1-3 pages each
+
+Analyze these pages and identify where each SEPARATE invoice starts.
+
+Look for these boundary indicators:
+1. Different company name/letterhead appearing
+2. New "Invoice", "Bill", "Statement" header
+3. Different invoice number format
+4. Different vendor address/logo
+5. Payment confirmation pages (like FPL/utility payments) are separate from invoices
+
+Return a JSON object with this structure:
+{
+  "invoices": [
+    {
+      "startPage": 1,
+      "endPage": 2,
+      "vendor": "Vendor Name or Company",
+      "invoiceNumber": "INV-123 or null if unclear",
+      "approximateAmount": 1234.56 or null
+    },
+    ...more invoices...
+  ],
+  "confidence": 0.0-1.0,
+  "notes": "Any observations about the document structure"
+}
+
+Return ONLY the JSON object, no other text.`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: [
+          ...imageContent,
+          { type: 'text', text: prompt }
+        ]
+      }]
+    });
+
+    let jsonStr = response.content[0].text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+
+    const result = JSON.parse(jsonStr);
+    console.log(`[MultiInvoice] Detected ${result.invoices?.length || 1} invoices (confidence: ${result.confidence || 'N/A'})`);
+
+    // Validate and fill gaps in page ranges
+    if (result.invoices && result.invoices.length > 0) {
+      // Sort by startPage
+      result.invoices.sort((a, b) => a.startPage - b.startPage);
+
+      // Fill any gaps between detected invoices
+      const filledInvoices = [];
+      let lastEndPage = 0;
+
+      for (const inv of result.invoices) {
+        // If there's a gap, the previous invoice might extend further
+        if (inv.startPage > lastEndPage + 1 && filledInvoices.length > 0) {
+          filledInvoices[filledInvoices.length - 1].endPage = inv.startPage - 1;
+        }
+        filledInvoices.push(inv);
+        lastEndPage = inv.endPage;
+      }
+
+      // Extend last invoice to end of document if needed
+      if (filledInvoices.length > 0 && filledInvoices[filledInvoices.length - 1].endPage < pageImages.length) {
+        filledInvoices[filledInvoices.length - 1].endPage = pageImages.length;
+      }
+
+      return { invoices: filledInvoices, confidence: result.confidence, notes: result.notes };
+    }
+
+    return result;
+
+  } catch (err) {
+    console.error('[MultiInvoice] Boundary detection failed:', err.message);
+    // Fall back to treating entire document as single invoice
+    return {
+      invoices: [{ startPage: 1, endPage: pageImages.length, invoiceNumber: null, vendor: null, amount: null }],
+      confidence: 0,
+      notes: 'Detection failed, treating as single invoice'
+    };
+  }
+}
+
+/**
+ * Split a PDF by detected invoice boundaries
+ * @param {Buffer} pdfBuffer - Original PDF
+ * @param {Array} invoiceBoundaries - Array of {startPage, endPage, ...}
+ * @returns {Promise<Array<{invoiceIndex: number, buffer: Buffer, metadata: Object}>>}
+ */
+async function splitPDFByInvoices(pdfBuffer, invoiceBoundaries) {
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const splits = [];
+
+  for (let i = 0; i < invoiceBoundaries.length; i++) {
+    const boundary = invoiceBoundaries[i];
+    const newPdf = await PDFDocument.create();
+
+    // Copy pages for this invoice (pages are 0-indexed in pdf-lib)
+    const pageIndices = [];
+    for (let p = boundary.startPage - 1; p < boundary.endPage; p++) {
+      pageIndices.push(p);
+    }
+
+    const copiedPages = await newPdf.copyPages(pdfDoc, pageIndices);
+    copiedPages.forEach(page => newPdf.addPage(page));
+
+    const pdfBytes = await newPdf.save();
+
+    splits.push({
+      invoiceIndex: i + 1,
+      buffer: Buffer.from(pdfBytes),
+      pageRange: `${boundary.startPage}-${boundary.endPage}`,
+      metadata: {
+        vendor: boundary.vendor,
+        invoiceNumber: boundary.invoiceNumber,
+        approximateAmount: boundary.approximateAmount
+      }
+    });
+  }
+
+  console.log(`[MultiInvoice] Split PDF into ${splits.length} separate invoices`);
+  return splits;
+}
+
+/**
+ * Process a multi-invoice PDF: analyze, split, and process each invoice
+ * @param {Buffer} pdfBuffer - The combined PDF
+ * @param {string} originalFilename - Original filename
+ * @param {Object} options - Processing options
+ * @returns {Promise<Object>} - Results for all invoices
+ */
+async function processMultiInvoicePDF(pdfBuffer, originalFilename, options = {}) {
+  const results = {
+    success: true,
+    isMultiInvoice: false,
+    totalPages: 0,
+    invoicesDetected: 0,
+    invoicesProcessed: [],
+    invoicesFailed: [],
+    messages: []
+  };
+
+  try {
+    // Step 1: Analyze the PDF for invoice boundaries
+    results.messages.push('Analyzing PDF for multiple invoices...');
+    const analysis = await analyzeMultiInvoicePDF(pdfBuffer, originalFilename);
+
+    results.totalPages = analysis.totalPages;
+    results.invoicesDetected = analysis.invoices.length;
+    results.isMultiInvoice = analysis.isMultiInvoice;
+
+    if (!analysis.isMultiInvoice) {
+      results.messages.push('Single invoice detected, processing normally');
+      // Process as single invoice
+      const singleResult = await processInvoice(pdfBuffer, originalFilename);
+      results.invoicesProcessed.push({
+        invoiceIndex: 1,
+        pageRange: `1-${analysis.totalPages}`,
+        result: singleResult
+      });
+      return results;
+    }
+
+    results.messages.push(`Detected ${analysis.invoices.length} separate invoices`);
+
+    // Step 2: Split the PDF by invoice boundaries
+    const splits = await splitPDFByInvoices(pdfBuffer, analysis.invoices);
+
+    // Step 3: Process each split invoice
+    for (const split of splits) {
+      try {
+        results.messages.push(`Processing invoice ${split.invoiceIndex} (pages ${split.pageRange})...`);
+
+        // Generate unique filename for this split
+        const splitFilename = originalFilename.replace('.pdf', `_inv${split.invoiceIndex}.pdf`);
+
+        // Process the split PDF
+        const invoiceResult = await processInvoice(split.buffer, splitFilename);
+
+        // IMPORTANT: Attach the PDF buffer to the result for upload
+        invoiceResult.pdfBuffer = split.buffer;
+        invoiceResult.splitFilename = splitFilename;
+
+        // Add context from boundary detection
+        if (split.metadata.vendor && !invoiceResult.vendor) {
+          invoiceResult.detectedVendor = split.metadata.vendor;
+        }
+        if (split.metadata.invoiceNumber && invoiceResult.extracted) {
+          invoiceResult.detectedInvoiceNumber = split.metadata.invoiceNumber;
+        }
+
+        results.invoicesProcessed.push({
+          invoiceIndex: split.invoiceIndex,
+          pageRange: split.pageRange,
+          detectedMetadata: split.metadata,
+          result: invoiceResult
+        });
+
+        results.messages.push(`Invoice ${split.invoiceIndex}: Processed successfully`);
+
+      } catch (invErr) {
+        results.invoicesFailed.push({
+          invoiceIndex: split.invoiceIndex,
+          pageRange: split.pageRange,
+          error: invErr.message
+        });
+        results.messages.push(`Invoice ${split.invoiceIndex}: Failed - ${invErr.message}`);
+      }
+    }
+
+    results.success = results.invoicesFailed.length === 0;
+    results.messages.push(`Complete: ${results.invoicesProcessed.length} processed, ${results.invoicesFailed.length} failed`);
+
+  } catch (err) {
+    results.success = false;
+    results.messages.push(`Analysis error: ${err.message}`);
+  }
+
+  return results;
+}
+
+
+// ============================================================
+// PDF SPLITTING FOR COMBINED DOCUMENTS (LEGACY - PAGE BY PAGE)
+// ============================================================
 
 /**
  * Split a multi-page PDF into individual page buffers
@@ -2821,6 +3374,10 @@ module.exports = {
   processLienRelease,
   processDocument,
   processMultiPageDocument,
+  // Multi-invoice PDF processing
+  analyzeMultiInvoicePDF,
+  splitPDFByInvoices,
+  processMultiInvoicePDF,
   splitPDF,
   classifyDocument,
   extractTextFromPDF,

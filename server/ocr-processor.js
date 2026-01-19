@@ -214,26 +214,33 @@ async function extractEmbeddedImages(pdfBuffer) {
 /**
  * Invoice extraction schema for Claude Vision
  */
-const VISION_EXTRACTION_PROMPT = `You are analyzing a scanned invoice image. Extract all visible information and return ONLY a valid JSON object (no markdown, no explanation).
+const VISION_EXTRACTION_PROMPT = `You are analyzing a CONSTRUCTION INVOICE image for a home builder called "Ross Built Custom Homes".
+This invoice is from a vendor/subcontractor billing Ross Built for work on a construction project.
 
-Extract these fields:
+CRITICAL: This is a CONSTRUCTION invoice - look for JOB/PROJECT references which are essential:
+- Client/homeowner name (e.g., "Drummond", "Smith", "Jones") - often appears as "Ship To", "Project", "Job", "Customer"
+- Job site ADDRESS (e.g., "501 74th St", "123 Main Street") - the construction site location
+- PO Number or Job Number that references the project
+- Project name or reference number
+
+Extract and return ONLY a valid JSON object:
 {
   "vendor": {
-    "companyName": "string - vendor/company name at top of invoice",
+    "companyName": "string - the company SENDING this invoice (NOT Ross Built)",
     "email": "string or null",
     "phone": "string or null",
-    "address": "string or null",
-    "tradeType": "string: electrical, plumbing, hvac, drywall, framing, roofing, painting, flooring, tile, concrete, masonry, landscaping, pool, cabinets, countertops, windows_doors, insulation, stucco, siding, general, other"
+    "address": "string or null - vendor's business address",
+    "tradeType": "string: electrical, plumbing, hvac, drywall, framing, roofing, painting, flooring, tile, concrete, masonry, landscaping, pool, cabinets, countertops, windows_doors, insulation, lumber, stucco, siding, general, other"
   },
-  "invoiceNumber": "string - invoice/receipt number",
+  "invoiceNumber": "string - invoice/receipt/confirmation number",
   "invoiceDate": "string - YYYY-MM-DD format",
   "dueDate": "string or null - YYYY-MM-DD format",
-  "totalAmount": "number - total amount due (positive for invoices, negative for credits)",
+  "totalAmount": "number - total amount due",
   "invoiceType": "string: 'standard' | 'credit_memo' | 'debit_memo'",
   "job": {
-    "reference": "string or null - job name/number/reference",
-    "clientName": "string or null",
-    "address": "string or null - job site address"
+    "reference": "string or null - ANY job/project identifier: client name, project name, job number",
+    "clientName": "string or null - homeowner/client name like 'Drummond', 'Smith' (NOT Ross Built, NOT the vendor)",
+    "address": "string or null - JOB SITE address where construction work was performed (NOT vendor address)"
   },
   "lineItems": [
     {
@@ -243,16 +250,23 @@ Extract these fields:
       "amount": "number"
     }
   ],
-  "notes": "string or null - any special notes or comments"
+  "notes": "string or null"
 }
 
-Important:
-- Return ONLY the JSON object, no other text
-- Use null for fields you cannot find
-- Parse dates as YYYY-MM-DD
-- Extract ALL visible line items
-- Detect trade type from vendor name, letterhead, or line items
-- If this is a credit memo or refund, set invoiceType and use negative amounts`;
+CRITICAL RULES:
+1. Return ONLY the JSON object, no markdown or explanation
+2. JOB IDENTIFICATION IS CRUCIAL - look carefully for:
+   - "Ship To" or "Deliver To" address = job site address
+   - "Project:", "Job:", "Customer:", "Client:" labels
+   - Any residential address that ISN'T the vendor's address
+   - Names that appear to be homeowner names (not company names)
+3. DO NOT confuse customer/payer name with job reference
+   - If you see "Chris Langston paid via Speedpay" - that's a PAYER, not job reference
+   - Look for actual construction project references
+4. The vendor is the company AT THE TOP of the invoice (who is billing)
+5. Parse dates as YYYY-MM-DD
+6. If this is a payment confirmation (like FPL, utility), look for the SERVICE ADDRESS
+7. For lumber yards, look for "Ship To" or "Deliver To" as the job address`;
 
 /**
  * Extract invoice data from images using Claude Vision
