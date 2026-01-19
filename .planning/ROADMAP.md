@@ -1,7 +1,7 @@
 # Roadmap: v1.7 Data Integrity & AI Accuracy
 
 **Created:** 2026-01-19
-**Goal:** Foolproof invoice → approval → draw → budget pipeline with accurate PO/CO linking
+**Goal:** Foolproof invoice -> approval -> draw -> budget pipeline with accurate PO/CO linking
 
 ## Overview
 
@@ -30,8 +30,15 @@
 3. Budget lines cannot be created with budgeted_amount = 0 (error thrown)
 4. CO approval also updates committed_amount correctly
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 43-01-PLAN.md - Create RPC functions for atomic budget updates
+- [ ] 43-02-PLAN.md - Wire PO approval/void/CO to use RPC functions
+- [ ] 43-03-PLAN.md - Fix draws.js to not create zero-budget lines
+
 **Key Files:**
-- `database/migration-057-budget-rpc.sql` (new)
+- `database/migration-064-budget-rpc.sql` (new)
 - `server/routes/purchase-orders.js`
 - `server/routes/draws.js`
 
@@ -52,6 +59,8 @@
 2. When invoice is deleted, same cleanup occurs
 3. Approve, allocate, add-to-draw operations are atomic (all-or-nothing)
 4. Cannot approve invoice if allocations don't sum to invoice amount
+
+**Plans:** (created by /gsd:plan-phase)
 
 **Key Files:**
 - `server/routes/invoices.js`
@@ -80,6 +89,8 @@
 5. Voiding PO reverses budget committed_amount
 6. Cannot double-count CO billings
 
+**Plans:** (created by /gsd:plan-phase)
+
 **Key Files:**
 - `server/routes/draws.js`
 - `server/routes/purchase-orders.js`
@@ -103,6 +114,8 @@
 3. Invalid dates (like 2024-05-34) become null, not errors
 4. Vendor name extracted from invoice header, not confused with customer
 
+**Plans:** (created by /gsd:plan-phase)
+
 **Key Files:**
 - `server/ai-processor.js`
 - `server/ocr-processor.js`
@@ -112,8 +125,8 @@
 ## Dependencies
 
 ```
-Phase 43 (Budget) → Phase 44 (Invoice) → Phase 45 (Draw/PO) → Phase 46 (AI)
-         ↓
+Phase 43 (Budget) -> Phase 44 (Invoice) -> Phase 45 (Draw/PO) -> Phase 46 (AI)
+         |
     RPC functions needed before invoice cleanup can update budgets
 ```
 
