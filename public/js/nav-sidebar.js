@@ -1,15 +1,15 @@
 /**
  * Group Navigation Component
  * Creates a two-level navigation: groups (top) and sub-items (below)
- * Works alongside the job sidebar
+ * Reorganized for v1.6: Sales → Pre-Con → Execution → Field → Finance → Closeout → Admin → Comms
  */
 
 (function() {
   'use strict';
 
   // Navigation structure - groups with sub-items
-  // Flow: Dashboard → Job Profile → Preconstruction → Financial → Operations → Admin
-  // Organized to follow construction project workflow
+  // Flow: Dashboard → Sales → Pre-Con → Execution → Field → Finance → Closeout → Admin → Comms
+  // Organized to follow construction project lifecycle
   const navGroups = [
     {
       id: 'dashboard',
@@ -18,26 +18,16 @@
       items: [] // No sub-items, direct link
     },
     {
-      id: 'leads',
-      label: 'Leads',
-      href: 'leads.html',
-      items: [] // No sub-items, direct link
+      id: 'sales',
+      label: 'Sales',
+      items: [
+        { id: 'leads', label: 'Leads', href: 'leads.html' },
+        { id: 'job-profile', label: 'Job Profile', href: 'job-profile.html' }
+      ]
     },
     {
-      id: 'selections',
-      label: 'Selections',
-      href: 'selections.html',
-      items: [] // No sub-items, direct link
-    },
-    {
-      id: 'job-profile',
-      label: 'Job Profile',
-      href: 'job-profile.html',
-      items: [] // No sub-items, direct link
-    },
-    {
-      id: 'preconstruction',
-      label: 'Preconstruction',
+      id: 'precon',
+      label: 'Pre-Con',
       items: [
         { id: 'bids', label: 'Bids', href: 'bids.html' },
         { id: 'estimates', label: 'Estimates', href: 'estimates.html' },
@@ -45,8 +35,29 @@
       ]
     },
     {
-      id: 'financial',
-      label: 'Financial',
+      id: 'execution',
+      label: 'Execution',
+      items: [
+        { id: 'selections', label: 'Selections', href: 'selections.html' },
+        { id: 'schedule', label: 'Schedule', href: 'schedule.html' },
+        { id: 'documents', label: 'Documents', href: 'documents.html' }
+      ]
+    },
+    {
+      id: 'field',
+      label: 'Field',
+      items: [
+        { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' },
+        { id: 'inspections', label: 'Inspections', href: 'inspections.html' },
+        { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' },
+        { id: 'photos', label: 'Photos', href: 'photos.html' },
+        { id: 'rfis', label: 'RFIs', href: 'rfis.html' },
+        { id: 'submittals', label: 'Submittals', href: 'submittals.html' }
+      ]
+    },
+    {
+      id: 'finance',
+      label: 'Finance',
       items: [
         { id: 'budget', label: 'Budget', href: 'budgets.html' },
         { id: 'pos', label: 'Purchase Orders', href: 'pos.html' },
@@ -58,15 +69,11 @@
       ]
     },
     {
-      id: 'operations',
-      label: 'Operations',
+      id: 'closeout',
+      label: 'Closeout',
       items: [
-        { id: 'schedule', label: 'Schedule', href: 'schedule.html' },
-        { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' },
-        { id: 'inspections', label: 'Inspections', href: 'inspections.html' },
-        { id: 'photos', label: 'Photos', href: 'photos.html' },
-        { id: 'documents', label: 'Documents', href: 'documents.html' },
-        { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' }
+        { id: 'warranties', label: 'Warranties', href: 'warranties.html' },
+        { id: 'closeout', label: 'Project Closeout', href: 'closeout.html' }
       ]
     },
     {
@@ -76,6 +83,15 @@
         { id: 'vendors', label: 'Vendors', href: 'vendors.html' },
         { id: 'cost-codes', label: 'Cost Codes', href: 'cost-codes.html' },
         { id: 'recon', label: 'Reconciliation', href: 'reconciliation.html' }
+      ]
+    },
+    {
+      id: 'comms',
+      label: 'Comms',
+      items: [
+        { id: 'messaging', label: 'Messaging', href: 'messaging.html' },
+        { id: 'notifications', label: 'Notifications', href: 'notifications.html' },
+        { id: 'tasks', label: 'Tasks', href: 'tasks.html' }
       ]
     }
   ];
