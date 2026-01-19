@@ -476,11 +476,16 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
 
   if (lineItems && lineItems.length > 0) {
     for (const item of lineItems) {
-      await supabase.rpc('increment_committed_amount', {
-        p_job_id: po.job_id,
-        p_cost_code_id: item.cost_code_id,
-        p_amount: item.amount
-      });
+      try {
+        await supabase.rpc('increment_committed_amount', {
+          p_job_id: po.job_id,
+          p_cost_code_id: item.cost_code_id,
+          p_amount: item.amount
+        });
+      } catch (rpcErr) {
+        console.error('Failed to increment committed for cost code', item.cost_code_id, ':', rpcErr.message);
+        // Log but don't fail the entire approval
+      }
     }
   }
 
