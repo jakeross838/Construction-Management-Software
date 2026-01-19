@@ -5,19 +5,20 @@
 See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Planning next milestone
+**Current focus:** v1.6 Module Expansion
 
 ## Current Position
 
-Phase: 36 of 36 — v1.5 complete
-Plan: All complete
-Status: MILESTONE SHIPPED
-Last activity: 2026-01-18 — v1.5 UI Cleanup & Uniformity shipped
+Phase: Not started (run /gsd:create-roadmap)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-01-18 — Milestone v1.6 started
 
-Progress: v1.5 complete, ready for next milestone
+Progress: v1.6 planning phase
 
 ## Milestone History
 
+- **v1.6 Module Expansion** (started 2026-01-18): Leads/CRM, Selections, scaffold remaining modules
 - **v1.5 UI Cleanup** (shipped 2026-01-18): 7 phases, 19 plans — CSS standardization, component uniformity
 - **v1.4 Price Intelligence** (2026-01-18): Price tracking, order optimization, savings analytics, PO warnings
 - **v1.3 Refinement** (2026-01-18): Invoice AI improvements, Financial reports (JSON, Excel, PDF)
@@ -29,7 +30,7 @@ Progress: v1.5 complete, ready for next milestone
 
 ### Decisions
 
-(Cleared for next milestone — see .planning/milestones/v1.5-ROADMAP.md for v1.5 decisions)
+(New milestone — no decisions yet)
 
 ### Pending Todos
 
@@ -42,13 +43,10 @@ None
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: v1.5 milestone shipped
+Stopped at: v1.6 milestone initialized
 Resume file: None
 
 ## Next Actions
 
-1. `/clear` — Fresh context window
-2. `/gsd:discuss-milestone` — Thinking partner for next milestone
-3. `/gsd:new-milestone` — Update PROJECT.md with new goals
-4. `/gsd:define-requirements` — Create requirements for next milestone
-5. `/gsd:create-roadmap` — Plan phases and work breakdown
+1. `/gsd:define-requirements` — Create detailed requirements for v1.6
+2. `/gsd:create-roadmap` — Plan phases and work breakdown

@@ -5,7 +5,7 @@
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
 **Last Milestone:** v1.5 - UI Cleanup & Uniformity (shipped 2026-01-18)
-**Current Milestone:** Planning next milestone
+**Current Milestone:** v1.6 - Module Expansion
 
 ## Core Value
 
@@ -126,6 +126,27 @@ Shipped v1.5 with ~105,000+ lines of JavaScript across 85+ files. CSS standardiz
 - [x] UI-09: Loading and empty states are consistent
 - [x] UI-10: Mobile experience is uniform across all pages
 
+### v1.6 Module Expansion (Active)
+
+**Fully Built Modules:**
+- [ ] LED-01: Leads/CRM - Pipeline stages, lead capture, qualification, follow-ups
+- [ ] LED-02: Leads/CRM - Conversion to Job when won, contact history, notes
+- [ ] SEL-01: Selections - Categories (flooring, fixtures, appliances), allowance budgets
+- [ ] SEL-02: Selections - Client choices with pricing, over/under tracking
+- [ ] SEL-03: Selections - Change order integration for overages, PDF export
+
+**Scaffolded Modules (placeholder pages + basic routes):**
+- [ ] SCF-01: RFIs - Request for Information placeholder page and routes
+- [ ] SCF-02: Submittals - Shop drawings, samples, product data placeholder
+- [ ] SCF-03: Tasks - Assignable work items placeholder
+- [ ] SCF-04: Messaging - In-app messaging placeholder
+- [ ] SCF-05: Notifications - Centralized notifications placeholder
+- [ ] SCF-06: Warranties - Product/workmanship warranty tracking placeholder
+- [ ] SCF-07: Closeout - Final documents, certificates, handover placeholder
+
+**Navigation & Organization:**
+- [ ] NAV-01: Reorganize sidebar into logical groups (Sales, Pre-Con, Execution, Field, Finance, Comms)
+
 ### Out of Scope
 
 - Mobile native app — web works on mobile now
@@ -159,4 +180,4 @@ Shipped v1.5 with ~105,000+ lines of JavaScript across 85+ files. CSS standardiz
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-18 — v1.5 UI Cleanup & Uniformity milestone complete*
+*Last updated: 2026-01-18 — v1.6 Module Expansion milestone started*
