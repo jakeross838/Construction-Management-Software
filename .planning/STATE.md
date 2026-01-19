@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 44 of 4 (invoice-pipeline)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-19 — Completed 44-02-PLAN.md (Allocation Sum Validation)
+Last activity: 2026-01-19 — Completed 44-01-PLAN.md (Invoice Allocation Cleanup)
 
-Progress: [============----] 4/12 plans (v1.7)
+Progress: [=============---] 5/12 plans (v1.7)
 
 ## Milestone History
 
@@ -39,7 +39,7 @@ Progress: [============----] 4/12 plans (v1.7)
 Critical issues identified:
 1. ~~`increment_committed_amount` RPC function called but never created~~ FIXED (43-01)
 2. ~~Budget lines created with $0 budgeted_amount when invoice allocated~~ FIXED (43-03)
-3. No allocation cleanup on invoice denial/deletion
+3. ~~No allocation cleanup on invoice denial/deletion~~ FIXED (44-01)
 4. Draw totals stored but not always recalculated
 5. Job matching confidence threshold too low (50%)
 
@@ -54,6 +54,8 @@ Critical issues identified:
 
 - **0.01 tolerance for allocation sum validation**: Handles floating point rounding in amount comparisons
 - **Separate NO_ALLOCATIONS and ALLOCATION_MISMATCH errors**: Clearer UX for different validation failures
+- **Cleanup before soft-delete**: Allocation cleanup happens after undo snapshot but before soft-delete
+- **Reuse updatePOLineItemsForAllocations for cleanup**: Uses existing function to decrement PO amounts
 
 ### Pending Todos
 
@@ -65,16 +67,15 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19T17:21:47Z
-Stopped at: Completed 44-02-PLAN.md (Allocation Sum Validation)
+Last session: 2026-01-19T17:28:00Z
+Stopped at: Completed 44-01-PLAN.md (Invoice Allocation Cleanup)
 Resume file: None
 
 ## Next Actions
 
-1. Execute 44-01-PLAN.md (Allocation cleanup on denied/deleted)
-2. Execute 44-03-PLAN.md (Transaction wrapping)
-3. Execute 44-04-PLAN.md (Billed_amount recalculation)
-4. Continue v1.7 milestone
+1. Execute 44-03-PLAN.md (Transaction wrapping)
+2. Execute 44-04-PLAN.md (Billed_amount recalculation)
+3. Continue v1.7 milestone
 
 ## Research
 
