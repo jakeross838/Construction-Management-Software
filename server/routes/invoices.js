@@ -1206,6 +1206,9 @@ router.post('/:id/transition', asyncHandler(async (req, res) => {
     updateData.denied_at = new Date().toISOString();
     updateData.denied_by = performedBy;
     updateData.denial_reason = reason;
+
+    // Clean up allocations when denying invoice
+    await cleanupInvoiceAllocations(invoiceId);
   }
 
   const { data: updated, error: updateError } = await supabase
