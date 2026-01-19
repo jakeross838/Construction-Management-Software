@@ -5,19 +5,20 @@
 See: .planning/PROJECT.md (updated 2026-01-19)
 
 **Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Planning next milestone
+**Current focus:** v1.8 Invoice Variance & Data Linkage
 
 ## Current Position
 
-Phase: Ready for next milestone
+Phase: 47 (Variance Detection Polish)
 Plan: Not started
-Status: v1.7 shipped, ready to plan v1.8
-Last activity: 2026-01-19 — v1.7 milestone complete
+Status: v1.8 milestone initialized, ready to plan Phase 47
+Last activity: 2026-01-19 — v1.8 roadmap created
 
-Progress: Ready for next milestone
+Progress: 0/5 phases complete
 
 ## Milestone History
 
+- **v1.8 Invoice Variance & Data Linkage** (active): 5 phases (47-51), 17 requirements
 - **v1.7 Data Integrity & AI Accuracy** (shipped 2026-01-19): 4 phases (43-46), 16 plans — Budget RPC, Invoice pipeline, Draw/PO linking, AI accuracy
 - **v1.6 Module Expansion** (shipped 2026-01-19): 6 phases, 17 plans — Leads/CRM, Selections, 7 scaffold modules, navigation reorganization
 - **v1.5 UI Cleanup** (shipped 2026-01-18): 7 phases, 19 plans — CSS standardization, component uniformity
@@ -35,6 +36,7 @@ Progress: Ready for next milestone
 - **Audit-driven scope**: v1.7 requirements derived from comprehensive system audit
 - **RPC for budget atomicity**: increment/decrement functions for committed_amount
 - **Best-effort rollback**: Manual state tracking since Supabase JS lacks transactions
+- **VPO quick adds**: v1.8 includes verbal purchase orders for quick additional work authorization
 
 ### Pending Todos
 
@@ -46,14 +48,17 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19T21:30:00Z
-Stopped at: v1.7 milestone completed, ready for v1.8
+Last session: 2026-01-19
+Stopped at: v1.8 milestone initialized
 Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:new-milestone` to start v1.8 planning
+1. Run `/gsd:plan-phase 47` to plan Variance Detection Polish phase
 
 ## Research
 
 - v1.7 audit findings fully addressed
+- VPO database migration and API already implemented (migration-065-vpo.sql)
+- VPO UI added to PO modal
+- Variance detector service exists (server/services/varianceDetector.js)

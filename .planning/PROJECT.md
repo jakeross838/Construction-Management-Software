@@ -180,6 +180,11 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 - [ ] COR-03: Integrate variance detection with price intelligence (flag overpriced)
 - [ ] COR-04: Budget vs actual accuracy validation
 
+**AI PO Generation:**
+- [ ] AIPO-01: Refine document upload auto-PO generation (line item extraction)
+- [ ] AIPO-02: Improve cost code assignment on AI-generated PO line items
+- [ ] AIPO-03: Better linking of generated POs to vendors and jobs
+
 **Quick Fixes:**
 - [ ] FIX-01: One-click to fix broken linkages from error displays
 - [ ] FIX-02: Bulk correction tools for common issues
