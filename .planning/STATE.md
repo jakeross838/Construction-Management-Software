@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 
 ## Current Position
 
-Phase: 43
-Plan: —
-Status: Ready to plan Phase 43
-Last activity: 2026-01-19 — v1.7 milestone initialized
+Phase: 43 of 4 (budget-integrity)
+Plan: 1 of 3 complete
+Status: In progress
+Last activity: 2026-01-19 — Completed 43-01-PLAN.md (Budget RPC Functions)
 
-Progress: 0/4 phases complete
+Progress: [=----------] 1/12 plans (v1.7)
 
 ## Milestone History
 
@@ -37,11 +37,16 @@ Progress: 0/4 phases complete
 ### Audit Findings (2026-01-19)
 
 Critical issues identified:
-1. `increment_committed_amount` RPC function called but never created
+1. ~~`increment_committed_amount` RPC function called but never created~~ FIXED (43-01)
 2. Budget lines created with $0 budgeted_amount when invoice allocated
 3. No allocation cleanup on invoice denial/deletion
 4. Draw totals stored but not always recalculated
 5. Job matching confidence threshold too low (50%)
+
+### Phase 43 Decisions
+
+- **increment raises exception if budget line missing**: Prevents committing to non-existent budget lines
+- **decrement is no-op for missing budget lines**: Voiding PO succeeds even if budget line was deleted
 
 ### Pending Todos
 
@@ -53,14 +58,14 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19
-Stopped at: Milestone v1.7 initialized
-Resume file: None
+Last session: 2026-01-19T17:04:15Z
+Stopped at: Completed 43-01-PLAN.md
+Resume file: .planning/phases/43-budget-integrity/43-02-PLAN.md
 
 ## Next Actions
 
-1. `/gsd:plan-phase 43` — Plan budget integrity fixes
-2. `/gsd:execute-phase 43` — Execute after planning
+1. Execute 43-02-PLAN.md — Wire decrement_committed_amount to PO void route
+2. Execute 43-03-PLAN.md — Complete phase 43
 
 ## Research
 
