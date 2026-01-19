@@ -65,7 +65,7 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:execute-plan 47-02` to execute Variance Detector Tests plan
+1. Run `/gsd:plan-phase 48` to plan Cost Code Linkage phase
 
 ## Research
 

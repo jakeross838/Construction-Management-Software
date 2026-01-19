@@ -9,9 +9,9 @@ Requirements for v1.8 Invoice Variance & Data Linkage milestone.
 
 ### Variance Detection
 
-- [ ] **VAR-01**: Polish variance detection service - test thoroughly, refine line item matching algorithms, ensure VPO matching works
-- [ ] **VAR-02**: Add UI to create Change Order or VPO directly from variance warning banners in invoice modal
-- [ ] **VAR-03**: Complete VPO UI integration - ensure VPO section visible in PO modal, test create/edit/void workflows
+- [x] **VAR-01**: Polish variance detection service - test thoroughly, refine line item matching algorithms, ensure VPO matching works
+- [x] **VAR-02**: Add UI to create Change Order or VPO directly from variance warning banners in invoice modal
+- [x] **VAR-03**: Complete VPO UI integration - ensure VPO section visible in PO modal, test create/edit/void workflows
 
 ### Cost Code Linkage
 
@@ -61,9 +61,9 @@ Deferred to future release.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VAR-01 | 47 | Pending |
-| VAR-02 | 47 | Pending |
-| VAR-03 | 47 | Pending |
+| VAR-01 | 47 | Complete |
+| VAR-02 | 47 | Complete |
+| VAR-03 | 47 | Complete |
 | CCL-01 | 48 | Pending |
 | CCL-02 | 48 | Pending |
 | CCL-03 | 48 | Pending |
