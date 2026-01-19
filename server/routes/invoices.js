@@ -18,7 +18,8 @@ const {
   stampInvoice,
   restampInvoice,
   checkSplitReconciliation,
-  getOrCreateDraftDraw
+  getOrCreateDraftDraw,
+  cleanupInvoiceAllocations
 } = require('../services/invoiceHelpers');
 const {
   uploadPDF,
@@ -1586,10 +1587,22 @@ router.post('/bulk/approve', asyncHandler(async (req, res) => {
       continue;
     }
 
-    // GUARDRAIL: Warn if invoice has no allocations (but still allow approval)
+    // Validate allocations match invoice amount
     const allocSum = (invoice.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
-    if (allocSum === 0) {
-      console.warn(`[GUARDRAIL] Invoice ${invoiceId} approved without allocations`);
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const tolerance = 0.01;
+
+    if (invoice.allocations?.length === 0 || allocSum === 0) {
+      results.failed.push({ id: invoiceId, error: 'Invoice has no allocations' });
+      continue;
+    }
+
+    if (Math.abs(allocSum - invoiceAmount) > tolerance) {
+      results.failed.push({
+        id: invoiceId,
+        error: `Allocation total ($${allocSum.toFixed(2)}) does not match invoice amount ($${invoiceAmount.toFixed(2)})`
+      });
+      continue;
     }
 
     results.success.push(invoiceId);
