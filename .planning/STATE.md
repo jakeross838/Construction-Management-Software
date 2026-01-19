@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 
 ## Current Position
 
-Phase: 47 (Variance Detection Polish)
-Plan: 1 of 2 complete
-Status: In progress - executing Phase 47 plans
-Last activity: 2026-01-19 - Completed 47-01-PLAN.md (Variance Action Buttons)
+Phase: 47 (Variance Detection Polish) - **COMPLETE**
+Plan: 2 of 2 complete
+Status: Phase 47 complete - ready for next phase
+Last activity: 2026-01-19 - Completed 47-02-PLAN.md (Variance Detector Tests)
 
-Progress: 1/2 Phase 47 plans complete
+Progress: 2/2 Phase 47 plans complete
 
 ### Phase 47 Plans
 
 | Plan | Name | Status |
 |------|------|--------|
 | 47-01 | Variance Action Buttons | **Complete** |
-| 47-02 | Variance Detector Tests | Pending |
+| 47-02 | Variance Detector Tests | **Complete** |
 
 ## Milestone History
 
@@ -47,6 +47,7 @@ Progress: 1/2 Phase 47 plans complete
 - **47-01**: Show only "Create CO" button if description suggests change order, otherwise show both "Quick VPO" and "Create CO"
 - **47-01**: Auto-approve COs created from variance (status='approved') since they resolve known variance
 - **47-01**: Refresh invoice via openInvoice() after VPO/CO creation to update variance banner
+- **47-02**: Added ABBREVIATIONS constant for construction term expansion in text matching (expandAbbreviations=true by default)
 
 ### Pending Todos
 
@@ -59,7 +60,7 @@ None
 ## Session Continuity
 
 Last session: 2026-01-19
-Stopped at: Completed 47-01-PLAN.md (Variance Action Buttons)
+Stopped at: Completed 47-02-PLAN.md (Variance Detector Tests)
 Resume file: None
 
 ## Next Actions
@@ -73,3 +74,4 @@ Resume file: None
 - VPO UI added to PO modal
 - Variance detector service exists (server/services/varianceDetector.js)
 - Variance action buttons now complete - users can create VPO/CO from invoice modal
+- Variance detector has 35 unit tests and documented thresholds
