@@ -19,7 +19,8 @@ const {
   restampInvoice,
   checkSplitReconciliation,
   getOrCreateDraftDraw,
-  cleanupInvoiceAllocations
+  cleanupInvoiceAllocations,
+  recalculateBilledAmounts
 } = require('../services/invoiceHelpers');
 const {
   uploadPDF,
@@ -1015,7 +1016,7 @@ router.post('/:id/allocate', async (req, res) => {
     // Get old allocations to subtract PO/CO amounts
     const { data: oldAllocations } = await supabase
       .from('v2_invoice_allocations')
-      .select('id, amount, po_id, po_line_item_id, change_order_id')
+      .select('id, amount, po_id, po_line_item_id, change_order_id, cost_code_id')
       .eq('invoice_id', invoiceId);
 
     // Subtract old amounts
@@ -1064,6 +1065,43 @@ router.post('/:id/allocate', async (req, res) => {
       const coAllocations = allocations.filter(a => a.change_order_id);
       if (coAllocations.length > 0) {
         await updateCOInvoicedAmounts(coAllocations);
+      }
+    }
+
+    // Check if invoice is in a draw - if so, recalculate billed amounts
+    const { data: drawInvoice } = await supabase
+      .from('v2_draw_invoices')
+      .select('draw_id, draw:v2_draws(job_id)')
+      .eq('invoice_id', invoiceId)
+      .single();
+
+    if (drawInvoice?.draw?.job_id) {
+      // Get all cost codes affected by old and new allocations
+      const affectedCostCodes = new Set();
+      (oldAllocations || []).forEach(a => { if (a.cost_code_id) affectedCostCodes.add(a.cost_code_id); });
+      (allocations || []).forEach(a => { if (a.cost_code_id) affectedCostCodes.add(a.cost_code_id); });
+
+      if (affectedCostCodes.size > 0) {
+        await recalculateBilledAmounts(drawInvoice.draw.job_id, Array.from(affectedCostCodes));
+
+        // Also update draw_allocations to match new allocations
+        await supabase.from('v2_draw_allocations')
+          .delete()
+          .eq('draw_id', drawInvoice.draw_id)
+          .eq('invoice_id', invoiceId);
+
+        if (allocations && allocations.length > 0) {
+          await supabase.from('v2_draw_allocations').insert(
+            allocations.map(a => ({
+              draw_id: drawInvoice.draw_id,
+              invoice_id: invoiceId,
+              cost_code_id: a.cost_code_id,
+              amount: a.amount,
+              notes: a.notes,
+              created_by: 'System'
+            }))
+          );
+        }
       }
     }
 
