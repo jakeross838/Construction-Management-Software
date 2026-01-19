@@ -5167,6 +5167,112 @@ const Modals = {
     }
   },
 
+  // ============================================
+  // VARIANCE RESOLUTION: VPO/CO CREATION
+  // ============================================
+
+  /**
+   * Create VPO from variance warning - opens a form pre-filled with line item data
+   */
+  createVPOFromVariance(description, amount, poId) {
+    if (!poId) {
+      window.showToast?.('No PO linked - cannot create VPO', 'error');
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'vpoVarianceOverlay';
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10003;';
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width: 500px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+        <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border);">
+          <h2 style="margin: 0; font-size: 1.1rem;">Create VPO from Variance</h2>
+          <button class="close-btn" onclick="window.Modals.closeVPOVarianceForm()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-secondary);">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+          <p class="form-hint" style="color: var(--text-secondary); margin-bottom: 16px; font-size: 0.9rem;">
+            Creating VPO to authorize this unmatched invoice line item.
+          </p>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Description *</label>
+            <input type="text" id="vpo-var-description" class="field-input" style="width: 100%; padding: 8px 12px; background: var(--bg-card-elevated); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary);" value="${this.escapeHtml(description || '')}">
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Amount *</label>
+            <div class="amount-input-group" style="display: flex; align-items: center;">
+              <span class="amount-prefix" style="padding: 8px 12px; background: var(--bg-card-elevated); border: 1px solid var(--border); border-right: none; border-radius: 4px 0 0 4px; color: var(--text-secondary);">$</span>
+              <input type="text" id="vpo-var-amount" class="field-input" style="flex: 1; padding: 8px 12px; background: var(--bg-card-elevated); border: 1px solid var(--border); border-radius: 0 4px 4px 0; color: var(--text-primary);" value="${this.formatAmountInput(amount || 0)}">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Reason</label>
+            <textarea id="vpo-var-reason" class="field-input" rows="2" style="width: 100%; padding: 8px 12px; background: var(--bg-card-elevated); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); resize: vertical;">Variance from invoice - unmatched line item</textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px;">
+          <button class="btn btn-secondary" onclick="window.Modals.closeVPOVarianceForm()">Cancel</button>
+          <button class="btn btn-primary" onclick="window.Modals.submitVPOFromVariance('${poId}')">Create VPO</button>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) this.closeVPOVarianceForm();
+    });
+    document.body.appendChild(overlay);
+    document.getElementById('vpo-var-description').focus();
+  },
+
+  /**
+   * Close the VPO variance form overlay
+   */
+  closeVPOVarianceForm() {
+    const overlay = document.getElementById('vpoVarianceOverlay');
+    if (overlay) overlay.remove();
+  },
+
+  /**
+   * Submit VPO creation from variance form
+   */
+  async submitVPOFromVariance(poId) {
+    const description = document.getElementById('vpo-var-description')?.value?.trim();
+    const amountStr = document.getElementById('vpo-var-amount')?.value;
+    const amount = parseFloat(amountStr?.replace(/[^0-9.-]/g, '')) || 0;
+    const reason = document.getElementById('vpo-var-reason')?.value?.trim();
+
+    if (!description) {
+      window.showToast?.('Description is required', 'error');
+      return;
+    }
+    if (amount === 0) {
+      window.showToast?.('Amount is required', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/purchase-orders/${poId}/vpos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description, amount, reason })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create VPO');
+      }
+
+      window.showToast?.('VPO created - variance resolved', 'success');
+      this.closeVPOVarianceForm();
+
+      // Refresh invoice to update variance banner
+      if (this.currentInvoice?.id) {
+        await this.openInvoice(this.currentInvoice.id);
+      }
+    } catch (err) {
+      window.showToast?.(err.message, 'error');
+    }
+  },
+
   /**
    * Escape HTML
    */
