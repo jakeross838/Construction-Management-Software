@@ -1287,35 +1287,6 @@ async function viewLog(logId) {
       'no': '❌ No - Not Completed'
     };
 
-    // Set currentPhotos for lightbox navigation
-    currentPhotos = currentLog.attachments || [];
-
-    // Build photos section HTML if there are photos
-    let photosSection = '';
-    if (currentPhotos.length > 0) {
-      photosSection = `
-        <div class="view-section view-photos-hero">
-          <div class="view-photo-grid view-photo-grid-hero">
-            ${currentPhotos.slice(0, 6).map((photo, index) => {
-              const cat = photoCategories.find(c => c.value === photo.category) || photoCategories[4];
-              return `
-                <div class="view-photo-item" onclick="openLightbox(${index})">
-                  <div class="view-photo-image" style="background-image: url('${photo.file_url}')"></div>
-                  <div class="view-photo-badge">${cat.icon}</div>
-                </div>
-              `;
-            }).join('')}
-            ${currentPhotos.length > 6 ? `
-              <div class="view-photo-more" onclick="openLightbox(6)">
-                <span class="more-count">+${currentPhotos.length - 6}</span>
-                <span class="more-label">more photos</span>
-              </div>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }
-
     let content = `
       <div class="view-log-content">
         <div class="view-section">
@@ -1332,8 +1303,6 @@ async function viewLog(logId) {
             </div>
           ` : ''}
         </div>
-
-        ${photosSection}
 
         ${currentLog.plan_completed ? `
         <div class="view-section">
@@ -1496,6 +1465,31 @@ async function viewLog(logId) {
         ` : ''}
       </div>
     `;
+
+    // Photos section
+    if (currentLog.attachments && currentLog.attachments.length > 0) {
+      // Set currentPhotos for lightbox navigation
+      currentPhotos = currentLog.attachments;
+      content += `
+        <div class="view-section">
+          <h4>Photos (${currentLog.attachments.length})</h4>
+          <div class="view-photo-grid">
+            ${currentLog.attachments.map((photo, index) => {
+              const cat = photoCategories.find(c => c.value === photo.category) || photoCategories[4];
+              return `
+                <div class="view-photo-item" onclick="openLightbox(${index})">
+                  <div class="view-photo-image" style="background-image: url('${photo.file_url}')"></div>
+                  <div class="view-photo-info">
+                    <span class="view-photo-category">${cat.icon} ${cat.label}</span>
+                    ${photo.caption ? `<span class="view-photo-caption">${photo.caption}</span>` : ''}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
 
     content += '</div>';
 
