@@ -23914,6 +23914,13 @@ textarea.form-control {
 }
 
 /* ============================================================
+   RESPONSIVE LAYOUT BREAKPOINTS
+   Primary: 768px (tablet/mobile)
+   Secondary: 480px (small mobile)
+   Large: 1024px (fullscreen modals)
+   ============================================================ */
+
+/* ============================================================
    MOBILE NAVIGATION
    ============================================================ */
 
@@ -23927,6 +23934,7 @@ textarea.form-control {
   padding: 0.5rem;
 }
 
+/* Tablet breakpoint - primary layout changes */
 @media (max-width: 768px) {
   .mobile-menu-btn {
     display: flex;
@@ -23934,8 +23942,19 @@ textarea.form-control {
     justify-content: center;
   }
 
+  /* Header adjustments */
   .header-top {
     padding: 0 1rem;
+  }
+
+  /* Page headers stack on mobile */
+  .page-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header-actions {
+    justify-content: flex-start;
   }
 
   .main-nav {
@@ -24076,7 +24095,7 @@ textarea.form-control {
   }
 }
 
-/* Even smaller screens */
+/* Small mobile breakpoint - extra compact spacing */
 @media (max-width: 480px) {
   .header-top {
     padding: 0 0.75rem;
@@ -24097,6 +24116,12 @@ textarea.form-control {
 
   h2 {
     font-size: 1rem;
+  }
+
+  /* Page header font scaling on small screens */
+  .page-header h1,
+  .page-title {
+    font-size: 1.25rem;
   }
 }
 
