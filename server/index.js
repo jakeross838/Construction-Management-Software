@@ -140,6 +140,13 @@ const searchRoutes = require('./routes/search');
 const reportsRoutes = require('./routes/reports');
 const leadsRoutes = require('./routes/leads');
 const selectionsRoutes = require('./routes/selections');
+const rfisRoutes = require('./routes/rfis');
+const submittalsRoutes = require('./routes/submittals');
+const tasksRoutes = require('./routes/tasks');
+const messagingRoutes = require('./routes/messaging');
+const notificationsRoutes = require('./routes/notifications');
+const warrantiesRoutes = require('./routes/warranties');
+const closeoutRoutes = require('./routes/closeout');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -173,6 +180,13 @@ app.use('/api/search', searchRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/leads', leadsRoutes);
 app.use('/api/selections', selectionsRoutes);
+app.use('/api/rfis', rfisRoutes);
+app.use('/api/submittals', submittalsRoutes);
+app.use('/api/tasks', tasksRoutes);
+app.use('/api/messages', messagingRoutes);
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/warranties', warrantiesRoutes);
+app.use('/api/closeout', closeoutRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete

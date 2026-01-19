@@ -7,54 +7,359 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <header class="header">
-    <div class="header-top">
-      <div class="header-brand">
-        <h1>Ross Built</h1>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New RFI</button>
+        </div>
       </div>
-      <nav class="main-nav"></nav>
-      <div class="header-actions">
-        <span class="user-info">Jake Ross</span>
+      <div class="header-sub">
+        <nav class="sub-nav"></nav>
       </div>
-    </div>
-    <div class="header-sub">
-      <nav class="sub-nav"></nav>
-    </div>
-  </header>
+    </header>
 
-  <main class="main-content">
-    <div class="scaffold-page">
-      <div class="scaffold-icon">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-          <line x1="12" y1="17" x2="12.01" y2="17"></line>
-        </svg>
+    <div class="app-body">
+      <main class="main">
+        <!-- Page Header -->
+        <div class="page-header">
+          <div class="page-header-left">
+            <h2 class="page-title">Requests for Information</h2>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-value" id="statTotal">0</span>
+            <span class="stat-label">Total RFIs</span>
+          </div>
+          <div class="stat-card stat-open">
+            <span class="stat-value" id="statOpen">0</span>
+            <span class="stat-label">Open</span>
+          </div>
+          <div class="stat-card stat-pending">
+            <span class="stat-value" id="statPending">0</span>
+            <span class="stat-label">Pending</span>
+          </div>
+          <div class="stat-card stat-answered">
+            <span class="stat-value" id="statAnswered">0</span>
+            <span class="stat-label">Answered</span>
+          </div>
+          <div class="stat-card stat-closed">
+            <span class="stat-value" id="statClosed">0</span>
+            <span class="stat-label">Closed</span>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="table-toolbar">
+          <div class="toolbar-left">
+            <select id="jobFilter" class="form-select">
+              <option value="">All Jobs</option>
+            </select>
+            <select id="statusFilter" class="form-select">
+              <option value="">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="pending">Pending</option>
+              <option value="answered">Answered</option>
+              <option value="closed">Closed</option>
+            </select>
+            <select id="priorityFilter" class="form-select">
+              <option value="">All Priorities</option>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="toolbar-right">
+            <input type="search" id="searchInput" class="form-input" placeholder="Search RFIs...">
+          </div>
+        </div>
+
+        <!-- RFI List -->
+        <div class="rfi-list" id="rfiList">
+          <div class="loading-state">Loading RFIs...</div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <h3>No RFIs Found</h3>
+          <p>Create an RFI to track questions and get formal responses.</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit RFI Modal -->
+  <div id="rfiModal" class="modal modal-centered">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="rfiModalTitle">New RFI</h3>
+        <button class="modal-close" onclick="closeRfiModal()">&times;</button>
       </div>
-      <h2>Requests for Information</h2>
-      <p class="scaffold-description">
-        Track and manage RFIs between the field and design team.
-        Create, assign, and resolve information requests with full audit trail.
-      </p>
-      <div class="scaffold-features">
-        <h4>Planned Features</h4>
-        <ul>
-          <li>Create RFIs with attachments</li>
-          <li>Assign to team members for response</li>
-          <li>Track status: Open, Pending, Answered, Closed</li>
-          <li>Link to drawings and specifications</li>
-          <li>Export RFI log to PDF/Excel</li>
-        </ul>
+      <div class="modal-body">
+        <form id="rfiForm">
+          <input type="hidden" id="rfiId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="rfiJob">Job *</label>
+              <select id="rfiJob" class="form-select" required>
+                <option value="">Select a job</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="rfiPriority">Priority</label>
+              <select id="rfiPriority" class="form-select">
+                <option value="normal">Normal</option>
+                <option value="low">Low</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="rfiSubject">Subject *</label>
+            <input type="text" id="rfiSubject" class="form-input" required placeholder="Brief description of the question">
+          </div>
+
+          <div class="form-group">
+            <label for="rfiQuestion">Question *</label>
+            <textarea id="rfiQuestion" class="form-input" rows="4" required placeholder="Detailed question about plans or specifications..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="rfiDrawings">Reference Drawings</label>
+              <input type="text" id="rfiDrawings" class="form-input" placeholder="e.g., A-101, S-201">
+            </div>
+            <div class="form-group">
+              <label for="rfiSpecs">Reference Specs</label>
+              <input type="text" id="rfiSpecs" class="form-input" placeholder="e.g., Section 06100">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="rfiAssignedTo">Assign To</label>
+              <input type="text" id="rfiAssignedTo" class="form-input" placeholder="e.g., Architect">
+            </div>
+            <div class="form-group">
+              <label for="rfiDueDate">Due Date</label>
+              <input type="date" id="rfiDueDate" class="form-input">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="rfiDateRequired">Date Required on Site</label>
+              <input type="date" id="rfiDateRequired" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="rfiSubmittedBy">Submitted By</label>
+              <input type="text" id="rfiSubmittedBy" class="form-input" value="Jake Ross">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="rfiNotes">Notes</label>
+            <textarea id="rfiNotes" class="form-input" rows="2" placeholder="Additional notes..."></textarea>
+          </div>
+        </form>
       </div>
-      <div class="scaffold-badge">
-        <span class="badge badge-info">Coming in v2.0</span>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeRfiModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveRfi()">Save RFI</button>
       </div>
     </div>
-  </main>
+  </div>
 
+  <!-- RFI Detail Modal -->
+  <div id="rfiDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <h3 id="detailRfiNumber">RFI-0001</h3>
+          <span class="badge" id="detailStatus">Open</span>
+          <span class="badge" id="detailPriority">Normal</span>
+        </div>
+        <div class="modal-header-right">
+          <button class="btn btn-secondary" onclick="editCurrentRfi()">Edit</button>
+          <button class="btn btn-primary" id="respondBtn" onclick="openRespondModal()">Respond</button>
+          <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="rfi-detail-layout">
+          <!-- Left: Question & Response -->
+          <div class="rfi-detail-main">
+            <div class="detail-section">
+              <h4>Subject</h4>
+              <p id="detailSubject" class="detail-subject">-</p>
+            </div>
+
+            <div class="detail-section">
+              <h4>Question</h4>
+              <div id="detailQuestion" class="detail-question">-</div>
+            </div>
+
+            <div class="detail-section" id="responseSection" style="display: none;">
+              <h4>Response</h4>
+              <div id="detailResponse" class="detail-response">-</div>
+              <div class="response-meta">
+                <span>Responded by <strong id="detailRespondedBy">-</strong></span>
+                <span id="detailRespondedAt">-</span>
+              </div>
+            </div>
+
+            <div class="detail-section" id="responsesSection" style="display: none;">
+              <h4>Response History</h4>
+              <div id="responsesList" class="responses-list"></div>
+            </div>
+          </div>
+
+          <!-- Right: Info & Actions -->
+          <div class="rfi-detail-sidebar">
+            <div class="detail-card">
+              <h4>Details</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Job</span>
+                  <span class="value" id="detailJob">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Submitted By</span>
+                  <span class="value" id="detailSubmittedBy">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Assigned To</span>
+                  <span class="value" id="detailAssignedTo">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Due Date</span>
+                  <span class="value" id="detailDueDate">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Date Required</span>
+                  <span class="value" id="detailDateRequired">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Created</span>
+                  <span class="value" id="detailCreated">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-card">
+              <h4>References</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Drawings</span>
+                  <span class="value" id="detailDrawings">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Specs</span>
+                  <span class="value" id="detailSpecs">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-card" id="impactCard" style="display: none;">
+              <h4>Impact</h4>
+              <div class="detail-info">
+                <div class="info-row" id="costImpactRow">
+                  <span class="label">Cost Impact</span>
+                  <span class="value" id="detailCostImpact">-</span>
+                </div>
+                <div class="info-row" id="scheduleImpactRow">
+                  <span class="label">Schedule Impact</span>
+                  <span class="value" id="detailScheduleImpact">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-actions">
+              <button class="btn btn-success btn-block" id="closeRfiBtn" onclick="closeRfi()" style="display: none;">Close RFI</button>
+              <button class="btn btn-secondary btn-block" id="reopenRfiBtn" onclick="reopenRfi()" style="display: none;">Reopen RFI</button>
+              <button class="btn btn-danger btn-block" onclick="deleteRfi()">Delete RFI</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Respond Modal -->
+  <div id="respondModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3>Respond to RFI</h3>
+        <button class="modal-close" onclick="closeRespondModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="respondForm">
+          <div class="form-group">
+            <label for="responseType">Response Type</label>
+            <select id="responseType" class="form-select">
+              <option value="response">Response</option>
+              <option value="clarification">Clarification</option>
+              <option value="revision">Revision Required</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="responseContent">Response *</label>
+            <textarea id="responseContent" class="form-input" rows="6" required placeholder="Enter your response..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="respondedBy">Responded By</label>
+            <input type="text" id="respondedBy" class="form-input" value="Jake Ross">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="hasCostImpact"> Cost Impact
+              </label>
+              <input type="number" id="costImpactAmount" class="form-input" placeholder="Amount" style="margin-top: 0.5rem; display: none;">
+            </div>
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="hasScheduleImpact"> Schedule Impact
+              </label>
+              <input type="number" id="scheduleImpactDays" class="form-input" placeholder="Days" style="margin-top: 0.5rem; display: none;">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeRespondModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="submitResponse()">Submit Response</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
   <div id="toast-container"></div>
+
   <script src="js/toasts.js"></script>
   <script defer src="js/nav-sidebar.js"></script>
   <script defer src="js/sidebar.js"></script>
+  <script src="js/rfis.js"></script>
 </body>
 </html>

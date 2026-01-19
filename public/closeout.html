@@ -7,53 +7,707 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <header class="header">
-    <div class="header-top">
-      <div class="header-brand">
-        <h1>Ross Built</h1>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New Item</button>
+        </div>
       </div>
-      <nav class="main-nav"></nav>
-      <div class="header-actions">
-        <span class="user-info">Jake Ross</span>
+      <div class="header-sub">
+        <nav class="sub-nav"></nav>
       </div>
-    </div>
-    <div class="header-sub">
-      <nav class="sub-nav"></nav>
-    </div>
-  </header>
+    </header>
 
-  <main class="main-content">
-    <div class="scaffold-page">
-      <div class="scaffold-icon">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-          <polyline points="22 4 12 14.01 9 11.01"></polyline>
-        </svg>
+    <div class="app-body">
+      <main class="main">
+        <!-- Page Header -->
+        <div class="page-header">
+          <div class="page-header-left">
+            <h2 class="page-title">Project Closeout</h2>
+          </div>
+        </div>
+
+        <!-- Dashboard Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-value" id="statPunchOpen">0</span>
+            <span class="stat-label">Punch Open</span>
+          </div>
+          <div class="stat-card stat-answered">
+            <span class="stat-value" id="statPunchCompleted">0</span>
+            <span class="stat-label">Punch Done</span>
+          </div>
+          <div class="stat-card stat-pending">
+            <span class="stat-value" id="statInspScheduled">0</span>
+            <span class="stat-label">Inspections</span>
+          </div>
+          <div class="stat-card stat-closed">
+            <span class="stat-value" id="statDocsPending">0</span>
+            <span class="stat-label">Docs Pending</span>
+          </div>
+          <div class="stat-card stat-open">
+            <span class="stat-value" id="statWaiversPending">0</span>
+            <span class="stat-label">Waivers Needed</span>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" data-tab="punch-list">Punch List</button>
+          <button class="tab" data-tab="inspections">Inspections</button>
+          <button class="tab" data-tab="documents">Documents</button>
+          <button class="tab" data-tab="lien-waivers">Lien Waivers</button>
+          <button class="tab" data-tab="packages">Packages</button>
+        </div>
+
+        <!-- Filters -->
+        <div class="table-toolbar">
+          <div class="toolbar-left">
+            <select id="jobFilter" class="form-select">
+              <option value="">All Jobs</option>
+            </select>
+            <select id="statusFilter" class="form-select">
+              <option value="">All Statuses</option>
+            </select>
+            <select id="categoryFilter" class="form-select" style="display: none;">
+              <option value="">All Categories</option>
+            </select>
+          </div>
+          <div class="toolbar-right">
+            <input type="search" id="searchInput" class="form-input" placeholder="Search...">
+          </div>
+        </div>
+
+        <!-- Punch List Tab -->
+        <div id="tab-punch-list" class="tab-content active">
+          <div class="punch-list" id="punchList">
+            <div class="loading-state">Loading punch list items...</div>
+          </div>
+        </div>
+
+        <!-- Inspections Tab -->
+        <div id="tab-inspections" class="tab-content">
+          <div class="inspection-list" id="inspectionList">
+            <div class="loading-state">Loading inspections...</div>
+          </div>
+        </div>
+
+        <!-- Documents Tab -->
+        <div id="tab-documents" class="tab-content">
+          <div class="document-list" id="documentList">
+            <div class="loading-state">Loading documents...</div>
+          </div>
+        </div>
+
+        <!-- Lien Waivers Tab -->
+        <div id="tab-lien-waivers" class="tab-content">
+          <div class="waiver-list" id="waiverList">
+            <div class="loading-state">Loading lien waivers...</div>
+          </div>
+        </div>
+
+        <!-- Packages Tab -->
+        <div id="tab-packages" class="tab-content">
+          <div class="package-list" id="packageList">
+            <div class="loading-state">Loading closeout packages...</div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          <h3>No Items Found</h3>
+          <p>No closeout items match your current filters.</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Punch List Item Modal -->
+  <div id="punchModal" class="modal modal-centered">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="punchModalTitle">New Punch List Item</h3>
+        <button class="modal-close" onclick="closePunchModal()">&times;</button>
       </div>
-      <h2>Project Closeout</h2>
-      <p class="scaffold-description">
-        Manage the project closeout process from final inspections to owner handover.
-        Ensure all documentation is complete and organized.
-      </p>
-      <div class="scaffold-features">
-        <h4>Planned Features</h4>
-        <ul>
-          <li>Closeout checklist with task tracking</li>
-          <li>Certificate of Occupancy tracking</li>
-          <li>O&M manuals and as-builts collection</li>
-          <li>Final lien releases and retainage</li>
-          <li>Owner handover package generation</li>
-        </ul>
+      <div class="modal-body">
+        <form id="punchForm">
+          <input type="hidden" id="punchId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="punchJob">Job *</label>
+              <select id="punchJob" class="form-select" required>
+                <option value="">Select a job</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="punchPriority">Priority</label>
+              <select id="punchPriority" class="form-select">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="punchTitle">Title *</label>
+            <input type="text" id="punchTitle" class="form-input" required placeholder="Describe the issue">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="punchCategory">Category</label>
+              <select id="punchCategory" class="form-select">
+                <option value="">Select category</option>
+                <option value="electrical">Electrical</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="hvac">HVAC</option>
+                <option value="finish">Finish</option>
+                <option value="structural">Structural</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="punchTrade">Trade</label>
+              <input type="text" id="punchTrade" class="form-input" placeholder="Responsible trade">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="punchLocation">Location</label>
+              <input type="text" id="punchLocation" class="form-input" placeholder="Building/Area">
+            </div>
+            <div class="form-group">
+              <label for="punchRoom">Room</label>
+              <input type="text" id="punchRoom" class="form-input" placeholder="Room name/number">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="punchVendor">Assigned Vendor</label>
+              <select id="punchVendor" class="form-select">
+                <option value="">Select vendor</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="punchDueDate">Due Date</label>
+              <input type="date" id="punchDueDate" class="form-input">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="punchDescription">Description</label>
+            <textarea id="punchDescription" class="form-input" rows="3" placeholder="Detailed description..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="punchEstCost">Estimated Cost</label>
+              <input type="number" id="punchEstCost" class="form-input" placeholder="0.00" step="0.01">
+            </div>
+            <div class="form-group">
+              <label for="punchBackCharge">
+                <input type="checkbox" id="punchBackCharge"> Back Charge
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="punchNotes">Notes</label>
+            <textarea id="punchNotes" class="form-input" rows="2" placeholder="Additional notes..."></textarea>
+          </div>
+        </form>
       </div>
-      <div class="scaffold-badge">
-        <span class="badge badge-info">Coming in v2.0</span>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closePunchModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="savePunchItem()">Save Item</button>
       </div>
     </div>
-  </main>
+  </div>
 
+  <!-- Punch List Detail Modal -->
+  <div id="punchDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <h3 id="detailPunchNumber">PLI-0001</h3>
+          <span class="badge" id="detailPunchStatus">Open</span>
+          <span class="badge" id="detailPunchPriority">Medium</span>
+        </div>
+        <div class="modal-header-right">
+          <button class="btn btn-secondary" onclick="editCurrentPunch()">Edit</button>
+          <button class="btn btn-success" id="completePunchBtn" onclick="completePunchItem()">Mark Complete</button>
+          <button class="btn btn-primary" id="verifyPunchBtn" onclick="verifyPunchItem()" style="display: none;">Verify</button>
+          <button class="modal-close" onclick="closePunchDetailModal()">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="rfi-detail-layout">
+          <div class="rfi-detail-main">
+            <div class="detail-section">
+              <h4>Issue</h4>
+              <p id="detailPunchTitle" class="detail-subject">-</p>
+            </div>
+
+            <div class="detail-section">
+              <h4>Description</h4>
+              <div id="detailPunchDescription" class="detail-question">-</div>
+            </div>
+
+            <div class="detail-section">
+              <h4>Photos</h4>
+              <div id="punchPhotos" class="photo-grid">
+                <p class="text-muted">No photos attached</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rfi-detail-sidebar">
+            <div class="detail-card">
+              <h4>Details</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Job</span>
+                  <span class="value" id="detailPunchJob">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Category</span>
+                  <span class="value" id="detailPunchCategory">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Trade</span>
+                  <span class="value" id="detailPunchTrade">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Location</span>
+                  <span class="value" id="detailPunchLocation">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Room</span>
+                  <span class="value" id="detailPunchRoom">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-card">
+              <h4>Assignment</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Vendor</span>
+                  <span class="value" id="detailPunchVendor">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Due Date</span>
+                  <span class="value" id="detailPunchDueDate">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Est. Cost</span>
+                  <span class="value" id="detailPunchEstCost">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Back Charge</span>
+                  <span class="value" id="detailPunchBackCharge">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-actions">
+              <button class="btn btn-danger btn-block" onclick="deletePunchItem()">Delete Item</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inspection Modal -->
+  <div id="inspectionModal" class="modal modal-centered">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="inspectionModalTitle">Schedule Inspection</h3>
+        <button class="modal-close" onclick="closeInspectionModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="inspectionForm">
+          <input type="hidden" id="inspectionId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="inspectionJob">Job *</label>
+              <select id="inspectionJob" class="form-select" required>
+                <option value="">Select a job</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="inspectionType">Type *</label>
+              <select id="inspectionType" class="form-select" required>
+                <option value="">Select type</option>
+                <option value="building">Building</option>
+                <option value="electrical">Electrical</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="mechanical">Mechanical</option>
+                <option value="fire">Fire</option>
+                <option value="elevator">Elevator</option>
+                <option value="health">Health</option>
+                <option value="final">Final</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="inspectionName">Name *</label>
+            <input type="text" id="inspectionName" class="form-input" required placeholder="e.g., Final Electrical Inspection">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="inspectionDate">Scheduled Date</label>
+              <input type="date" id="inspectionDate" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="inspectionPermit">Permit Number</label>
+              <input type="text" id="inspectionPermit" class="form-input" placeholder="Permit #">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="inspectorName">Inspector Name</label>
+              <input type="text" id="inspectorName" class="form-input" placeholder="Inspector name">
+            </div>
+            <div class="form-group">
+              <label for="inspectorAgency">Agency</label>
+              <input type="text" id="inspectorAgency" class="form-input" placeholder="Inspection agency">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="inspectorPhone">Phone</label>
+              <input type="tel" id="inspectorPhone" class="form-input" placeholder="Phone number">
+            </div>
+            <div class="form-group">
+              <label for="inspectorEmail">Email</label>
+              <input type="email" id="inspectorEmail" class="form-input" placeholder="Email">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="inspectionDescription">Description</label>
+            <textarea id="inspectionDescription" class="form-input" rows="2" placeholder="Additional details..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="inspectionNotes">Notes</label>
+            <textarea id="inspectionNotes" class="form-input" rows="2" placeholder="Notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeInspectionModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveInspection()">Save Inspection</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inspection Result Modal -->
+  <div id="inspectionResultModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3>Record Inspection Result</h3>
+        <button class="modal-close" onclick="closeInspectionResultModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="inspectionResultForm">
+          <input type="hidden" id="resultInspectionId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="resultStatus">Result *</label>
+              <select id="resultStatus" class="form-select" required>
+                <option value="">Select result</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+                <option value="conditional">Conditional</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="resultDate">Inspection Date *</label>
+              <input type="date" id="resultDate" class="form-input" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="resultNotes">Result Notes</label>
+            <textarea id="resultNotes" class="form-input" rows="3" placeholder="Inspector comments..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="resultConditions">Conditions (if applicable)</label>
+            <textarea id="resultConditions" class="form-input" rows="2" placeholder="Conditions for approval..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="resultReinspection">
+                <input type="checkbox" id="resultReinspection"> Reinspection Required
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="resultReinspectionDate">Reinspection Date</label>
+              <input type="date" id="resultReinspectionDate" class="form-input">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="resultCertNumber">Certificate Number</label>
+              <input type="text" id="resultCertNumber" class="form-input" placeholder="Certificate #">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeInspectionResultModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveInspectionResult()">Save Result</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Document Modal -->
+  <div id="documentModal" class="modal modal-centered">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="documentModalTitle">Add Document Requirement</h3>
+        <button class="modal-close" onclick="closeDocumentModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="documentForm">
+          <input type="hidden" id="documentId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="documentJob">Job *</label>
+              <select id="documentJob" class="form-select" required>
+                <option value="">Select a job</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="documentType">Type *</label>
+              <select id="documentType" class="form-select" required>
+                <option value="">Select type</option>
+                <option value="as_built">As-Built</option>
+                <option value="o_and_m">O&M Manual</option>
+                <option value="warranty">Warranty</option>
+                <option value="certificate">Certificate</option>
+                <option value="lien_waiver">Lien Waiver</option>
+                <option value="training">Training</option>
+                <option value="permit">Permit</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="documentName">Name *</label>
+            <input type="text" id="documentName" class="form-input" required placeholder="Document name">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="documentCategory">Category</label>
+              <select id="documentCategory" class="form-select">
+                <option value="">Select category</option>
+                <option value="architectural">Architectural</option>
+                <option value="structural">Structural</option>
+                <option value="mechanical">Mechanical</option>
+                <option value="electrical">Electrical</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="civil">Civil</option>
+                <option value="general">General</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="documentVendor">Vendor</label>
+              <select id="documentVendor" class="form-select">
+                <option value="">Select vendor</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="documentDueDate">Due Date</label>
+              <input type="date" id="documentDueDate" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="documentExpDate">Expiration Date</label>
+              <input type="date" id="documentExpDate" class="form-input">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="documentDescription">Description</label>
+            <textarea id="documentDescription" class="form-input" rows="2" placeholder="Description..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="documentNotes">Notes</label>
+            <textarea id="documentNotes" class="form-input" rows="2" placeholder="Notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDocumentModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveDocument()">Save Document</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lien Waiver Modal -->
+  <div id="waiverModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3 id="waiverModalTitle">Request Lien Waiver</h3>
+        <button class="modal-close" onclick="closeWaiverModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="waiverForm">
+          <input type="hidden" id="waiverId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="waiverJob">Job *</label>
+              <select id="waiverJob" class="form-select" required>
+                <option value="">Select a job</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="waiverVendor">Vendor</label>
+              <select id="waiverVendor" class="form-select">
+                <option value="">Select vendor</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="waiverVendorName">Vendor Name *</label>
+            <input type="text" id="waiverVendorName" class="form-input" required placeholder="Vendor or subcontractor name">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="waiverType">Type</label>
+              <select id="waiverType" class="form-select">
+                <option value="conditional">Conditional</option>
+                <option value="unconditional">Unconditional</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="waiverScope">Scope</label>
+              <select id="waiverScope" class="form-select">
+                <option value="progress">Progress</option>
+                <option value="final">Final</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="waiverThroughDate">Through Date</label>
+              <input type="date" id="waiverThroughDate" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="waiverAmount">Amount</label>
+              <input type="number" id="waiverAmount" class="form-input" placeholder="0.00" step="0.01">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="waiverExceptions">Exceptions</label>
+            <textarea id="waiverExceptions" class="form-input" rows="2" placeholder="Any exceptions..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="waiverNotes">Notes</label>
+            <textarea id="waiverNotes" class="form-input" rows="2" placeholder="Notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeWaiverModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveWaiver()">Request Waiver</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Package Modal -->
+  <div id="packageModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3 id="packageModalTitle">New Closeout Package</h3>
+        <button class="modal-close" onclick="closePackageModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="packageForm">
+          <input type="hidden" id="packageId">
+
+          <div class="form-group">
+            <label for="packageJob">Job *</label>
+            <select id="packageJob" class="form-select" required>
+              <option value="">Select a job</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="packageName">Name *</label>
+            <input type="text" id="packageName" class="form-input" required placeholder="e.g., Final Closeout Package">
+          </div>
+
+          <div class="form-group">
+            <label for="packageTargetDate">Target Completion Date</label>
+            <input type="date" id="packageTargetDate" class="form-input">
+          </div>
+
+          <div class="form-group">
+            <label for="packageDescription">Description</label>
+            <textarea id="packageDescription" class="form-input" rows="3" placeholder="Package description..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="packageNotes">Notes</label>
+            <textarea id="packageNotes" class="form-input" rows="2" placeholder="Notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closePackageModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="savePackage()">Create Package</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
   <div id="toast-container"></div>
+
   <script src="js/toasts.js"></script>
   <script defer src="js/nav-sidebar.js"></script>
   <script defer src="js/sidebar.js"></script>
+  <script src="js/closeout.js"></script>
 </body>
 </html>

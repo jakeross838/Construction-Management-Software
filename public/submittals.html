@@ -7,56 +7,426 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <header class="header">
-    <div class="header-top">
-      <div class="header-brand">
-        <h1>Ross Built</h1>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New Submittal</button>
+        </div>
       </div>
-      <nav class="main-nav"></nav>
-      <div class="header-actions">
-        <span class="user-info">Jake Ross</span>
+      <div class="header-sub">
+        <nav class="sub-nav"></nav>
       </div>
-    </div>
-    <div class="header-sub">
-      <nav class="sub-nav"></nav>
-    </div>
-  </header>
+    </header>
 
-  <main class="main-content">
-    <div class="scaffold-page">
-      <div class="scaffold-icon">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-          <line x1="16" y1="13" x2="8" y2="13"></line>
-          <line x1="16" y1="17" x2="8" y2="17"></line>
-          <polyline points="10 9 9 9 8 9"></polyline>
-        </svg>
+    <div class="app-body">
+      <main class="main">
+        <!-- Page Header -->
+        <div class="page-header">
+          <div class="page-header-left">
+            <h2 class="page-title">Submittals</h2>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-value" id="statTotal">0</span>
+            <span class="stat-label">Total</span>
+          </div>
+          <div class="stat-card stat-pending">
+            <span class="stat-value" id="statDraft">0</span>
+            <span class="stat-label">Draft</span>
+          </div>
+          <div class="stat-card stat-open">
+            <span class="stat-value" id="statPending">0</span>
+            <span class="stat-label">Pending Review</span>
+          </div>
+          <div class="stat-card stat-answered">
+            <span class="stat-value" id="statApproved">0</span>
+            <span class="stat-label">Approved</span>
+          </div>
+          <div class="stat-card stat-closed">
+            <span class="stat-value" id="statRevise">0</span>
+            <span class="stat-label">Revise & Resubmit</span>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="table-toolbar">
+          <div class="toolbar-left">
+            <select id="jobFilter" class="form-select">
+              <option value="">All Jobs</option>
+            </select>
+            <select id="statusFilter" class="form-select">
+              <option value="">All Statuses</option>
+              <option value="draft">Draft</option>
+              <option value="pending_review">Pending Review</option>
+              <option value="approved">Approved</option>
+              <option value="approved_as_noted">Approved as Noted</option>
+              <option value="revise_resubmit">Revise & Resubmit</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <select id="typeFilter" class="form-select">
+              <option value="">All Types</option>
+              <option value="shop_drawing">Shop Drawing</option>
+              <option value="product_data">Product Data</option>
+              <option value="sample">Sample</option>
+              <option value="mock_up">Mock-Up</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="toolbar-right">
+            <input type="search" id="searchInput" class="form-input" placeholder="Search submittals...">
+          </div>
+        </div>
+
+        <!-- Submittal List -->
+        <div class="submittal-list" id="submittalList">
+          <div class="loading-state">Loading submittals...</div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          <h3>No Submittals Found</h3>
+          <p>Create a submittal to track shop drawings, product data, and samples.</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit Submittal Modal -->
+  <div id="submittalModal" class="modal modal-centered">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="submittalModalTitle">New Submittal</h3>
+        <button class="modal-close" onclick="closeSubmittalModal()">&times;</button>
       </div>
-      <h2>Submittals</h2>
-      <p class="scaffold-description">
-        Manage contractor submittals for materials, shop drawings, and product data.
-        Review, approve, and track all submittals with version control.
-      </p>
-      <div class="scaffold-features">
-        <h4>Planned Features</h4>
-        <ul>
-          <li>Upload submittals with spec section reference</li>
-          <li>Review workflow: Submit, Review, Approve/Reject/Revise</li>
-          <li>Track revision history and comments</li>
-          <li>Link to purchase orders and vendors</li>
-          <li>Generate submittal register report</li>
-        </ul>
+      <div class="modal-body">
+        <form id="submittalForm">
+          <input type="hidden" id="submittalId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="submittalJob">Job *</label>
+              <select id="submittalJob" class="form-select" required>
+                <option value="">Select a job</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="submittalType">Type *</label>
+              <select id="submittalType" class="form-select" required>
+                <option value="shop_drawing">Shop Drawing</option>
+                <option value="product_data">Product Data</option>
+                <option value="sample">Sample</option>
+                <option value="mock_up">Mock-Up</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="submittalTitle">Title *</label>
+            <input type="text" id="submittalTitle" class="form-input" required placeholder="Brief description of submittal">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="submittalSpecSection">Spec Section</label>
+              <input type="text" id="submittalSpecSection" class="form-input" placeholder="e.g., 06100">
+            </div>
+            <div class="form-group">
+              <label for="submittalCostCode">Cost Code</label>
+              <select id="submittalCostCode" class="form-select">
+                <option value="">Select cost code</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="submittalDescription">Description</label>
+            <textarea id="submittalDescription" class="form-input" rows="3" placeholder="Detailed description..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="submittalSubcontractor">Subcontractor</label>
+              <input type="text" id="submittalSubcontractor" class="form-input" placeholder="Subcontractor name">
+            </div>
+            <div class="form-group">
+              <label for="submittalManufacturer">Manufacturer</label>
+              <input type="text" id="submittalManufacturer" class="form-input" placeholder="Manufacturer name">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="submittalSubmittedTo">Submit To</label>
+              <input type="text" id="submittalSubmittedTo" class="form-input" placeholder="e.g., Architect">
+            </div>
+            <div class="form-group">
+              <label for="submittalDateRequired">Date Required</label>
+              <input type="date" id="submittalDateRequired" class="form-input">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="submittalLeadTime">Lead Time (Days)</label>
+              <input type="number" id="submittalLeadTime" class="form-input" placeholder="e.g., 14">
+            </div>
+            <div class="form-group">
+              <label for="submittalSubmittedBy">Submitted By</label>
+              <input type="text" id="submittalSubmittedBy" class="form-input" value="Jake Ross">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="submittalNotes">Notes</label>
+            <textarea id="submittalNotes" class="form-input" rows="2" placeholder="Additional notes..."></textarea>
+          </div>
+        </form>
       </div>
-      <div class="scaffold-badge">
-        <span class="badge badge-info">Coming in v2.0</span>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeSubmittalModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveSubmittal()">Save Submittal</button>
       </div>
     </div>
-  </main>
+  </div>
 
+  <!-- Submittal Detail Modal -->
+  <div id="submittalDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <h3 id="detailSubmittalNumber">SUB-0001</h3>
+          <span class="badge" id="detailRevision">Rev A</span>
+          <span class="badge" id="detailStatus">Draft</span>
+        </div>
+        <div class="modal-header-right">
+          <button class="btn btn-secondary" onclick="editCurrentSubmittal()">Edit</button>
+          <button class="btn btn-primary" id="submitBtn" onclick="submitForReview()">Submit for Review</button>
+          <button class="btn btn-success" id="reviewBtn" onclick="openReviewModal()" style="display: none;">Review</button>
+          <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="rfi-detail-layout">
+          <!-- Left: Main Content -->
+          <div class="rfi-detail-main">
+            <div class="detail-section">
+              <h4>Title</h4>
+              <p id="detailTitle" class="detail-subject">-</p>
+            </div>
+
+            <div class="detail-section">
+              <h4>Description</h4>
+              <div id="detailDescription" class="detail-question">-</div>
+            </div>
+
+            <div class="detail-section" id="reviewSection" style="display: none;">
+              <h4>Review Comments</h4>
+              <div id="detailReviewComments" class="detail-response">-</div>
+              <div class="response-meta">
+                <span>Reviewed by <strong id="detailReviewedBy">-</strong></span>
+                <span id="detailReviewedAt">-</span>
+              </div>
+            </div>
+
+            <!-- Items Section -->
+            <div class="detail-section">
+              <h4>Items</h4>
+              <div id="itemsList" class="items-list">
+                <p class="text-muted">No items added</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="openAddItemModal()" style="margin-top: 0.5rem;">+ Add Item</button>
+            </div>
+
+            <!-- Activity Log -->
+            <div class="detail-section">
+              <h4>Activity Log</h4>
+              <div id="activityLog" class="activity-log">
+                <p class="text-muted">No activity recorded</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Info & Actions -->
+          <div class="rfi-detail-sidebar">
+            <div class="detail-card">
+              <h4>Details</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Job</span>
+                  <span class="value" id="detailJob">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Type</span>
+                  <span class="value" id="detailType">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Spec Section</span>
+                  <span class="value" id="detailSpecSection">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Cost Code</span>
+                  <span class="value" id="detailCostCode">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Subcontractor</span>
+                  <span class="value" id="detailSubcontractor">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Manufacturer</span>
+                  <span class="value" id="detailManufacturer">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-card">
+              <h4>Dates</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Submitted By</span>
+                  <span class="value" id="detailSubmittedBy">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Submit To</span>
+                  <span class="value" id="detailSubmittedTo">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Date Submitted</span>
+                  <span class="value" id="detailDateSubmitted">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Date Required</span>
+                  <span class="value" id="detailDateRequired">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Date Returned</span>
+                  <span class="value" id="detailDateReturned">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Lead Time</span>
+                  <span class="value" id="detailLeadTime">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-actions">
+              <button class="btn btn-secondary btn-block" id="reviseBtn" onclick="createRevision()" style="display: none;">Create Revision</button>
+              <button class="btn btn-danger btn-block" onclick="deleteSubmittal()">Delete Submittal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Review Modal -->
+  <div id="reviewModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3>Review Submittal</h3>
+        <button class="modal-close" onclick="closeReviewModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="reviewForm">
+          <div class="form-group">
+            <label for="reviewStatus">Review Decision *</label>
+            <select id="reviewStatus" class="form-select" required>
+              <option value="approved">Approved</option>
+              <option value="approved_as_noted">Approved as Noted</option>
+              <option value="revise_resubmit">Revise and Resubmit</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="reviewComments">Review Comments</label>
+            <textarea id="reviewComments" class="form-input" rows="4" placeholder="Enter review comments..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="reviewedBy">Reviewed By</label>
+            <input type="text" id="reviewedBy" class="form-input" value="Jake Ross">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeReviewModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="submitReview()">Submit Review</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Item Modal -->
+  <div id="addItemModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3>Add Item</h3>
+        <button class="modal-close" onclick="closeAddItemModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="addItemForm">
+          <div class="form-group">
+            <label for="itemDescription">Description *</label>
+            <input type="text" id="itemDescription" class="form-input" required placeholder="Item description">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="itemQuantity">Quantity</label>
+              <input type="number" id="itemQuantity" class="form-input" value="1" min="1">
+            </div>
+            <div class="form-group">
+              <label for="itemUnit">Unit</label>
+              <input type="text" id="itemUnit" class="form-input" placeholder="e.g., EA, LF">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="itemManufacturer">Manufacturer</label>
+              <input type="text" id="itemManufacturer" class="form-input" placeholder="Manufacturer">
+            </div>
+            <div class="form-group">
+              <label for="itemModelNumber">Model Number</label>
+              <input type="text" id="itemModelNumber" class="form-input" placeholder="Model #">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="itemNotes">Notes</label>
+            <textarea id="itemNotes" class="form-input" rows="2" placeholder="Additional notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeAddItemModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="addItem()">Add Item</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
   <div id="toast-container"></div>
+
   <script src="js/toasts.js"></script>
   <script defer src="js/nav-sidebar.js"></script>
   <script defer src="js/sidebar.js"></script>
+  <script src="js/submittals.js"></script>
 </body>
 </html>

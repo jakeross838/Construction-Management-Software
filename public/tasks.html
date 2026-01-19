@@ -7,53 +7,380 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <header class="header">
-    <div class="header-top">
-      <div class="header-brand">
-        <h1>Ross Built</h1>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New Task</button>
+        </div>
       </div>
-      <nav class="main-nav"></nav>
-      <div class="header-actions">
-        <span class="user-info">Jake Ross</span>
+      <div class="header-sub">
+        <nav class="sub-nav"></nav>
       </div>
-    </div>
-    <div class="header-sub">
-      <nav class="sub-nav"></nav>
-    </div>
-  </header>
+    </header>
 
-  <main class="main-content">
-    <div class="scaffold-page">
-      <div class="scaffold-icon">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M9 11l3 3L22 4"></path>
-          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-        </svg>
+    <div class="app-body">
+      <main class="main">
+        <!-- Page Header -->
+        <div class="page-header">
+          <div class="page-header-left">
+            <h2 class="page-title">Tasks</h2>
+          </div>
+          <div class="page-header-right">
+            <div class="view-toggle">
+              <button class="view-btn active" data-view="list" onclick="setView('list')">List</button>
+              <button class="view-btn" data-view="board" onclick="setView('board')">Board</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-value" id="statTotal">0</span>
+            <span class="stat-label">Total</span>
+          </div>
+          <div class="stat-card stat-open">
+            <span class="stat-value" id="statTodo">0</span>
+            <span class="stat-label">To Do</span>
+          </div>
+          <div class="stat-card stat-pending">
+            <span class="stat-value" id="statInProgress">0</span>
+            <span class="stat-label">In Progress</span>
+          </div>
+          <div class="stat-card stat-answered">
+            <span class="stat-value" id="statCompleted">0</span>
+            <span class="stat-label">Completed</span>
+          </div>
+          <div class="stat-card stat-closed">
+            <span class="stat-value" id="statOverdue">0</span>
+            <span class="stat-label">Overdue</span>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="table-toolbar">
+          <div class="toolbar-left">
+            <select id="jobFilter" class="form-select">
+              <option value="">All Jobs</option>
+            </select>
+            <select id="statusFilter" class="form-select">
+              <option value="">All Statuses</option>
+              <option value="todo">To Do</option>
+              <option value="in_progress">In Progress</option>
+              <option value="on_hold">On Hold</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select id="priorityFilter" class="form-select">
+              <option value="">All Priorities</option>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
+            </select>
+            <select id="assigneeFilter" class="form-select">
+              <option value="">All Assignees</option>
+              <option value="Jake Ross">Jake Ross</option>
+              <option value="Unassigned">Unassigned</option>
+            </select>
+          </div>
+          <div class="toolbar-right">
+            <input type="search" id="searchInput" class="form-input" placeholder="Search tasks...">
+          </div>
+        </div>
+
+        <!-- Task List View -->
+        <div class="task-list" id="taskListView">
+          <div class="loading-state">Loading tasks...</div>
+        </div>
+
+        <!-- Task Board View -->
+        <div class="task-board" id="taskBoardView" style="display: none;">
+          <div class="board-column" data-status="todo">
+            <div class="board-column-header">
+              <h4>To Do</h4>
+              <span class="board-count" id="boardTodoCount">0</span>
+            </div>
+            <div class="board-column-body" id="boardTodo"></div>
+          </div>
+          <div class="board-column" data-status="in_progress">
+            <div class="board-column-header">
+              <h4>In Progress</h4>
+              <span class="board-count" id="boardInProgressCount">0</span>
+            </div>
+            <div class="board-column-body" id="boardInProgress"></div>
+          </div>
+          <div class="board-column" data-status="on_hold">
+            <div class="board-column-header">
+              <h4>On Hold</h4>
+              <span class="board-count" id="boardOnHoldCount">0</span>
+            </div>
+            <div class="board-column-body" id="boardOnHold"></div>
+          </div>
+          <div class="board-column" data-status="completed">
+            <div class="board-column-header">
+              <h4>Completed</h4>
+              <span class="board-count" id="boardCompletedCount">0</span>
+            </div>
+            <div class="board-column-body" id="boardCompleted"></div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 11l3 3L22 4"></path>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          <h3>No Tasks Found</h3>
+          <p>Create a task to start tracking your work.</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit Task Modal -->
+  <div id="taskModal" class="modal modal-centered">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="taskModalTitle">New Task</h3>
+        <button class="modal-close" onclick="closeTaskModal()">&times;</button>
       </div>
-      <h2>Tasks</h2>
-      <p class="scaffold-description">
-        Create and track tasks across all projects.
-        Assign to team members, set priorities, and monitor completion.
-      </p>
-      <div class="scaffold-features">
-        <h4>Planned Features</h4>
-        <ul>
-          <li>Create tasks with due dates and priorities</li>
-          <li>Assign to team members</li>
-          <li>Link to jobs, invoices, or other entities</li>
-          <li>Track completion with comments</li>
-          <li>Dashboard view of overdue and upcoming tasks</li>
-        </ul>
+      <div class="modal-body">
+        <form id="taskForm">
+          <input type="hidden" id="taskId">
+
+          <div class="form-group">
+            <label for="taskTitle">Title *</label>
+            <input type="text" id="taskTitle" class="form-input" required placeholder="Task title">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="taskJob">Job</label>
+              <select id="taskJob" class="form-select">
+                <option value="">No Job (General)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="taskType">Type</label>
+              <select id="taskType" class="form-select">
+                <option value="task">Task</option>
+                <option value="milestone">Milestone</option>
+                <option value="checklist">Checklist</option>
+                <option value="reminder">Reminder</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="taskDescription">Description</label>
+            <textarea id="taskDescription" class="form-input" rows="3" placeholder="Task description..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="taskPriority">Priority</label>
+              <select id="taskPriority" class="form-select">
+                <option value="low">Low</option>
+                <option value="normal" selected>Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="taskCategory">Category</label>
+              <input type="text" id="taskCategory" class="form-input" placeholder="e.g., Coordination">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="taskAssignedTo">Assigned To</label>
+              <input type="text" id="taskAssignedTo" class="form-input" placeholder="e.g., Jake Ross">
+            </div>
+            <div class="form-group">
+              <label for="taskDueDate">Due Date</label>
+              <input type="date" id="taskDueDate" class="form-input">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="taskStartDate">Start Date</label>
+              <input type="date" id="taskStartDate" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="taskCreatedBy">Created By</label>
+              <input type="text" id="taskCreatedBy" class="form-input" value="Jake Ross">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="taskNotes">Notes</label>
+            <textarea id="taskNotes" class="form-input" rows="2" placeholder="Additional notes..."></textarea>
+          </div>
+        </form>
       </div>
-      <div class="scaffold-badge">
-        <span class="badge badge-info">Coming in v2.0</span>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveTask()">Save Task</button>
       </div>
     </div>
-  </main>
+  </div>
 
+  <!-- Task Detail Modal -->
+  <div id="taskDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <h3 id="detailTaskNumber">TASK-0001</h3>
+          <span class="badge" id="detailStatus">To Do</span>
+          <span class="badge" id="detailPriority">Normal</span>
+        </div>
+        <div class="modal-header-right">
+          <button class="btn btn-secondary" onclick="editCurrentTask()">Edit</button>
+          <button class="btn btn-success" id="completeBtn" onclick="completeTask()">Complete</button>
+          <button class="btn btn-secondary" id="reopenBtn" onclick="reopenTask()" style="display: none;">Reopen</button>
+          <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="rfi-detail-layout">
+          <!-- Left: Main Content -->
+          <div class="rfi-detail-main">
+            <div class="detail-section">
+              <h4>Title</h4>
+              <p id="detailTitle" class="detail-subject">-</p>
+            </div>
+
+            <div class="detail-section">
+              <h4>Description</h4>
+              <div id="detailDescription" class="detail-question">-</div>
+            </div>
+
+            <!-- Checklist Section -->
+            <div class="detail-section">
+              <h4>Checklist</h4>
+              <div id="checklistItems" class="checklist-items">
+                <p class="text-muted">No checklist items</p>
+              </div>
+              <div class="checklist-add">
+                <input type="text" id="newChecklistItem" class="form-input" placeholder="Add checklist item...">
+                <button class="btn btn-secondary btn-sm" onclick="addChecklistItem()">Add</button>
+              </div>
+            </div>
+
+            <!-- Comments Section -->
+            <div class="detail-section">
+              <h4>Comments</h4>
+              <div id="commentsList" class="comments-list">
+                <p class="text-muted">No comments</p>
+              </div>
+              <div class="comment-add">
+                <textarea id="newComment" class="form-input" rows="2" placeholder="Add a comment..."></textarea>
+                <button class="btn btn-secondary btn-sm" onclick="addComment()">Post Comment</button>
+              </div>
+            </div>
+
+            <!-- Subtasks Section -->
+            <div class="detail-section" id="subtasksSection">
+              <h4>Subtasks</h4>
+              <div id="subtasksList" class="subtasks-list">
+                <p class="text-muted">No subtasks</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="openSubtaskModal()">+ Add Subtask</button>
+            </div>
+          </div>
+
+          <!-- Right: Info & Actions -->
+          <div class="rfi-detail-sidebar">
+            <div class="detail-card">
+              <h4>Details</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Job</span>
+                  <span class="value" id="detailJob">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Type</span>
+                  <span class="value" id="detailType">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Category</span>
+                  <span class="value" id="detailCategory">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Assigned To</span>
+                  <span class="value" id="detailAssignedTo">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Created By</span>
+                  <span class="value" id="detailCreatedBy">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-card">
+              <h4>Dates</h4>
+              <div class="detail-info">
+                <div class="info-row">
+                  <span class="label">Start Date</span>
+                  <span class="value" id="detailStartDate">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Due Date</span>
+                  <span class="value" id="detailDueDate">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Completed</span>
+                  <span class="value" id="detailCompletedAt">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Created</span>
+                  <span class="value" id="detailCreatedAt">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-card">
+              <h4>Progress</h4>
+              <div class="progress-bar-container">
+                <div class="progress-bar" id="detailProgressBar" style="width: 0%"></div>
+              </div>
+              <div class="progress-label"><span id="detailProgress">0</span>% Complete</div>
+              <input type="range" id="progressSlider" min="0" max="100" value="0" class="progress-slider" onchange="updateProgress(this.value)">
+            </div>
+
+            <div class="detail-actions">
+              <select id="statusSelect" class="form-select" onchange="updateStatus(this.value)">
+                <option value="todo">To Do</option>
+                <option value="in_progress">In Progress</option>
+                <option value="on_hold">On Hold</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <button class="btn btn-danger btn-block" onclick="deleteTask()">Delete Task</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
   <div id="toast-container"></div>
+
   <script src="js/toasts.js"></script>
   <script defer src="js/nav-sidebar.js"></script>
   <script defer src="js/sidebar.js"></script>
+  <script src="js/tasks.js"></script>
 </body>
 </html>
