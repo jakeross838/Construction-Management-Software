@@ -100,45 +100,45 @@ Which phases cover which requirements. Updated by create-roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LED-01 | — | Pending |
-| LED-02 | — | Pending |
-| LED-03 | — | Pending |
-| LED-04 | — | Pending |
-| LED-05 | — | Pending |
-| LED-06 | — | Pending |
-| LED-07 | — | Pending |
-| LED-08 | — | Pending |
-| LED-09 | — | Pending |
-| LED-10 | — | Pending |
-| LED-11 | — | Pending |
-| LED-12 | — | Pending |
-| SEL-01 | — | Pending |
-| SEL-02 | — | Pending |
-| SEL-03 | — | Pending |
-| SEL-04 | — | Pending |
-| SEL-05 | — | Pending |
-| SEL-06 | — | Pending |
-| SEL-07 | — | Pending |
-| SEL-08 | — | Pending |
-| SEL-09 | — | Pending |
-| SEL-10 | — | Pending |
-| SEL-11 | — | Pending |
-| SEL-12 | — | Pending |
-| SCF-01 | — | Pending |
-| SCF-02 | — | Pending |
-| SCF-03 | — | Pending |
-| SCF-04 | — | Pending |
-| SCF-05 | — | Pending |
-| SCF-06 | — | Pending |
-| SCF-07 | — | Pending |
-| NAV-01 | — | Pending |
-| NAV-02 | — | Pending |
-| NAV-03 | — | Pending |
+| LED-01 | Phase 37 | Pending |
+| LED-02 | Phase 37 | Pending |
+| LED-03 | Phase 37 | Pending |
+| LED-04 | Phase 38 | Pending |
+| LED-05 | Phase 37 | Pending |
+| LED-06 | Phase 37 | Pending |
+| LED-07 | Phase 37 | Pending |
+| LED-08 | Phase 37 | Pending |
+| LED-09 | Phase 37 | Pending |
+| LED-10 | Phase 37 | Pending |
+| LED-11 | Phase 37 | Pending |
+| LED-12 | Phase 37 | Pending |
+| SEL-01 | Phase 39 | Pending |
+| SEL-02 | Phase 39 | Pending |
+| SEL-03 | Phase 39 | Pending |
+| SEL-04 | Phase 39 | Pending |
+| SEL-05 | Phase 39 | Pending |
+| SEL-06 | Phase 39 | Pending |
+| SEL-07 | Phase 39 | Pending |
+| SEL-08 | Phase 40 | Pending |
+| SEL-09 | Phase 40 | Pending |
+| SEL-10 | Phase 39 | Pending |
+| SEL-11 | Phase 40 | Pending |
+| SEL-12 | Phase 40 | Pending |
+| SCF-01 | Phase 41 | Pending |
+| SCF-02 | Phase 41 | Pending |
+| SCF-03 | Phase 41 | Pending |
+| SCF-04 | Phase 41 | Pending |
+| SCF-05 | Phase 41 | Pending |
+| SCF-06 | Phase 41 | Pending |
+| SCF-07 | Phase 41 | Pending |
+| NAV-01 | Phase 42 | Pending |
+| NAV-02 | Phase 42 | Pending |
+| NAV-03 | Phase 42 | Pending |
 
 **Coverage:**
 - v1.6 requirements: 34 total
-- Mapped to phases: 0 (pending create-roadmap)
-- Unmapped: 34
+- Mapped to phases: 34
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-01-18*
