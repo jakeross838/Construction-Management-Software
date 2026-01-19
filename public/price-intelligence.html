@@ -7,7 +7,7 @@
   <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Price Intelligence</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260118b-bt">
+  <link rel="stylesheet" href="css/styles.css?v=20260118c-tabs">
   <style>
     /* Price Intelligence - Clean data-focused design */
     .pi-stats-bar {
@@ -265,14 +265,6 @@
     .confidence-fill.high { background: var(--accent-green); }
     .confidence-fill.medium { background: var(--accent-orange); }
     .confidence-fill.low { background: var(--accent-red); }
-
-    /* Override view-toggle for unit buttons */
-    .toolbar .view-toggle button {
-      width: auto;
-      padding: 0 0.625rem;
-      font-size: 0.75rem;
-      font-weight: 500;
-    }
 
     /* Category Sidebar Layout */
     .price-db-layout {
@@ -609,9 +601,9 @@
                     <button data-unit="lf" onclick="setUnit('lf')">$/LF</button>
                     <button data-unit="sf" onclick="setUnit('sf')">$/SF</button>
                   </div>
-                  <div class="search-box">
+                  <div class="search-input-wrap">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="searchInput" placeholder="Search items..." class="form-control form-control-sm search-input">
+                    <input type="text" id="searchInput" placeholder="Search items..." class="form-control form-control-sm search-input-inline">
                   </div>
                 </div>
                 <div class="toolbar-right">

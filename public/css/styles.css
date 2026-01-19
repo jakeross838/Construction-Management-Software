@@ -795,27 +795,126 @@ body {
   margin: 0 0.25rem;
 }
 
-/* Inline Search Input */
+/* ========================================
+   SEARCH INPUT - Consistent search styling
+   ======================================== */
+
+/* Search input wrapper (with icon) */
 .search-input-wrap {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.search-input-wrap .search-icon {
+.search-input-wrap .search-icon,
+.search-box .search-icon {
   position: absolute;
   left: 0.625rem;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   pointer-events: none;
   opacity: 0.5;
+  z-index: 1;
 }
 
 .search-input-inline {
-  padding-left: 1.75rem !important;
+  padding-left: 2rem !important;
   min-width: 180px;
 }
 
+/* Search box (toolbar variant) */
+.toolbar .search-box,
+.table-toolbar .search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.toolbar .search-box .search-input,
+.table-toolbar .search-box .search-input {
+  min-width: 200px;
+  padding-right: 2rem;
+}
+
+/* Search clear button */
+.search-box .search-clear-btn,
+.search-input-wrap .search-clear-btn {
+  position: absolute;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem;
+  line-height: 1;
+  border-radius: 50%;
+  transition: var(--transition);
+}
+
+.search-box .search-clear-btn:hover,
+.search-input-wrap .search-clear-btn:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
 /* View Toggle Buttons */
+/* ========================================
+   TABS - Page-level navigation tabs
+   ======================================== */
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--muted);
+  border-radius: var(--radius);
+  padding: 3px;
+  width: fit-content;
+}
+
+.tab {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--foreground);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab.active {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Tab badge for counts */
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  background: var(--destructive);
+  color: white;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border-radius: 9px;
+}
+
+/* ========================================
+   VIEW TOGGLE - Segmented control buttons
+   ======================================== */
+
 .view-toggle {
   display: flex;
   background: var(--muted);
@@ -843,6 +942,31 @@ body {
 }
 
 .view-btn.active {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Text-based toggle buttons (used in view-toggle without view-btn class) */
+.view-toggle button:not(.view-btn) {
+  padding: 0.375rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.view-toggle button:not(.view-btn):hover {
+  color: var(--foreground);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.view-toggle button:not(.view-btn).active {
   background: var(--card);
   color: var(--foreground);
   box-shadow: var(--shadow-sm);
@@ -15719,40 +15843,7 @@ textarea.form-control {
   }
 }
 
-/* Search Box with Clear Button */
-.search-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-box .search-input {
-  padding-right: 30px;
-}
-
-.search-clear-btn {
-  position: absolute;
-  right: 8px;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: var(--transition);
-}
-
-.search-clear-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-card-elevated);
-}
+/* REMOVED: Duplicate search-box/.search-clear-btn - see SEARCH INPUT section (line ~798) */
 
 /* Auto-Generate Draw Preview */
 .auto-generate-summary {
@@ -25006,32 +25097,7 @@ td.empty-state {
 }
 
 /* Search box in toolbar */
-.search-input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-input-inline {
-  padding-right: 2rem;
-  min-width: 200px;
-}
-
-.search-clear-btn {
-  position: absolute;
-  right: 0.5rem;
-  background: none;
-  border: none;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0.25rem;
-  display: none;
-}
-
-.search-clear-btn:hover {
-  color: var(--foreground);
-}
+/* REMOVED: Duplicate search-input-wrap/.search-clear-btn - see SEARCH INPUT section (line ~798) */
 
 /* ============================================================
    UNIFIED FILTER SELECT STYLES
@@ -25074,4 +25140,82 @@ td.empty-state {
   border-radius: var(--radius);
   background: var(--card);
   color: var(--foreground);
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+/* Display utilities */
+.d-none {
+  display: none !important;
+}
+
+.d-flex {
+  display: flex !important;
+}
+
+.d-inline-flex {
+  display: inline-flex !important;
+}
+
+.d-block {
+  display: block !important;
+}
+
+/* Margin utilities */
+.ml-auto {
+  margin-left: auto !important;
+}
+
+.mr-auto {
+  margin-right: auto !important;
+}
+
+.mt-1 {
+  margin-top: 0.25rem !important;
+}
+
+.mt-2 {
+  margin-top: 0.5rem !important;
+}
+
+.mt-3 {
+  margin-top: 0.75rem !important;
+}
+
+.mt-4 {
+  margin-top: 1rem !important;
+}
+
+.mb-1 {
+  margin-bottom: 0.25rem !important;
+}
+
+.mb-2 {
+  margin-bottom: 0.5rem !important;
+}
+
+.mb-3 {
+  margin-bottom: 0.75rem !important;
+}
+
+.mb-4 {
+  margin-bottom: 1rem !important;
+}
+
+.gap-1 {
+  gap: 0.25rem !important;
+}
+
+.gap-2 {
+  gap: 0.5rem !important;
+}
+
+.gap-3 {
+  gap: 0.75rem !important;
+}
+
+.gap-4 {
+  gap: 1rem !important;
 }
