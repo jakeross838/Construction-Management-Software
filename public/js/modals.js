@@ -366,6 +366,91 @@ const Modals = {
   },
 
   /**
+   * Build variance warning banner - shown when invoice exceeds PO budget
+   */
+  buildVarianceWarningsBanner(invoice) {
+    if (!invoice.variance || !invoice.variance.hasVariances) return '';
+
+    const warnings = invoice.variance.warnings || [];
+    if (warnings.length === 0) return '';
+
+    // Sort by severity (high first)
+    const sortedWarnings = [...warnings].sort((a, b) => {
+      const severityOrder = { high: 0, medium: 1, low: 2 };
+      return (severityOrder[a.severity] || 3) - (severityOrder[b.severity] || 3);
+    });
+
+    const hasHighSeverity = sortedWarnings.some(w => w.severity === 'high');
+    const bannerClass = hasHighSeverity ? 'variance-banner-high' : 'variance-banner-medium';
+
+    const warningsHtml = sortedWarnings.map(w => {
+      const icon = w.severity === 'high' ? '🚨' : w.severity === 'medium' ? '⚠️' : 'ℹ️';
+
+      // Add action buttons for unmatched line items
+      let actionButtons = '';
+      if (w.type === 'unmatched_line_item' && w.details) {
+        const poId = invoice.po_id || '';
+        const jobId = invoice.job_id || '';
+        const desc = this.escapeHtml(w.details.description || '');
+        const amount = w.details.amount || 0;
+
+        // If description suggests it's already a change order, only show Create CO button
+        if (w.details.isChangeOrder) {
+          actionButtons = `
+            <div class="variance-actions">
+              <button class="btn-sm btn-secondary" onclick="window.Modals.createCOFromVariance('${desc}', ${amount}, '${jobId}')">
+                Create CO
+              </button>
+            </div>
+          `;
+        } else {
+          // Show both Quick VPO and Create CO buttons
+          actionButtons = `
+            <div class="variance-actions">
+              <button class="btn-sm btn-primary" onclick="window.Modals.createVPOFromVariance('${desc}', ${amount}, '${poId}')">
+                Quick VPO
+              </button>
+              <button class="btn-sm btn-secondary" onclick="window.Modals.createCOFromVariance('${desc}', ${amount}, '${jobId}')">
+                Create CO
+              </button>
+            </div>
+          `;
+        }
+      }
+
+      return `
+        <div class="variance-warning variance-${w.severity}">
+          <span class="variance-icon">${icon}</span>
+          <span class="variance-message">${w.message}</span>
+          ${actionButtons}
+        </div>
+      `;
+    }).join('');
+
+    const details = invoice.variance.details || {};
+    const poInfo = details.po ? `<span class="variance-po-link">${details.po.po_number}</span>` : '';
+
+    return `
+      <div class="variance-warnings-banner ${bannerClass}">
+        <div class="variance-header">
+          <span class="variance-title">${hasHighSeverity ? '🚨 Budget Warning' : '⚠️ Budget Notice'}</span>
+          ${poInfo}
+        </div>
+        <div class="variance-warnings-list">
+          ${warningsHtml}
+        </div>
+        ${details.poTotal ? `
+        <div class="variance-summary">
+          <span>PO Total: <strong>$${details.poTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></span>
+          <span>Previously Billed: <strong>$${details.poBilled.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></span>
+          <span>Remaining: <strong>$${details.poRemaining.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></span>
+        </div>
+        ` : ''}
+      </div>
+    `;
+  },
+
+  /**
    * Dismiss AI split suggestion
    */
   async dismissSplitSuggestion(invoiceId) {
@@ -553,6 +638,7 @@ const Modals = {
             <!-- Form Panel (Right) -->
             <div class="form-panel">
               ${this.buildSplitInfoBanner(invoice)}
+              ${this.buildVarianceWarningsBanner(invoice)}
               ${hasPartialPayment && invoice.status === 'ready_for_approval' ? `
               <div class="partial-billing-banner">
                 <div class="banner-icon">⚠️</div>

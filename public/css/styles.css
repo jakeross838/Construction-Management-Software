@@ -14911,54 +14911,78 @@ textarea.form-control {
   gap: 1rem;
 }
 
-/* Line items edit */
+/* Line items edit container */
 .line-items-edit {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 1rem;
 }
 
+/* Individual line item card */
 .line-item-edit {
-  /* Grid is now on .line-item-main-row to support CO picker below */
-  margin-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
 }
 
-/* Line item edit inputs already covered by general input styles above */
-
-.line-item-edit .form-input.amount {
-  text-align: right;
+/* Main row: Title, Cost Code, Type, Amount, Delete */
+.line-item-edit .line-item-main-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .line-item-edit .line-item-title {
-  min-width: 100px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.line-item-edit .line-item-cost-code-picker {
+  flex: 1.5;
+  min-width: 200px;
 }
 
 .line-item-edit .cost-type-select {
-  min-width: 90px;
+  width: 100px;
 }
 
-.line-item-edit .description-input {
-  min-width: 80px;
+.line-item-edit .form-input.amount {
+  width: 100px;
+  text-align: right;
 }
 
-.line-item-cost-code-picker {
-  min-width: 180px;
+.line-item-edit .btn-remove {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
 
-/* PO Line Item - CO Cost Code Detection and Picker */
+/* Description textarea below main row */
+.line-item-edit .line-item-description-row {
+  margin-top: 0.75rem;
+}
+
+.line-item-edit .line-item-description {
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.75rem;
+  color: var(--text-primary);
+}
+
+/* CO cost code highlight */
 .line-item-edit.has-co-code {
   background: rgba(217, 119, 6, 0.08);
-  border: 1px solid rgba(217, 119, 6, 0.3);
-  border-radius: 8px;
-  padding: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.line-item-edit .line-item-main-row {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr 90px 1fr 90px auto;
-  gap: 0.5rem;
-  align-items: center;
+  border-color: rgba(217, 119, 6, 0.3);
 }
 
 .line-item-co-picker {
@@ -15049,21 +15073,41 @@ textarea.form-control {
 
 .po-two-panel .line-item-view {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #f0f1f3;
-  background: transparent !important;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .po-two-panel .line-item-view:last-of-type {
-  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.po-two-panel .line-item-view .li-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.po-two-panel .line-item-view .li-description {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-card-elevated);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  white-space: pre-wrap;
 }
 
 .po-two-panel .li-info {
   display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
 }
 
 .po-two-panel .li-code {
@@ -15088,10 +15132,10 @@ textarea.form-control {
 }
 
 .po-two-panel .li-title {
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--foreground) !important;
-  margin-bottom: 0.25rem;
+  color: var(--text-primary) !important;
+  flex: 1;
 }
 
 .po-two-panel .li-amount {
@@ -18221,6 +18265,134 @@ textarea.form-control {
 
 .split-info-banner .btn-link:hover {
   color: #93c5fd;
+}
+
+/* Variance Warnings Banner - Invoice vs PO budget comparison */
+.variance-warnings-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.variance-warnings-banner.variance-banner-high {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.1) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.variance-warnings-banner.variance-banner-medium {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.1) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.variance-warnings-banner .variance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.variance-warnings-banner .variance-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.variance-warnings-banner .variance-po-link {
+  font-size: 0.8rem;
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+.variance-warnings-banner .variance-warnings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.variance-warnings-banner .variance-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.variance-warnings-banner .variance-warning.variance-high {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.variance-warnings-banner .variance-warning.variance-medium {
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.variance-warnings-banner .variance-warning.variance-low {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.variance-warnings-banner .variance-icon {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+}
+
+.variance-warnings-banner .variance-message {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.variance-warnings-banner .variance-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.variance-warnings-banner .variance-summary strong {
+  color: var(--text-primary);
+}
+
+/* Variance Action Buttons - Create VPO/CO from unmatched items */
+.variance-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  margin-left: 28px; /* Align with message after icon */
+}
+
+.variance-warning .variance-actions .btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.variance-warning .variance-actions .btn-sm.btn-primary {
+  background: var(--accent-blue);
+  color: white;
+  border: none;
+}
+
+.variance-warning .variance-actions .btn-sm.btn-primary:hover {
+  background: #4a94e8;
+}
+
+.variance-warning .variance-actions .btn-sm.btn-secondary {
+  background: var(--bg-card-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.variance-warning .variance-actions .btn-sm.btn-secondary:hover {
+  background: var(--bg-card);
+  border-color: var(--text-secondary);
 }
 
 /* AI Split Suggestion Banner */
@@ -27505,4 +27677,410 @@ td.empty-state {
 .scaffold-badge .badge {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
+}
+
+
+/* ============================================
+   AI Document Processing Styles
+   ============================================ */
+
+.ai-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.ai-section {
+  background: var(--bg-card-elevated, #1c2128);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.ai-section h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.ai-section h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.ai-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ai-message {
+  padding: 0.5rem;
+  background: var(--bg-card, #161b22);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.ai-field {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-field:last-child {
+  border-bottom: none;
+}
+
+.ai-field label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-width: 80px;
+}
+
+.ai-field span {
+  color: var(--text-primary);
+}
+
+.ai-badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.ai-badge.success {
+  background: rgba(63, 185, 80, 0.2);
+  color: var(--accent-green, #3fb950);
+}
+
+.ai-badge.warning {
+  background: rgba(210, 153, 34, 0.2);
+  color: var(--accent-orange, #d29922);
+}
+
+.ai-line-items {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ai-line-items th,
+.ai-line-items td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-line-items th {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.ai-line-items td {
+  font-size: 0.9rem;
+}
+
+.ai-line-items tfoot td {
+  font-weight: 600;
+  border-bottom: none;
+  border-top: 2px solid var(--border);
+}
+
+.ai-scope {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.ai-success {
+  text-align: center;
+  padding: 2rem;
+}
+
+.ai-success h3 {
+  color: var(--accent-green, #3fb950);
+  margin-bottom: 1rem;
+}
+
+.ai-error {
+  text-align: center;
+  padding: 2rem;
+}
+
+.ai-error h3 {
+  color: var(--accent-red, #f85149);
+  margin-bottom: 1rem;
+}
+
+.ai-error p {
+  color: var(--text-secondary);
+}
+
+#aiProcessingBody .loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   VPO (VERBAL PURCHASE ORDERS) SECTION
+   ============================================================ */
+
+.vpo-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.vpo-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  margin-bottom: 0.75rem;
+}
+
+.vpo-summary-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.vpo-summary-amount {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.vpo-summary-amount.positive {
+  color: var(--accent-green);
+}
+
+.vpo-summary-amount.negative {
+  color: var(--accent-red);
+}
+
+.vpo-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-style: italic;
+  margin-bottom: 0.75rem;
+}
+
+.vpo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.vpo-item {
+  padding: 1rem;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--accent-blue);
+}
+
+.vpo-item.voided {
+  opacity: 0.6;
+  border-left-color: var(--text-secondary);
+}
+
+.vpo-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.vpo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.vpo-number {
+  font-weight: 600;
+  color: var(--accent-blue);
+  font-size: 0.85rem;
+}
+
+.vpo-description {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.vpo-amount {
+  font-weight: 600;
+  font-size: 1.1rem;
+  white-space: nowrap;
+}
+
+.vpo-amount.positive {
+  color: var(--accent-green);
+}
+
+.vpo-amount.negative {
+  color: var(--accent-red);
+}
+
+.vpo-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.vpo-status {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.vpo-status.status-approved {
+  background: rgba(63, 185, 80, 0.2);
+  color: var(--accent-green);
+}
+
+.vpo-status.status-voided {
+  background: rgba(139, 148, 158, 0.2);
+  color: var(--text-secondary);
+}
+
+.vpo-date {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.vpo-auth {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.vpo-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.vpo-reason {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+/* Voided VPOs collapsible section */
+.vpo-voided-section {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.vpo-voided-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  border-radius: var(--radius);
+}
+
+.vpo-voided-header:hover {
+  background: var(--bg-hover);
+}
+
+.vpo-voided-header .expand-icon {
+  transition: transform 0.2s ease;
+}
+
+.vpo-voided-section.expanded .expand-icon {
+  transform: rotate(90deg);
+}
+
+.vpo-voided-list {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.vpo-voided-section.expanded .vpo-voided-list {
+  display: flex;
+}
+
+/* VPO Form Modal */
+.vpo-form-container {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.vpo-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card-elevated);
+}
+
+.vpo-form-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.vpo-form-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.vpo-form-body .form-group {
+  margin-bottom: 1rem;
+}
+
+.vpo-form-body .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.vpo-form-hint {
+  background: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  color: var(--accent-blue);
+}
+
+.vpo-form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card-elevated);
 }
