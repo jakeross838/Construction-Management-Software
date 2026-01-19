@@ -944,6 +944,29 @@ router.post('/:id/void', asyncHandler(async (req, res) => {
     throw new AppError('VALIDATION_FAILED', 'This PO cannot be voided');
   }
 
+  // Reverse committed amounts from budget if PO was approved
+  if (po.approval_status === 'approved') {
+    const { data: lineItems } = await supabase
+      .from('v2_po_line_items')
+      .select('*, cost_code:v2_cost_codes(id, code)')
+      .eq('po_id', id);
+
+    if (lineItems && lineItems.length > 0) {
+      for (const item of lineItems) {
+        try {
+          await supabase.rpc('decrement_committed_amount', {
+            p_job_id: po.job_id,
+            p_cost_code_id: item.cost_code_id,
+            p_amount: item.amount
+          });
+        } catch (rpcErr) {
+          console.error('Failed to decrement committed for cost code', item.cost_code_id, ':', rpcErr.message);
+          // Log but don't fail the void operation
+        }
+      }
+    }
+  }
+
   const { data: updated, error } = await supabase
     .from('v2_purchase_orders')
     .update({
