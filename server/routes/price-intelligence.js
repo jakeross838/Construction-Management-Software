@@ -23,14 +23,17 @@ router.get('/stats', asyncHandler(async (req, res) => {
     { count: itemCount },
     { count: vendorCount },
     { count: priceCount },
-    { data: savings }
+    { data: savings },
+    { count: pendingReviewCount }
   ] = await Promise.all([
     supabase.from('v2_master_items').select('*', { count: 'exact', head: true }).eq('is_active', true),
     supabase.from('v2_vendors').select('*', { count: 'exact', head: true }),
     supabase.from('v2_price_history').select('*', { count: 'exact', head: true }),
     supabase.from('v2_savings_log')
       .select('savings_amount')
-      .gte('order_date', new Date(new Date().getFullYear(), 0, 1).toISOString())
+      .gte('order_date', new Date(new Date().getFullYear(), 0, 1).toISOString()),
+    supabase.from('v2_master_items').select('*', { count: 'exact', head: true })
+      .eq('created_by_ai', true).eq('review_status', 'pending')
   ]);
 
   // Calculate average confidence
@@ -50,7 +53,8 @@ router.get('/stats', asyncHandler(async (req, res) => {
     active_vendors: vendorCount || 0,
     price_points: priceCount || 0,
     total_savings_ytd: totalSavings,
-    avg_confidence: avgConfidence
+    avg_confidence: avgConfidence,
+    pending_review: pendingReviewCount || 0
   });
 }));
 
@@ -638,6 +642,312 @@ router.post('/quotes', asyncHandler(async (req, res) => {
   if (error) throw new AppError(error.message, 500);
 
   res.status(201).json(data);
+}));
+
+// ============================================================
+// NAMING CONVENTIONS
+// ============================================================
+
+/**
+ * GET /api/price-intelligence/naming-conventions
+ * Get all naming conventions (admin editable rules)
+ */
+router.get('/naming-conventions', asyncHandler(async (req, res) => {
+  const { category, active_only = 'true' } = req.query;
+
+  let query = supabase
+    .from('v2_naming_conventions')
+    .select('*')
+    .order('category')
+    .order('priority', { ascending: false });
+
+  if (active_only === 'true') {
+    query = query.eq('is_active', true);
+  }
+
+  if (category) {
+    query = query.eq('category', category);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new AppError(error.message, 500);
+
+  res.json(data);
+}));
+
+/**
+ * POST /api/price-intelligence/naming-conventions
+ * Create a new naming convention
+ */
+router.post('/naming-conventions', asyncHandler(async (req, res) => {
+  const { category, subcategory, name_pattern, example, trigger_keywords, default_unit, priority } = req.body;
+
+  if (!category || !name_pattern) {
+    throw new AppError('category and name_pattern are required', 400);
+  }
+
+  const { data, error } = await supabase
+    .from('v2_naming_conventions')
+    .insert({
+      category,
+      subcategory: subcategory || null,
+      name_pattern,
+      example: example || null,
+      trigger_keywords: trigger_keywords || [],
+      default_unit: default_unit || 'ea',
+      priority: priority || 0,
+      is_active: true
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError(error.message, 500);
+
+  // Clear cache
+  priceCapture.getNamingConventions(); // Will refresh on next call
+
+  res.status(201).json(data);
+}));
+
+/**
+ * PATCH /api/price-intelligence/naming-conventions/:id
+ * Update a naming convention
+ */
+router.patch('/naming-conventions/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+
+  updates.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('v2_naming_conventions')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError(error.message, 500);
+
+  res.json(data);
+}));
+
+/**
+ * DELETE /api/price-intelligence/naming-conventions/:id
+ * Delete (soft) a naming convention
+ */
+router.delete('/naming-conventions/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_naming_conventions')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError(error.message, 500);
+
+  res.json({ message: 'Naming convention deactivated', item: data });
+}));
+
+/**
+ * POST /api/price-intelligence/naming-conventions/preview
+ * Preview how a description would be named using conventions
+ */
+router.post('/naming-conventions/preview', asyncHandler(async (req, res) => {
+  const { description } = req.body;
+
+  if (!description) {
+    throw new AppError('description is required', 400);
+  }
+
+  const naming = await priceCapture.generateStandardName(description);
+  const convention = await priceCapture.findNamingConvention(description);
+  const attributes = priceCapture.parseDescriptionAttributes(description);
+
+  res.json({
+    original: description,
+    standardized_name: naming.name,
+    category: naming.category,
+    subcategory: naming.subcategory,
+    unit: naming.unit,
+    confidence: naming.confidence,
+    matched_convention: convention ? {
+      id: convention.id,
+      pattern: convention.name_pattern,
+      example: convention.example
+    } : null,
+    extracted_attributes: attributes
+  });
+}));
+
+// ============================================================
+// ITEM REVIEW QUEUE (AI-Created Items)
+// ============================================================
+
+/**
+ * GET /api/price-intelligence/review-queue
+ * Get items pending review (AI-created) with pagination
+ */
+router.get('/review-queue', asyncHandler(async (req, res) => {
+  const { status = 'pending', limit = 50, offset = 0 } = req.query;
+  const limitInt = Math.min(parseInt(limit) || 50, 200);
+  const offsetInt = parseInt(offset) || 0;
+
+  // Build query for data
+  let query = supabase
+    .from('v2_master_items')
+    .select('*, source_vendor:v2_vendors!source_vendor_id(name), source_invoice:v2_invoices!source_invoice_id(invoice_number)')
+    .eq('created_by_ai', true)
+    .order('created_at', { ascending: false })
+    .range(offsetInt, offsetInt + limitInt - 1);
+
+  // Build query for count
+  let countQuery = supabase
+    .from('v2_master_items')
+    .select('*', { count: 'exact', head: true })
+    .eq('created_by_ai', true);
+
+  if (status !== 'all') {
+    query = query.eq('review_status', status);
+    countQuery = countQuery.eq('review_status', status);
+  }
+
+  const [{ data, error }, { count }] = await Promise.all([query, countQuery]);
+  if (error) throw new AppError(error.message, 500);
+
+  res.json({
+    items: data || [],
+    pagination: {
+      total: count || 0,
+      limit: limitInt,
+      offset: offsetInt,
+      hasMore: (offsetInt + limitInt) < (count || 0)
+    }
+  });
+}));
+
+/**
+ * GET /api/price-intelligence/review-queue/stats
+ * Get review queue statistics
+ */
+router.get('/review-queue/stats', asyncHandler(async (req, res) => {
+  const [pending, approved, rejected] = await Promise.all([
+    supabase.from('v2_master_items').select('*', { count: 'exact', head: true })
+      .eq('created_by_ai', true).eq('review_status', 'pending'),
+    supabase.from('v2_master_items').select('*', { count: 'exact', head: true })
+      .eq('created_by_ai', true).eq('review_status', 'approved'),
+    supabase.from('v2_master_items').select('*', { count: 'exact', head: true })
+      .eq('created_by_ai', true).eq('review_status', 'rejected')
+  ]);
+
+  res.json({
+    pending: pending.count || 0,
+    approved: approved.count || 0,
+    rejected: rejected.count || 0,
+    total: (pending.count || 0) + (approved.count || 0) + (rejected.count || 0)
+  });
+}));
+
+/**
+ * POST /api/price-intelligence/review-queue/:id/approve
+ * Approve an AI-created item
+ */
+router.post('/review-queue/:id/approve', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { standard_name, category, subcategory, standard_unit } = req.body;
+
+  // Build update object with any corrections
+  const updates = {
+    review_status: 'approved',
+    updated_at: new Date().toISOString()
+  };
+
+  if (standard_name) updates.standard_name = standard_name;
+  if (category) updates.category = category;
+  if (subcategory !== undefined) updates.subcategory = subcategory;
+  if (standard_unit) updates.standard_unit = standard_unit;
+
+  const { data, error } = await supabase
+    .from('v2_master_items')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError(error.message, 500);
+
+  res.json({ message: 'Item approved', item: data });
+}));
+
+/**
+ * POST /api/price-intelligence/review-queue/:id/reject
+ * Reject an AI-created item (deactivates it)
+ */
+router.post('/review-queue/:id/reject', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { merge_into_id } = req.body;
+
+  // If merging into another item, update aliases to point there
+  if (merge_into_id) {
+    await supabase
+      .from('v2_vendor_item_aliases')
+      .update({ master_item_id: merge_into_id })
+      .eq('master_item_id', id);
+
+    // Also update any price history
+    await supabase
+      .from('v2_price_history')
+      .update({ master_item_id: merge_into_id })
+      .eq('master_item_id', id);
+  }
+
+  const { data, error } = await supabase
+    .from('v2_master_items')
+    .update({
+      review_status: 'rejected',
+      is_active: false,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError(error.message, 500);
+
+  res.json({
+    message: merge_into_id ? 'Item rejected and merged' : 'Item rejected',
+    item: data,
+    merged_into: merge_into_id || null
+  });
+}));
+
+/**
+ * POST /api/price-intelligence/review-queue/bulk-approve
+ * Approve multiple items at once
+ */
+router.post('/review-queue/bulk-approve', asyncHandler(async (req, res) => {
+  const { item_ids } = req.body;
+
+  if (!item_ids || !Array.isArray(item_ids) || item_ids.length === 0) {
+    throw new AppError('item_ids array is required', 400);
+  }
+
+  const { data, error } = await supabase
+    .from('v2_master_items')
+    .update({
+      review_status: 'approved',
+      updated_at: new Date().toISOString()
+    })
+    .in('id', item_ids)
+    .select();
+
+  if (error) throw new AppError(error.message, 500);
+
+  res.json({
+    message: `${data.length} items approved`,
+    items: data
+  });
 }));
 
 // ============================================================

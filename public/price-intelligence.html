@@ -469,6 +469,50 @@
       border-radius: 8px;
     }
 
+    /* Tab Badge */
+    .tab-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      margin-left: 6px;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      background: var(--accent-orange);
+      color: white;
+      border-radius: 9px;
+    }
+    .tab.active .tab-badge {
+      background: white;
+      color: var(--accent-blue);
+    }
+
+    /* Pagination */
+    .pagination-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .pagination-info {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+    .pagination-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .pagination-page {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
     /* Responsive: stack on mobile */
     @media (max-width: 768px) {
       .price-db-layout {
@@ -535,6 +579,12 @@
           <button class="tab" data-tab="order-optimizer" onclick="switchTab('order-optimizer')">Order Optimizer</button>
           <button class="tab" data-tab="savings-tracker" onclick="switchTab('savings-tracker')">Savings Tracker</button>
           <button class="tab" data-tab="spend-analytics" onclick="switchTab('spend-analytics')">Spend Analytics</button>
+          <button class="tab" data-tab="naming-conventions" onclick="switchTab('naming-conventions')">Naming Rules</button>
+          <button class="tab" data-tab="review-queue" onclick="switchTab('review-queue')">
+            Review Queue
+            <span id="reviewQueueBadge" class="tab-badge" style="display: none;">0</span>
+          </button>
+          <button class="tab" data-tab="labor-bids" onclick="switchTab('labor-bids')">Labor Bids</button>
         </div>
 
         <!-- Tab 1: Price Database -->
@@ -756,6 +806,222 @@ Example:
             <div class="loading">Analyzing spend data...</div>
           </div>
         </div>
+
+        <!-- Tab 5: Naming Conventions -->
+        <div id="tab-naming-conventions" class="tab-content" style="display: none;">
+          <div class="toolbar" style="margin-bottom: 1rem;">
+            <div class="toolbar-left">
+              <h3 style="margin: 0;">Naming Conventions</h3>
+              <p style="margin: 0.25rem 0 0 0; color: var(--text-secondary); font-size: 0.875rem;">
+                Define patterns for how materials should be named. AI uses these to auto-create standardized items.
+              </p>
+            </div>
+            <div class="toolbar-right">
+              <button class="btn btn-primary btn-sm" onclick="showAddConventionModal()">+ Add Convention</button>
+            </div>
+          </div>
+
+          <!-- Preview Tool -->
+          <div class="spend-chart-card" style="margin-bottom: 1.5rem;">
+            <h4>Test Naming Pattern</h4>
+            <div style="display: flex; gap: 1rem; align-items: flex-end;">
+              <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label>Vendor Description</label>
+                <input type="text" id="testDescription" class="form-control" placeholder="e.g., 2x4x8 SPF Stud KD Home Depot">
+              </div>
+              <button class="btn btn-secondary" onclick="testNamingConvention()">Test</button>
+            </div>
+            <div id="namingTestResult" style="display: none; margin-top: 1rem; padding: 1rem; background: var(--bg-card-elevated); border-radius: 6px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                  <div class="form-label" style="margin-bottom: 0.25rem;">Standardized Name</div>
+                  <div id="testResultName" style="font-weight: 600; font-size: 1.125rem; color: var(--accent-green);"></div>
+                </div>
+                <div>
+                  <div class="form-label" style="margin-bottom: 0.25rem;">Category</div>
+                  <div id="testResultCategory"></div>
+                </div>
+                <div>
+                  <div class="form-label" style="margin-bottom: 0.25rem;">Matched Pattern</div>
+                  <div id="testResultPattern" style="font-family: monospace; font-size: 0.875rem;"></div>
+                </div>
+                <div>
+                  <div class="form-label" style="margin-bottom: 0.25rem;">Extracted Attributes</div>
+                  <div id="testResultAttributes" style="font-family: monospace; font-size: 0.75rem;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Conventions Table -->
+          <div class="data-table-container">
+            <table class="data-table data-table-hover" id="conventionsTable">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Subcategory</th>
+                  <th>Name Pattern</th>
+                  <th>Example</th>
+                  <th>Trigger Keywords</th>
+                  <th>Unit</th>
+                  <th>Priority</th>
+                  <th style="width: 100px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="8" class="loading">Loading naming conventions...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 6: Review Queue -->
+        <div id="tab-review-queue" class="tab-content" style="display: none;">
+          <div class="toolbar" style="margin-bottom: 1rem;">
+            <div class="toolbar-left">
+              <h3 style="margin: 0;">AI-Created Items Review</h3>
+              <p style="margin: 0.25rem 0 0 0; color: var(--text-secondary); font-size: 0.875rem;">
+                Review and approve items auto-created by AI from invoice line items.
+              </p>
+            </div>
+            <div class="toolbar-right">
+              <div class="view-toggle">
+                <button class="active" data-status="pending" onclick="filterReviewQueue('pending')">Pending</button>
+                <button data-status="approved" onclick="filterReviewQueue('approved')">Approved</button>
+                <button data-status="all" onclick="filterReviewQueue('all')">All</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="bulkApproveSelected()" id="bulkApproveBtn" disabled>Approve Selected</button>
+            </div>
+          </div>
+
+          <!-- Review Stats -->
+          <div class="pi-stats-bar" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="pi-stat-card">
+              <div class="pi-stat-label">Pending Review</div>
+              <div class="pi-stat-value" id="reviewPending" style="color: var(--accent-orange);">0</div>
+            </div>
+            <div class="pi-stat-card">
+              <div class="pi-stat-label">Approved</div>
+              <div class="pi-stat-value" id="reviewApproved" style="color: var(--accent-green);">0</div>
+            </div>
+            <div class="pi-stat-card">
+              <div class="pi-stat-label">Rejected</div>
+              <div class="pi-stat-value" id="reviewRejected" style="color: var(--text-secondary);">0</div>
+            </div>
+          </div>
+
+          <!-- Review Queue Table -->
+          <div class="data-table-container">
+            <table class="data-table data-table-hover" id="reviewQueueTable">
+              <thead>
+                <tr>
+                  <th style="width: 40px;"><input type="checkbox" id="selectAllReview" onchange="toggleSelectAllReview()"></th>
+                  <th>Standard Name</th>
+                  <th>Original Description</th>
+                  <th>Category</th>
+                  <th>Unit</th>
+                  <th>Source Vendor</th>
+                  <th>Created</th>
+                  <th style="width: 150px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="8" class="loading">Loading review queue...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div id="reviewQueuePagination" class="pagination-container" style="margin-top: 1rem;"></div>
+        </div>
+
+        <!-- Tab 7: Labor Bids -->
+        <div id="tab-labor-bids" class="tab-content" style="display: none;">
+          <!-- Labor Bids Stats -->
+          <div class="pi-stats-bar">
+            <div class="pi-stat-card">
+              <div class="pi-stat-label">Total Bids</div>
+              <div class="pi-stat-value" id="laborBidCount">0</div>
+            </div>
+            <div class="pi-stat-card">
+              <div class="pi-stat-label">Active Reviews</div>
+              <div class="pi-stat-value" id="laborActiveReviews">0</div>
+            </div>
+            <div class="pi-stat-card">
+              <div class="pi-stat-label">Trade Categories</div>
+              <div class="pi-stat-value" id="laborCategories">18</div>
+            </div>
+            <div class="pi-stat-card">
+              <div class="pi-stat-label">Tracked Subs</div>
+              <div class="pi-stat-value" id="laborTrackedSubs">0</div>
+            </div>
+          </div>
+
+          <div class="price-db-layout">
+            <!-- Trade Categories Sidebar -->
+            <div class="category-sidebar" id="laborCategorySidebar">
+              <div class="category-sidebar-header">
+                <span>Trades</span>
+              </div>
+              <div class="category-list" id="laborCategoryList">
+                <div class="category-item active" data-category="" onclick="selectLaborCategory('')">
+                  <span class="category-name">All Trades</span>
+                  <span class="category-count" id="laborAllBidsCount">-</span>
+                </div>
+                <!-- Categories populated by JS -->
+              </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="price-db-main">
+              <div class="toolbar">
+                <div class="toolbar-left">
+                  <h3 class="category-title" id="laborCategoryTitle">All Labor Bids</h3>
+                  <select id="laborJobFilter" class="form-control form-control-sm" style="width: 200px;" onchange="filterLaborBids()">
+                    <option value="">All Jobs</option>
+                  </select>
+                  <select id="laborStatusFilter" class="form-control form-control-sm" style="width: 140px;" onchange="filterLaborBids()">
+                    <option value="">All Status</option>
+                    <option value="received">Received</option>
+                    <option value="reviewing">Reviewing</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="expired">Expired</option>
+                  </select>
+                </div>
+                <div class="toolbar-right">
+                  <button class="btn btn-secondary btn-sm" onclick="showSpecsModal()">View Specs</button>
+                  <button class="btn btn-primary btn-sm" onclick="showAddBidModal()">+ Add Bid</button>
+                </div>
+              </div>
+
+              <!-- Bids List -->
+              <div class="data-table-container" id="laborBidsContainer">
+                <table class="data-table data-table-hover" id="laborBidsTable">
+                  <thead>
+                    <tr>
+                      <th>Trade</th>
+                      <th>Job</th>
+                      <th>Vendor</th>
+                      <th style="text-align: right;">Amount</th>
+                      <th style="text-align: right;">$/SF</th>
+                      <th>Specs</th>
+                      <th>Status</th>
+                      <th>Bid Date</th>
+                      <th style="width: 100px;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="9" class="loading">Loading labor bids...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Pagination -->
+              <div id="laborBidsPagination" class="pagination-container" style="margin-top: 1rem;"></div>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   </div>
@@ -910,6 +1176,92 @@ Example:
     </div>
   </div>
 
+  <!-- Add/Edit Naming Convention Modal -->
+  <div id="conventionModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2 id="conventionModalTitle">Add Naming Convention</h2>
+        <button class="close-btn" onclick="closeModal('conventionModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="conventionId">
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Category *</label>
+            <select id="conventionCategory" class="form-control" required>
+              <option value="">Select category...</option>
+              <option value="Lumber">Lumber</option>
+              <option value="Plywood">Plywood</option>
+              <option value="Siding">Siding</option>
+              <option value="Trim">Trim</option>
+              <option value="Roofing">Roofing</option>
+              <option value="Windows">Windows</option>
+              <option value="Doors">Doors</option>
+              <option value="Hardware">Hardware</option>
+              <option value="Decking">Decking</option>
+              <option value="Drywall">Drywall</option>
+              <option value="Insulation">Insulation</option>
+              <option value="Flooring">Flooring</option>
+              <option value="Concrete">Concrete</option>
+              <option value="Electrical">Electrical</option>
+              <option value="Plumbing">Plumbing</option>
+              <option value="HVAC">HVAC</option>
+              <option value="Paint">Paint</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Subcategory</label>
+            <input type="text" id="conventionSubcategory" class="form-control" placeholder="e.g., Studs, Treated">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Name Pattern *</label>
+          <input type="text" id="conventionPattern" class="form-control" placeholder="{width}x{height}x{length} {species} Stud">
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+            Placeholders: {width}, {height}, {length}, {thickness}, {species}, {grade}, {brand}, {rvalue}, {facing}, {type}, {style}, {weight}, {size}
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Example</label>
+          <input type="text" id="conventionExample" class="form-control" placeholder="2x4x8 SPF Stud">
+        </div>
+        <div class="form-group">
+          <label>Trigger Keywords (comma-separated) *</label>
+          <input type="text" id="conventionKeywords" class="form-control" placeholder="stud, studs">
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+            If any keyword appears in vendor description, this pattern is used
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Default Unit</label>
+            <select id="conventionUnit" class="form-control">
+              <option value="ea">Each</option>
+              <option value="lf">Linear Foot</option>
+              <option value="sf">Square Foot</option>
+              <option value="sheet">Sheet</option>
+              <option value="bundle">Bundle</option>
+              <option value="roll">Roll</option>
+              <option value="bag">Bag</option>
+              <option value="box">Box</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Priority</label>
+            <input type="number" id="conventionPriority" class="form-control" value="50" min="0" max="100">
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+              Higher priority = checked first (0-100)
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('conventionModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveConvention()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Price Modal -->
   <div id="addPriceModal" class="modal">
     <div class="modal-content modal-md">
@@ -967,6 +1319,232 @@ Example:
     </div>
   </div>
 
+  <!-- Add Labor Bid Modal -->
+  <div id="addBidModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 800px;">
+      <div class="modal-header">
+        <h2 id="addBidModalTitle">Add Labor Bid</h2>
+        <button class="close-btn" onclick="closeModal('addBidModal')">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <input type="hidden" id="bidId">
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Job *</label>
+            <select id="bidJob" class="form-control" required onchange="loadJobMetrics()">
+              <option value="">Select job...</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Trade Category *</label>
+            <select id="bidCategory" class="form-control" required onchange="loadCategorySpecs()">
+              <option value="">Select trade...</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Subcontractor *</label>
+            <select id="bidVendor" class="form-control" required>
+              <option value="">Select vendor...</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Bid Number</label>
+            <input type="text" id="bidNumber" class="form-control" placeholder="Vendor's quote #">
+          </div>
+        </div>
+
+        <h4 style="margin: 1.5rem 0 1rem 0; font-size: 0.875rem; color: var(--text-secondary);">Pricing</h4>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Base Amount *</label>
+            <input type="number" id="bidBaseAmount" class="form-control" step="0.01" required placeholder="0.00">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Alternates Amount</label>
+            <input type="number" id="bidAlternates" class="form-control" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Job SF (auto)</label>
+            <input type="number" id="bidJobSF" class="form-control" readonly>
+          </div>
+        </div>
+
+        <h4 style="margin: 1.5rem 0 1rem 0; font-size: 0.875rem; color: var(--text-secondary);">Specifications</h4>
+        <div id="bidSpecsContainer" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+          <p style="color: var(--text-secondary); grid-column: span 2;">Select a trade category to see available specifications</p>
+        </div>
+
+        <h4 style="margin: 1.5rem 0 1rem 0; font-size: 0.875rem; color: var(--text-secondary);">Scope & Terms</h4>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Bid Date</label>
+            <input type="date" id="bidDate" class="form-control">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Valid Until</label>
+            <input type="date" id="bidValidUntil" class="form-control">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Lead Time (days)</label>
+            <input type="number" id="bidLeadTime" class="form-control" placeholder="Days until start">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Duration (days)</label>
+            <input type="number" id="bidDuration" class="form-control" placeholder="Expected duration">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Scope Notes</label>
+          <textarea id="bidScopeNotes" class="form-control" rows="3" placeholder="What's included/excluded..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Payment Terms</label>
+            <input type="text" id="bidPaymentTerms" class="form-control" placeholder="e.g., 50% start, 50% complete">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Warranty</label>
+            <input type="text" id="bidWarranty" class="form-control" placeholder="e.g., 1 year workmanship">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('addBidModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveLaborBid()">Save Bid</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bid Detail Modal -->
+  <div id="bidDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 1000px;">
+      <div class="modal-header">
+        <div>
+          <h2 id="bidDetailTitle">Bid Details</h2>
+          <p id="bidDetailSubtitle" class="modal-subtitle" style="margin: 0; color: var(--text-secondary);"></p>
+        </div>
+        <button class="close-btn" onclick="closeModal('bidDetailModal')">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <!-- Bid Summary -->
+        <div class="pi-stats-bar" id="bidDetailStats" style="grid-template-columns: repeat(5, 1fr);">
+          <!-- Filled by JS -->
+        </div>
+
+        <div class="tabs" style="margin: 1rem 0;">
+          <button class="tab active" data-tab="bid-overview" onclick="switchBidTab('bid-overview')">Overview</button>
+          <button class="tab" data-tab="bid-comparison" onclick="switchBidTab('bid-comparison')">Compare Bids</button>
+          <button class="tab" data-tab="bid-vendor" onclick="switchBidTab('bid-vendor')">Vendor History</button>
+        </div>
+
+        <div id="tab-bid-overview" class="tab-content active">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div>
+              <h4 style="margin: 0 0 1rem 0; font-size: 0.875rem; font-weight: 600;">Specifications</h4>
+              <div id="bidDetailSpecs" class="spend-chart-card" style="padding: 1rem;">
+                <p style="color: var(--text-secondary);">No specifications selected</p>
+              </div>
+            </div>
+            <div>
+              <h4 style="margin: 0 0 1rem 0; font-size: 0.875rem; font-weight: 600;">Scope</h4>
+              <div id="bidDetailScope" class="spend-chart-card" style="padding: 1rem;">
+                <p style="color: var(--text-secondary);">No scope notes</p>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top: 1.5rem;">
+            <h4 style="margin: 0 0 1rem 0; font-size: 0.875rem; font-weight: 600;">Terms</h4>
+            <div id="bidDetailTerms" class="spend-chart-card" style="padding: 1rem;">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-bid-comparison" class="tab-content" style="display: none;">
+          <h4 style="margin: 0 0 1rem 0;">Other Bids for this Trade</h4>
+          <div class="data-table-container">
+            <table class="data-table data-table-hover" id="bidComparisonTable">
+              <thead>
+                <tr>
+                  <th>Vendor</th>
+                  <th style="text-align: right;">Amount</th>
+                  <th style="text-align: right;">$/SF</th>
+                  <th style="text-align: right;">Normalized $/SF</th>
+                  <th>Status</th>
+                  <th>Vendor Quality</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="6" class="loading">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="tab-bid-vendor" class="tab-content" style="display: none;">
+          <h4 style="margin: 0 0 1rem 0;">Vendor Performance</h4>
+          <div id="vendorPerformance" class="pi-stats-bar" style="grid-template-columns: repeat(4, 1fr);">
+            <!-- Filled by JS -->
+          </div>
+          <h4 style="margin: 1.5rem 0 1rem 0;">Previous Jobs</h4>
+          <div class="data-table-container">
+            <table class="data-table data-table-hover" id="vendorHistoryTable">
+              <thead>
+                <tr>
+                  <th>Job</th>
+                  <th>Trade</th>
+                  <th style="text-align: right;">Amount</th>
+                  <th>On Budget</th>
+                  <th>On Schedule</th>
+                  <th>Quality</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="6">No history available</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('bidDetailModal')">Close</button>
+        <button class="btn btn-danger" onclick="rejectCurrentBid()" id="rejectBidBtn">Reject</button>
+        <button class="btn btn-success" onclick="acceptCurrentBid()" id="acceptBidBtn">Accept Bid</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Specifications Modal -->
+  <div id="specsModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 900px;">
+      <div class="modal-header">
+        <h2>Labor Specifications by Trade</h2>
+        <button class="close-btn" onclick="closeModal('specsModal')">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+          Specifications affect pricing. For example, Level 5 drywall finish costs more than Level 4.
+          When comparing bids, normalized pricing adjusts for these spec differences.
+        </p>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <select id="specsTradeFilter" class="form-control" style="width: 250px;" onchange="loadSpecsForTrade()">
+            <option value="">Select trade...</option>
+          </select>
+        </div>
+        <div id="specsContent">
+          <p style="color: var(--text-secondary);">Select a trade to view specifications</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('specsModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
@@ -974,6 +1552,6 @@ Example:
   <script src="js/toasts.js"></script>
   <script src="js/modal-helpers.js?v=20260118fix"></script>
   <script src="js/nav-sidebar.js?v=20260118fix"></script>
-  <script src="js/price-intelligence.js?v=20260118fix"></script>
+  <script src="js/price-intelligence.js?v=20260119-laborbids"></script>
 </body>
 </html>

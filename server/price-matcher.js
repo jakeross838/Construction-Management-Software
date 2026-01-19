@@ -175,6 +175,7 @@ function calculateMatchScore(description1, description2) {
 
 /**
  * Find matching master item for a vendor description
+ * Uses PostgreSQL full-text search for better performance at scale
  */
 async function findMasterItem(vendorDescription, vendorId = null) {
   const normalized = normalizeText(vendorDescription);
@@ -203,16 +204,18 @@ async function findMasterItem(vendorDescription, vendorId = null) {
     }
   }
 
-  // 2. Search all aliases for similar match
-  const { data: aliases } = await supabase
+  // 2. Use full-text search on aliases (fast, indexed)
+  const { data: aliasMatches } = await supabase
     .from('v2_vendor_item_aliases')
     .select('*, master_item:v2_master_items(*)')
-    .limit(500);
+    .textSearch('search_vector', normalized.split(' ').join(' & '), { type: 'websearch' })
+    .limit(10);
 
+  // Find best alias match by score
   let bestAliasMatch = null;
   let bestAliasScore = 0;
 
-  for (const alias of (aliases || [])) {
+  for (const alias of (aliasMatches || [])) {
     const score = calculateMatchScore(vendorDescription, alias.vendor_description);
     if (score > bestAliasScore && score > 0.5) {
       bestAliasScore = score;
@@ -224,38 +227,67 @@ async function findMasterItem(vendorDescription, vendorId = null) {
     return {
       masterItem: bestAliasMatch.master_item,
       confidence: bestAliasScore,
-      matchMethod: 'alias_similarity'
+      matchMethod: 'alias_fulltext'
     };
   }
 
-  // 3. Search master items by keywords
-  const keywords = extractKeywords(vendorDescription);
+  // 3. Use full-text search on master items (via database function)
   const category = detectCategory(vendorDescription);
+  const searchTerms = extractKeywords(vendorDescription).join(' ');
 
+  const { data: ftResults } = await supabase
+    .rpc('search_master_items', {
+      p_query: searchTerms,
+      p_category: category !== 'General' ? category : null,
+      p_limit: 20
+    });
+
+  if (ftResults && ftResults.length > 0) {
+    // Find best match by combining FTS rank with Jaccard similarity
+    let bestMatch = null;
+    let bestScore = 0;
+
+    for (const item of ftResults) {
+      const nameScore = calculateMatchScore(vendorDescription, item.standard_name);
+      // Combine Jaccard score with FTS rank (rank is 0-1)
+      const combinedScore = (nameScore * 0.6) + (Math.min(item.rank, 1) * 0.4);
+
+      if (combinedScore > bestScore && combinedScore > 0.3) {
+        bestScore = combinedScore;
+        bestMatch = item;
+      }
+    }
+
+    if (bestMatch) {
+      return {
+        masterItem: bestMatch,
+        confidence: Math.min(bestScore, 1.0),
+        matchMethod: 'fulltext_search'
+      };
+    }
+  }
+
+  // 4. Fallback: Basic keyword search (for edge cases)
+  const keywords = extractKeywords(vendorDescription);
   let query = supabase
     .from('v2_master_items')
     .select('*')
     .eq('is_active', true);
 
-  // Filter by category if detected
   if (category !== 'General') {
     query = query.eq('category', category);
   }
 
-  const { data: masterItems } = await query.limit(200);
+  const { data: masterItems } = await query.limit(50);
 
   let bestMatch = null;
   let bestScore = 0;
 
   for (const item of (masterItems || [])) {
-    // Score based on standard_name match
     const nameScore = calculateMatchScore(vendorDescription, item.standard_name);
-
-    // Bonus for keyword overlap
     const itemKeywords = new Set(item.keywords || []);
     const keywordOverlap = keywords.filter(k => itemKeywords.has(k)).length;
     const keywordBonus = keywordOverlap / Math.max(keywords.length, 1) * 0.2;
-
     const totalScore = nameScore + keywordBonus;
 
     if (totalScore > bestScore && totalScore > 0.3) {
@@ -272,7 +304,7 @@ async function findMasterItem(vendorDescription, vendorId = null) {
     };
   }
 
-  // 4. No match found
+  // 5. No match found
   return {
     masterItem: null,
     confidence: 0,
