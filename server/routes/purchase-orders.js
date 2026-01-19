@@ -1117,7 +1117,7 @@ router.post('/:poId/change-orders/:coId/approve', asyncHandler(async (req, res) 
   // Update PO total and change_order_total
   const { data: po } = await supabase
     .from('v2_purchase_orders')
-    .select('total_amount, change_order_total')
+    .select('total_amount, change_order_total, job_id')
     .eq('id', poId)
     .single();
 
@@ -1131,6 +1131,29 @@ router.post('/:poId/change-orders/:coId/approve', asyncHandler(async (req, res) 
       change_order_total: newCOTotal
     })
     .eq('id', poId);
+
+  // Update budget committed amounts for CO line items
+  const { data: coLineItems } = await supabase
+    .from('v2_change_order_line_items')
+    .select('cost_code_id, amount')
+    .eq('change_order_id', coId);
+
+  if (coLineItems && coLineItems.length > 0 && po?.job_id) {
+    for (const item of coLineItems) {
+      if (item.cost_code_id && item.amount) {
+        try {
+          await supabase.rpc('increment_committed_amount', {
+            p_job_id: po.job_id,
+            p_cost_code_id: item.cost_code_id,
+            p_amount: item.amount
+          });
+        } catch (rpcErr) {
+          console.error('Failed to increment committed for CO line item cost code', item.cost_code_id, ':', rpcErr.message);
+          // Log but don't fail the CO approval
+        }
+      }
+    }
+  }
 
   // Log activity
   await logPOActivity(poId, 'change_order_approved', approved_by || 'Jake Ross', {
