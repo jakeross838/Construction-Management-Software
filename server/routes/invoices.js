@@ -1136,7 +1136,22 @@ router.post('/:id/allocate', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[ALLOCATE] Error:', err.message);
+
+    // Attempt to restore old allocations on failure
+    if (rollbackData?.oldAllocations?.length > 0) {
+      try {
+        // Clear any partial new allocations
+        await supabase.from('v2_invoice_allocations').delete().eq('invoice_id', invoiceId);
+        // Restore old allocations
+        await supabase.from('v2_invoice_allocations').insert(rollbackData.oldAllocations);
+        console.log('[ALLOCATE] Rolled back allocations for invoice:', invoiceId);
+      } catch (rollbackErr) {
+        console.error('[ALLOCATE] Rollback failed:', rollbackErr.message);
+      }
+    }
+
+    res.status(500).json({ error: err.message, rollback_attempted: !!rollbackData });
   }
 });
 
