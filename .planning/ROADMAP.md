@@ -17,13 +17,14 @@
 
 ## Phase 47: Variance Detection Polish
 
-**Status:** Not Started
+**Status:** Planned
 **Goal:** Finalize the variance detection service and complete VPO UI integration.
+**Plans:** 2 plans
 
 **Requirements:**
 - VAR-01: Polish variance detection service - test thoroughly, refine line item matching
 - VAR-02: Add UI to create CO/VPO directly from variance warnings
-- VAR-03: Complete VPO UI integration in PO modal
+- VAR-03: Complete VPO UI integration in PO modal (ALREADY COMPLETE)
 
 **Success Criteria:**
 1. Variance detection correctly identifies unmatched invoice line items
@@ -36,6 +37,12 @@
 - `public/js/modals.js` (invoice modal variance banner)
 - `public/js/po-modals.js` (VPO section)
 - `database/migration-065-vpo.sql`
+
+Plans:
+- [ ] 47-01-PLAN.md - Add action buttons to variance banner for VPO/CO creation (VAR-02)
+- [ ] 47-02-PLAN.md - Add variance detector tests and polish matching (VAR-01)
+
+Note: VAR-03 (VPO UI in PO modal) is already complete per research findings.
 
 ---
 
