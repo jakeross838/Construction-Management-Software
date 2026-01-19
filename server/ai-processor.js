@@ -46,8 +46,8 @@ const CONFIDENCE_THRESHOLDS = {
 
   // Legacy aliases for backward compatibility (used by findMatchingJob)
   HIGH: 0.90,    // Auto-assign, no review
-  MEDIUM: 0.60,  // Auto-assign with review flag
-  LOW: 0.60      // Don't auto-assign, show picker
+  MEDIUM: 0.70,  // Auto-assign with review flag (raised from 0.60)
+  LOW: 0.70      // AI-INT-01: Don't auto-assign, show picker (raised from 0.60)
 };
 
 // ============================================================
@@ -681,6 +681,11 @@ async function scanTextForKnownJobs(rawText, filename = '') {
   const normalizedFilename = (filename || '').toLowerCase().replace(/[_-]/g, ' ');
   const combinedText = `${normalizedFilename} ${normalizedText}`;
 
+  // AI-INT-02: Extract specific regions from invoice text for targeted searching
+  const shipToSection = extractSection(normalizedText, ['ship to', 'deliver to', 'job site', 'project site'], 150);
+  const projectSection = extractSection(normalizedText, ['project:', 'project name', 'job:', 'job name', 'job #'], 100);
+  const customerSection = extractSection(normalizedText, ['customer:', 'bill to:', 'sold to:', 'client:'], 100);
+
   let bestMatch = null;
   let bestConfidence = 0;
   let matchedText = '';
@@ -736,15 +741,32 @@ async function scanTextForKnownJobs(rawText, filename = '') {
       if (combinedText.includes(pattern)) {
         // Boost confidence if found in filename (more intentional)
         let adjustedConfidence = confidence;
+        let sectionMatch = '';
+
         if (normalizedFilename.includes(pattern)) {
           adjustedConfidence = Math.min(confidence + 0.05, 0.99);
+          sectionMatch = '_filename';
+        }
+
+        // AI-INT-02: Boost confidence if found in ship-to or project section
+        if (shipToSection.includes(pattern)) {
+          adjustedConfidence = Math.min(adjustedConfidence + 0.08, 0.99);
+          sectionMatch += '_ship_to';
+        }
+        if (projectSection.includes(pattern)) {
+          adjustedConfidence = Math.min(adjustedConfidence + 0.07, 0.99);
+          sectionMatch += '_project';
+        }
+        if (customerSection.includes(pattern)) {
+          adjustedConfidence = Math.min(adjustedConfidence + 0.05, 0.99);
+          sectionMatch += '_customer';
         }
 
         if (adjustedConfidence > bestConfidence) {
           bestConfidence = adjustedConfidence;
           bestMatch = job;
           matchedText = pattern;
-          matchStrategy = strategy;
+          matchStrategy = strategy + sectionMatch;
         }
       }
 
@@ -762,7 +784,8 @@ async function scanTextForKnownJobs(rawText, filename = '') {
     }
   }
 
-  if (bestMatch && bestConfidence > 0.5) {
+  // AI-INT-01: Raised threshold from 0.5 to 0.70 to reduce false positives
+  if (bestMatch && bestConfidence >= 0.70) {
     return {
       job: {
         id: bestMatch.id,
@@ -790,6 +813,25 @@ async function scanTextForKnownJobs(rawText, filename = '') {
  */
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * AI-INT-02: Extract text section following a header keyword
+ * @param {string} text - Full text to search
+ * @param {Array} headers - Array of header keywords to look for
+ * @param {number} chars - Number of characters to extract after header
+ * @returns {string} Extracted section text
+ */
+function extractSection(text, headers, chars = 100) {
+  for (const header of headers) {
+    const idx = text.indexOf(header);
+    if (idx !== -1) {
+      const start = idx + header.length;
+      const end = Math.min(start + chars, text.length);
+      return text.slice(start, end).trim();
+    }
+  }
+  return '';
 }
 
 // ============================================================
@@ -1015,9 +1057,10 @@ async function suggestCostCodes(tradeType, amount) {
 /**
  * Suggest cost code for a line item description
  * Uses keyword matching against DESCRIPTION_COST_CODE_MAP (loaded from database)
+ * Enhanced with fuzzy matching for typos/variations (CCL-01)
  * @param {string} description - Line item description
- * @param {string} tradeType - Vendor trade type (fallback)
- * @returns {Promise<Object|null>} Cost code suggestion { id, code, name, confidence }
+ * @param {string} tradeType - Vendor trade type (for combined scoring)
+ * @returns {Promise<Object|null>} Cost code suggestion { id, code, name, confidence, matchType }
  */
 async function suggestCostCodeForDescription(description, tradeType = null) {
   if (!description) return null;
@@ -1027,30 +1070,61 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
 
   const desc = description.toLowerCase();
   let bestMatch = null;
-  let bestMatchLength = 0;
+  let bestScore = 0;
   let confidence = 0.6;
+  let matchType = 'none';
 
-  // Find longest matching keyword (more specific = better match)
+  // Check keyword mappings with exact and fuzzy matching
   for (const [keyword, code] of Object.entries(DESCRIPTION_COST_CODE_MAP)) {
-    if (desc.includes(keyword) && keyword.length > bestMatchLength) {
-      bestMatch = code;
-      bestMatchLength = keyword.length;
+    // Exact include match (preferred)
+    if (desc.includes(keyword)) {
+      const score = keyword.length * 1.0;
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = code;
+        confidence = keyword.length > 10 ? 0.9 : 0.75;
+        matchType = 'exact';
+      }
+    } else {
+      // CCL-01: Fuzzy match for typos/variations
+      // Compare keyword against words in description
+      const descWords = desc.split(/\s+/);
+      for (const word of descWords) {
+        if (word.length >= 4) { // Only compare meaningful words
+          const sim = similarityRatio(word, keyword);
+          if (sim > 0.85) {
+            const score = keyword.length * sim;
+            if (score > bestScore * 0.9) { // Allow fuzzy to compete
+              bestScore = score;
+              bestMatch = code;
+              confidence = 0.7 * sim;
+              matchType = 'fuzzy';
+            }
+            break; // Found fuzzy match for this keyword
+          }
+        }
+      }
     }
   }
 
-  // PRIORITY: If vendor trade is known AND either:
-  // 1. No description match found, OR
-  // 2. Description match is too short/generic (less than 6 chars keyword)
-  // Then use trade-based cost codes instead
+  // CCL-01: Integrate vendor trade type with description matching
   if (tradeType && TRADE_COST_CODE_MAP[tradeType]) {
-    const tradeCode = TRADE_COST_CODE_MAP[tradeType][0];
+    const tradeCodes = TRADE_COST_CODE_MAP[tradeType];
+    const tradeCode = Array.isArray(tradeCodes) ? tradeCodes[0] : tradeCodes;
 
-    // Use trade-based code if no match or weak match
-    if (!bestMatch || bestMatchLength < 6) {
+    if (!bestMatch || bestScore < 6) {
+      // No strong description match - use trade
       bestMatch = tradeCode;
-      confidence = 0.85; // High confidence when using known vendor trade
+      confidence = 0.85;
+      matchType = 'trade';
       console.log(`[AI] Using vendor trade "${tradeType}" → ${tradeCode} (description match was weak: "${description}")`);
+    } else if (bestMatch === tradeCode) {
+      // Trade and description agree - boost confidence
+      confidence = Math.min(confidence + 0.1, 0.95);
+      matchType += '+trade';
+      console.log(`[AI] Trade/description agreement: "${tradeType}" + "${description}" → ${tradeCode} (boosted confidence: ${confidence.toFixed(2)})`);
     }
+    // If trade and description disagree, keep description (more specific)
   }
 
   if (!bestMatch) return null;
@@ -1071,7 +1145,8 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
     id: costCode.id,
     code: costCode.code,
     name: costCode.name,
-    confidence: bestMatchLength > 10 ? 0.9 : bestMatchLength > 5 ? 0.75 : confidence
+    confidence,
+    matchType // CCL-01: Include match type for debugging
   };
 }
 
