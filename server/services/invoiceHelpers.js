@@ -475,6 +475,46 @@ async function cleanupInvoiceAllocations(invoiceId) {
 }
 
 /**
+ * Recalculate billed_amount for budget lines based on actual draw allocations.
+ * Call this when allocations change for an invoice that's in a draw.
+ *
+ * @param {string} jobId - The job ID
+ * @param {Array} costCodeIds - Array of cost code IDs to recalculate
+ */
+async function recalculateBilledAmounts(jobId, costCodeIds) {
+  if (!jobId || !costCodeIds || costCodeIds.length === 0) return;
+
+  for (const costCodeId of costCodeIds) {
+    // Get sum of all draw allocations for this job/cost_code
+    const { data: drawAllocations } = await supabase
+      .from('v2_draw_allocations')
+      .select(`
+        amount,
+        draw:v2_draws!inner(job_id)
+      `)
+      .eq('cost_code_id', costCodeId)
+      .eq('draw.job_id', jobId);
+
+    const totalBilled = (drawAllocations || []).reduce(
+      (sum, a) => sum + parseFloat(a.amount || 0), 0
+    );
+
+    // Update budget line
+    const { error } = await supabase
+      .from('v2_budget_lines')
+      .update({ billed_amount: totalBilled })
+      .eq('job_id', jobId)
+      .eq('cost_code_id', costCodeId);
+
+    if (error) {
+      console.warn(`[RECALC] Failed to update billed_amount for job=${jobId} cost_code=${costCodeId}:`, error.message);
+    } else {
+      console.log(`[RECALC] Updated billed_amount for job=${jobId} cost_code=${costCodeId}: $${totalBilled.toFixed(2)}`);
+    }
+  }
+}
+
+/**
  * Get or create a draft draw for a job
  */
 async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
@@ -532,5 +572,6 @@ module.exports = {
   restampInvoice,
   checkSplitReconciliation,
   getOrCreateDraftDraw,
-  cleanupInvoiceAllocations
+  cleanupInvoiceAllocations,
+  recalculateBilledAmounts
 };
