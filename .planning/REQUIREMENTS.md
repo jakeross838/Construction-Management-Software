@@ -67,10 +67,10 @@ Deferred to future release.
 | BUD-INT-02 | Phase 43 | Complete |
 | BUD-INT-03 | Phase 43 | Complete |
 | BUD-INT-04 | Phase 43 | Complete |
-| INV-INT-01 | Phase 44 | Pending |
-| INV-INT-02 | Phase 44 | Pending |
-| INV-INT-03 | Phase 44 | Pending |
-| INV-INT-04 | Phase 44 | Pending |
+| INV-INT-01 | Phase 44 | Complete |
+| INV-INT-02 | Phase 44 | Complete |
+| INV-INT-03 | Phase 44 | Complete |
+| INV-INT-04 | Phase 44 | Complete |
 | DRW-INT-01 | Phase 45 | Pending |
 | DRW-INT-02 | Phase 45 | Pending |
 | DRW-INT-03 | Phase 45 | Pending |
@@ -90,4 +90,4 @@ Deferred to future release.
 
 ---
 *Requirements defined: 2026-01-19*
-*Last updated: 2026-01-19 after Phase 43 complete*
+*Last updated: 2026-01-19 after Phase 44 complete*

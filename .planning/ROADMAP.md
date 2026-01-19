@@ -45,8 +45,9 @@ Plans:
 
 ---
 
-## Phase 44: Invoice Pipeline
+## Phase 44: Invoice Pipeline ✓
 
+**Status:** Complete (2026-01-19)
 **Goal:** Make invoice approval and allocation bulletproof with proper cleanup and transaction safety.
 
 **Requirements:**
@@ -64,10 +65,10 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 44-01-PLAN.md - Allocation cleanup on denied/deleted transitions
+- [x] 44-01-PLAN.md - Allocation cleanup on denied/deleted transitions
 - [x] 44-02-PLAN.md - Validate allocation sum before approval
-- [ ] 44-03-PLAN.md - Transaction wrapping for critical operations
-- [ ] 44-04-PLAN.md - Billed_amount recalculation on allocation changes
+- [x] 44-03-PLAN.md - Transaction wrapping for critical operations
+- [x] 44-04-PLAN.md - Billed_amount recalculation on allocation changes
 
 **Key Files:**
 - `server/routes/invoices.js`
