@@ -15,10 +15,10 @@ Requirements for v1.8 Invoice Variance & Data Linkage milestone.
 
 ### Cost Code Linkage
 
-- [ ] **CCL-01**: Improve AI cost code assignment accuracy on invoice processing - use vendor trade, description keywords
-- [ ] **CCL-02**: Validate PO line items have proper cost codes on creation - warn or require cost code selection
-- [ ] **CCL-03**: Fix line item matching between invoices and PO line items - improve text similarity, amount matching
-- [ ] **CCL-04**: Validate G703 cost code accuracy - ensure all allocated codes appear, totals match
+- [x] **CCL-01**: Improve AI cost code assignment accuracy on invoice processing - use vendor trade, description keywords
+- [x] **CCL-02**: Validate PO line items have proper cost codes on creation - warn or require cost code selection
+- [x] **CCL-03**: Fix line item matching between invoices and PO line items - improve text similarity, amount matching
+- [x] **CCL-04**: Validate G703 cost code accuracy - ensure all allocated codes appear, totals match
 
 ### Data Correlation
 
@@ -64,10 +64,10 @@ Deferred to future release.
 | VAR-01 | 47 | Complete |
 | VAR-02 | 47 | Complete |
 | VAR-03 | 47 | Complete |
-| CCL-01 | 48 | Pending |
-| CCL-02 | 48 | Pending |
-| CCL-03 | 48 | Pending |
-| CCL-04 | 48 | Pending |
+| CCL-01 | 48 | Complete |
+| CCL-02 | 48 | Complete |
+| CCL-03 | 48 | Complete |
+| CCL-04 | 48 | Complete |
 | COR-01 | 49 | Pending |
 | COR-02 | 49 | Pending |
 | COR-03 | 49 | Pending |

@@ -71,8 +71,7 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 49` to plan G703/G702 Export phase
-2. Or continue to Phase 50-51 if ready
+1. Run `/gsd:plan-phase 49` to plan Data Correlation phase
 
 ## Research
 
