@@ -1127,6 +1127,34 @@ router.post('/:id/transition', asyncHandler(async (req, res) => {
 
   const updateData = { status: new_status };
 
+  // Allocation sum validation for approval
+  if (new_status === 'approved') {
+    // Get current allocations (either from request body or existing)
+    const allocsToCheck = allocations && allocations.length > 0
+      ? allocations
+      : invoice.allocations || [];
+
+    // Check if invoice has any allocations
+    if (allocsToCheck.length === 0) {
+      throw new AppError('NO_ALLOCATIONS',
+        'Cannot approve: Invoice has no cost code allocations. Please allocate the invoice before approving.',
+        { invoiceAmount: parseFloat(invoice.amount || 0) }
+      );
+    }
+
+    const allocSum = allocsToCheck.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const tolerance = 0.01; // 1 cent tolerance for floating point
+
+    // Check if allocations match invoice amount
+    if (Math.abs(allocSum - invoiceAmount) > tolerance) {
+      throw new AppError('ALLOCATION_MISMATCH',
+        `Cannot approve: Allocation total ($${allocSum.toFixed(2)}) does not equal invoice amount ($${invoiceAmount.toFixed(2)})`,
+        { allocSum, invoiceAmount, difference: invoiceAmount - allocSum }
+      );
+    }
+  }
+
   // Status-specific logic
   if (new_status === 'approved') {
     updateData.approved_at = new Date().toISOString();
