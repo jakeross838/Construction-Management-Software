@@ -11,10 +11,10 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 
 Phase: Not started (run /gsd:create-roadmap)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-01-18 — Milestone v1.6 started
+Status: Research complete, ready for requirements
+Last activity: 2026-01-18 — Research completed for Leads/CRM and Selections
 
-Progress: v1.6 planning phase
+Progress: v1.6 planning phase - research done
 
 ## Milestone History
 
@@ -50,3 +50,7 @@ Resume file: None
 
 1. `/gsd:define-requirements` — Create detailed requirements for v1.6
 2. `/gsd:create-roadmap` — Plan phases and work breakdown
+
+## Research
+
+- `.planning/research/v1.6-RESEARCH.md` — Leads/CRM, Selections/Allowances patterns
