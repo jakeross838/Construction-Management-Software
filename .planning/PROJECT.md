@@ -4,8 +4,8 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.4 - Price Intelligence (shipped 2026-01-18)
-**Current Milestone:** v1.5 - UI Cleanup & Uniformity
+**Last Milestone:** v1.5 - UI Cleanup & Uniformity (shipped 2026-01-18)
+**Current Milestone:** Planning next milestone
 
 ## Core Value
 
@@ -13,7 +13,7 @@ Construction management software for Ross Built Custom Homes. Manages the full l
 
 ## Current State
 
-Shipped v1.4 with ~105,000+ lines of JavaScript across 85+ files. v1.4 Price Intelligence complete.
+Shipped v1.5 with ~105,000+ lines of JavaScript across 85+ files. CSS standardized at 25,947 lines.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
@@ -112,19 +112,19 @@ Shipped v1.4 with ~105,000+ lines of JavaScript across 85+ files. v1.4 Price Int
 - [x] PRC-04: User can analyze vendor spend for negotiation leverage
 - [x] PRC-05: User sees price warning when creating PO with better options available
 
-### v1.5 UI Cleanup & Uniformity (Current)
+### v1.5 UI Cleanup & Uniformity (Shipped)
 
 **UI Standards & Components:**
-- [ ] UI-01: All buttons use consistent sizes, colors, and states
-- [ ] UI-02: All form inputs follow same styling patterns
-- [ ] UI-03: All badges/status indicators are uniform
-- [ ] UI-04: All modals have consistent structure (header, body, footer)
-- [ ] UI-05: All tables use same styling and interactions
-- [ ] UI-06: All forms show validation errors consistently
-- [ ] UI-07: Navigation and layout is uniform across pages
-- [ ] UI-08: All pages use CSS variables (no hardcoded colors)
-- [ ] UI-09: Loading and empty states are consistent
-- [ ] UI-10: Mobile experience is uniform across all pages
+- [x] UI-01: All buttons use consistent sizes, colors, and states
+- [x] UI-02: All form inputs follow same styling patterns
+- [x] UI-03: All badges/status indicators are uniform
+- [x] UI-04: All modals have consistent structure (header, body, footer)
+- [x] UI-05: All tables use same styling and interactions
+- [x] UI-06: All forms show validation errors consistently
+- [x] UI-07: Navigation and layout is uniform across pages
+- [x] UI-08: All pages use CSS variables (no hardcoded colors)
+- [x] UI-09: Loading and empty states are consistent
+- [x] UI-10: Mobile experience is uniform across all pages
 
 ### Out of Scope
 
@@ -159,4 +159,4 @@ Shipped v1.4 with ~105,000+ lines of JavaScript across 85+ files. v1.4 Price Int
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-18 — v1.4 Price Intelligence milestone complete*
+*Last updated: 2026-01-18 — v1.5 UI Cleanup & Uniformity milestone complete*

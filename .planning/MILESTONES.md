@@ -2,6 +2,40 @@
 
 Historical record of shipped milestones.
 
+## v1.5 UI Cleanup & Uniformity
+
+**Shipped:** 2026-01-18
+**Phases:** 7 (30-36)
+**Plans executed:** 19
+
+### Highlights
+
+- **UI Standards Document**: Created comprehensive UI-STANDARDS.md (755 lines) documenting all CSS variables, components, patterns
+- **Status Class Normalization**: Created `normalizeStatusClass()` helper, updated 8 JS modules, backward-compatible CSS aliases
+- **Modal Consistency**: Unified modal header/footer patterns with `modal-title-row` across 14 HTML modals + 13 JS builders
+- **Table Standardization**: Created `.data-table` base with 4 aliases, standardized empty states (15+ locations)
+- **Form Unification**: Unified label styling, validation states, consolidated form layouts (-113 lines CSS)
+- **CSS Variable Compliance**: Replaced all hardcoded colors with CSS variables, converted px to rem units
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Phases | 7 (30-36) |
+| Plans | 19 |
+| Requirements | 10 (UI-01 through UI-10) |
+| Commits | ~62 |
+| Files Modified | 88 |
+| Net Changes | +12,621 / -1,772 lines |
+| CSS Lines | 25,947 (standardized) |
+
+### Archive
+
+- `.planning/milestones/v1.5-ROADMAP.md`
+- `.planning/milestones/v1.5-MILESTONE-AUDIT.md`
+
+---
+
 ## v1.4 Price Intelligence
 
 **Shipped:** 2026-01-18
