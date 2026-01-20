@@ -1,10 +1,13 @@
 /**
  * Fix Modals - UI for fixing validation errors
  * Displays validation errors and provides one-click fix options
+ * Includes bulk fix operations and validation summary component
+ * UPDATED: 2026-01-19 - Added bulk fix and validation summary
  */
 window.FixModals = {
   activeFixModal: null,
   escapeHandler: null,
+  currentBulkErrors: null,
 
   /**
    * Show fix modal for a specific error
@@ -321,7 +324,352 @@ window.FixModals = {
         }).join('')}
       </div>
     `;
+  },
+
+  // =========================================================================
+  // BULK FIX FUNCTIONALITY
+  // =========================================================================
+
+  /**
+   * Show bulk fix modal for all errors of a type
+   * @param {string} errorType - Type of error to fix
+   * @param {Array} errors - Array of errors of this type
+   * @param {Object} context - Context with job_id
+   */
+  showBulkFixModal(errorType, errors, context) {
+    this.closeFixModal();
+
+    const title = this.getErrorTitle(errorType);
+    const fixAction = this.getBulkFixAction(errorType);
+
+    // Safely encode context for onclick attribute
+    const contextStr = JSON.stringify(context).replace(/"/g, '&quot;');
+
+    const modalHtml = `
+      <div id="fixModal" class="modal modal-centered">
+        <div class="modal-content fix-modal-content bulk-fix-modal">
+          <div class="modal-header">
+            <h3 class="modal-title">
+              <span class="bulk-icon"></span>
+              Bulk Fix: ${title}
+            </h3>
+            <button class="modal-close" onclick="FixModals.closeFixModal()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="bulk-fix-summary">
+              <p class="bulk-count">
+                <strong>${errors.length}</strong> ${errors.length === 1 ? 'error' : 'errors'} of this type found
+              </p>
+              <p class="bulk-action">
+                <strong>Action:</strong> ${fixAction.description}
+              </p>
+            </div>
+
+            <div class="bulk-fix-preview">
+              <h4>Affected Items</h4>
+              <div class="affected-items-list">
+                ${errors.slice(0, 10).map(err => `
+                  <div class="affected-item">
+                    ${err.invoice_number ? `<span>Invoice: ${err.invoice_number}</span>` : ''}
+                    ${err.po_number ? `<span>PO: ${err.po_number}</span>` : ''}
+                    ${err.cost_code ? `<span>Cost Code: ${err.cost_code}</span>` : ''}
+                  </div>
+                `).join('')}
+                ${errors.length > 10 ? `<div class="more-items">...and ${errors.length - 10} more</div>` : ''}
+              </div>
+            </div>
+
+            <div class="bulk-fix-progress" style="display: none;">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: 0%"></div>
+              </div>
+              <p class="progress-text">Processing...</p>
+            </div>
+
+            <div class="bulk-fix-results" style="display: none;">
+              <div class="results-summary"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="FixModals.closeFixModal()">Cancel</button>
+            <button class="btn btn-primary bulk-fix-btn" data-error-type="${errorType}" data-context="${contextStr}">
+              Fix All ${errors.length} Errors
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    this.activeFixModal = document.getElementById('fixModal');
+    this.activeFixModal.style.display = 'flex';
+    requestAnimationFrame(() => this.activeFixModal.classList.add('show'));
+
+    // Store errors for later
+    this.currentBulkErrors = errors;
+
+    // Set up bulk fix button click
+    const bulkFixBtn = this.activeFixModal.querySelector('.bulk-fix-btn');
+    bulkFixBtn.addEventListener('click', () => {
+      this.executeBulkFix(errorType, context);
+    });
+
+    // Close on backdrop click
+    this.activeFixModal.addEventListener('click', (e) => {
+      if (e.target === this.activeFixModal) this.closeFixModal();
+    });
+
+    // Close on Escape
+    this.escapeHandler = (e) => {
+      if (e.key === 'Escape') this.closeFixModal();
+    };
+    document.addEventListener('keydown', this.escapeHandler);
+  },
+
+  /**
+   * Get bulk fix action for error type
+   * @param {string} errorType - Type of error
+   * @returns {Object} action and description
+   */
+  getBulkFixAction(errorType) {
+    const actions = {
+      'ORPHANED_PO_ALLOCATION': {
+        action: 'remove',
+        description: 'Remove all orphaned allocations'
+      },
+      'ORPHANED_LINE_ITEM_ALLOCATION': {
+        action: 'remove',
+        description: 'Remove line item references from allocations'
+      },
+      'ORPHANED_CO_ALLOCATION': {
+        action: 'remove',
+        description: 'Remove CO references from allocations'
+      },
+      'CO_TOTAL_MISMATCH': {
+        action: 'recalculate',
+        description: 'Recalculate all PO change order totals'
+      },
+      'PO_TOTAL_MISMATCH': {
+        action: 'recalculate',
+        description: 'Recalculate all PO total amounts'
+      }
+    };
+    return actions[errorType] || { action: 'review', description: 'Review and fix manually' };
+  },
+
+  /**
+   * Execute bulk fix operation
+   * @param {string} errorType - Type of error to fix
+   * @param {Object} context - Context with job_id
+   */
+  async executeBulkFix(errorType, context) {
+    const modal = this.activeFixModal;
+    const fixBtn = modal.querySelector('.bulk-fix-btn');
+    const progressDiv = modal.querySelector('.bulk-fix-progress');
+    const resultsDiv = modal.querySelector('.bulk-fix-results');
+
+    fixBtn.disabled = true;
+    progressDiv.style.display = 'block';
+
+    try {
+      const fixAction = this.getBulkFixAction(errorType);
+
+      // Call batch fix endpoint
+      const response = await fetch(`/api/jobs/${context.job_id}/fix-validation-errors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error_type: errorType,
+          fix_action: fixAction.action,
+          performed_by: window.currentUser || 'User'
+        })
+      });
+
+      const result = await response.json();
+
+      // Show results
+      progressDiv.style.display = 'none';
+      resultsDiv.style.display = 'block';
+
+      if (result.success) {
+        resultsDiv.querySelector('.results-summary').innerHTML = `
+          <div class="results-success">
+            <span class="success-icon"></span>
+            <p><strong>${result.results.fixed}</strong> errors fixed successfully</p>
+            ${result.results.failed > 0 ? `<p class="failed-note">${result.results.failed} could not be fixed</p>` : ''}
+          </div>
+        `;
+
+        // Update button
+        fixBtn.textContent = 'Done';
+        fixBtn.onclick = () => {
+          this.closeFixModal();
+          if (this.onFixComplete) this.onFixComplete(result);
+        };
+        fixBtn.disabled = false;
+        fixBtn.classList.remove('btn-primary');
+        fixBtn.classList.add('btn-success');
+
+        window.toasts?.show('success', `Fixed ${result.results.fixed} errors`);
+      } else {
+        resultsDiv.querySelector('.results-summary').innerHTML = `
+          <div class="results-error">
+            <span class="error-icon"></span>
+            <p>Bulk fix failed: ${result.error || 'Unknown error'}</p>
+          </div>
+        `;
+        fixBtn.disabled = false;
+      }
+    } catch (err) {
+      console.error('Bulk fix failed:', err);
+      progressDiv.style.display = 'none';
+      resultsDiv.style.display = 'block';
+      resultsDiv.querySelector('.results-summary').innerHTML = `
+        <div class="results-error">
+          <span class="error-icon"></span>
+          <p>Error: ${err.message}</p>
+        </div>
+      `;
+      fixBtn.disabled = false;
+    }
+  },
+
+  // =========================================================================
+  // VALIDATION SUMMARY COMPONENT
+  // =========================================================================
+
+  /**
+   * Check if an error type can be bulk fixed
+   * @param {string} errorType - Type of error
+   * @returns {boolean}
+   */
+  canBulkFix(errorType) {
+    const bulkFixable = [
+      'ORPHANED_PO_ALLOCATION',
+      'ORPHANED_LINE_ITEM_ALLOCATION',
+      'ORPHANED_CO_ALLOCATION',
+      'CO_TOTAL_MISMATCH',
+      'PO_TOTAL_MISMATCH'
+    ];
+    return bulkFixable.includes(errorType);
+  },
+
+  /**
+   * Toggle visibility of error details section
+   * @param {string} type - Error type identifier
+   */
+  toggleErrorDetails(type) {
+    const details = document.getElementById(`details-${type}`);
+    if (details) {
+      details.style.display = details.style.display === 'none' ? 'block' : 'none';
+    }
+  },
+
+  /**
+   * Render validation summary with grouped errors and bulk fix options
+   * @param {Object} validationResult - Result from validate-linkages or similar
+   * @param {Object} context - Context for fixes
+   * @returns {string} HTML string
+   */
+  renderValidationSummary(validationResult, context) {
+    const { errors = [], warnings = [], summary = {} } = validationResult;
+
+    // Group errors by type
+    const errorsByType = {};
+    errors.forEach(err => {
+      if (!errorsByType[err.type]) {
+        errorsByType[err.type] = [];
+      }
+      errorsByType[err.type].push(err);
+    });
+
+    // Group warnings by type
+    const warningsByType = {};
+    warnings.forEach(warn => {
+      if (!warningsByType[warn.type]) {
+        warningsByType[warn.type] = [];
+      }
+      warningsByType[warn.type].push(warn);
+    });
+
+    const hasErrors = Object.keys(errorsByType).length > 0;
+    const hasWarnings = Object.keys(warningsByType).length > 0;
+
+    if (!hasErrors && !hasWarnings) {
+      return `
+        <div class="validation-summary success">
+          <span class="status-icon success-check"></span>
+          <span class="status-text">All validations passed</span>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="validation-summary">
+        ${summary.invoices_checked ? `
+          <div class="summary-stats">
+            <span>Checked: ${summary.invoices_checked || 0} invoices, ${summary.allocations_checked || 0} allocations</span>
+            <span class="error-count">${summary.errors_found || errors.length} errors</span>
+            <span class="warning-count">${summary.warnings_found || warnings.length} warnings</span>
+          </div>
+        ` : ''}
+
+        ${hasErrors ? `
+          <div class="error-groups">
+            <h4>Errors</h4>
+            ${Object.entries(errorsByType).map(([type, errs]) => {
+              const errsJson = JSON.stringify(errs).replace(/"/g, '&quot;');
+              const contextJson = JSON.stringify(context).replace(/"/g, '&quot;');
+              return `
+                <div class="error-group">
+                  <div class="error-group-header">
+                    <span class="error-type-name">${this.getErrorTitle(type)}</span>
+                    <span class="error-count-badge">${errs.length}</span>
+                  </div>
+                  <div class="error-group-actions">
+                    ${this.canBulkFix(type) ? `
+                      <button class="btn btn-sm btn-primary"
+                        onclick="FixModals.showBulkFixModal('${type}', ${errsJson}, ${contextJson})">
+                        Fix All
+                      </button>
+                    ` : ''}
+                    <button class="btn btn-sm btn-secondary"
+                      onclick="FixModals.toggleErrorDetails('${type}')">
+                      Details
+                    </button>
+                  </div>
+                  <div class="error-group-details" id="details-${type}" style="display: none;">
+                    ${this.renderValidationErrors(errs, context)}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        ${hasWarnings ? `
+          <div class="warning-groups">
+            <h4>Warnings</h4>
+            ${Object.entries(warningsByType).map(([type, warns]) => `
+              <div class="warning-group">
+                <div class="warning-group-header">
+                  <span class="warning-type-name">${this.getErrorTitle(type)}</span>
+                  <span class="warning-count-badge">${warns.length}</span>
+                </div>
+                <button class="btn btn-sm btn-secondary"
+                  onclick="FixModals.toggleErrorDetails('warn-${type}')">
+                  Details
+                </button>
+                <div class="error-group-details" id="details-warn-${type}" style="display: none;">
+                  ${warns.map(w => `<p class="warning-item">${w.fix_hint || w.message}</p>`).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
   }
 };
 
-console.log('[FIX-MODALS] Module loaded');
+console.log('[FIX-MODALS] Module loaded with bulk fix support');
