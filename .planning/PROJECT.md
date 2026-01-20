@@ -5,7 +5,7 @@
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
 **Last Milestone:** v2.0 - Business Operating System (shipped 2026-01-19)
-**Current Milestone:** None (ready for v2.1 planning)
+**Current Milestone:** v2.1 - Selections & Navigation Polish
 
 ## Core Value
 
@@ -24,7 +24,15 @@ Ross Built CMS is now a complete business operating system with:
 - Business Dashboard with timeline tracking, burn rate analysis, profit projections
 - Company-wide metrics dashboard (pipeline, capacity, health)
 
-**Next Milestone Goals (v2.1):**
+## Current Milestone: v2.1 Selections & Navigation Polish
+
+**Goal:** Transform selections into a visual catalog (Materio-style) and fix navigation consistency across all pages.
+
+**Target features:**
+- Selections Redesign - Visual catalog with photo-driven browsing and clear category organization
+- Navigation Consistency - Audit and fix all pages to use sidebar job selection pattern
+
+**Deferred to v2.2:**
 - QuickBooks integration for accounting sync
 - Calendar integration (Google/Outlook) for scheduling
 - Email integration for communication logging
@@ -275,5 +283,17 @@ Shipped v2.0 with ~103,000+ lines of JavaScript across 105+ files. CSS standardi
 - [x] RTE-01: Extract routes from index.js into modular route files
 - [x] MIG-01: Fix duplicate migration file numbers
 
+### v2.1 Selections & Navigation Polish (Active)
+
+**Selections Redesign:**
+- [ ] SEL-R-01: Visual catalog with photo-driven browsing
+- [ ] SEL-R-02: Clear category organization (flooring, fixtures, appliances, etc.)
+- [ ] SEL-R-03: Integration with budgets, change orders, allowances
+
+**Navigation Consistency:**
+- [ ] NAV-C-01: Audit all pages for sidebar job selection pattern
+- [ ] NAV-C-02: Fix pages where job selection is in main window
+- [ ] NAV-C-03: Consistent pattern across v2.0 and older pages
+
 ---
-*Last updated: 2026-01-19 — v2.0 Business Operating System shipped*
+*Last updated: 2026-01-20 — v2.1 Selections & Navigation Polish started*

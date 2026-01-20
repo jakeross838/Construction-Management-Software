@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-01-19)
+See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one system
-**Current focus:** Ready for v2.1 planning
+**Current focus:** v2.1 Selections & Navigation Polish
 
 ## Current Position
 
-Phase: N/A (between milestones)
-Plan: N/A
-Status: Milestone completed
-Last activity: 2026-01-19 — v2.0 Business Operating System shipped
+Phase: Not started (run /gsd:define-requirements or /gsd:create-roadmap)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-01-20 — Milestone v2.1 started
 
-Progress: Complete
+Progress: ░░░░░░░░░░ 0%
 
 ## Milestone History
 
@@ -46,14 +46,14 @@ None
 
 ## Session Continuity
 
-Last session: 2026-01-19
-Stopped at: Completed v2.0 milestone
+Last session: 2026-01-20
+Stopped at: Started v2.1 milestone
 Resume file: None
 
 ## Next Actions
 
-1. `/gsd:discuss-milestone` — thinking partner for v2.1 goals
-2. `/gsd:new-milestone` — create v2.1 roadmap and requirements
+1. `/gsd:define-requirements` — define what "done" looks like for v2.1
+2. `/gsd:create-roadmap` — break v2.1 into phases
 
 ## Archived Milestones
 
