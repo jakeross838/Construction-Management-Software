@@ -2,89 +2,125 @@
 
 ## Overview
 
-Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
+Construction management software for Ross Built Custom Homes. Started as invoice processing, evolved into a complete business operating system, now becoming a **data-driven estimation and intelligence platform** where every document enriches the system and every actual feeds back to improve future predictions.
 
-**Last Milestone:** v2.0 - Business Operating System (shipped 2026-01-19)
-**Current Milestone:** v2.1 - Selections & Navigation Polish
+**Last Milestone:** v2.1 - Selections & Navigation Polish (shipped 2026-01-20)
+**Current Milestone:** v3.0 - Smart Catalog & Estimation Engine
 
 ## Core Value
 
-**Run your entire construction business from one system** - from leads through closeout, with AI-powered processing, crew scheduling, and complete financial visibility.
+**Run your entire construction business from one intelligent system** - where every document uploaded, every selection made, and every invoice paid makes the system smarter. From leads through closeout, with AI-powered data extraction that flows to all connected systems.
 
-## Current State (v2.0 Shipped)
+## Current Milestone: v3.0 Smart Catalog & Estimation Engine
 
-**Shipped:** 2026-01-19
+**Goal:** Build the data infrastructure that turns Ross Built CMS into an estimation and scheduling engine. Every piece of information flows to all relevant systems, and actuals feed back to improve future predictions.
 
-Ross Built CMS is now a complete business operating system with:
-- Full CRM with contacts/companies database, relationships, communication logging
-- Job Hub providing 360° view of each job (financials, activity, status)
-- Jobs Management with categories, timeline tracking, contract health metrics
-- Crew Scheduling with PM requests, auto-scheduling, calendar view, task queue
-- Permitting workflow (applications, inspections, documents, status tracking)
-- Business Dashboard with timeline tracking, burn rate analysis, profit projections
-- Company-wide metrics dashboard (pipeline, capacity, health)
-
-## Current Milestone: v2.1 Selections & Navigation Polish
-
-**Goal:** Transform selections into a visual catalog (Materio-style) and fix navigation consistency across all pages.
+**Vision:** Staff creates estimate → picks selections from growing catalog → system calculates costs with material, labor, lead times → generates schedule by trade → converts to bids, scopes, POs as project progresses. Eventually opens to architects/designers as lead generation channel.
 
 **Target features:**
-- Selections Redesign - Visual catalog with photo-driven browsing and clear category organization
-- Navigation Consistency - Audit and fix all pages to use sidebar job selection pattern
 
-**Deferred to v2.2:**
-- QuickBooks integration for accounting sync
-- Calendar integration (Google/Outlook) for scheduling
-- Email integration for communication logging
-- Custom report builder
-- Automated notifications for permit/inspection status
+### Catalog Database Enhancement
+- Products with full data: base cost, labor hours, install duration, lead time, waste factor, quality tier
+- Physical specs: dimensions, weight, coverage rate
+- Dependencies: what must happen before/after installation
+- Permit triggers: which products require permits
+- Rough-in requirements: what other trades need to prep
+- Vendor links: who sells it, their prices, their lead times
+- Trade links: who installs it, their rates
+- Warranty tracking: terms, manufacturer, duration
+
+### Trade/Vendor Scorecards
+- Cost tracking: their rates, bid accuracy vs actuals
+- Quality scores: from completed job ratings
+- Speed ratings: actual duration vs quoted
+- Reliability: on-time delivery, callbacks, warranty claims
+- Capacity: current workload, availability windows
+
+### Document Intelligence (AI Parsing)
+- Upload any document (appliance proposal, flooring quote, cabinet bid)
+- AI extracts: products, prices, lead times, specs, requirements
+- Data routes to ALL relevant systems:
+  - Catalog: new/updated products
+  - Price Intelligence: current market pricing
+  - Schedule: lead time implications
+  - Permits: requirement flags
+  - Rough-ins: prep work for other trades
+  - Warranties: terms for closeout
+
+### Estimate Builder
+- Pick selections from catalog
+- Enter/import house details (sqft, rooms, dimensions)
+- System calculates:
+  - Material quantities (dimensions × coverage rate)
+  - Material costs (qty × price × (1 + waste factor))
+  - Labor costs (qty × labor hours × rate)
+  - Total installed cost per selection
+- Fine-tune with overrides
+- Save estimate versions
+
+### Schedule Generator
+- Derive timeline from selections
+- Sequence trades by dependencies
+- Factor in lead times (cabinets = 8-12 weeks!)
+- Account for cure times, inspections
+- Show critical path
+
+### Optimization Layer (future)
+- Toggle priority: Budget / Quality / Timeline
+- Auto-recommend trades based on priority
+- Show tradeoffs between options
+
+### Downstream Flow
+- Estimate → Allowance budgets (when job starts)
+- Estimate → Scopes of work (per trade)
+- Scopes → Bid requests (to qualified trades)
+- Bids → POs (when approved)
+- Selections → Change Orders (when over allowance)
+
+### Feedback Loops
+- Invoice actuals → update catalog pricing
+- Delivery dates → update lead time estimates
+- Install durations → update time estimates
+- Trade performance → update scorecards
+- Warranty claims → flag problematic products
+
+**Deferred to v3.1+:**
+- Lead-facing questionnaire and selection portal
+- AI floor plan extraction
+- Architect/designer portal
+- Calendar integrations
+- QuickBooks sync
+
+## Current State (v2.1 Shipped)
+
+**Shipped:** 2026-01-20
+
+Visual product catalog with:
+- Photo-driven browsing with category hierarchy
+- Search and filters (category, vendor, price, room)
+- Product detail modal with gallery
+- Add/edit products with image upload
+- Category management
+- Selections linked to jobs via allowances
+- Allowance variance tracking with CO generation
 
 ## Feature Inventory
 
-Shipped v2.0 with ~103,000+ lines of JavaScript across 105+ files. CSS standardized at 25,947 lines.
+Shipped through v2.1 with ~105,000+ lines of JavaScript across 110+ files.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
-- Invoice AI - Two-stage extraction, multi-signal PO matching, batch approval (v1.3)
-- Purchase Orders - CRUD, line items, approval, change orders, attachments, price warnings (v1.4)
+- Purchase Orders - CRUD, line items, approval, change orders, attachments
 - Draws - G702/G703, Excel/PDF export, workflow
-- Reports - Financial summaries, Excel exports, PDF exports (v1.3)
-- Daily Logs - Crew, weather, work summary, photos
-- Inspections - Types, status, deficiencies, photos, re-inspections
-- Punch Lists - Items, workflow, photos, retainage, PO blocking
-- Cost Codes - Master list, categories, picker component
-- Real-time - SSE, offline queue, connection status
-- Bids - CRUD, documents, comparison, PO conversion (v1.1)
-- Estimates - Line items, versioning, bid import, budget conversion (v1.1)
-- Photos - Upload, gallery, lightbox, entity linking (v1.1)
-- Dashboard Alerts - Inspections, budget overruns, approvals, punch items (v1.1)
-- Mobile Responsive - Hamburger menu, scrollable tables, full-screen modals (v1.1)
-- Global Search - Cmd/Ctrl+K across jobs, vendors, invoices, POs (v1.1)
-- Error Handling - Consistent API responses, request validation (v1.2)
-- Jobs - Full CRUD, soft delete, audit logging, profile metrics (v1.2)
-- Vendors - Soft delete, documents, duplicate detection, merge (v1.2)
-- Budgets - Chart visualizations, variance alerts, spend forecasting (v1.2)
-- Schedules - Drag-and-drop Gantt, critical path highlighting (v1.2)
-- Documents - Version tracking, history UI, rollback, comparison (v1.2)
-- Price Intelligence - Master items, vendor prices, order optimizer, savings tracker (v1.4)
-- Spend Analytics - Vendor spend breakdown, negotiation insights (v1.4)
-- Leads/CRM - 7-stage pipeline, qualification scoring, activities, job conversion (v1.6)
-- Selections/Allowances - Categories, budgets, variance tracking, change orders (v1.6)
-- RFIs, Submittals, Tasks, Messaging, Notifications, Warranties, Closeout - Full modules (v1.6)
-- Grouped Navigation - 9 groups following construction lifecycle (v1.6)
-- Variance Detection - VPO/CO creation from warnings, 35 unit tests (v1.8)
-- Data Correlation - Validation endpoints, price intelligence integration (v1.8)
-- AI PO Generation - Document upload, cost code learning, fuzzy matching (v1.8)
-- Quick Fixes - One-click fix endpoints, bulk operations, standardized errors (v1.8)
-- Codebase Reorganization - Dropdown nav, config centralization, route extraction (v1.9)
-- CRM Foundation - Contacts with roles, companies, contact-company linking (v2.0)
-- Communication Logging - Calls, emails, meetings tied to contacts and jobs (v2.0)
-- Jobs Enhancement - Categories, timeline tracking, contract health metrics (v2.0)
-- Contracts - Document storage, versioning, terms tracking, amendments (v2.0)
-- Job Hub - 360° job view with financials, activity timeline, status dashboard (v2.0)
-- Crew Scheduling - Work requests, auto-scheduling, calendar view, task queue (v2.0)
-- Permitting - Applications, inspections, documents, status workflow (v2.0)
-- Business Dashboard - Company metrics, burn rate analysis, profit projections (v2.0)
+- Bids - CRUD, documents, comparison, PO conversion
+- Estimates - Line items, versioning, bid import, budget conversion
+- Price Intelligence - Master items, vendor prices, order optimizer, savings tracker
+- Leads/CRM - Pipeline, qualification, activities, job conversion
+- Selections/Allowances - Visual catalog, budgets, variance tracking, change orders
+- Crew Scheduling - Work requests, auto-scheduling, calendar view
+- Permitting - Applications, inspections, documents, status tracking
+- Job Hub - 360° view with financials, activity, status
+- All scaffold modules (RFIs, Submittals, Tasks, Messaging, Notifications, Warranties, Closeout)
 
 ## Tech Stack
 
@@ -104,168 +140,96 @@ Shipped v2.0 with ~103,000+ lines of JavaScript across 105+ files. CSS standardi
 - Modal class `.show` required for visibility
 - API caching via `window.APICache`
 - asyncHandler wrapper on all routes
-- Version tracking via `is_current` flag pattern
 
 ## Constraints
 
 1. **No frameworks** - Keep frontend vanilla JS
-2. **Dark theme only** - Use CSS variables, no hardcoded colors
+2. **Dark theme only** - Use CSS variables
 3. **Existing patterns** - Follow conventions in CLAUDE.md
 4. **Supabase** - All data through Supabase client
-5. **Migration numbering** - Continue from migration-050
+5. **Migration numbering** - Continue from current highest
 
 ## Requirements
 
-### Validated (Shipped)
+### Validated (Shipped v1.0-v2.1)
 
-- ✓ FND-01, FND-04 — v1.2 (error handling, validation)
-- ✓ JOB-01, JOB-02, JOB-04 — v1.2 (job CRUD, status workflow, metrics)
-- ✓ VND-01, VND-02, VND-03 — v1.2 (vendor management, documents, duplicates)
-- ✓ BUD-04 — v1.2 (budget visualization)
-- ✓ SCH-03 — v1.2 (Gantt enhancements)
-- ✓ DOC-03 — v1.2 (document versioning)
-- ✓ BID-01 to BID-05 — v1.1 (bids)
-- ✓ EST-01 to EST-05 — v1.1 (estimates)
-- ✓ PHO-01 to PHO-04 — v1.1 (photos)
-- ✓ DASH-01 to DASH-02 — v1.1 (dashboard)
-- ✓ UX-02 to UX-03 — v1.1 (search, mobile)
-- ✓ INV-01 to INV-12 — v1.0 (invoices)
-- ✓ PO-01 to PO-07 — v1.0 (purchase orders)
-- ✓ DRW-01 to DRW-07 — v1.0 (draws)
-- ✓ LOG-01 to LOG-04 — v1.0 (daily logs)
-- ✓ INS-01 to INS-04 — v1.0 (inspections)
-- ✓ PUN-01 to PUN-06 — v1.0 (punch lists)
+All previous milestone requirements shipped and validated. See MILESTONES.md for history.
 
-### v1.3 Refinement (Shipped)
+### v3.0 Smart Catalog & Estimation Engine (Active)
 
-**Invoice AI Improvements:**
-- [x] INV-AI-01: Improve extraction accuracy for amounts, dates, and vendor names
-- [x] INV-AI-02: Smarter auto-matching to POs and jobs with better confidence scoring
-- [x] INV-AI-03: Streamline approval workflow to reduce clicks and confusion
+**Catalog Enhancement:**
+- [ ] CAT-ENH-01: Catalog items have labor hours, install duration, lead time fields
+- [ ] CAT-ENH-02: Catalog items have waste factor and coverage rate
+- [ ] CAT-ENH-03: Catalog items have quality tier (builder/standard/premium)
+- [ ] CAT-ENH-04: Catalog items link to compatible trades
+- [ ] CAT-ENH-05: Catalog items have permit requirement flags
+- [ ] CAT-ENH-06: Catalog items have rough-in requirements
+- [ ] CAT-ENH-07: Catalog items have dependency relationships (before/after)
+- [ ] CAT-ENH-08: Catalog items have warranty terms
 
-**Reporting Suite:**
-- [x] RPT-01: Financial summaries (job cost reports, spend by vendor, spend by category)
-- [x] RPT-02: Custom Excel exports (export any data view to Excel)
-- [x] RPT-03: PDF reports (printable professional reports for clients/owners)
+**Trade Scorecards:**
+- [ ] TRADE-01: Trade/vendor records with cost, quality, speed, reliability scores
+- [ ] TRADE-02: Trade capacity and availability tracking
+- [ ] TRADE-03: Trade performance updates from completed work
+- [ ] TRADE-04: Trade recommendations based on job requirements
 
-### v1.4 Price Intelligence (Shipped)
+**Document Intelligence:**
+- [ ] DOC-INT-01: AI parses uploaded proposals/quotes for product data
+- [ ] DOC-INT-02: Parsed data routes to catalog (new/updated products)
+- [ ] DOC-INT-03: Parsed data routes to price intelligence
+- [ ] DOC-INT-04: Parsed data routes to schedule (lead times)
+- [ ] DOC-INT-05: Parsed data flags permit requirements
+- [ ] DOC-INT-06: Parsed data captures rough-in requirements
+- [ ] DOC-INT-07: Parsed data captures warranty terms
 
-**Price Intelligence:**
-- [x] PRC-01: User can browse/search master items with vendor price comparison
-- [x] PRC-02: User can paste material list and get optimal vendor split recommendations
-- [x] PRC-03: User can track savings from optimized orders over time
-- [x] PRC-04: User can analyze vendor spend for negotiation leverage
-- [x] PRC-05: User sees price warning when creating PO with better options available
+**Estimate Builder:**
+- [ ] EST-BLD-01: Create estimate from catalog selections
+- [ ] EST-BLD-02: Enter house details (sqft, rooms, dimensions)
+- [ ] EST-BLD-03: Auto-calculate material quantities from dimensions
+- [ ] EST-BLD-04: Auto-calculate costs (material + labor)
+- [ ] EST-BLD-05: Fine-tune estimates with overrides
+- [ ] EST-BLD-06: Save and version estimates
 
-### v1.5 UI Cleanup & Uniformity (Shipped)
+**Schedule Generator:**
+- [ ] SCHED-01: Generate schedule from estimate selections
+- [ ] SCHED-02: Sequence trades by dependencies
+- [ ] SCHED-03: Factor lead times into schedule
+- [ ] SCHED-04: Show critical path
+- [ ] SCHED-05: Account for cure times and inspections
 
-**UI Standards & Components:**
-- [x] UI-01: All buttons use consistent sizes, colors, and states
-- [x] UI-02: All form inputs follow same styling patterns
-- [x] UI-03: All badges/status indicators are uniform
-- [x] UI-04: All modals have consistent structure (header, body, footer)
-- [x] UI-05: All tables use same styling and interactions
-- [x] UI-06: All forms show validation errors consistently
-- [x] UI-07: Navigation and layout is uniform across pages
-- [x] UI-08: All pages use CSS variables (no hardcoded colors)
-- [x] UI-09: Loading and empty states are consistent
-- [x] UI-10: Mobile experience is uniform across all pages
+**Downstream Conversion:**
+- [ ] FLOW-01: Convert estimate to allowance budgets
+- [ ] FLOW-02: Generate scopes of work from estimate
+- [ ] FLOW-03: Create bid requests from scopes
+- [ ] FLOW-04: Convert approved bids to POs
 
-### v1.6 Module Expansion (Shipped)
+**Feedback Loops:**
+- [ ] FEED-01: Invoice actuals update catalog pricing
+- [ ] FEED-02: Actual delivery dates update lead time estimates
+- [ ] FEED-03: Actual durations update install time estimates
+- [ ] FEED-04: Trade performance updates scorecards
+- [ ] FEED-05: Warranty claims flag products
 
-**Fully Built Modules:**
-- [x] LED-01: Leads/CRM - Pipeline stages, lead capture, qualification, follow-ups
-- [x] LED-02: Leads/CRM - Conversion to Job when won, contact history, notes
-- [x] SEL-01: Selections - Categories (flooring, fixtures, appliances), allowance budgets
-- [x] SEL-02: Selections - Client choices with pricing, over/under tracking
-- [x] SEL-03: Selections - Change order integration for overages, PDF export
+### Out of Scope (v3.0)
 
-**Scaffolded Modules (full implementations):**
-- [x] SCF-01: RFIs - Request for Information with full CRUD
-- [x] SCF-02: Submittals - Shop drawings, samples, product data
-- [x] SCF-03: Tasks - Assignable work items
-- [x] SCF-04: Messaging - In-app messaging
-- [x] SCF-05: Notifications - Centralized notifications
-- [x] SCF-06: Warranties - Product/workmanship warranty tracking
-- [x] SCF-07: Closeout - Final documents, certificates, handover
-
-**Navigation & Organization:**
-- [x] NAV-01: Reorganize sidebar into logical groups (Sales, Pre-Con, Execution, Field, Finance, Comms)
-
-### v1.7 Data Integrity & AI Accuracy (Shipped)
-
-- [x] BUD-INT-01 to BUD-INT-04 — Budget RPC functions and committed_amount tracking
-- [x] INV-INT-01 to INV-INT-04 — Invoice pipeline cleanup and transaction safety
-- [x] DRW-INT-01 to DRW-INT-03 — Draw accuracy and G703 improvements
-- [x] PO-INT-01 to PO-INT-04 — PO/CO linking and invoiced_amount sync
-- [x] AI-INT-01 to AI-INT-04 — AI accuracy improvements (70% threshold, date validation)
-
-### v1.8 Invoice Variance & Data Linkage (Shipped)
-
-- [x] VAR-01 to VAR-03 — Variance detection polish, VPO/CO from warnings
-- [x] CCL-01 to CCL-04 — Cost code linkage and validation
-- [x] COR-01 to COR-04 — Data correlation and price intelligence
-- [x] AIPO-01 to AIPO-03 — AI PO generation improvements
-- [x] FIX-01 to FIX-03 — Quick fix endpoints and UI
-
-### v2.0 Business Operating System (Shipped)
-
-**CRM & Contacts:**
-- [x] CRM-01: Contacts database with roles (client, vendor, sub, architect, inspector)
-- [x] CRM-02: Company/organization records with contact relationships
-- [x] CRM-03: Communication logging (calls, emails, meetings) tied to contacts/jobs
-
-**Job Hub & Management:**
-- [x] JOB-HUB-01: 360° job view with financial summary (budget, invoices, draws, P&L)
-- [x] JOB-HUB-02: Activity timeline showing recent actions across all areas
-- [x] JOB-HUB-03: Status dashboard (punch lists, inspections, RFIs, submittals)
-- [x] JOB-MGT-01: Job categories (new construction, remodel, addition, commercial)
-- [x] JOB-MGT-02: Timeline tracking (start/projected end/actual end)
-- [x] JOB-MGT-03: Contract health (remaining value, burn rate, profit tracking)
-
-**Crew Scheduling:**
-- [x] CREW-01: PM work requests that create schedulable items
-- [x] CREW-02: Auto-scheduling based on crew availability
-- [x] CREW-03: Visual calendar with drag-to-reschedule
-- [x] CREW-04: Task queue for crew to check off between jobs
-
-**Permitting:**
-- [x] PERM-01: Permit applications (type, submission, status tracking)
-- [x] PERM-02: Inspection scheduling with inspectors
-- [x] PERM-03: Permit document management (permits, approvals, COO)
-
-**Business Planning & Reports:**
-- [x] BIZ-01: Job timeline tracking and contract remaining calculations
-- [x] BIZ-02: Burn rate analysis and profit projections
-- [x] BIZ-03: Company-wide metrics dashboard (pipeline, capacity, health)
-
-### Out of Scope
-
-- Mobile native app — web works on mobile now
-- Video/audio attachments — photos sufficient for documentation
-- Multi-company tenancy — single company use case
-- Real-time collaborative editing — SSE covers live updates
+| Feature | Reason |
+|---------|--------|
+| Lead-facing portal | Build internal tool first, validate, then expose |
+| AI floor plan extraction | Complex, manual entry works for v3.0 |
+| Architect/designer portal | Future lead gen channel after core is solid |
+| Calendar integrations | Not critical for estimation engine |
+| QuickBooks sync | Separate integration milestone |
+| Budget/quality/timeline optimizer | After data collection proves valuable |
 
 ## Key Decisions
 
 | Date | Decision | Rationale | Outcome |
 |------|----------|-----------|---------|
-| 2026-01-17 | v1.1 ships new features first | Complete placeholder features before gap fixes | ✓ Good |
-| 2026-01-17 | Follow existing page patterns | Consistency with inspections.js, punch-lists.js | ✓ Good |
-| 2026-01-17 | Photos in invoices bucket | Reuse existing bucket, path-based organization | ✓ Good |
-| 2026-01-17 | Dashboard client-side filtering | Supabase doesn't support column comparison | ✓ Good |
-| 2026-01-17 | asyncHandler wrapper for routes | Consistent error handling without try/catch | ✓ Good |
-| 2026-01-17 | Vendor documents is_current flag | Version tracking without separate table | ✓ Good |
-| 2026-01-17 | 75% threshold for duplicate detection | Balances false positives vs missed duplicates | ✓ Good |
-| 2026-01-18 | Chart.js for budget visualizations | Already bundled, simple API | ✓ Good |
-| 2026-01-18 | Critical path: forward/backward pass | Standard CPM algorithm, efficient | ✓ Good |
-| 2026-01-18 | Document versioning follows vendor pattern | Consistency, proven approach | ✓ Good |
-| 2026-01-18 | Master items schema with vendor aliases | Organic growth from invoices/quotes | ✓ Good |
-| 2026-01-18 | Materialized view for current prices | Fast lookups without complex queries | ✓ Good |
-| 2026-01-18 | 10% threshold for price warnings | Balances noise vs value | ✓ Good |
-| 2026-01-19 | Levenshtein distance for fuzzy matching | Better typo tolerance than exact match | ✓ Good |
-| 2026-01-19 | Standardized validation error structure | Consistent fix_hint across all endpoints | ✓ Good |
-| 2026-01-19 | Database-driven cost code learning | Patterns improve with usage | ✓ Good |
+| 2026-01-20 | v3.0 is major version | Architectural shift to data intelligence platform | — Pending |
+| 2026-01-20 | Internal first, leads later | Validate estimation engine before exposing to leads | — Pending |
+| 2026-01-20 | Full trade scorecards | Cost + quality + speed + reliability + capacity | — Pending |
+| 2026-01-20 | Document intelligence routes to all systems | Every upload enriches entire platform | — Pending |
+| 2026-01-20 | Feedback loops from actuals | System gets smarter with use | — Pending |
 
 ## References
 
@@ -274,26 +238,5 @@ Shipped v2.0 with ~103,000+ lines of JavaScript across 105+ files. CSS standardi
 - `.planning/MILESTONES.md` - Shipped milestones
 - `database/migration-*.sql` - Schema history
 
-### v1.9 Codebase Reorganization (Shipped)
-
-**Technical Debt Cleanup:**
-- [x] SEC-01: Verify .gitignore includes .env, create .env.example template
-- [x] NAV-02: Compact dropdown navigation organized by construction workflow
-- [x] CFG-01: Centralize hardcoded constants to config/constants.js
-- [x] RTE-01: Extract routes from index.js into modular route files
-- [x] MIG-01: Fix duplicate migration file numbers
-
-### v2.1 Selections & Navigation Polish (Active)
-
-**Selections Redesign:**
-- [ ] SEL-R-01: Visual catalog with photo-driven browsing
-- [ ] SEL-R-02: Clear category organization (flooring, fixtures, appliances, etc.)
-- [ ] SEL-R-03: Integration with budgets, change orders, allowances
-
-**Navigation Consistency:**
-- [ ] NAV-C-01: Audit all pages for sidebar job selection pattern
-- [ ] NAV-C-02: Fix pages where job selection is in main window
-- [ ] NAV-C-03: Consistent pattern across v2.0 and older pages
-
 ---
-*Last updated: 2026-01-20 — v2.1 Selections & Navigation Polish started*
+*Last updated: 2026-01-20 — v3.0 Smart Catalog & Estimation Engine started*
