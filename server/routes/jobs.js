@@ -608,6 +608,156 @@ router.get('/:id/budget-accuracy', asyncHandler(async (req, res) => {
   });
 }));
 
+/**
+ * Batch fix validation errors for a job
+ * POST /api/jobs/:id/fix-validation-errors
+ * Body: { error_type, fix_action, performed_by }
+ */
+router.post('/:id/fix-validation-errors', asyncHandler(async (req, res) => {
+  const { id: jobId } = req.params;
+  const { error_type, fix_action, performed_by } = req.body;
+
+  if (!error_type || !fix_action) {
+    throw new AppError('VALIDATION_FAILED', 'error_type and fix_action are required');
+  }
+
+  const results = { fixed: 0, failed: 0, details: [] };
+
+  if (error_type === 'ORPHANED_PO_ALLOCATION' && fix_action === 'remove') {
+    // Get all invoices for job
+    const { data: invoices, error: invError } = await supabase
+      .from('v2_invoices')
+      .select('id')
+      .eq('job_id', jobId)
+      .is('deleted_at', null);
+
+    if (invError) {
+      throw new AppError('DATABASE_ERROR', `Failed to fetch invoices: ${invError.message}`);
+    }
+
+    // Get all valid PO IDs for job
+    const { data: validPOs, error: poError } = await supabase
+      .from('v2_purchase_orders')
+      .select('id')
+      .eq('job_id', jobId)
+      .is('deleted_at', null);
+
+    if (poError) {
+      throw new AppError('DATABASE_ERROR', `Failed to fetch POs: ${poError.message}`);
+    }
+
+    const validPOIds = new Set((validPOs || []).map(p => p.id));
+
+    for (const invoice of (invoices || [])) {
+      // Find orphaned allocations
+      const { data: allocations, error: allocError } = await supabase
+        .from('v2_invoice_allocations')
+        .select('id, po_id')
+        .eq('invoice_id', invoice.id)
+        .not('po_id', 'is', null);
+
+      if (allocError) {
+        results.failed++;
+        results.details.push({ invoice_id: invoice.id, action: 'failed', error: allocError.message });
+        continue;
+      }
+
+      for (const alloc of (allocations || [])) {
+        if (alloc.po_id && !validPOIds.has(alloc.po_id)) {
+          // Orphaned - remove it
+          const { error: deleteError } = await supabase
+            .from('v2_invoice_allocations')
+            .delete()
+            .eq('id', alloc.id);
+
+          if (deleteError) {
+            results.failed++;
+            results.details.push({ invoice_id: invoice.id, allocation_id: alloc.id, action: 'failed', error: deleteError.message });
+          } else {
+            results.fixed++;
+            results.details.push({ invoice_id: invoice.id, allocation_id: alloc.id, action: 'removed' });
+          }
+        }
+      }
+    }
+  }
+
+  if (error_type === 'PO_TOTAL_MISMATCH' && fix_action === 'recalculate') {
+    // Get all POs for job
+    const { data: pos, error: poError } = await supabase
+      .from('v2_purchase_orders')
+      .select('id')
+      .eq('job_id', jobId)
+      .is('deleted_at', null);
+
+    if (poError) {
+      throw new AppError('DATABASE_ERROR', `Failed to fetch POs: ${poError.message}`);
+    }
+
+    for (const po of (pos || [])) {
+      try {
+        // Recalculate each PO
+        const { data: approvedCOs, error: coError } = await supabase
+          .from('v2_change_orders')
+          .select('amount_change')
+          .eq('po_id', po.id)
+          .eq('status', 'approved');
+
+        if (coError) throw coError;
+
+        const coTotal = (approvedCOs || []).reduce((sum, co) => sum + parseFloat(co.amount_change || 0), 0);
+
+        const { data: poData, error: poDataError } = await supabase
+          .from('v2_purchase_orders')
+          .select('original_amount')
+          .eq('id', po.id)
+          .single();
+
+        if (poDataError) throw poDataError;
+
+        const expectedTotal = (parseFloat(poData.original_amount) || 0) + coTotal;
+
+        const { error: updateError } = await supabase
+          .from('v2_purchase_orders')
+          .update({
+            change_order_total: coTotal,
+            total_amount: expectedTotal,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', po.id);
+
+        if (updateError) throw updateError;
+
+        results.fixed++;
+        results.details.push({ po_id: po.id, action: 'recalculated' });
+      } catch (err) {
+        results.failed++;
+        results.details.push({ po_id: po.id, action: 'failed', error: err.message });
+      }
+    }
+  }
+
+  // Log batch activity
+  try {
+    await supabase.from('v2_job_activity').insert({
+      job_id: jobId,
+      action: 'batch_fix',
+      performed_by: performed_by || 'System',
+      notes: JSON.stringify({ error_type, fix_action, results })
+    });
+  } catch (logError) {
+    console.error('Failed to log batch fix activity:', logError.message);
+  }
+
+  res.json({
+    success: results.failed === 0,
+    job_id: jobId,
+    error_type,
+    fix_action,
+    results
+  });
+}));
+
 // Get job budget
 router.get('/:id/budget', asyncHandler(async (req, res) => {
   const jobId = req.params.id;
