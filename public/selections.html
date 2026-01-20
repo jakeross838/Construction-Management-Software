@@ -10,6 +10,38 @@
     .main-content {
       padding: 1.5rem;
     }
+
+    /* CO Badge styling */
+    .co-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.75rem;
+    }
+    .co-badge svg {
+      flex-shrink: 0;
+    }
+
+    /* CO Exists Info in overage card */
+    .co-exists-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0.75rem;
+      background: rgba(59, 130, 246, 0.15);
+      border-left: 3px solid var(--accent-blue, #58a6ff);
+      border-radius: 4px;
+      color: var(--accent-blue, #58a6ff);
+      font-weight: 500;
+    }
+    .co-exists-badge svg {
+      stroke: var(--accent-green, #3fb950);
+    }
+    .co-info-text {
+      margin-top: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--text-secondary, #8b949e);
+    }
   </style>
 </head>
 <body>
@@ -251,7 +283,8 @@
             <div class="detail-card" id="overageCard" style="display: none;">
               <h4>Overage</h4>
               <p class="overage-text">This allowance is over budget by <strong id="overageAmount">$0</strong></p>
-              <button class="btn btn-warning btn-block" onclick="createChangeOrder()">Create Change Order</button>
+              <button id="createCOButton" class="btn btn-warning btn-block" onclick="createChangeOrder()">Create Change Order</button>
+              <div id="coExistsInfo" style="display: none;"></div>
             </div>
           </div>
 

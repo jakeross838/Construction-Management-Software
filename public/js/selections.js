@@ -439,6 +439,33 @@ function renderAllowanceDetail() {
   if (variance > 0) {
     overageCard.style.display = 'block';
     document.getElementById('overageAmount').textContent = formatCurrency(variance);
+
+    // Check if any selection already has a change order
+    const selectionsWithCO = currentSelections.filter(s => s.change_order_id);
+    const coButton = document.getElementById('createCOButton');
+    const coExistsInfo = document.getElementById('coExistsInfo');
+
+    if (selectionsWithCO.length > 0) {
+      // CO already exists - show info instead of button
+      if (coButton) coButton.style.display = 'none';
+      if (coExistsInfo) {
+        coExistsInfo.style.display = 'block';
+        coExistsInfo.innerHTML = `
+          <div class="co-exists-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+            Change Order Created
+          </div>
+          <p class="co-info-text">${selectionsWithCO.length} selection(s) linked to CO</p>
+        `;
+      }
+    } else {
+      // No CO yet - show button
+      if (coButton) coButton.style.display = 'block';
+      if (coExistsInfo) coExistsInfo.style.display = 'none';
+    }
   } else {
     overageCard.style.display = 'none';
   }
@@ -470,6 +497,17 @@ function renderSelectionsList() {
       installed: 'success'
     }[s.status] || 'secondary';
 
+    // CO badge if change_order_id exists
+    const coBadge = s.change_order_id ? `
+      <span class="badge badge-warning co-badge" title="Change Order Created">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+        </svg>
+        CO
+      </span>
+    ` : '';
+
     return `
       <div class="selection-item" data-id="${s.id}">
         <div class="selection-item-main">
@@ -488,6 +526,7 @@ function renderSelectionsList() {
         </div>
         <div class="selection-item-footer">
           <span class="badge badge-${statusClass}">${s.status}</span>
+          ${coBadge}
           <div class="selection-actions">
             ${s.status === 'pending' ? `
               <button class="btn btn-sm btn-secondary" onclick="updateSelectionStatus('${s.id}', 'selected')">Mark Selected</button>
