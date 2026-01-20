@@ -49,6 +49,12 @@ const {
 } = require('../validation');
 const { createUndoSnapshot, UNDO_WINDOW_SECONDS } = require('../undo');
 const {
+  createValidationError,
+  createValidationWarning,
+  createDetailedFixHint,
+  formatAmount
+} = require('../validation-errors');
+const {
   processInvoice,
   processInvoiceTwoStage,
   extractInvoiceFromImage,
@@ -368,86 +374,91 @@ router.get('/jobs/:jobId/validate-linkages', asyncHandler(async (req, res) => {
 
       // Check 1: Orphaned PO allocation
       if (alloc.po_id && !validPOIds.has(alloc.po_id)) {
-        errors.push({
-          type: 'ORPHANED_PO_ALLOCATION',
-          severity: 'error',
+        errors.push(createValidationError('ORPHANED_PO_ALLOCATION', {
           invoice_id: invoice.id,
           invoice_number: invoice.invoice_number,
           allocation_id: alloc.id,
-          referenced_po_id: alloc.po_id,
-          details: 'Allocation references PO that no longer exists or was deleted',
-          fix_hint: 'Remove allocation or reassign to valid PO'
-        });
+          details: {
+            allocation_id: alloc.id,
+            referenced_po_id: alloc.po_id,
+            amount: allocAmount
+          }
+        }));
       }
 
       // Check 2: Orphaned PO line item allocation
       if (alloc.po_line_item_id && !validLineItemIds.has(alloc.po_line_item_id)) {
-        errors.push({
-          type: 'ORPHANED_LINE_ITEM_ALLOCATION',
-          severity: 'error',
+        errors.push(createValidationError('ORPHANED_LINE_ITEM_ALLOCATION', {
           invoice_id: invoice.id,
           invoice_number: invoice.invoice_number,
           allocation_id: alloc.id,
-          referenced_line_item_id: alloc.po_line_item_id,
-          details: 'Allocation references PO line item that no longer exists',
-          fix_hint: 'Update allocation to use valid line item ID'
-        });
+          details: {
+            allocation_id: alloc.id,
+            referenced_line_item_id: alloc.po_line_item_id,
+            amount: allocAmount
+          }
+        }));
       }
 
       // Check 3: Orphaned change order allocation
       if (alloc.change_order_id && !validCOIds.has(alloc.change_order_id)) {
-        errors.push({
-          type: 'ORPHANED_CO_ALLOCATION',
-          severity: 'error',
+        errors.push(createValidationError('ORPHANED_CO_ALLOCATION', {
           invoice_id: invoice.id,
           invoice_number: invoice.invoice_number,
           allocation_id: alloc.id,
-          referenced_co_id: alloc.change_order_id,
-          details: 'Allocation references change order that no longer exists or was deleted',
-          fix_hint: 'Update allocation to use valid change order ID'
-        });
+          details: {
+            allocation_id: alloc.id,
+            referenced_co_id: alloc.change_order_id,
+            amount: allocAmount
+          }
+        }));
       }
     }
 
     // Check 4: Draw status mismatch
     if (invoicesInDraws.has(invoice.id) && !['approved', 'in_draw', 'paid'].includes(invoice.status)) {
-      errors.push({
-        type: 'DRAW_STATUS_MISMATCH',
-        severity: 'error',
+      errors.push(createValidationError('DRAW_STATUS_MISMATCH', {
         invoice_id: invoice.id,
         invoice_number: invoice.invoice_number,
-        current_status: invoice.status,
-        details: `Invoice is in a draw but has status '${invoice.status}' instead of 'approved', 'in_draw', or 'paid'`,
-        fix_hint: "Remove invoice from draw or change status to 'approved'"
-      });
+        message: `Invoice is in a draw but has status '${invoice.status}' instead of 'approved', 'in_draw', or 'paid'`,
+        details: {
+          current_status: invoice.status,
+          expected_statuses: ['approved', 'in_draw', 'paid']
+        }
+      }));
     }
 
     // Check 5: Allocation sum exceeds invoice amount
     if (allocationTotal > invoiceAmount + 0.01) {
-      errors.push({
-        type: 'ALLOCATION_SUM_EXCEEDS_INVOICE',
-        severity: 'error',
+      const excess = allocationTotal - invoiceAmount;
+      errors.push(createValidationError('ALLOCATION_SUM_EXCEEDS_INVOICE', {
         invoice_id: invoice.id,
         invoice_number: invoice.invoice_number,
-        invoice_amount: invoiceAmount,
-        allocation_total: allocationTotal,
-        difference: allocationTotal - invoiceAmount,
-        details: `Allocations total ($${allocationTotal.toFixed(2)}) exceeds invoice amount ($${invoiceAmount.toFixed(2)})`,
-        fix_hint: 'Reduce allocation amounts to match invoice total'
-      });
+        message: `Allocations total (${formatAmount(allocationTotal)}) exceeds invoice amount (${formatAmount(invoiceAmount)})`,
+        fix_hint: createDetailedFixHint('ALLOCATION_SUM_EXCEEDS_INVOICE', {
+          allocation_sum: allocationTotal,
+          invoice_amount: invoiceAmount,
+          excess
+        }),
+        details: {
+          invoice_amount: invoiceAmount,
+          allocation_total: allocationTotal,
+          excess
+        }
+      }));
     }
 
     // Check 6: Invoice has PO but no allocations (warning)
     if (invoice.po_id && (!invoice.allocations || invoice.allocations.length === 0)) {
-      warnings.push({
-        type: 'INVOICE_PO_NO_ALLOCATIONS',
-        severity: 'warning',
+      warnings.push(createValidationWarning('INVOICE_PO_NO_ALLOCATIONS', {
         invoice_id: invoice.id,
         invoice_number: invoice.invoice_number,
         po_id: invoice.po_id,
-        details: 'Invoice is linked to a PO but has no cost code allocations',
-        fix_hint: 'Add allocations to fully utilize PO linkage'
-      });
+        details: {
+          po_id: invoice.po_id,
+          invoice_amount: invoiceAmount
+        }
+      }));
     }
   }
 
