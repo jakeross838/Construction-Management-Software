@@ -5,7 +5,14 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { supabase } = require('../../config');
+
+// Configure multer for image uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -552,6 +559,92 @@ router.patch('/catalog/:catalogId/images/:imageId', asyncHandler(async (req, res
   }
 
   res.json(data);
+}));
+
+/**
+ * POST /api/selections/catalog/:id/upload-image
+ * Upload image with thumbnail to Supabase storage
+ */
+router.post('/catalog/:id/upload-image', upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!req.files?.image?.[0]) {
+    return res.status(400).json({ error: 'No image file provided' });
+  }
+
+  const imageFile = req.files.image[0];
+  const thumbnailFile = req.files.thumbnail?.[0];
+
+  // Generate unique filename
+  const timestamp = Date.now();
+  const safeName = imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const imagePath = `catalog/${id}/${timestamp}_${safeName}`;
+  const thumbPath = thumbnailFile ? `catalog/${id}/thumb_${timestamp}_${safeName}` : null;
+
+  // Upload to Supabase storage
+  const { error: uploadError } = await supabase.storage
+    .from('selection-images')
+    .upload(imagePath, imageFile.buffer, {
+      contentType: imageFile.mimetype,
+      upsert: false
+    });
+
+  if (uploadError) {
+    console.error('Storage upload error:', uploadError);
+    throw new Error('Failed to upload image to storage');
+  }
+
+  // Upload thumbnail if provided
+  if (thumbnailFile && thumbPath) {
+    await supabase.storage
+      .from('selection-images')
+      .upload(thumbPath, thumbnailFile.buffer, {
+        contentType: thumbnailFile.mimetype,
+        upsert: false
+      });
+  }
+
+  // Get public URLs
+  const { data: { publicUrl: imageUrl } } = supabase.storage
+    .from('selection-images')
+    .getPublicUrl(imagePath);
+
+  const thumbUrl = thumbPath ? supabase.storage
+    .from('selection-images')
+    .getPublicUrl(thumbPath).data.publicUrl : null;
+
+  // Get max display_order for this product
+  const { data: existing } = await supabase
+    .from('v2_catalog_images')
+    .select('display_order')
+    .eq('catalog_item_id', id)
+    .order('display_order', { ascending: false })
+    .limit(1);
+
+  const display_order = existing && existing.length > 0 ? existing[0].display_order + 1 : 0;
+
+  // Save to database
+  const { data, error } = await supabase
+    .from('v2_catalog_images')
+    .insert({
+      catalog_item_id: id,
+      storage_path: imageUrl,
+      thumbnail_path: thumbUrl,
+      file_name: imageFile.originalname,
+      file_size: imageFile.size,
+      mime_type: imageFile.mimetype,
+      display_order,
+      is_primary: display_order === 0
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  res.status(201).json(data);
 }));
 
 /**
