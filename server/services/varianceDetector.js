@@ -31,6 +31,12 @@
  * - high: Over budget, exceeds PO total, unmatched change orders
  * - medium: Amount mismatches (invoice > PO), line item over budget
  * - low: Amount mismatches (invoice < PO), approaching limit
+ *
+ * PRICE INTELLIGENCE:
+ * - 10% threshold for flagging invoice prices above best known price
+ * - 25% threshold for high severity price warnings
+ * - Only flags items with confidence >= 3 (out of 5)
+ * - Returns potential savings per line item and total
  */
 
 const { supabase } = require('../../config');
@@ -254,6 +260,153 @@ function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) 
   }
 
   return bestMatch;
+}
+
+/**
+ * Look up the best known price for a line item description.
+ * Uses price intelligence data to find comparable items and vendor prices.
+ *
+ * @param {Object} supabaseClient - Supabase client instance
+ * @param {string} description - Line item description to match
+ * @param {string} [vendorId] - Current vendor ID (to exclude from "better price" comparison)
+ * @param {string} [costCodeId] - Cost code ID for category matching
+ * @returns {Object|null} Best price info or null if no match found
+ */
+async function findBestPrice(supabaseClient, description, vendorId = null, costCodeId = null) {
+  if (!description || description.trim().length === 0) {
+    return null;
+  }
+
+  const normalizedDesc = normalizeText(description);
+  const keywords = normalizedDesc.split(' ').filter(w => w.length > 2);
+
+  if (keywords.length === 0) {
+    return null;
+  }
+
+  try {
+    // 1. Search v2_master_items where keywords overlap with normalized description
+    // Use keyword array overlap search
+    const { data: masterItems, error: itemError } = await supabaseClient
+      .from('v2_master_items')
+      .select('id, standard_name, category, keywords')
+      .eq('is_active', true)
+      .overlaps('keywords', keywords)
+      .limit(10);
+
+    if (itemError || !masterItems || masterItems.length === 0) {
+      return null;
+    }
+
+    // Find best matching master item by scoring keyword overlap
+    let bestItem = null;
+    let bestScore = 0;
+
+    for (const item of masterItems) {
+      const itemKeywords = new Set(item.keywords || []);
+      const matchCount = keywords.filter(k => itemKeywords.has(k)).length;
+      const score = matchCount / Math.max(keywords.length, itemKeywords.size);
+
+      // Also factor in text similarity with standard name
+      const nameSimilarity = calculateSimilarity(description, item.standard_name);
+      const combinedScore = (score * 0.6) + (nameSimilarity * 0.4);
+
+      if (combinedScore > bestScore && combinedScore > 0.25) {
+        bestScore = combinedScore;
+        bestItem = item;
+      }
+    }
+
+    if (!bestItem) {
+      return null;
+    }
+
+    // 2. Query v2_price_confidence for this master_item to find vendor prices
+    // Get confidence records with minimum confidence score of 3 (scale 1-5, mapped from 0-1)
+    const { data: priceConfidence, error: confError } = await supabaseClient
+      .from('v2_price_confidence')
+      .select(`
+        id,
+        vendor_id,
+        confidence_score,
+        invoice_count,
+        quote_count,
+        manual_count,
+        last_price_date
+      `)
+      .eq('master_item_id', bestItem.id)
+      .gte('confidence_score', 0.6) // >= 3 out of 5 (60%)
+      .order('confidence_score', { ascending: false });
+
+    if (confError || !priceConfidence || priceConfidence.length === 0) {
+      return null;
+    }
+
+    // 3. Get the latest prices for these vendor/item combinations
+    const vendorIds = priceConfidence.map(pc => pc.vendor_id);
+
+    const { data: priceHistory, error: priceError } = await supabaseClient
+      .from('v2_price_history')
+      .select(`
+        id,
+        vendor_id,
+        unit_price,
+        unit,
+        source_type,
+        price_date,
+        vendor:v2_vendors(id, name)
+      `)
+      .eq('master_item_id', bestItem.id)
+      .in('vendor_id', vendorIds)
+      .order('price_date', { ascending: false });
+
+    if (priceError || !priceHistory || priceHistory.length === 0) {
+      return null;
+    }
+
+    // Get most recent price per vendor
+    const latestByVendor = {};
+    for (const ph of priceHistory) {
+      if (!latestByVendor[ph.vendor_id]) {
+        latestByVendor[ph.vendor_id] = ph;
+      }
+    }
+
+    // Find lowest price among all vendors
+    const vendorPrices = Object.values(latestByVendor);
+    vendorPrices.sort((a, b) => (parseFloat(a.unit_price) || 0) - (parseFloat(b.unit_price) || 0));
+
+    if (vendorPrices.length === 0) {
+      return null;
+    }
+
+    const lowestPrice = vendorPrices[0];
+    const confidenceRecord = priceConfidence.find(pc => pc.vendor_id === lowestPrice.vendor_id);
+
+    // Calculate sample size (total data points)
+    const sampleSize = priceConfidence.reduce((sum, pc) =>
+      sum + (pc.invoice_count || 0) + (pc.quote_count || 0) + (pc.manual_count || 0), 0
+    );
+
+    return {
+      master_item_id: bestItem.id,
+      master_item_name: bestItem.standard_name,
+      category: bestItem.category,
+      lowest_price: parseFloat(lowestPrice.unit_price),
+      lowest_vendor_id: lowestPrice.vendor_id,
+      lowest_vendor_name: lowestPrice.vendor?.name || 'Unknown',
+      price_unit: lowestPrice.unit,
+      price_source: lowestPrice.source_type,
+      price_date: lowestPrice.price_date,
+      confidence: Math.round((confidenceRecord?.confidence_score || 0.6) * 5), // Convert to 1-5 scale
+      sample_size: sampleSize,
+      match_score: bestScore,
+      vendor_count: vendorPrices.length
+    };
+  } catch (err) {
+    console.error('[Variance] Error finding best price:', err);
+    return null;
+  }
 }
 
 /**
@@ -608,6 +761,7 @@ async function quickVarianceCheck(poId, invoiceAmount, excludeInvoiceId = null) 
 module.exports = {
   detectVariances,
   quickVarianceCheck,
+  findBestPrice,
   // Export pure functions for testing
   normalizeText,
   calculateSimilarity,
