@@ -29,6 +29,15 @@ Construction management software for Ross Built Custom Homes. Started as invoice
 - Trade links: who installs it, their rates
 - Warranty tracking: terms, manufacturer, duration
 
+### Construction Knowledge Base (per selection)
+- Installation warnings: critical things that cause failures if ignored
+- Quality checks: what to verify during and after installation
+- Pre-installation requirements: what must be true before starting
+- Inspection points: what inspectors look for
+- Common defects: typical punch list items for this selection
+- Notes/tips: tribal knowledge captured in the system
+- Photo examples: good vs bad installation reference images
+
 ### Trade/Vendor Scorecards
 - Cost tracking: their rates, bid accuracy vs actuals
 - Quality scores: from completed job ratings
@@ -166,6 +175,16 @@ All previous milestone requirements shipped and validated. See MILESTONES.md for
 - [ ] CAT-ENH-06: Catalog items have rough-in requirements
 - [ ] CAT-ENH-07: Catalog items have dependency relationships (before/after)
 - [ ] CAT-ENH-08: Catalog items have warranty terms
+
+**Construction Knowledge Base:**
+- [ ] KNOW-01: Catalog items have installation warnings
+- [ ] KNOW-02: Catalog items have quality check lists
+- [ ] KNOW-03: Catalog items have pre-installation requirements
+- [ ] KNOW-04: Catalog items have inspection points
+- [ ] KNOW-05: Catalog items have common defect patterns
+- [ ] KNOW-06: Knowledge base feeds punch list suggestions
+- [ ] KNOW-07: Knowledge base feeds inspection checklists
+- [ ] KNOW-08: Knowledge captures and shares across similar selections
 
 **Trade Scorecards:**
 - [ ] TRADE-01: Trade/vendor records with cost, quality, speed, reliability scores

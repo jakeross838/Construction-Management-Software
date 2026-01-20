@@ -4,70 +4,74 @@
 
 See: .planning/PROJECT.md (updated 2026-01-20)
 
-**Core value:** Run your entire construction business from one system
-**Current focus:** v2.1 Milestone Complete
+**Core value:** Run your entire construction business from one intelligent system
+**Current focus:** v3.0 Smart Catalog & Estimation Engine
 
 ## Current Position
 
-Phase: All phases complete (65-69)
-Plan: All plans complete
-Status: Milestone shipped
-Last activity: 2026-01-20 - v2.1 Selections & Navigation Polish shipped
+Phase: 70 of 76 (Smart Catalog Foundation)
+Plan: 0 of 3 in current phase
+Status: Ready to plan
+Last activity: 2026-01-20 - v3.0 roadmap created
 
-Progress: ███████████ 100%
+Progress: [..........] 0%
 
-## Milestone History
+## Performance Metrics
 
-- **v2.1 Selections & Navigation Polish** (shipped 2026-01-20): 5 phases (65-69), 19 requirements
-- **v2.0 Business Operating System** (shipped 2026-01-19): 8 phases (57-64), 26 requirements
-- **v1.9 Codebase Reorganization** (shipped 2026-01-19): 5 phases (52-56)
-- **v1.8 Invoice Variance & Data Linkage** (shipped 2026-01-19): 5 phases (47-51)
-- **v1.7 Data Integrity & AI Accuracy** (shipped 2026-01-19): 4 phases (43-46)
-- **v1.6 Module Expansion** (shipped 2026-01-19): 6 phases
-- **v1.5 UI Cleanup** (shipped 2026-01-18): 7 phases
-- **v1.4 Price Intelligence** (2026-01-18)
-- **v1.3 Refinement** (2026-01-18)
-- **v1.2 Gap Fixes** (2026-01-18)
-- **v1.1 Field Features** (2026-01-17)
-- **v1.0 Core Platform** (2026-01-17)
+**Velocity:**
+- Total plans completed: 0 (v3.0)
+- Average duration: - min
+- Total execution time: - hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
+
+**Recent Trend:**
+- Last 5 plans: -
+- Trend: Starting fresh
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
 ### Decisions
 
-See `.planning/PROJECT.md` Key Decisions table for full history.
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
 
-Recent decisions for v2.1:
-- Visual catalog uses vanilla JS libraries (~50KB): lightGallery, MiniMasonry, FilePond
-- Navigation fix requires URL state persistence (?job=uuid)
-- No client portal - internal staff only
-- Client-side image compression using Canvas API (68-03)
-- 'selection-images' Supabase storage bucket for catalog images (68-03)
+- v3.0: decimal.js for precise money calculations
+- v3.0: toposort for dependency resolution in scheduling
+- v3.0: Frappe Gantt for schedule visualization
+- v3.0: Internal tool first, lead-facing portal deferred to v3.1+
 
 ### Pending Todos
 
-None
+None yet.
 
 ### Blockers/Concerns
 
-None
+None yet.
 
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 69-02-PLAN.md (CO Visibility & Integration Verification)
+Stopped at: v3.0 ROADMAP.md created with 7 phases (70-76)
 Resume file: None
 
 ## Next Actions
 
-1. Phase 69 (Selections Integration) complete with both plans
-2. All planned phases complete
-3. Selections integration verified end-to-end:
-   - INT-01: Selections linked to jobs via allowances
-   - INT-02: Budget tracking per category visible
-   - INT-03: System generates CO when selection exceeds allowance
+1. Plan Phase 70 (Smart Catalog Foundation) - `/gsd:plan-phase 70`
+2. Three plans identified:
+   - 70-01: Catalog schema enhancement
+   - 70-02: Trade linking and dependencies
+   - 70-03: Permit, rough-in, warranty fields
 
-## Archived Milestones
+## Milestone History
 
-- `.planning/milestones/v2.0-ROADMAP.md`
-- `.planning/milestones/v2.0-REQUIREMENTS.md`
+- **v2.1 Selections & Navigation Polish** (shipped 2026-01-20): 5 phases (65-69)
+- **v2.0 Business Operating System** (shipped 2026-01-19): 8 phases (57-64)
+- **v1.9 Codebase Reorganization** (shipped 2026-01-19): 5 phases (52-56)
+- See .planning/milestones/ for full history
