@@ -793,8 +793,11 @@ async function processPODocument(fileBuffer, filename, mimeType = 'application/p
       if (jobMatch) {
         results.matchedJob = jobMatch.job;
         results.confidence.job = jobMatch.confidence;
-        results.messages.push(`Matched job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}%)`);
+        results.jobMatchStrategy = jobMatch.matchStrategy;
+        results.jobAlternates = jobMatch.alternates || [];
+        results.messages.push(`Matched job: ${jobMatch.job.name} (${Math.round(jobMatch.confidence * 100)}%, ${jobMatch.matchStrategy})`);
       } else {
+        results.jobAlternates = [];
         results.messages.push('No matching job found - manual selection required');
       }
     }
@@ -805,9 +808,13 @@ async function processPODocument(fileBuffer, filename, mimeType = 'application/p
       if (vendorResult.vendor) {
         results.vendor = vendorResult.vendor;
         results.confidence.vendor = vendorResult.confidence;
+        results.vendorMatchReason = vendorResult.matchReason;
+        results.vendorAlternates = vendorResult.alternates || [];
         results.messages.push(vendorResult.isNew
           ? `Created vendor: ${vendorResult.vendor.name}`
-          : `Matched vendor: ${vendorResult.vendor.name}`);
+          : `Matched vendor: ${vendorResult.vendor.name} (${vendorResult.matchReason || 'exact'})`);
+      } else {
+        results.vendorAlternates = [];
       }
     }
 
