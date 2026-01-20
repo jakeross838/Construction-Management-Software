@@ -356,75 +356,105 @@ function normalizeExtractedData(data) {
 }
 
 // ============================================================
-// JOB MATCHING
+// JOB MATCHING - ENHANCED WITH FUZZY MATCHING
 // ============================================================
 
 /**
- * Find matching job from extracted data
+ * Find matching job from extracted data using fuzzy matching
+ * Returns best match with alternates for user selection
+ *
+ * Matching strategies (priority order):
+ * 1. Exact client name match (0.95)
+ * 2. Address number + street match (0.90)
+ * 3. Fuzzy client name match (scaled by similarity)
+ * 4. Reference contains job identifier (0.70)
+ *
+ * @param {Object} jobData - Extracted job data with reference, clientName, address
+ * @returns {Object|null} Match result with job, confidence, matchStrategy, and alternates
  */
 async function findMatchingJob(jobData) {
   if (!jobData) return null;
 
+  // Include on_hold jobs (not just active) per plan
   const { data: jobs, error } = await supabase
     .from('v2_jobs')
     .select('id, name, address, client_name, status')
-    .eq('status', 'active');
+    .in('status', ['active', 'on_hold']);
 
   if (error || !jobs?.length) return null;
 
-  let bestMatch = null;
-  let bestConfidence = 0;
-  let matchStrategy = '';
-
-  const searchTerms = [
-    jobData.reference,
-    jobData.clientName,
-    jobData.address
-  ].filter(Boolean).map(s => s.toLowerCase());
+  const candidates = [];
+  const searchAddress = standards.normalizeAddressForComparison(jobData.address);
+  const searchClient = (jobData.clientName || '').toLowerCase().trim();
+  const searchRef = (jobData.reference || '').toLowerCase().trim();
 
   for (const job of jobs) {
     const jobName = (job.name || '').toLowerCase();
-    const jobAddress = (job.address || '').toLowerCase();
-    const clientName = (job.client_name || '').toLowerCase();
-
-    // Extract client from job name (e.g., "Drummond-501 74th St" -> "drummond")
+    const jobAddress = standards.normalizeAddressForComparison(job.address);
+    const jobClient = (job.client_name || '').toLowerCase().trim();
     const clientFromName = jobName.split(/[-–\s]+/)[0];
 
-    for (const term of searchTerms) {
-      // Exact client name match
-      if (clientFromName && term.includes(clientFromName)) {
-        if (0.95 > bestConfidence) {
-          bestMatch = job;
-          bestConfidence = 0.95;
-          matchStrategy = 'client_name';
-        }
-      }
+    let score = 0;
+    let matchStrategy = '';
 
-      // Address match
-      if (jobAddress && term.includes(jobAddress.substring(0, 10))) {
-        if (0.90 > bestConfidence) {
-          bestMatch = job;
-          bestConfidence = 0.90;
-          matchStrategy = 'address';
-        }
-      }
+    // Strategy 1: Exact client name match (highest priority)
+    if (searchClient && (jobClient === searchClient || clientFromName === searchClient)) {
+      score = 0.95;
+      matchStrategy = 'exact_client';
+    }
 
-      // Partial name match
-      if (jobName && (term.includes(clientFromName) || clientFromName.includes(term.substring(0, 5)))) {
-        if (0.85 > bestConfidence) {
-          bestMatch = job;
-          bestConfidence = 0.85;
-          matchStrategy = 'partial_name';
+    // Strategy 2: Address number + street match
+    if (!score && searchAddress && jobAddress) {
+      const searchNum = standards.extractStreetNumber(searchAddress);
+      const jobNum = standards.extractStreetNumber(jobAddress);
+
+      if (searchNum && jobNum && searchNum === jobNum) {
+        // Same street number - check street name similarity
+        const streetSim = standards.similarityRatio(searchAddress, jobAddress);
+        if (streetSim > 0.7) {
+          score = 0.90;
+          matchStrategy = 'address_match';
         }
       }
     }
+
+    // Strategy 3: Fuzzy client name match
+    if (!score && searchClient) {
+      const clientSim = standards.similarityRatio(searchClient, clientFromName);
+      if (clientSim > 0.8) {
+        score = clientSim * 0.85; // Scale to max ~0.85
+        matchStrategy = 'fuzzy_client';
+      }
+    }
+
+    // Strategy 4: Reference contains job identifier
+    if (!score && searchRef) {
+      const refSim = standards.similarityRatio(searchRef, jobName);
+      if (refSim > 0.6 || searchRef.includes(clientFromName)) {
+        score = 0.70;
+        matchStrategy = 'reference_match';
+      }
+    }
+
+    if (score > 0) {
+      candidates.push({ job, score, matchStrategy });
+    }
   }
 
-  return bestMatch ? {
-    job: bestMatch,
-    confidence: bestConfidence,
-    matchStrategy
-  } : null;
+  // Sort by score descending
+  candidates.sort((a, b) => b.score - a.score);
+
+  if (candidates.length > 0) {
+    const best = candidates[0];
+    return {
+      job: best.job,
+      confidence: best.score,
+      matchStrategy: best.matchStrategy,
+      alternates: candidates.slice(1, 3) // Top 2 alternates
+    };
+  }
+
+  return null;
 }
 
 // ============================================================
