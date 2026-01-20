@@ -26,17 +26,17 @@ Requirements for Selections & Navigation Polish milestone. Each maps to roadmap 
 
 ### Catalog Management
 
-- [ ] **MGT-01**: Staff can add new products with photo upload
-- [ ] **MGT-02**: Staff can edit existing products
+- [x] **MGT-01**: Staff can add new products with photo upload
+- [x] **MGT-02**: Staff can edit existing products
 - [x] **MGT-03**: Staff can add multiple photos per product with gallery
-- [ ] **MGT-04**: Staff can manage categories (add/edit/reorder)
-- [ ] **MGT-05**: Staff can archive products (soft delete)
+- [x] **MGT-04**: Staff can manage categories (add/edit/reorder)
+- [x] **MGT-05**: Staff can archive products (soft delete)
 
 ### Integration
 
-- [ ] **INT-01**: Staff can link product selections to specific jobs
-- [ ] **INT-02**: Staff can see allowance budget tracking per category
-- [ ] **INT-03**: System generates change order when selection exceeds allowance
+- [x] **INT-01**: Staff can link product selections to specific jobs
+- [x] **INT-02**: Staff can see allowance budget tracking per category
+- [x] **INT-03**: System generates change order when selection exceeds allowance
 
 ## v2 Requirements
 
@@ -86,14 +86,14 @@ Which phases cover which requirements. Updated by create-roadmap.
 | CAT-06 | Phase 66 | Complete |
 | CAT-07 | Phase 67 | Complete |
 | CAT-08 | Phase 67 | Complete |
-| MGT-01 | Phase 68 | Pending |
-| MGT-02 | Phase 68 | Pending |
+| MGT-01 | Phase 68 | Complete |
+| MGT-02 | Phase 68 | Complete |
 | MGT-03 | Phase 66 | Complete |
-| MGT-04 | Phase 68 | Pending |
-| MGT-05 | Phase 68 | Pending |
-| INT-01 | Phase 69 | Pending |
-| INT-02 | Phase 69 | Pending |
-| INT-03 | Phase 69 | Pending |
+| MGT-04 | Phase 68 | Complete |
+| MGT-05 | Phase 68 | Complete |
+| INT-01 | Phase 69 | Complete |
+| INT-02 | Phase 69 | Complete |
+| INT-03 | Phase 69 | Complete |
 
 **Coverage:**
 - v2.1 requirements: 19 total

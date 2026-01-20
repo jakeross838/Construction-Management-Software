@@ -5,19 +5,20 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one system
-**Current focus:** Phase 68 complete - Catalog Management
+**Current focus:** v2.1 Milestone Complete
 
 ## Current Position
 
-Phase: 69 of 69 (Selections Integration)
-Plan: 02 of 02 (complete)
-Status: Phase complete
-Last activity: 2026-01-20 - Completed 69-02-PLAN.md (CO Visibility & Integration Verification)
+Phase: All phases complete (65-69)
+Plan: All plans complete
+Status: Milestone shipped
+Last activity: 2026-01-20 - v2.1 Selections & Navigation Polish shipped
 
 Progress: ███████████ 100%
 
 ## Milestone History
 
+- **v2.1 Selections & Navigation Polish** (shipped 2026-01-20): 5 phases (65-69), 19 requirements
 - **v2.0 Business Operating System** (shipped 2026-01-19): 8 phases (57-64), 26 requirements
 - **v1.9 Codebase Reorganization** (shipped 2026-01-19): 5 phases (52-56)
 - **v1.8 Invoice Variance & Data Linkage** (shipped 2026-01-19): 5 phases (47-51)

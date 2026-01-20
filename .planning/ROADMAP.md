@@ -7,7 +7,7 @@ Transform the selections module into a visual catalog (Materio-style) with photo
 ## Milestones
 
 - [Archive: .planning/milestones/] v1.0-v2.0 (shipped)
-- **v2.1 Selections & Navigation Polish** - Phases 65-69 (in progress)
+- **v2.1 Selections & Navigation Polish** - Phases 65-69 (shipped 2026-01-20)
 
 ## Phases
 
@@ -20,7 +20,7 @@ Transform the selections module into a visual catalog (Materio-style) with photo
 - [x] **Phase 66: Selections Schema** - Database tables for visual catalog
 - [x] **Phase 67: Visual Catalog UI** - Grid layout, categories, search/filters
 - [x] **Phase 68: Catalog Management** - Add/edit products with image upload
-- [ ] **Phase 69: Selections Integration** - Connect to jobs, allowances, change orders
+- [x] **Phase 69: Selections Integration** - Connect to jobs, allowances, change orders
 
 ## Phase Details
 
@@ -87,8 +87,8 @@ Transform the selections module into a visual catalog (Materio-style) with photo
 **Plans:** 2 plans
 
 Plans:
-- [ ] 69-01-PLAN.md - Variance display and CO prompt in catalog Add Selection flow
-- [ ] 69-02-PLAN.md - CO visibility in selections page + integration verification
+- [x] 69-01-PLAN.md - Variance display and CO prompt in catalog Add Selection flow
+- [x] 69-02-PLAN.md - CO visibility in selections page + integration verification
 
 ## Progress
 
@@ -101,4 +101,4 @@ Phases execute in numeric order: 65 → 66 → 67 → 68 → 69
 | 66. Selections Schema | 1/1 | Complete | 2026-01-20 |
 | 67. Visual Catalog UI | 1/1 | Complete | 2026-01-20 |
 | 68. Catalog Management | 3/3 | Complete | 2026-01-20 |
-| 69. Selections Integration | 0/2 | Not started | - |
+| 69. Selections Integration | 2/2 | Complete | 2026-01-20 |
