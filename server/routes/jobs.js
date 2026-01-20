@@ -1035,6 +1035,212 @@ router.get('/:id/stats', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// JOB HUB - UNIFIED DASHBOARD
+// ============================================================
+
+// Get comprehensive job hub data
+router.get('/:id/hub', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+
+  // Get job details
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .is('deleted_at', null)
+    .single();
+
+  if (jobError || !job) throw notFoundError('job', jobId);
+
+  // Run all queries in parallel
+  const [
+    invoicesResult,
+    posResult,
+    drawsResult,
+    milestonesResult,
+    budgetResult,
+    warrantiesResult,
+    punchListResult,
+    contactsResult,
+    contractsResult,
+    activityResult
+  ] = await Promise.all([
+    // Invoices
+    supabase
+      .from('v2_invoices')
+      .select('id, amount, status')
+      .eq('job_id', jobId)
+      .is('deleted_at', null),
+
+    // Purchase Orders
+    supabase
+      .from('v2_purchase_orders')
+      .select('id, total_amount, status')
+      .eq('job_id', jobId)
+      .is('deleted_at', null),
+
+    // Draws
+    supabase
+      .from('v2_draws')
+      .select('id, draw_number, total_amount, status')
+      .eq('job_id', jobId),
+
+    // Milestones
+    supabase
+      .from('v2_job_milestones')
+      .select('id, name, status, target_date')
+      .eq('job_id', jobId)
+      .is('deleted_at', null)
+      .order('sort_order'),
+
+    // Budget
+    supabase
+      .from('v2_budget_lines')
+      .select('budgeted_amount, committed_amount, billed_amount, paid_amount')
+      .eq('job_id', jobId),
+
+    // Warranties
+    supabase
+      .from('v2_warranties')
+      .select('id, name, status, end_date')
+      .eq('job_id', jobId)
+      .is('deleted_at', null),
+
+    // Punch list
+    supabase
+      .from('v2_punch_list_items')
+      .select('id, status, priority')
+      .eq('job_id', jobId)
+      .is('deleted_at', null),
+
+    // Contacts linked to job
+    supabase
+      .from('v2_contact_jobs')
+      .select(`
+        role,
+        contact:v2_contacts(id, first_name, last_name, title, email, phone)
+      `)
+      .eq('job_id', jobId),
+
+    // Contracts
+    supabase
+      .from('v2_contracts')
+      .select('id, name, contract_type, status, signature_status, contract_amount')
+      .eq('job_id', jobId)
+      .is('deleted_at', null),
+
+    // Recent activity
+    supabase
+      .from('v2_job_activity')
+      .select('action, performed_by, created_at, notes')
+      .eq('job_id', jobId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+  ]);
+
+  const invoices = invoicesResult.data || [];
+  const pos = posResult.data || [];
+  const draws = drawsResult.data || [];
+  const milestones = milestonesResult.data || [];
+  const budgetLines = budgetResult.data || [];
+  const warranties = warrantiesResult.data || [];
+  const punchList = punchListResult.data || [];
+  const contacts = contactsResult.data || [];
+  const contracts = contractsResult.data || [];
+  const activity = activityResult.data || [];
+
+  // Calculate summaries
+  const invoiceSummary = {
+    total: invoices.length,
+    total_amount: invoices.reduce((sum, i) => sum + parseFloat(i.amount || 0), 0),
+    needs_attention: invoices.filter(i => ['received', 'needs_approval'].includes(i.status)).length,
+    approved: invoices.filter(i => i.status === 'approved').length
+  };
+
+  const poSummary = {
+    total: pos.length,
+    total_amount: pos.reduce((sum, p) => sum + parseFloat(p.total_amount || 0), 0),
+    open: pos.filter(p => p.status === 'open').length
+  };
+
+  const drawSummary = {
+    total: draws.length,
+    total_drawn: draws.reduce((sum, d) => sum + parseFloat(d.total_amount || 0), 0),
+    current_draw: draws.find(d => d.status === 'draft')
+  };
+
+  const milestoneSummary = {
+    total: milestones.length,
+    completed: milestones.filter(m => m.status === 'completed').length,
+    in_progress: milestones.filter(m => m.status === 'in_progress').length,
+    upcoming: milestones.filter(m => m.status === 'pending').slice(0, 3)
+  };
+
+  const budgetSummary = {
+    budgeted: budgetLines.reduce((sum, b) => sum + parseFloat(b.budgeted_amount || 0), 0),
+    committed: budgetLines.reduce((sum, b) => sum + parseFloat(b.committed_amount || 0), 0),
+    billed: budgetLines.reduce((sum, b) => sum + parseFloat(b.billed_amount || 0), 0),
+    paid: budgetLines.reduce((sum, b) => sum + parseFloat(b.paid_amount || 0), 0)
+  };
+
+  const warrantySummary = {
+    total: warranties.length,
+    active: warranties.filter(w => w.status === 'active').length,
+    expiring_soon: warranties.filter(w => {
+      if (w.status !== 'active' || !w.end_date) return false;
+      const endDate = new Date(w.end_date);
+      const thirtyDays = new Date();
+      thirtyDays.setDate(thirtyDays.getDate() + 30);
+      return endDate <= thirtyDays;
+    }).length
+  };
+
+  const punchListSummary = {
+    total: punchList.length,
+    open: punchList.filter(p => p.status === 'open').length,
+    completed: punchList.filter(p => ['completed', 'verified'].includes(p.status)).length,
+    critical: punchList.filter(p => p.priority === 'critical').length
+  };
+
+  const contractSummary = {
+    total: contracts.length,
+    active: contracts.filter(c => c.status === 'active').length,
+    pending_signature: contracts.filter(c => ['pending_signature', 'pending_internal'].includes(c.signature_status)).length,
+    total_value: contracts.reduce((sum, c) => sum + parseFloat(c.contract_amount || 0), 0)
+  };
+
+  // Calculate overall progress
+  const contractAmount = parseFloat(job.contract_amount || 0);
+  const overallProgress = contractAmount > 0
+    ? Math.min(100, Math.round((budgetSummary.billed / contractAmount) * 100))
+    : (milestoneSummary.total > 0
+      ? Math.round((milestoneSummary.completed / milestoneSummary.total) * 100)
+      : 0);
+
+  res.json({
+    job,
+    summary: {
+      contract_amount: contractAmount,
+      overall_progress: overallProgress,
+      status: job.status
+    },
+    invoices: invoiceSummary,
+    purchase_orders: poSummary,
+    draws: drawSummary,
+    milestones: milestoneSummary,
+    budget: budgetSummary,
+    warranties: warrantySummary,
+    punch_list: punchListSummary,
+    contracts: contractSummary,
+    contacts: contacts.map(c => ({
+      ...c.contact,
+      role: c.role
+    })).filter(c => c.id),
+    recent_activity: activity
+  });
+}));
+
+// ============================================================
 // SPECS ENDPOINTS
 // ============================================================
 

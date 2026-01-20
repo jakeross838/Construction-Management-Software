@@ -32,6 +32,7 @@
       id: 'active',
       label: 'Active Projects',
       items: [
+        { id: 'job-hub', label: 'Job Hub', href: 'job-hub.html' },
         { id: 'schedule', label: 'Schedule', href: 'schedule.html' },
         { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' },
         { id: 'photos', label: 'Photos', href: 'photos.html' },
