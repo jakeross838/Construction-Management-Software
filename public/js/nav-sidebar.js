@@ -16,6 +16,12 @@
       items: [] // Direct link, no dropdown
     },
     {
+      id: 'business',
+      label: 'Business',
+      href: 'business-dashboard.html',
+      items: [] // Direct link, no dropdown
+    },
+    {
       id: 'precon',
       label: 'Pre-Construction',
       items: [
