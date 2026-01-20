@@ -79,7 +79,7 @@ Resume file: None
 
 ## Next Actions
 
-1. Run `/gsd:plan-phase 50` to plan next phase (Reporting Enhancements)
+1. Run `/gsd:plan-phase 50` to plan AI PO Generation phase
 
 ## Research
 

@@ -22,10 +22,10 @@ Requirements for v1.8 Invoice Variance & Data Linkage milestone.
 
 ### Data Correlation
 
-- [ ] **COR-01**: Validate PO ↔ Invoice ↔ Draw linkage consistency - detect orphaned allocations, broken links
-- [ ] **COR-02**: Ensure CO/VPO totals reflected correctly in PO totals, budget committed amounts, and reports
-- [ ] **COR-03**: Integrate variance detection with price intelligence - flag when invoice line exceeds known best price
-- [ ] **COR-04**: Budget vs actual accuracy validation - committed vs billed vs paid tracking
+- [x] **COR-01**: Validate PO ↔ Invoice ↔ Draw linkage consistency - detect orphaned allocations, broken links
+- [x] **COR-02**: Ensure CO/VPO totals reflected correctly in PO totals, budget committed amounts, and reports
+- [x] **COR-03**: Integrate variance detection with price intelligence - flag when invoice line exceeds known best price
+- [x] **COR-04**: Budget vs actual accuracy validation - committed vs billed vs paid tracking
 
 ### AI PO Generation
 
@@ -68,10 +68,10 @@ Deferred to future release.
 | CCL-02 | 48 | Complete |
 | CCL-03 | 48 | Complete |
 | CCL-04 | 48 | Complete |
-| COR-01 | 49 | Pending |
-| COR-02 | 49 | Pending |
-| COR-03 | 49 | Pending |
-| COR-04 | 49 | Pending |
+| COR-01 | 49 | Complete |
+| COR-02 | 49 | Complete |
+| COR-03 | 49 | Complete |
+| COR-04 | 49 | Complete |
 | AIPO-01 | 50 | Pending |
 | AIPO-02 | 50 | Pending |
 | AIPO-03 | 50 | Pending |
