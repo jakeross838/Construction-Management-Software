@@ -29,9 +29,9 @@ Requirements for v1.8 Invoice Variance & Data Linkage milestone.
 
 ### AI PO Generation
 
-- [ ] **AIPO-01**: Refine document upload auto-PO generation - improve line item extraction from proposals/quotes
-- [ ] **AIPO-02**: Improve cost code assignment on AI-generated PO line items - use description keywords, vendor trade
-- [ ] **AIPO-03**: Better linking of AI-generated POs to vendors (fuzzy match) and jobs (from document context)
+- [x] **AIPO-01**: Refine document upload auto-PO generation - improve line item extraction from proposals/quotes
+- [x] **AIPO-02**: Improve cost code assignment on AI-generated PO line items - use description keywords, vendor trade
+- [x] **AIPO-03**: Better linking of AI-generated POs to vendors (fuzzy match) and jobs (from document context)
 
 ### Quick Fixes
 
@@ -72,9 +72,9 @@ Deferred to future release.
 | COR-02 | 49 | Complete |
 | COR-03 | 49 | Complete |
 | COR-04 | 49 | Complete |
-| AIPO-01 | 50 | Pending |
-| AIPO-02 | 50 | Pending |
-| AIPO-03 | 50 | Pending |
+| AIPO-01 | 50 | Complete |
+| AIPO-02 | 50 | Complete |
+| AIPO-03 | 50 | Complete |
 | FIX-01 | 51 | Pending |
 | FIX-02 | 51 | Pending |
 | FIX-03 | 51 | Pending |

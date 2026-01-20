@@ -83,7 +83,7 @@ Resume file: None
 
 ## Next Actions
 
-1. Execute Phase 51 (next phase in v1.8 milestone)
+1. Run `/gsd:plan-phase 51` to plan Quick Fixes phase
 
 ## Research
 
