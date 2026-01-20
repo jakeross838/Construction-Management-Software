@@ -995,6 +995,307 @@ router.delete('/catalog/:catalogId/dependencies/:depId', asyncHandler(async (req
   res.json({ success: true, message: 'Dependency removed' });
 }));
 
+// ============================================================
+// KNOWLEDGE BASE (warnings, quality checks, etc.)
+// ============================================================
+
+/**
+ * GET /api/selections/catalog/:id/knowledge
+ * Get all knowledge for a catalog item (item-specific + category-level)
+ */
+router.get('/catalog/:id/knowledge', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get the catalog item's category
+  const { data: item, error: itemError } = await supabase
+    .from('v2_selection_catalog')
+    .select('category_id')
+    .eq('id', id)
+    .single();
+
+  if (itemError || !item) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
+
+  // Get knowledge for item + category
+  const { data, error } = await supabase
+    .from('v2_catalog_knowledge')
+    .select('*')
+    .or(`catalog_item_id.eq.${id},category_id.eq.${item.category_id}`)
+    .order('severity', { ascending: true })
+    .order('knowledge_type')
+    .order('title');
+
+  if (error) throw error;
+
+  // Add level indicator
+  const knowledge = (data || []).map(k => ({
+    ...k,
+    knowledge_level: k.catalog_item_id ? 'item' : 'category'
+  }));
+
+  res.json(knowledge);
+}));
+
+/**
+ * POST /api/selections/catalog/:id/knowledge
+ * Add knowledge to a catalog item
+ */
+router.post('/catalog/:id/knowledge', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    knowledge_type,
+    title,
+    description,
+    severity,
+    source,
+    applies_to_rooms,
+    photo_urls,
+    show_in_punch_list,
+    show_in_inspection,
+    show_in_daily_log,
+    created_by
+  } = req.body;
+
+  if (!knowledge_type || !title) {
+    return res.status(400).json({ error: 'knowledge_type and title are required' });
+  }
+
+  const validTypes = ['warning', 'quality_check', 'pre_installation', 'inspection_point', 'common_defect', 'tip'];
+  if (!validTypes.includes(knowledge_type)) {
+    return res.status(400).json({ error: `knowledge_type must be one of: ${validTypes.join(', ')}` });
+  }
+
+  const { data, error } = await supabase
+    .from('v2_catalog_knowledge')
+    .insert({
+      catalog_item_id: id,
+      knowledge_type,
+      title,
+      description,
+      severity: severity || 'important',
+      source: source || 'staff_input',
+      applies_to_rooms,
+      photo_urls,
+      show_in_punch_list: show_in_punch_list || false,
+      show_in_inspection: show_in_inspection || false,
+      show_in_daily_log: show_in_daily_log || false,
+      created_by
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.status(201).json({ ...data, knowledge_level: 'item' });
+}));
+
+/**
+ * POST /api/selections/categories/:id/knowledge
+ * Add knowledge to a category (applies to all items in category)
+ */
+router.post('/categories/:id/knowledge', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    knowledge_type,
+    title,
+    description,
+    severity,
+    source,
+    applies_to_rooms,
+    photo_urls,
+    show_in_punch_list,
+    show_in_inspection,
+    show_in_daily_log,
+    created_by
+  } = req.body;
+
+  if (!knowledge_type || !title) {
+    return res.status(400).json({ error: 'knowledge_type and title are required' });
+  }
+
+  const { data, error } = await supabase
+    .from('v2_catalog_knowledge')
+    .insert({
+      category_id: id,
+      knowledge_type,
+      title,
+      description,
+      severity: severity || 'important',
+      source: source || 'staff_input',
+      applies_to_rooms,
+      photo_urls,
+      show_in_punch_list: show_in_punch_list || false,
+      show_in_inspection: show_in_inspection || false,
+      show_in_daily_log: show_in_daily_log || false,
+      created_by
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.status(201).json({ ...data, knowledge_level: 'category' });
+}));
+
+/**
+ * PATCH /api/selections/knowledge/:id
+ * Update a knowledge item
+ */
+router.patch('/knowledge/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+
+  // Remove protected fields
+  delete updates.id;
+  delete updates.catalog_item_id;
+  delete updates.category_id;
+  delete updates.created_at;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_knowledge')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Knowledge item not found' });
+  }
+
+  res.json({
+    ...data,
+    knowledge_level: data.catalog_item_id ? 'item' : 'category'
+  });
+}));
+
+/**
+ * DELETE /api/selections/knowledge/:id
+ * Delete a knowledge item
+ */
+router.delete('/knowledge/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_knowledge')
+    .delete()
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Knowledge item not found' });
+  }
+
+  res.json({ success: true, message: 'Knowledge item deleted' });
+}));
+
+/**
+ * GET /api/selections/jobs/:jobId/punch-list-suggestions
+ * Get punch list suggestions based on job selections
+ */
+router.get('/jobs/:jobId/punch-list-suggestions', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { room } = req.query;
+
+  // Get all selections for this job
+  const { data: selections, error: selError } = await supabase
+    .from('v2_selections')
+    .select(`
+      id,
+      name,
+      catalog_item_id,
+      allowance:v2_allowances!inner(job_id),
+      catalog_item:v2_selection_catalog(id, category_id, name)
+    `)
+    .eq('allowance.job_id', jobId)
+    .is('deleted_at', null);
+
+  if (selError) throw selError;
+
+  // Get unique catalog item IDs and category IDs
+  const catalogItemIds = [...new Set(selections.filter(s => s.catalog_item_id).map(s => s.catalog_item_id))];
+  const categoryIds = [...new Set(selections.filter(s => s.catalog_item?.category_id).map(s => s.catalog_item.category_id))];
+
+  if (catalogItemIds.length === 0 && categoryIds.length === 0) {
+    return res.json([]);
+  }
+
+  // Build OR conditions
+  const conditions = [];
+  if (catalogItemIds.length > 0) {
+    conditions.push(`catalog_item_id.in.(${catalogItemIds.join(',')})`);
+  }
+  if (categoryIds.length > 0) {
+    conditions.push(`category_id.in.(${categoryIds.join(',')})`);
+  }
+
+  // Get punch list suggestions
+  let query = supabase
+    .from('v2_catalog_knowledge')
+    .select('*')
+    .eq('show_in_punch_list', true)
+    .or(conditions.join(','));
+
+  // Filter by room if specified
+  if (room) {
+    query = query.or(`applies_to_rooms.is.null,applies_to_rooms.cs.{${room}}`);
+  }
+
+  const { data, error } = await query.order('severity').order('title');
+
+  if (error) throw error;
+  res.json(data || []);
+}));
+
+/**
+ * GET /api/selections/jobs/:jobId/inspection-checklist
+ * Get inspection checklist based on job selections
+ */
+router.get('/jobs/:jobId/inspection-checklist', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  // Get all selections for this job
+  const { data: selections, error: selError } = await supabase
+    .from('v2_selections')
+    .select(`
+      catalog_item_id,
+      allowance:v2_allowances!inner(job_id),
+      catalog_item:v2_selection_catalog(category_id)
+    `)
+    .eq('allowance.job_id', jobId)
+    .is('deleted_at', null);
+
+  if (selError) throw selError;
+
+  const catalogItemIds = [...new Set(selections.filter(s => s.catalog_item_id).map(s => s.catalog_item_id))];
+  const categoryIds = [...new Set(selections.filter(s => s.catalog_item?.category_id).map(s => s.catalog_item.category_id))];
+
+  if (catalogItemIds.length === 0 && categoryIds.length === 0) {
+    return res.json([]);
+  }
+
+  const conditions = [];
+  if (catalogItemIds.length > 0) {
+    conditions.push(`catalog_item_id.in.(${catalogItemIds.join(',')})`);
+  }
+  if (categoryIds.length > 0) {
+    conditions.push(`category_id.in.(${categoryIds.join(',')})`);
+  }
+
+  const { data, error } = await supabase
+    .from('v2_catalog_knowledge')
+    .select('*')
+    .eq('show_in_inspection', true)
+    .or(conditions.join(','))
+    .order('severity')
+    .order('knowledge_type')
+    .order('title');
+
+  if (error) throw error;
+  res.json(data || []);
+}));
+
 /**
  * POST /api/selections/catalog
  * Add item to catalog

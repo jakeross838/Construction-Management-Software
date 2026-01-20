@@ -637,6 +637,7 @@
           <button class="tab" data-tab="estimation" onclick="switchCatalogProductTab('estimation')">Estimation</button>
           <button class="tab" data-tab="scheduling" onclick="switchCatalogProductTab('scheduling')">Scheduling</button>
           <button class="tab" data-tab="trades" onclick="switchCatalogProductTab('trades')">Trades</button>
+          <button class="tab" data-tab="knowledge" onclick="switchCatalogProductTab('knowledge')">Knowledge Base</button>
           <button class="tab" data-tab="permits" onclick="switchCatalogProductTab('permits')">Permits & Warranty</button>
         </div>
 
@@ -795,6 +796,105 @@
           </div>
         </div>
 
+        <!-- Knowledge Base Tab -->
+        <div id="tab-knowledge" class="tab-content" style="display: none;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <!-- Warnings & Critical -->
+            <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+              <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-orange)" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                Warnings
+              </h4>
+              <div id="knowledgeWarnings">
+                <p style="color: var(--text-secondary); font-style: italic;">No warnings defined</p>
+              </div>
+            </div>
+
+            <!-- Quality Checks -->
+            <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+              <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                Quality Checks
+              </h4>
+              <div id="knowledgeQualityChecks">
+                <p style="color: var(--text-secondary); font-style: italic;">No quality checks defined</p>
+              </div>
+            </div>
+
+            <!-- Pre-Installation Requirements -->
+            <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+              <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                Pre-Installation
+              </h4>
+              <div id="knowledgePreInstall">
+                <p style="color: var(--text-secondary); font-style: italic;">No pre-installation requirements</p>
+              </div>
+            </div>
+
+            <!-- Common Defects (Punch List) -->
+            <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+              <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-red)" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+                Common Defects
+              </h4>
+              <div id="knowledgeDefects">
+                <p style="color: var(--text-secondary); font-style: italic;">No common defects tracked</p>
+              </div>
+            </div>
+
+            <!-- Inspection Points -->
+            <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+              <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="9" y1="15" x2="15" y2="15"></line>
+                </svg>
+                Inspection Points
+              </h4>
+              <div id="knowledgeInspection">
+                <p style="color: var(--text-secondary); font-style: italic;">No inspection points defined</p>
+              </div>
+            </div>
+
+            <!-- Tips & Notes -->
+            <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+              <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                Tips & Notes
+              </h4>
+              <div id="knowledgeTips">
+                <p style="color: var(--text-secondary); font-style: italic;">No tips or notes</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 1.5rem;">
+            <button class="btn btn-secondary" id="btnAddKnowledge" onclick="openAddKnowledgeModal()" disabled>+ Add Knowledge</button>
+          </div>
+        </div>
+
         <!-- Permits & Warranty Tab -->
         <div id="tab-permits" class="tab-content" style="display: none;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
@@ -885,6 +985,76 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeAddTradeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveTrade()">Add Trade</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Knowledge Modal -->
+  <div id="addKnowledgeModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3>Add Knowledge</h3>
+        <button class="modal-close" onclick="closeAddKnowledgeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Type *</label>
+          <select id="addKnowledgeType" class="form-select" required>
+            <option value="warning">Warning (Critical things that cause failures)</option>
+            <option value="quality_check">Quality Check (What to verify)</option>
+            <option value="pre_installation">Pre-Installation (What must be true before starting)</option>
+            <option value="inspection_point">Inspection Point (What inspectors look for)</option>
+            <option value="common_defect">Common Defect (Typical punch list items)</option>
+            <option value="tip">Tip / Note (Best practices)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Title *</label>
+          <input type="text" id="addKnowledgeTitle" class="form-input" required placeholder="Brief title...">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="addKnowledgeDescription" class="form-input" rows="3" placeholder="Detailed description..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Severity</label>
+            <select id="addKnowledgeSeverity" class="form-select">
+              <option value="critical">Critical (Must address)</option>
+              <option value="important" selected>Important (Should address)</option>
+              <option value="info">Info (Nice to know)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Source</label>
+            <select id="addKnowledgeSource" class="form-select">
+              <option value="staff_input">Staff Input</option>
+              <option value="manufacturer_spec">Manufacturer Spec</option>
+              <option value="punch_list">From Punch List</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Use In</label>
+          <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" id="addKnowledgePunchList">
+              <span>Punch List Suggestions</span>
+            </label>
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" id="addKnowledgeInspection">
+              <span>Inspection Checklist</span>
+            </label>
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" id="addKnowledgeDailyLog">
+              <span>Daily Log Reminders</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAddKnowledgeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveKnowledge()">Add Knowledge</button>
       </div>
     </div>
   </div>

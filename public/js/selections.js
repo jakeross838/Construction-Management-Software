@@ -1423,9 +1423,10 @@ function renderCatalogProductModal() {
   document.getElementById('editWarrantyMonths').value = p.warranty_months || '';
   document.getElementById('editWarrantyNotes').value = p.warranty_notes || '';
 
-  // Render trades and dependencies
+  // Render trades, dependencies, and knowledge
   renderTradesList();
   renderDependenciesList();
+  loadKnowledge();
 
   // Populate job dropdown
   const jobSelect = document.getElementById('catalogProductJob');
@@ -1480,9 +1481,13 @@ function setEditMode(editing) {
     if (el) el.disabled = !editing;
   });
 
-  // Toggle trade/dependency buttons
+  // Toggle trade/dependency/knowledge buttons
   document.getElementById('btnAddTrade').disabled = !editing;
   document.getElementById('btnAddDependency').disabled = !editing;
+  document.getElementById('btnAddKnowledge').disabled = !editing;
+
+  // Re-render knowledge to show/hide remove buttons
+  renderKnowledge();
 }
 
 async function saveCatalogProduct() {
@@ -1799,5 +1804,191 @@ async function removeDependency(depId) {
   } catch (err) {
     console.error('Remove dependency error:', err);
     showToast('Failed to remove dependency', 'error');
+  }
+}
+
+// ============================================================
+// KNOWLEDGE BASE MANAGEMENT
+// ============================================================
+
+let currentKnowledge = [];
+
+async function loadKnowledge() {
+  if (!currentCatalogProduct) return;
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${currentCatalogProduct.id}/knowledge`);
+    if (!res.ok) throw new Error('Failed to load knowledge');
+    currentKnowledge = await res.json();
+    renderKnowledge();
+  } catch (err) {
+    console.error('Failed to load knowledge:', err);
+    currentKnowledge = [];
+    renderKnowledge();
+  }
+}
+
+function renderKnowledge() {
+  const typeContainers = {
+    warning: document.getElementById('knowledgeWarnings'),
+    quality_check: document.getElementById('knowledgeQualityChecks'),
+    pre_installation: document.getElementById('knowledgePreInstall'),
+    common_defect: document.getElementById('knowledgeDefects'),
+    inspection_point: document.getElementById('knowledgeInspection'),
+    tip: document.getElementById('knowledgeTips')
+  };
+
+  const emptyMessages = {
+    warning: 'No warnings defined',
+    quality_check: 'No quality checks defined',
+    pre_installation: 'No pre-installation requirements',
+    common_defect: 'No common defects tracked',
+    inspection_point: 'No inspection points defined',
+    tip: 'No tips or notes'
+  };
+
+  // Clear all containers
+  Object.keys(typeContainers).forEach(type => {
+    const container = typeContainers[type];
+    if (container) {
+      container.innerHTML = '';
+    }
+  });
+
+  // Group by type
+  const grouped = {};
+  currentKnowledge.forEach(k => {
+    if (!grouped[k.knowledge_type]) grouped[k.knowledge_type] = [];
+    grouped[k.knowledge_type].push(k);
+  });
+
+  // Render each group
+  Object.keys(typeContainers).forEach(type => {
+    const container = typeContainers[type];
+    if (!container) return;
+
+    const items = grouped[type] || [];
+    if (items.length === 0) {
+      container.innerHTML = `<p style="color: var(--text-secondary); font-style: italic;">${emptyMessages[type]}</p>`;
+      return;
+    }
+
+    container.innerHTML = items.map(k => renderKnowledgeItem(k)).join('');
+  });
+}
+
+function renderKnowledgeItem(k) {
+  const severityColors = {
+    critical: 'var(--accent-red)',
+    important: 'var(--accent-orange)',
+    info: 'var(--text-secondary)'
+  };
+
+  const levelBadge = k.knowledge_level === 'category'
+    ? '<span class="badge badge-secondary" style="font-size: 0.7rem;">Category</span>'
+    : '';
+
+  return `
+    <div class="knowledge-item" style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid ${severityColors[k.severity] || severityColors.info};">
+      <div style="display: flex; justify-content: space-between; align-items: start;">
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+            <strong>${escapeHtml(k.title)}</strong>
+            ${levelBadge}
+          </div>
+          ${k.description ? `<p style="margin: 0; font-size: 0.875rem; color: var(--text-secondary); line-height: 1.4;">${escapeHtml(k.description)}</p>` : ''}
+          <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; font-size: 0.75rem;">
+            ${k.show_in_punch_list ? '<span class="badge badge-info">Punch List</span>' : ''}
+            ${k.show_in_inspection ? '<span class="badge badge-warning">Inspection</span>' : ''}
+            ${k.show_in_daily_log ? '<span class="badge badge-secondary">Daily Log</span>' : ''}
+          </div>
+        </div>
+        ${isEditingCatalogProduct && k.knowledge_level === 'item' ? `
+          <button class="btn btn-sm btn-danger" onclick="removeKnowledge('${k.id}')" style="margin-left: 0.5rem;">Remove</button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function openAddKnowledgeModal() {
+  // Reset form
+  document.getElementById('addKnowledgeType').value = 'warning';
+  document.getElementById('addKnowledgeTitle').value = '';
+  document.getElementById('addKnowledgeDescription').value = '';
+  document.getElementById('addKnowledgeSeverity').value = 'important';
+  document.getElementById('addKnowledgeSource').value = 'staff_input';
+  document.getElementById('addKnowledgePunchList').checked = false;
+  document.getElementById('addKnowledgeInspection').checked = false;
+  document.getElementById('addKnowledgeDailyLog').checked = false;
+
+  const modal = document.getElementById('addKnowledgeModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeAddKnowledgeModal() {
+  const modal = document.getElementById('addKnowledgeModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function saveKnowledge() {
+  const title = document.getElementById('addKnowledgeTitle').value.trim();
+  if (!title) {
+    showToast('Title is required', 'error');
+    return;
+  }
+
+  const data = {
+    knowledge_type: document.getElementById('addKnowledgeType').value,
+    title,
+    description: document.getElementById('addKnowledgeDescription').value.trim() || null,
+    severity: document.getElementById('addKnowledgeSeverity').value,
+    source: document.getElementById('addKnowledgeSource').value,
+    show_in_punch_list: document.getElementById('addKnowledgePunchList').checked,
+    show_in_inspection: document.getElementById('addKnowledgeInspection').checked,
+    show_in_daily_log: document.getElementById('addKnowledgeDailyLog').checked
+  };
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${currentCatalogProduct.id}/knowledge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to save');
+    }
+
+    const newKnowledge = await res.json();
+    currentKnowledge.push(newKnowledge);
+    renderKnowledge();
+    closeAddKnowledgeModal();
+    showToast('Knowledge added', 'success');
+  } catch (err) {
+    console.error('Save knowledge error:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+async function removeKnowledge(knowledgeId) {
+  if (!confirm('Remove this knowledge item?')) return;
+
+  try {
+    const res = await fetch(`/api/selections/knowledge/${knowledgeId}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) throw new Error('Failed to remove');
+
+    currentKnowledge = currentKnowledge.filter(k => k.id !== knowledgeId);
+    renderKnowledge();
+    showToast('Knowledge removed', 'success');
+  } catch (err) {
+    console.error('Remove knowledge error:', err);
+    showToast('Failed to remove', 'error');
   }
 }
