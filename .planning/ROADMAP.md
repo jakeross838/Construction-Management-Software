@@ -19,7 +19,7 @@ Transform the selections module into a visual catalog (Materio-style) with photo
 - [x] **Phase 65: Navigation Audit & Fix** - Fix sidebar job selection across all pages
 - [x] **Phase 66: Selections Schema** - Database tables for visual catalog
 - [x] **Phase 67: Visual Catalog UI** - Grid layout, categories, search/filters
-- [ ] **Phase 68: Catalog Management** - Add/edit products with image upload
+- [x] **Phase 68: Catalog Management** - Add/edit products with image upload
 - [ ] **Phase 69: Selections Integration** - Connect to jobs, allowances, change orders
 
 ## Phase Details
@@ -84,7 +84,11 @@ Transform the selections module into a visual catalog (Materio-style) with photo
   2. Staff can see allowance budget per category with variance
   3. System auto-generates change order when selection exceeds allowance
 **Research**: Unlikely (existing CO/allowance systems)
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 69-01-PLAN.md - Variance display and CO prompt in catalog Add Selection flow
+- [ ] 69-02-PLAN.md - CO visibility in selections page + integration verification
 
 ## Progress
 
@@ -96,5 +100,5 @@ Phases execute in numeric order: 65 → 66 → 67 → 68 → 69
 | 65. Navigation Audit & Fix | 1/1 | Complete | 2026-01-20 |
 | 66. Selections Schema | 1/1 | Complete | 2026-01-20 |
 | 67. Visual Catalog UI | 1/1 | Complete | 2026-01-20 |
-| 68. Catalog Management | 0/TBD | Not started | - |
-| 69. Selections Integration | 0/TBD | Not started | - |
+| 68. Catalog Management | 3/3 | Complete | 2026-01-20 |
+| 69. Selections Integration | 0/2 | Not started | - |
