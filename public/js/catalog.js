@@ -719,3 +719,523 @@ function showToast(message, type = 'info') {
     console.log(`[${type}] ${message}`);
   }
 }
+
+// ============================================================
+// PRODUCT FORM MODAL (ADD/EDIT)
+// ============================================================
+
+function openAddProductModal() {
+  // Reset form
+  document.getElementById('productForm').reset();
+  document.getElementById('editProductId').value = '';
+  document.getElementById('productFormTitle').textContent = 'Add Product';
+
+  // Reset uploaded images preview
+  document.getElementById('uploadedImages').innerHTML = '';
+
+  // Populate category dropdown
+  const categorySelect = document.getElementById('productFormCategory');
+  categorySelect.innerHTML = '<option value="">Select category</option>';
+  allCategories.forEach(cat => {
+    categorySelect.innerHTML += `<option value="${cat.id}">${escapeHtml(cat.name)}</option>`;
+    if (cat.children) {
+      cat.children.forEach(child => {
+        categorySelect.innerHTML += `<option value="${child.id}">&nbsp;&nbsp;${escapeHtml(child.name)}</option>`;
+      });
+    }
+  });
+
+  // Populate vendor dropdown
+  const vendorSelect = document.getElementById('productFormVendor');
+  vendorSelect.innerHTML = '<option value="">No vendor</option>';
+  allVendors.forEach(v => {
+    vendorSelect.innerHTML += `<option value="${v.id}">${escapeHtml(v.name)}</option>`;
+  });
+
+  // Show modal
+  const modal = document.getElementById('productFormModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+
+  // Focus first field
+  document.getElementById('productFormName').focus();
+}
+
+function openEditProductModal() {
+  if (!currentProduct) {
+    showToast('No product selected', 'error');
+    return;
+  }
+
+  // First open modal to set up dropdowns
+  openAddProductModal();
+
+  // Change title
+  document.getElementById('productFormTitle').textContent = 'Edit Product';
+
+  const p = currentProduct;
+
+  // Fill in current product data
+  document.getElementById('editProductId').value = p.id;
+  document.getElementById('productFormName').value = p.name || '';
+  document.getElementById('productFormCategory').value = p.category_id || '';
+  document.getElementById('productFormVendor').value = p.vendor_id || '';
+  document.getElementById('productFormModel').value = p.model_number || p.sku || '';
+  document.getElementById('productFormRoom').value = p.room || '';
+  document.getElementById('productFormPrice').value = p.unit_price || '';
+  document.getElementById('productFormUnit').value = p.unit || 'each';
+  document.getElementById('productFormQtyDefault').value = p.quantity_default || 1;
+  document.getElementById('productFormSqFt').value = p.square_footage || '';
+  document.getElementById('productFormDescription').value = p.description || '';
+  document.getElementById('productFormTags').value = (p.tags || []).join(', ');
+
+  // Fill specs if available
+  if (p.specs) {
+    document.getElementById('specColor').value = p.specs.color || '';
+    document.getElementById('specFinish').value = p.specs.finish || '';
+    document.getElementById('specStyle').value = p.specs.style || '';
+  }
+
+  // Fill dimensions if available
+  if (p.dimensions) {
+    document.getElementById('dimWidth').value = p.dimensions.width || '';
+    document.getElementById('dimHeight').value = p.dimensions.height || '';
+    document.getElementById('dimDepth').value = p.dimensions.depth || '';
+    document.getElementById('dimUnit').value = p.dimensions.unit || 'in';
+  }
+
+  // Show existing images in upload area
+  if (p.images && p.images.length > 0) {
+    const uploadedImages = document.getElementById('uploadedImages');
+    uploadedImages.innerHTML = p.images.map(img => `
+      <div class="uploaded-image-preview" data-image-id="${img.id}">
+        <img src="${img.thumbnail_path || img.storage_path}" alt="${escapeHtml(img.caption || 'Product image')}">
+        <span class="image-badge">${img.is_primary ? 'Primary' : ''}</span>
+      </div>
+    `).join('');
+  }
+}
+
+function closeProductFormModal() {
+  const modal = document.getElementById('productFormModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function saveProduct() {
+  const id = document.getElementById('editProductId').value;
+  const isEdit = !!id;
+
+  // Gather form data
+  const name = document.getElementById('productFormName').value.trim();
+  const category_id = document.getElementById('productFormCategory').value;
+  const vendor_id = document.getElementById('productFormVendor').value || null;
+  const model_number = document.getElementById('productFormModel').value.trim();
+  const room = document.getElementById('productFormRoom').value || null;
+  const unit_price = parseFloat(document.getElementById('productFormPrice').value) || 0;
+  const unit = document.getElementById('productFormUnit').value;
+  const quantity_default = parseFloat(document.getElementById('productFormQtyDefault').value) || 1;
+  const square_footage = parseFloat(document.getElementById('productFormSqFt').value) || null;
+  const description = document.getElementById('productFormDescription').value.trim();
+  const tagsInput = document.getElementById('productFormTags').value.trim();
+  const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+
+  // Gather specs
+  const specs = {};
+  const specColor = document.getElementById('specColor').value.trim();
+  const specFinish = document.getElementById('specFinish').value.trim();
+  const specStyle = document.getElementById('specStyle').value.trim();
+  if (specColor) specs.color = specColor;
+  if (specFinish) specs.finish = specFinish;
+  if (specStyle) specs.style = specStyle;
+
+  // Gather dimensions
+  const dimensions = {};
+  const dimWidth = parseFloat(document.getElementById('dimWidth').value);
+  const dimHeight = parseFloat(document.getElementById('dimHeight').value);
+  const dimDepth = parseFloat(document.getElementById('dimDepth').value);
+  const dimUnit = document.getElementById('dimUnit').value;
+  if (dimWidth) dimensions.width = dimWidth;
+  if (dimHeight) dimensions.height = dimHeight;
+  if (dimDepth) dimensions.depth = dimDepth;
+  if (Object.keys(dimensions).length > 0) dimensions.unit = dimUnit;
+
+  // Validation
+  if (!name) {
+    showToast('Product name is required', 'error');
+    document.getElementById('productFormName').focus();
+    return;
+  }
+  if (!category_id) {
+    showToast('Category is required', 'error');
+    document.getElementById('productFormCategory').focus();
+    return;
+  }
+  if (!unit_price || unit_price <= 0) {
+    showToast('Please enter a valid price', 'error');
+    document.getElementById('productFormPrice').focus();
+    return;
+  }
+
+  const productData = {
+    name,
+    category_id,
+    vendor_id,
+    model_number,
+    sku: model_number, // Use model_number as SKU too
+    description,
+    unit_price,
+    unit,
+    room,
+    quantity_default,
+    square_footage,
+    tags,
+    specs: Object.keys(specs).length > 0 ? specs : null,
+    dimensions: Object.keys(dimensions).length > 0 ? dimensions : null
+  };
+
+  try {
+    const url = isEdit ? `/api/selections/catalog/${id}` : '/api/selections/catalog';
+    const method = isEdit ? 'PATCH' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(productData)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to save product');
+    }
+
+    const savedProduct = await res.json();
+
+    showToast(isEdit ? 'Product updated' : 'Product created', 'success');
+    closeProductFormModal();
+
+    // Refresh products list
+    await loadProducts();
+
+    // If we were editing from detail view, close that too and reopen with updated data
+    if (isEdit && currentProduct) {
+      closeProductModal();
+      await openProductDetail(savedProduct.id);
+    }
+  } catch (err) {
+    console.error('Failed to save product:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// PRODUCT ARCHIVE
+// ============================================================
+
+async function archiveProduct() {
+  if (!currentProduct) {
+    showToast('No product selected', 'error');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to archive "${currentProduct.name}"? It will no longer appear in the catalog.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${currentProduct.id}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to archive product');
+    }
+
+    showToast('Product archived', 'success');
+    closeProductModal();
+    await loadProducts();
+  } catch (err) {
+    console.error('Failed to archive product:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// CATEGORY MANAGEMENT
+// ============================================================
+
+function openCategoryModal() {
+  renderCategoryList();
+  document.getElementById('newCategoryName').value = '';
+
+  const modal = document.getElementById('categoryModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeCategoryModal() {
+  const modal = document.getElementById('categoryModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+function renderCategoryList() {
+  const list = document.getElementById('categoryList');
+
+  if (allCategories.length === 0) {
+    list.innerHTML = '<p class="no-data">No categories yet. Add one above.</p>';
+    return;
+  }
+
+  let html = '';
+
+  // Flatten for display with order controls
+  allCategories.forEach((cat, catIndex) => {
+    html += `
+      <div class="category-list-item" data-id="${cat.id}">
+        <div class="order-buttons">
+          <button class="btn btn-sm" onclick="moveCategoryUp('${cat.id}')" ${catIndex === 0 ? 'disabled' : ''}>&#9650;</button>
+          <button class="btn btn-sm" onclick="moveCategoryDown('${cat.id}')" ${catIndex === allCategories.length - 1 ? 'disabled' : ''}>&#9660;</button>
+        </div>
+        <span class="category-name">${escapeHtml(cat.name)}</span>
+        <div class="category-actions">
+          <button class="btn btn-sm" onclick="openEditCategory('${cat.id}')">Edit</button>
+        </div>
+      </div>
+    `;
+
+    // Render children
+    if (cat.children && cat.children.length > 0) {
+      cat.children.forEach((child, childIndex) => {
+        html += `
+          <div class="category-list-item child" data-id="${child.id}">
+            <div class="order-buttons">
+              <button class="btn btn-sm" onclick="moveCategoryUp('${child.id}', '${cat.id}')" ${childIndex === 0 ? 'disabled' : ''}>&#9650;</button>
+              <button class="btn btn-sm" onclick="moveCategoryDown('${child.id}', '${cat.id}')" ${childIndex === cat.children.length - 1 ? 'disabled' : ''}>&#9660;</button>
+            </div>
+            <span class="category-name">${escapeHtml(child.name)}</span>
+            <div class="category-actions">
+              <button class="btn btn-sm" onclick="openEditCategory('${child.id}')">Edit</button>
+            </div>
+          </div>
+        `;
+      });
+    }
+  });
+
+  list.innerHTML = html;
+}
+
+async function addCategory() {
+  const nameInput = document.getElementById('newCategoryName');
+  const name = nameInput.value.trim();
+
+  if (!name) {
+    showToast('Category name is required', 'error');
+    nameInput.focus();
+    return;
+  }
+
+  try {
+    // Get max display_order
+    const maxOrder = allCategories.reduce((max, c) => Math.max(max, c.display_order || 0), 0);
+
+    const res = await fetch('/api/selections/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        display_order: maxOrder + 10
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to create category');
+    }
+
+    showToast('Category created', 'success');
+    nameInput.value = '';
+
+    // Reload categories
+    await loadCategories();
+    renderCategoryList();
+  } catch (err) {
+    console.error('Failed to create category:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+function openEditCategory(categoryId) {
+  // Find category in hierarchy
+  let category = null;
+  for (const cat of allCategories) {
+    if (cat.id === categoryId) {
+      category = cat;
+      break;
+    }
+    if (cat.children) {
+      const child = cat.children.find(c => c.id === categoryId);
+      if (child) {
+        category = { ...child, parent_id: cat.id };
+        break;
+      }
+    }
+  }
+
+  if (!category) {
+    showToast('Category not found', 'error');
+    return;
+  }
+
+  document.getElementById('editCategoryId').value = category.id;
+  document.getElementById('editCategoryName').value = category.name;
+  document.getElementById('editCategoryDescription').value = category.description || '';
+
+  // Populate parent dropdown (exclude self and children)
+  const parentSelect = document.getElementById('editCategoryParent');
+  parentSelect.innerHTML = '<option value="">None (Top Level)</option>';
+  allCategories.forEach(cat => {
+    if (cat.id !== categoryId) {
+      parentSelect.innerHTML += `<option value="${cat.id}" ${category.parent_id === cat.id ? 'selected' : ''}>${escapeHtml(cat.name)}</option>`;
+    }
+  });
+
+  const modal = document.getElementById('editCategoryModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeEditCategoryModal() {
+  const modal = document.getElementById('editCategoryModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function updateCategory() {
+  const id = document.getElementById('editCategoryId').value;
+  const name = document.getElementById('editCategoryName').value.trim();
+  const description = document.getElementById('editCategoryDescription').value.trim();
+  const parent_id = document.getElementById('editCategoryParent').value || null;
+
+  if (!name) {
+    showToast('Category name is required', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/selections/categories/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, parent_id })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update category');
+    }
+
+    showToast('Category updated', 'success');
+    closeEditCategoryModal();
+
+    await loadCategories();
+    renderCategoryList();
+  } catch (err) {
+    console.error('Failed to update category:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+async function moveCategoryUp(categoryId, parentId = null) {
+  await reorderCategory(categoryId, parentId, -1);
+}
+
+async function moveCategoryDown(categoryId, parentId = null) {
+  await reorderCategory(categoryId, parentId, 1);
+}
+
+async function reorderCategory(categoryId, parentId, direction) {
+  // Find the category and its siblings
+  let siblings;
+  if (parentId) {
+    const parent = allCategories.find(c => c.id === parentId);
+    siblings = parent?.children || [];
+  } else {
+    siblings = allCategories;
+  }
+
+  const index = siblings.findIndex(c => c.id === categoryId);
+  if (index === -1) return;
+
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= siblings.length) return;
+
+  // Swap display_order values
+  const current = siblings[index];
+  const swap = siblings[newIndex];
+
+  try {
+    // Update both categories
+    await Promise.all([
+      fetch(`/api/selections/categories/${current.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_order: swap.display_order })
+      }),
+      fetch(`/api/selections/categories/${swap.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_order: current.display_order })
+      })
+    ]);
+
+    // Reload categories
+    await loadCategories();
+    renderCategoryList();
+  } catch (err) {
+    console.error('Failed to reorder:', err);
+    showToast('Failed to reorder categories', 'error');
+  }
+}
+
+// ============================================================
+// IMAGE UPLOAD HANDLING
+// ============================================================
+
+function handleImageUpload(e) {
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+
+  const uploadedImages = document.getElementById('uploadedImages');
+
+  // Show preview for each file
+  Array.from(files).forEach(file => {
+    if (!file.type.startsWith('image/')) {
+      showToast(`${file.name} is not an image`, 'error');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast(`${file.name} is too large (max 5MB)`, 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const preview = document.createElement('div');
+      preview.className = 'uploaded-image-preview pending';
+      preview.innerHTML = `
+        <img src="${event.target.result}" alt="${escapeHtml(file.name)}">
+        <span class="image-badge">Pending upload</span>
+        <button type="button" class="btn-remove" onclick="this.parentElement.remove()">&times;</button>
+      `;
+      preview.dataset.file = file.name;
+      uploadedImages.appendChild(preview);
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Note: Actual upload happens in 68-03 (image upload plan)
+  // For now, we just show previews
+}

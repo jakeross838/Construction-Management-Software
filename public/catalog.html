@@ -454,46 +454,59 @@
   </div>
 
   <!-- Category Management Modal -->
-  <div id="categoryModal" class="modal modal-fullscreen-dark">
-    <div class="modal-content modal-medium">
+  <div id="categoryModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
       <div class="modal-header">
         <h3>Manage Categories</h3>
-        <button class="modal-close" onclick="closeCategoryModal()">&times;</button>
+        <button class="btn-close" onclick="closeCategoryModal()">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="category-management">
-          <div class="category-list" id="categoryManagementList">
-            <!-- Categories loaded dynamically -->
-          </div>
-          <div class="category-form">
-            <h4 id="categoryFormTitle">Add Category</h4>
-            <form id="categoryForm">
-              <input type="hidden" id="editCategoryId">
-              <div class="form-group">
-                <label for="categoryFormName">Name *</label>
-                <input type="text" id="categoryFormName" class="form-input" required placeholder="Category name">
-              </div>
-              <div class="form-group">
-                <label for="categoryFormParent">Parent Category</label>
-                <select id="categoryFormParent" class="form-select">
-                  <option value="">None (Top Level)</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="categoryFormOrder">Display Order</label>
-                <input type="number" id="categoryFormOrder" class="form-input" min="0" value="50">
-              </div>
-              <div class="form-group">
-                <label for="categoryFormDescription">Description</label>
-                <textarea id="categoryFormDescription" class="form-input" rows="2" placeholder="Optional description"></textarea>
-              </div>
-              <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="resetCategoryForm()">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveCategory()">Save</button>
-              </div>
-            </form>
+        <div class="category-form">
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <input type="text" id="newCategoryName" class="form-input" placeholder="New category name">
+            </div>
+            <button class="btn btn-primary" onclick="addCategory()">Add</button>
           </div>
         </div>
+
+        <div class="category-list" id="categoryList">
+          <!-- Categories will be rendered here -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCategoryModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Category Modal (nested) -->
+  <div id="editCategoryModal" class="modal" style="z-index: 1001;">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3>Edit Category</h3>
+        <button class="btn-close" onclick="closeEditCategoryModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editCategoryId">
+        <div class="form-group">
+          <label>Category Name</label>
+          <input type="text" id="editCategoryName" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="editCategoryDescription" class="form-input" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Parent Category</label>
+          <select id="editCategoryParent" class="form-select">
+            <option value="">None (Top Level)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeEditCategoryModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="updateCategory()">Save</button>
       </div>
     </div>
   </div>
