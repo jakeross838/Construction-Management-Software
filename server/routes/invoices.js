@@ -2132,6 +2132,98 @@ router.post('/bulk/add-to-draw', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// FIX ENDPOINTS
+// ============================================================
+
+/**
+ * Fix orphaned or problematic allocations
+ * POST /api/invoices/:id/fix-allocation
+ * Body: { allocation_id, fix_action: 'remove' | 'reassign', reassign_to?: { po_id, line_item_id, co_id } }
+ */
+router.post('/:id/fix-allocation', asyncHandler(async (req, res) => {
+  const { id: invoiceId } = req.params;
+  const { allocation_id, fix_action, reassign_to, performed_by } = req.body;
+
+  if (!allocation_id || !fix_action) {
+    return res.status(400).json({ error: 'allocation_id and fix_action required' });
+  }
+
+  // Verify allocation belongs to this invoice
+  const { data: allocation, error: allocError } = await supabase
+    .from('v2_invoice_allocations')
+    .select('*')
+    .eq('id', allocation_id)
+    .eq('invoice_id', invoiceId)
+    .single();
+
+  if (allocError || !allocation) {
+    return res.status(404).json({ error: 'Allocation not found' });
+  }
+
+  if (fix_action === 'remove') {
+    // Delete the orphaned allocation
+    const { error: deleteError } = await supabase
+      .from('v2_invoice_allocations')
+      .delete()
+      .eq('id', allocation_id);
+
+    if (deleteError) {
+      throw new AppError('DATABASE_ERROR', `Failed to delete allocation: ${deleteError.message}`);
+    }
+
+    // Log activity
+    await logActivity(invoiceId, 'allocation_removed', performed_by || 'System', {
+      allocation_id,
+      reason: 'fix_orphaned'
+    });
+
+    // Re-run validation to confirm fix worked
+    const { data: remainingAllocations } = await supabase
+      .from('v2_invoice_allocations')
+      .select('id')
+      .eq('invoice_id', invoiceId);
+
+    return res.json({
+      success: true,
+      action: 'removed',
+      allocation_id,
+      remaining_allocations: remainingAllocations?.length || 0
+    });
+  }
+
+  if (fix_action === 'reassign' && reassign_to) {
+    // Update allocation with new PO/line item/CO references
+    const updateFields = {};
+    if (reassign_to.po_id !== undefined) updateFields.po_id = reassign_to.po_id;
+    if (reassign_to.line_item_id !== undefined) updateFields.po_line_item_id = reassign_to.line_item_id;
+    if (reassign_to.co_id !== undefined) updateFields.change_order_id = reassign_to.co_id;
+
+    const { error: updateError } = await supabase
+      .from('v2_invoice_allocations')
+      .update(updateFields)
+      .eq('id', allocation_id);
+
+    if (updateError) {
+      throw new AppError('DATABASE_ERROR', `Failed to reassign allocation: ${updateError.message}`);
+    }
+
+    await logActivity(invoiceId, 'allocation_reassigned', performed_by || 'System', {
+      allocation_id,
+      reassign_to
+    });
+
+    return res.json({
+      success: true,
+      action: 'reassigned',
+      allocation_id,
+      reassign_to
+    });
+  }
+
+  res.status(400).json({ error: 'Invalid fix_action or missing reassign_to' });
+}));
+
+// ============================================================
 // DELETE ENDPOINT
 // ============================================================
 
