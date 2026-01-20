@@ -3,7 +3,7 @@
  * Handles Supabase Realtime subscriptions and broadcasts
  */
 
-const { supabase } = require('../config');
+const { supabase, SSE_HEARTBEAT_MS } = require('../config');
 
 // Store active subscriptions
 const subscriptions = new Map();
@@ -44,13 +44,13 @@ function sseHandler(req, res) {
   // Send initial connection event
   sendToClient(clientId, 'connected', { clientId, timestamp: new Date().toISOString() });
 
-  // Heartbeat every 30 seconds
+  // Heartbeat
   const heartbeat = setInterval(() => {
     if (clients.has(clientId)) {
       sendToClient(clientId, 'ping', { timestamp: new Date().toISOString() });
       clients.get(clientId).lastPing = new Date();
     }
-  }, 30000);
+  }, SSE_HEARTBEAT_MS);
 
   // Handle client disconnect
   req.on('close', () => {

@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
+const constants = require('./constants');
 
 // Supabase client
 const supabase = createClient(
@@ -9,5 +10,6 @@ const supabase = createClient(
 
 module.exports = {
   supabase,
-  port: process.env.PORT || 3001
+  port: process.env.PORT || 3001,
+  ...constants
 };

@@ -4,20 +4,19 @@
  * Feeds data into the Price Intelligence system
  */
 
-const { supabase } = require('../config');
+const { supabase, PRICE_CACHE_TTL_MS } = require('../config');
 const priceMatcher = require('./price-matcher');
 
-// Cache naming conventions (refreshed every 5 minutes)
+// Cache naming conventions
 let namingConventionsCache = null;
 let namingConventionsCacheTime = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Get naming conventions from database (with caching)
  */
 async function getNamingConventions() {
   const now = Date.now();
-  if (namingConventionsCache && (now - namingConventionsCacheTime) < CACHE_TTL) {
+  if (namingConventionsCache && (now - namingConventionsCacheTime) < PRICE_CACHE_TTL_MS) {
     return namingConventionsCache;
   }
 

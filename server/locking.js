@@ -3,11 +3,8 @@
  * Prevent concurrent editing conflicts with timed locks
  */
 
-const { supabase } = require('../config');
+const { supabase, LOCK_DURATION_MINUTES } = require('../config');
 const { AppError, lockedError } = require('./errors');
-
-// Lock duration in minutes
-const LOCK_DURATION_MINUTES = 5;
 
 // ============================================================
 // LOCK OPERATIONS
