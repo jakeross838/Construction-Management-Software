@@ -8,6 +8,12 @@ const router = express.Router();
 const { supabase } = require('../../config');
 const { extractSpecsFromPlans, extractSpecsFromMultipleDocuments } = require('../ai-document-processor');
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
+const {
+  createValidationError,
+  createValidationWarning,
+  createDetailedFixHint,
+  formatAmount
+} = require('../validation-errors');
 
 // Create a new job
 router.post('/', validateRequest({
@@ -411,47 +417,56 @@ router.get('/:id/budget-accuracy', asyncHandler(async (req, res) => {
 
     // Determine status
     let status = 'ok';
+    const costCode = bl.cost_code?.code || 'Unknown';
+    const costCodeName = bl.cost_code?.name || 'Unknown';
+
     if (billed > committed + 0.01) {
       status = 'over_billed';
-      errors.push({
-        type: 'OVER_BILLED',
-        severity: 'error',
+      const excess = billed - committed;
+      errors.push(createValidationError('OVER_BILLED', {
+        cost_code: costCode,
         cost_code_id: bl.cost_code_id,
-        cost_code: bl.cost_code?.code || 'Unknown',
-        cost_code_name: bl.cost_code?.name || 'Unknown',
-        budgeted,
-        committed,
-        billed,
-        excess: billed - committed,
-        message: `Cost code ${bl.cost_code?.code} billed $${(billed - committed).toFixed(2)} more than committed`
-      });
+        cost_code_name: costCodeName,
+        message: `Cost code ${costCode} billed ${formatAmount(excess)} more than committed`,
+        fix_hint: createDetailedFixHint('OVER_BILLED', { cost_code: costCode, excess }),
+        details: {
+          budgeted,
+          committed,
+          billed,
+          excess
+        }
+      }));
     } else if (committed > budgeted + 0.01) {
       status = 'over_committed';
-      errors.push({
-        type: 'OVER_COMMITTED',
-        severity: 'error',
+      const excess = committed - budgeted;
+      errors.push(createValidationError('OVER_COMMITTED', {
+        cost_code: costCode,
         cost_code_id: bl.cost_code_id,
-        cost_code: bl.cost_code?.code || 'Unknown',
-        cost_code_name: bl.cost_code?.name || 'Unknown',
-        budgeted,
-        committed,
-        excess: committed - budgeted,
-        message: `Cost code ${bl.cost_code?.code} committed $${(committed - budgeted).toFixed(2)} over budget`
-      });
+        cost_code_name: costCodeName,
+        message: `Cost code ${costCode} committed ${formatAmount(excess)} over budget`,
+        fix_hint: createDetailedFixHint('OVER_COMMITTED', { cost_code: costCode, excess }),
+        details: {
+          budgeted,
+          committed,
+          excess,
+          percent_over: ((committed / budgeted - 1) * 100).toFixed(1)
+        }
+      }));
     } else if (percentCommitted > 90) {
       status = 'approaching';
-      warnings.push({
-        type: 'APPROACHING_LIMIT',
-        severity: 'warning',
+      const remaining = budgeted - committed;
+      warnings.push(createValidationWarning('APPROACHING_LIMIT', {
+        cost_code: costCode,
         cost_code_id: bl.cost_code_id,
-        cost_code: bl.cost_code?.code || 'Unknown',
-        cost_code_name: bl.cost_code?.name || 'Unknown',
-        budgeted,
-        committed,
-        percent_committed: percentCommitted,
-        remaining: budgeted - committed,
-        message: `Cost code ${bl.cost_code?.code} is ${percentCommitted.toFixed(1)}% committed ($${(budgeted - committed).toFixed(2)} remaining)`
-      });
+        cost_code_name: costCodeName,
+        message: `Cost code ${costCode} is ${percentCommitted.toFixed(1)}% committed (${formatAmount(remaining)} remaining)`,
+        details: {
+          budgeted,
+          committed,
+          percent_committed: percentCommitted,
+          remaining
+        }
+      }));
     }
 
     return {
@@ -571,16 +586,27 @@ router.get('/:id/budget-accuracy', asyncHandler(async (req, res) => {
   // Build what_if_approved warnings
   const whatIfWarnings = pendingChangesByCostCode
     .filter(p => p.would_exceed_budget)
-    .map(p => ({
-      type: 'WOULD_EXCEED_BUDGET',
-      cost_code: p.cost_code,
-      cost_code_name: p.cost_code_name,
-      budgeted: p.budgeted,
-      current_committed: p.current_committed,
-      projected_committed: p.projected_committed,
-      excess: p.projected_committed - p.budgeted,
-      message: `Approving pending COs would exceed budget by $${(p.projected_committed - p.budgeted).toFixed(2)} for ${p.cost_code} ${p.cost_code_name}`
-    }));
+    .map(p => {
+      const excess = p.projected_committed - p.budgeted;
+      return createValidationWarning('WOULD_EXCEED_BUDGET', {
+        cost_code: p.cost_code,
+        cost_code_id: p.cost_code_id,
+        cost_code_name: p.cost_code_name,
+        message: `Approving pending COs would exceed budget by ${formatAmount(excess)} for ${p.cost_code} ${p.cost_code_name}`,
+        fix_hint: createDetailedFixHint('WOULD_EXCEED_BUDGET', {
+          pending_count: pendingCOs.length,
+          pending_amount: p.pending_amount,
+          excess
+        }),
+        details: {
+          budgeted: p.budgeted,
+          current_committed: p.current_committed,
+          pending_amount: p.pending_amount,
+          projected_committed: p.projected_committed,
+          excess
+        }
+      });
+    });
 
   const projectedTotalCommitted = summary.total_committed + pendingCOTotal;
 
