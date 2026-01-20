@@ -352,7 +352,7 @@ router.get('/catalog', asyncHandler(async (req, res) => {
       *,
       category:v2_selection_categories(id, name, slug, parent_id),
       vendor:v2_vendors(id, name),
-      images:v2_catalog_images(id, storage_path, thumbnail_path, thumb_hash, is_primary, display_order, caption)
+      images:v2_catalog_images!catalog_item_id(id, storage_path, thumbnail_path, thumb_hash, is_primary, display_order, caption)
     `)
     .eq('is_active', true)
     .order('name');
@@ -416,7 +416,7 @@ router.get('/catalog/:id', asyncHandler(async (req, res) => {
       *,
       category:v2_selection_categories(id, name, slug, parent_id),
       vendor:v2_vendors(id, name),
-      images:v2_catalog_images(id, storage_path, thumbnail_path, thumb_hash, is_primary, display_order, caption, alt_text, file_name, width, height)
+      images:v2_catalog_images!catalog_item_id(id, storage_path, thumbnail_path, thumb_hash, is_primary, display_order, caption, alt_text, file_name, width, height)
     `)
     .eq('id', id)
     .single();
@@ -1090,23 +1090,53 @@ router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
     });
   }
 
-  // Create change order
+  // Get current PO total and next CO number
+  const { data: poData } = await supabase
+    .from('v2_purchase_orders')
+    .select('total_amount, change_order_total')
+    .eq('id', poId)
+    .single();
+
+  const previousTotal = parseFloat(poData?.total_amount) || 0;
+  const existingCOTotal = parseFloat(poData?.change_order_total) || 0;
+  const newTotal = previousTotal + existingCOTotal + coAmount;
+
+  // Get next change_order_number for this PO
+  const { data: existingCOs } = await supabase
+    .from('v2_change_orders')
+    .select('change_order_number')
+    .eq('po_id', poId)
+    .order('change_order_number', { ascending: false })
+    .limit(1);
+
+  const nextCONumber = existingCOs && existingCOs.length > 0
+    ? existingCOs[0].change_order_number + 1
+    : 1;
+
+  // Create change order with correct schema columns
   const { data: co, error: coError } = await supabase
     .from('v2_change_orders')
     .insert({
       po_id: poId,
-      co_number: `CO-SEL-${Date.now().toString(36).toUpperCase()}`,
-      title: `${selection.allowance.category?.name || 'Selection'} Upgrade - ${selection.name}`,
+      change_order_number: nextCONumber,
       description: description || `Allowance overage for ${selection.allowance.name}: ${selection.name}`,
-      amount: coAmount,
-      status: 'pending',
       reason: 'client_upgrade',
+      amount_change: coAmount,
+      previous_total: previousTotal + existingCOTotal,
+      new_total: newTotal,
+      status: 'pending',
       created_by
     })
     .select()
     .single();
 
   if (coError) throw coError;
+
+  // Update PO change_order_total
+  await supabase
+    .from('v2_purchase_orders')
+    .update({ change_order_total: existingCOTotal + coAmount })
+    .eq('id', poId);
 
   // Link CO to selection
   await supabase
