@@ -4,7 +4,7 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.8 - Invoice Variance & Data Linkage (shipped 2026-01-19)
+**Last Milestone:** v1.9 - Codebase Reorganization (shipped 2026-01-19)
 **Current Milestone:** Planning next milestone
 
 ## Core Value
@@ -48,6 +48,7 @@ Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardize
 - Data Correlation - Validation endpoints, price intelligence integration (v1.8)
 - AI PO Generation - Document upload, cost code learning, fuzzy matching (v1.8)
 - Quick Fixes - One-click fix endpoints, bulk operations, standardized errors (v1.8)
+- Codebase Reorganization - Dropdown nav, config centralization, route extraction (v1.9)
 
 ## Tech Stack
 
@@ -206,5 +207,14 @@ Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardize
 - `.planning/MILESTONES.md` - Shipped milestones
 - `database/migration-*.sql` - Schema history
 
+### v1.9 Codebase Reorganization (Shipped)
+
+**Technical Debt Cleanup:**
+- [x] SEC-01: Verify .gitignore includes .env, create .env.example template
+- [x] NAV-02: Compact dropdown navigation organized by construction workflow
+- [x] CFG-01: Centralize hardcoded constants to config/constants.js
+- [x] RTE-01: Extract routes from index.js into modular route files
+- [x] MIG-01: Fix duplicate migration file numbers
+
 ---
-*Last updated: 2026-01-19 — v1.8 Invoice Variance & Data Linkage shipped*
+*Last updated: 2026-01-19 — v1.9 Codebase Reorganization shipped*

@@ -2,6 +2,35 @@
 
 Historical record of shipped milestones.
 
+## v1.9 Codebase Reorganization
+
+**Shipped:** 2026-01-19
+**Phases:** 5 (52-56)
+**Plans executed:** 5
+
+### Highlights
+
+- **Security**: Verified .gitignore, created .env.example template for new developers
+- **Navigation Redesign**: Compact 44px header with dropdown menus organized by construction workflow (Pre-Construction, Active Projects, Finance, Closeout, Admin)
+- **Config Centralization**: Created config/constants.js with all hardcoded values (timeouts, file limits, status enums)
+- **Route Extraction**: Expanded cost-codes.js, ai.js; created admin.js with reconciliation/integrity endpoints
+- **Migration Cleanup**: Renamed 8 duplicate migration files (006, 007, 008, 009, 025, 026 duplicates) to 067-074
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Phases | 5 (52-56) |
+| Plans | 5 |
+| Files Modified | 15+ |
+| Timeline | 1 session |
+
+### Archive
+
+- `.planning/milestones/v1.9-ROADMAP.md` (pending)
+
+---
+
 ## v1.8 Invoice Variance & Data Linkage
 
 **Shipped:** 2026-01-19

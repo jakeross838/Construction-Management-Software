@@ -12,10 +12,11 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 Phase: None (milestone complete)
 Plan: N/A
 Status: Ready to plan next milestone
-Last activity: 2026-01-19 — v1.8 milestone shipped
+Last activity: 2026-01-19 — v1.9 milestone shipped
 
 ## Milestone History
 
+- **v1.9 Codebase Reorganization** (shipped 2026-01-19): 5 phases (52-56), 5 plans - Security, navigation redesign, config centralization, route extraction, migration cleanup
 - **v1.8 Invoice Variance & Data Linkage** (shipped 2026-01-19): 5 phases (47-51), 17 plans - Variance detection, cost code linkage, data correlation, AI PO generation, quick fixes
 - **v1.7 Data Integrity & AI Accuracy** (shipped 2026-01-19): 4 phases (43-46), 16 plans - Budget RPC, Invoice pipeline, Draw/PO linking, AI accuracy
 - **v1.6 Module Expansion** (shipped 2026-01-19): 6 phases, 17 plans - Leads/CRM, Selections, 7 scaffold modules, navigation reorganization
@@ -43,7 +44,7 @@ None
 ## Session Continuity
 
 Last session: 2026-01-19
-Stopped at: Completed v1.8 milestone
+Stopped at: Completed v1.9 milestone (retroactive documentation)
 Resume file: None
 
 ## Next Actions
@@ -55,9 +56,9 @@ Resume file: None
 
 ## Research
 
-All v1.8 features complete and verified:
-- Variance detection with 35 unit tests
-- Cost code fuzzy matching (Levenshtein distance)
-- Data validation endpoints with standardized errors
-- AI PO generation with learned cost code patterns
-- Fix endpoints with one-click and bulk operations
+All v1.9 codebase reorganization complete:
+- Security: .gitignore verified, .env.example created
+- Navigation: Compact dropdown menus by construction workflow
+- Config: Centralized constants in config/constants.js
+- Routes: Extracted to modular files (cost-codes.js, ai.js, admin.js)
+- Migrations: 8 duplicate files renamed to 067-074
