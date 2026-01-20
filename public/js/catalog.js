@@ -804,16 +804,8 @@ function openEditProductModal() {
     document.getElementById('dimUnit').value = p.dimensions.unit || 'in';
   }
 
-  // Show existing images in upload area
-  if (p.images && p.images.length > 0) {
-    const uploadedImages = document.getElementById('uploadedImages');
-    uploadedImages.innerHTML = p.images.map(img => `
-      <div class="uploaded-image-preview" data-image-id="${img.id}">
-        <img src="${img.thumbnail_path || img.storage_path}" alt="${escapeHtml(img.caption || 'Product image')}">
-        <span class="image-badge">${img.is_primary ? 'Primary' : ''}</span>
-      </div>
-    `).join('');
-  }
+  // Load existing images in the image gallery
+  loadExistingImages(currentProduct.id);
 }
 
 function closeProductFormModal() {
@@ -1200,42 +1192,191 @@ async function reorderCategory(categoryId, parentId, direction) {
 }
 
 // ============================================================
-// IMAGE UPLOAD HANDLING
+// IMAGE UPLOAD
 // ============================================================
 
-function handleImageUpload(e) {
-  const files = e.target.files;
-  if (!files || files.length === 0) return;
-
-  const uploadedImages = document.getElementById('uploadedImages');
-
-  // Show preview for each file
-  Array.from(files).forEach(file => {
-    if (!file.type.startsWith('image/')) {
-      showToast(`${file.name} is not an image`, 'error');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      showToast(`${file.name} is too large (max 5MB)`, 'error');
-      return;
-    }
-
+/**
+ * Compress image client-side before upload
+ * @param {File} file - Original image file
+ * @param {number} maxWidth - Max width in pixels (default 1200)
+ * @param {number} quality - JPEG quality 0-1 (default 0.8)
+ * @returns {Promise<Blob>} Compressed image blob
+ */
+async function compressImage(file, maxWidth = 1200, quality = 0.8) {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const preview = document.createElement('div');
-      preview.className = 'uploaded-image-preview pending';
-      preview.innerHTML = `
-        <img src="${event.target.result}" alt="${escapeHtml(file.name)}">
-        <span class="image-badge">Pending upload</span>
-        <button type="button" class="btn-remove" onclick="this.parentElement.remove()">&times;</button>
-      `;
-      preview.dataset.file = file.name;
-      uploadedImages.appendChild(preview);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // Scale down if needed
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(resolve, 'image/jpeg', quality);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
     };
+    reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
 
-  // Note: Actual upload happens in 68-03 (image upload plan)
-  // For now, we just show previews
+/**
+ * Generate thumbnail from image
+ * @param {File|Blob} file - Image file
+ * @param {number} size - Thumbnail size (default 200)
+ * @returns {Promise<Blob>} Thumbnail blob
+ */
+async function generateThumbnail(file, size = 200) {
+  return compressImage(file, size, 0.7);
+}
+
+/**
+ * Handle image file selection
+ */
+async function handleImageUpload(event) {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
+
+  const productId = document.getElementById('editProductId').value;
+  if (!productId) {
+    showToast('Please save the product first before adding images', 'info');
+    return;
+  }
+
+  const progressDiv = document.getElementById('uploadProgress');
+  const progressBar = document.getElementById('uploadProgressBar');
+  const statusText = document.getElementById('uploadStatus');
+
+  progressDiv.style.display = 'block';
+
+  let uploaded = 0;
+  const total = files.length;
+
+  for (const file of files) {
+    try {
+      // Validate file
+      if (!file.type.startsWith('image/')) {
+        showToast(`${file.name} is not an image`, 'error');
+        continue;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        showToast(`${file.name} is too large (max 5MB)`, 'error');
+        continue;
+      }
+
+      statusText.textContent = `Compressing ${file.name}...`;
+
+      // Compress image
+      const compressed = await compressImage(file);
+      const thumbnail = await generateThumbnail(file);
+
+      statusText.textContent = `Uploading ${file.name}...`;
+
+      // Upload to Supabase storage via our API
+      const formData = new FormData();
+      formData.append('image', compressed, file.name);
+      formData.append('thumbnail', thumbnail, `thumb_${file.name}`);
+
+      const res = await fetch(`/api/selections/catalog/${productId}/upload-image`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Upload failed');
+      }
+
+      uploaded++;
+      progressBar.style.width = `${(uploaded / total) * 100}%`;
+    } catch (err) {
+      console.error(`Failed to upload ${file.name}:`, err);
+      showToast(`Failed to upload ${file.name}: ${err.message}`, 'error');
+    }
+  }
+
+  progressDiv.style.display = 'none';
+  progressBar.style.width = '0%';
+
+  if (uploaded > 0) {
+    showToast(`Uploaded ${uploaded} image(s)`, 'success');
+    // Refresh product to show new images
+    if (currentProduct) {
+      await openProductDetail(currentProduct.id);
+    }
+    await loadExistingImages(productId);
+  }
+
+  // Reset file input
+  event.target.value = '';
+}
+
+/**
+ * Load existing images for a product in edit mode
+ */
+async function loadExistingImages(productId) {
+  const container = document.getElementById('existingImages');
+
+  if (!productId) {
+    container.style.display = 'none';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${productId}/images`);
+    if (!res.ok) throw new Error('Failed to load images');
+    const images = await res.json();
+
+    if (images.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+
+    container.style.display = 'grid';
+    container.innerHTML = images.map(img => `
+      <div class="image-thumb">
+        <img src="${img.thumbnail_path || img.storage_path}" alt="">
+        <button class="remove-btn" onclick="removeProductImage('${productId}', '${img.id}')">&times;</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Failed to load images:', err);
+    container.style.display = 'none';
+  }
+}
+
+/**
+ * Remove an image from a product
+ */
+async function removeProductImage(productId, imageId) {
+  if (!confirm('Remove this image?')) return;
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${productId}/images/${imageId}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) throw new Error('Failed to remove image');
+
+    showToast('Image removed', 'success');
+    await loadExistingImages(productId);
+  } catch (err) {
+    console.error('Failed to remove image:', err);
+    showToast('Failed to remove image', 'error');
+  }
 }
