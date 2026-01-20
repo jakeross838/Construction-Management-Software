@@ -9,9 +9,9 @@ Requirements for Selections & Navigation Polish milestone. Each maps to roadmap 
 
 ### Navigation Consistency
 
-- [ ] **NAV-01**: Staff can see which pages have job selection in main window vs sidebar
-- [ ] **NAV-02**: All pages use sidebar job selection pattern (never in main window)
-- [ ] **NAV-03**: Job selection persists in URL (`?job=uuid`) across page refreshes
+- [x] **NAV-01**: Staff can see which pages have job selection in main window vs sidebar
+- [x] **NAV-02**: All pages use sidebar job selection pattern (never in main window)
+- [x] **NAV-03**: Job selection persists in URL (`?job=uuid`) across page refreshes
 
 ### Visual Catalog Core
 
@@ -20,7 +20,7 @@ Requirements for Selections & Navigation Polish milestone. Each maps to roadmap 
 - [ ] **CAT-03**: Staff can search products by keyword across names/descriptions
 - [ ] **CAT-04**: Staff can filter products by category, vendor, price range, room
 - [ ] **CAT-05**: Staff can view product detail modal with photo gallery
-- [ ] **CAT-06**: Product details include quantities, square footage, and specs
+- [x] **CAT-06**: Product details include quantities, square footage, and specs
 - [ ] **CAT-07**: Staff can see selection status (Pending → Selected → Ordered → Installed)
 - [ ] **CAT-08**: Staff can see allowance variance indicators (green/red for under/over)
 
@@ -28,7 +28,7 @@ Requirements for Selections & Navigation Polish milestone. Each maps to roadmap 
 
 - [ ] **MGT-01**: Staff can add new products with photo upload
 - [ ] **MGT-02**: Staff can edit existing products
-- [ ] **MGT-03**: Staff can add multiple photos per product with gallery
+- [x] **MGT-03**: Staff can add multiple photos per product with gallery
 - [ ] **MGT-04**: Staff can manage categories (add/edit/reorder)
 - [ ] **MGT-05**: Staff can archive products (soft delete)
 
@@ -75,20 +75,20 @@ Which phases cover which requirements. Updated by create-roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| NAV-01 | Phase 65 | Pending |
-| NAV-02 | Phase 65 | Pending |
-| NAV-03 | Phase 65 | Pending |
+| NAV-01 | Phase 65 | Complete |
+| NAV-02 | Phase 65 | Complete |
+| NAV-03 | Phase 65 | Complete |
 | CAT-01 | Phase 67 | Pending |
 | CAT-02 | Phase 67 | Pending |
 | CAT-03 | Phase 67 | Pending |
 | CAT-04 | Phase 67 | Pending |
 | CAT-05 | Phase 67 | Pending |
-| CAT-06 | Phase 66 | Pending |
+| CAT-06 | Phase 66 | Complete |
 | CAT-07 | Phase 67 | Pending |
 | CAT-08 | Phase 67 | Pending |
 | MGT-01 | Phase 68 | Pending |
 | MGT-02 | Phase 68 | Pending |
-| MGT-03 | Phase 66 | Pending |
+| MGT-03 | Phase 66 | Complete |
 | MGT-04 | Phase 68 | Pending |
 | MGT-05 | Phase 68 | Pending |
 | INT-01 | Phase 69 | Pending |
