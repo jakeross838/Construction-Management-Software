@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><text y='32' font-size='32'>🏗️</text></svg>">
+  <title>Ross Built - Contracts</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260119">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New Contract</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <main class="main">
+        <!-- Stats Bar -->
+        <div class="page-header-bar">
+          <h1 class="page-title">Contracts</h1>
+          <div class="page-header-stats">
+            <div class="stat-chip">
+              <span class="stat-chip-value" id="statTotal">0</span>
+              <span class="stat-chip-label">Total</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-chip-value" id="statPending">0</span>
+              <span class="stat-chip-label">Pending Signature</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-chip-value" id="statExpiring">0</span>
+              <span class="stat-chip-label">Expiring Soon</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toolbar with Filters -->
+        <div class="data-toolbar">
+          <div class="toolbar-left">
+            <div class="filter-group">
+              <select id="typeFilter" class="form-control form-control-sm">
+                <option value="">All Types</option>
+                <option value="prime">Prime Contract</option>
+                <option value="subcontract">Subcontract</option>
+                <option value="proposal">Proposal</option>
+                <option value="change_order">Change Order</option>
+                <option value="amendment">Amendment</option>
+                <option value="nda">NDA</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <select id="statusFilter" class="form-control form-control-sm">
+                <option value="">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="expired">Expired</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <select id="signatureFilter" class="form-control form-control-sm">
+                <option value="">All Signatures</option>
+                <option value="pending_signature">Pending Signature</option>
+                <option value="fully_executed">Fully Executed</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
+            <div class="search-input-wrap">
+              <input type="text" id="searchInput" placeholder="Search contracts..." class="form-control form-control-sm">
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="data-table-container">
+          <table class="data-table" id="contractTable">
+            <thead>
+              <tr>
+                <th>Contract #</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Party</th>
+                <th>Amount</th>
+                <th>Signature</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <tr><td colspan="7" class="empty-state">Loading contracts...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div id="contractModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <h2 id="modalTitle">New Contract</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="contractForm">
+          <input type="hidden" id="contractId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="contractName">Contract Name *</label>
+              <input type="text" id="contractName" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="contractType">Type *</label>
+              <select id="contractType" class="form-control" required>
+                <option value="">-- Select Type --</option>
+                <option value="prime">Prime Contract</option>
+                <option value="subcontract">Subcontract</option>
+                <option value="proposal">Proposal</option>
+                <option value="change_order">Change Order</option>
+                <option value="amendment">Amendment</option>
+                <option value="nda">NDA</option>
+                <option value="purchase_agreement">Purchase Agreement</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="contractDescription">Description</label>
+            <textarea id="contractDescription" class="form-control" rows="2"></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="jobId">Job</label>
+              <select id="jobId" class="form-control">
+                <option value="">-- No Job --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="companyId">Company</label>
+              <select id="companyId" class="form-control">
+                <option value="">-- No Company --</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="contractAmount">Contract Amount</label>
+              <input type="number" id="contractAmount" class="form-control" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+              <label for="paymentTerms">Payment Terms</label>
+              <select id="paymentTerms" class="form-control">
+                <option value="">-- Select --</option>
+                <option value="Net 30">Net 30</option>
+                <option value="Net 45">Net 45</option>
+                <option value="Net 60">Net 60</option>
+                <option value="Due on Receipt">Due on Receipt</option>
+                <option value="Progress Billing">Progress Billing</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="startDate">Start Date</label>
+              <input type="date" id="startDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="endDate">End Date</label>
+              <input type="date" id="endDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="expirationDate">Expiration</label>
+              <input type="date" id="expirationDate" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="scopeOfWork">Scope of Work</label>
+            <textarea id="scopeOfWork" class="form-control" rows="3"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="notes">Notes</label>
+            <textarea id="notes" class="form-control" rows="2"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveContract()">Save Contract</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="detailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 800px;">
+      <div class="modal-header">
+        <h2 id="detailTitle">Contract Details</h2>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="detailBody">
+        <!-- Populated by JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDetailModal()">Close</button>
+        <button type="button" class="btn btn-danger" onclick="deleteCurrentContract()">Delete</button>
+        <button type="button" class="btn btn-primary" onclick="editCurrentContract()">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/nav-sidebar.js"></script>
+  <script src="js/toasts.js"></script>
+  <script src="js/contracts.js"></script>
+</body>
+</html>

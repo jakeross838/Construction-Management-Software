@@ -24,6 +24,7 @@
         { id: 'bids', label: 'Bids', href: 'bids.html' },
         { id: 'estimates', label: 'Estimates', href: 'estimates.html' },
         { id: 'budget-builder', label: 'Budget Builder', href: 'budget-builder.html' },
+        { id: 'contracts', label: 'Contracts', href: 'contracts.html' },
         { id: 'selections', label: 'Selections', href: 'selections.html' }
       ]
     },
