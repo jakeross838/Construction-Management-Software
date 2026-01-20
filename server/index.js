@@ -147,6 +147,7 @@ const messagingRoutes = require('./routes/messaging');
 const notificationsRoutes = require('./routes/notifications');
 const warrantiesRoutes = require('./routes/warranties');
 const closeoutRoutes = require('./routes/closeout');
+const adminRoutes = require('./routes/admin');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -187,6 +188,7 @@ app.use('/api/messages', messagingRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/warranties', warrantiesRoutes);
 app.use('/api/closeout', closeoutRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete

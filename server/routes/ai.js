@@ -1,12 +1,13 @@
 /**
  * AI Routes
- * AI feedback and learning endpoints
+ * AI feedback, learning, and statistics endpoints
  */
 
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler } = require('../errors');
+const aiLearning = require('../ai-learning');
 
 // Submit AI feedback for learning
 router.post('/feedback', asyncHandler(async (req, res) => {
@@ -53,5 +54,40 @@ router.post('/feedback', asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
-module.exports = router;
+// Get AI learning statistics
+router.get('/stats', asyncHandler(async (req, res) => {
+  const stats = await aiLearning.getLearningStats();
 
+  // Get feedback counts
+  const { count: feedbackCount } = await supabase
+    .from('v2_ai_feedback')
+    .select('*', { count: 'exact', head: true });
+
+  const { count: appliedCount } = await supabase
+    .from('v2_ai_feedback')
+    .select('*', { count: 'exact', head: true })
+    .eq('applied_to_learning', true);
+
+  // Get alias counts
+  const { count: aliasCount } = await supabase
+    .from('v2_vendor_aliases')
+    .select('*', { count: 'exact', head: true });
+
+  // Get duplicate counts
+  const { count: pendingDuplicates } = await supabase
+    .from('v2_vendor_duplicates')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'pending');
+
+  res.json({
+    learning: stats,
+    feedback: {
+      total: feedbackCount || 0,
+      applied: appliedCount || 0
+    },
+    vendor_aliases: aliasCount || 0,
+    pending_duplicates: pendingDuplicates || 0
+  });
+}));
+
+module.exports = router;
