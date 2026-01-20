@@ -492,6 +492,98 @@ router.get('/:id/budget-accuracy', asyncHandler(async (req, res) => {
   summary.cost_codes_over_billed = errors.filter(e => e.type === 'OVER_BILLED').length;
   summary.cost_codes_approaching_limit = warnings.filter(w => w.type === 'APPROACHING_LIMIT').length;
 
+  // 5. What-if analysis for pending COs/VPOs
+  // Get all POs for this job
+  const { data: jobPOs } = await supabase
+    .from('v2_purchase_orders')
+    .select('id')
+    .eq('job_id', jobId)
+    .is('deleted_at', null);
+
+  const poIds = (jobPOs || []).map(p => p.id);
+
+  // Get pending COs with line items
+  let pendingCOs = [];
+  let pendingCOLineItems = [];
+  if (poIds.length > 0) {
+    const { data: cos } = await supabase
+      .from('v2_change_orders')
+      .select('id, po_id, change_order_number, amount_change')
+      .in('po_id', poIds)
+      .eq('status', 'pending');
+    pendingCOs = cos || [];
+
+    if (pendingCOs.length > 0) {
+      const coIds = pendingCOs.map(co => co.id);
+      const { data: lineItems } = await supabase
+        .from('v2_change_order_line_items')
+        .select('change_order_id, cost_code_id, amount')
+        .in('change_order_id', coIds);
+      pendingCOLineItems = lineItems || [];
+    }
+  }
+
+  // Get pending VPOs (no line items - job-level only)
+  let pendingVPOs = [];
+  if (poIds.length > 0) {
+    const { data: vpos } = await supabase
+      .from('v2_verbal_purchase_orders')
+      .select('id, po_id, vpo_number, amount')
+      .in('po_id', poIds)
+      .eq('status', 'pending');
+    pendingVPOs = vpos || [];
+  }
+
+  // Calculate pending amounts by cost code
+  const pendingByCostCode = {};
+  pendingCOLineItems.forEach(li => {
+    if (li.cost_code_id) {
+      if (!pendingByCostCode[li.cost_code_id]) {
+        pendingByCostCode[li.cost_code_id] = 0;
+      }
+      pendingByCostCode[li.cost_code_id] += parseFloat(li.amount || 0);
+    }
+  });
+
+  const pendingCOTotal = pendingCOs.reduce((sum, co) => sum + parseFloat(co.amount_change || 0), 0);
+  const pendingVPOTotal = pendingVPOs.reduce((sum, vpo) => sum + parseFloat(vpo.amount || 0), 0);
+
+  // Build pending_changes by cost code
+  const pendingChangesByCostCode = byCostCode
+    .filter(cc => pendingByCostCode[cc.cost_code_id] && pendingByCostCode[cc.cost_code_id] > 0)
+    .map(cc => {
+      const pendingAmount = pendingByCostCode[cc.cost_code_id] || 0;
+      const projectedCommitted = cc.committed + pendingAmount;
+      const wouldExceedBudget = projectedCommitted > cc.budgeted + 0.01;
+      return {
+        cost_code_id: cc.cost_code_id,
+        cost_code: cc.cost_code,
+        cost_code_name: cc.cost_code_name,
+        pending_amount: pendingAmount,
+        current_committed: cc.committed,
+        projected_committed: projectedCommitted,
+        budgeted: cc.budgeted,
+        would_exceed_budget: wouldExceedBudget,
+        projected_variance: projectedCommitted - cc.budgeted
+      };
+    });
+
+  // Build what_if_approved warnings
+  const whatIfWarnings = pendingChangesByCostCode
+    .filter(p => p.would_exceed_budget)
+    .map(p => ({
+      type: 'WOULD_EXCEED_BUDGET',
+      cost_code: p.cost_code,
+      cost_code_name: p.cost_code_name,
+      budgeted: p.budgeted,
+      current_committed: p.current_committed,
+      projected_committed: p.projected_committed,
+      excess: p.projected_committed - p.budgeted,
+      message: `Approving pending COs would exceed budget by $${(p.projected_committed - p.budgeted).toFixed(2)} for ${p.cost_code} ${p.cost_code_name}`
+    }));
+
+  const projectedTotalCommitted = summary.total_committed + pendingCOTotal;
+
   res.json({
     job_id: jobId,
     job_name: job.name,
@@ -499,7 +591,20 @@ router.get('/:id/budget-accuracy', asyncHandler(async (req, res) => {
     summary,
     by_cost_code: byCostCode,
     errors,
-    warnings
+    warnings,
+    pending_changes: {
+      pending_co_count: pendingCOs.length,
+      pending_co_total: pendingCOTotal,
+      pending_vpo_count: pendingVPOs.length,
+      pending_vpo_total: pendingVPOTotal,
+      by_cost_code: pendingChangesByCostCode
+    },
+    what_if_approved: {
+      projected_total_committed: projectedTotalCommitted,
+      projected_total_variance: projectedTotalCommitted - summary.total_budgeted,
+      cost_codes_would_exceed: whatIfWarnings.length,
+      warnings: whatIfWarnings
+    }
   });
 }));
 
