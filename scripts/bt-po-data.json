@@ -1,0 +1,54 @@
+{
+  "pos": [],
+  "fields": [],
+  "statuses": [],
+  "poListColumns": [],
+  "poRows": [],
+  "createFormFields": [
+    {
+      "type": "hidden",
+      "name": "__VIEWSTATE",
+      "placeholder": ""
+    },
+    {
+      "type": "hidden",
+      "name": "__VIEWSTATEGENERATOR",
+      "placeholder": ""
+    },
+    {
+      "type": "hidden",
+      "name": "__SCROLLPOSITIONX",
+      "placeholder": ""
+    },
+    {
+      "type": "hidden",
+      "name": "__SCROLLPOSITIONY",
+      "placeholder": ""
+    },
+    {
+      "type": "hidden",
+      "name": "__EVENTTARGET",
+      "placeholder": ""
+    },
+    {
+      "type": "hidden",
+      "name": "__EVENTARGUMENT",
+      "placeholder": ""
+    },
+    {
+      "type": "search",
+      "name": "rc_select_0",
+      "placeholder": ""
+    },
+    {
+      "type": "text",
+      "name": "JobSearch",
+      "placeholder": ""
+    },
+    {
+      "type": "hidden",
+      "name": "ctl00$ctl00$ctl00$MasterMain$MasterMain$MasterMain$hidPortalType",
+      "placeholder": ""
+    }
+  ]
+}

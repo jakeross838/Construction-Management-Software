@@ -678,4 +678,318 @@ router.post('/:id/rollback', asyncHandler(async (req, res) => {
     res.json(updatedDoc);
 }));
 
+// ============================================================
+// PHASE 75: DOCUMENT INTELLIGENCE
+// ============================================================
+
+// Get document types
+router.get('/types/all', asyncHandler(async (req, res) => {
+  const { category } = req.query;
+
+  let query = supabase
+    .from('v2_document_types')
+    .select('*')
+    .order('category')
+    .order('name');
+
+  if (category) {
+    query = query.eq('category', category);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data || []);
+}));
+
+// Full-text search documents
+router.get('/intelligence/search', asyncHandler(async (req, res) => {
+  const { q, job_id, category, limit = 50 } = req.query;
+
+  if (!q || q.trim().length < 2) {
+    return res.json([]);
+  }
+
+  const { data, error } = await supabase
+    .rpc('search_documents', {
+      p_query: q,
+      p_job_id: job_id || null,
+      p_type_category: category || null,
+      p_limit: parseInt(limit)
+    });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data || []);
+}));
+
+// Get document extractions
+router.get('/:id/extractions', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_document_extractions')
+    .select('*')
+    .eq('document_id', id)
+    .order('field_name');
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data || []);
+}));
+
+// Add/update extractions
+router.post('/:id/extractions', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { extractions } = req.body;
+
+  if (!extractions || !Array.isArray(extractions)) {
+    throw new AppError('VALIDATION_ERROR', 'extractions array required');
+  }
+
+  const extractionData = extractions.map(e => ({
+    document_id: id,
+    ...e
+  }));
+
+  const { data, error } = await supabase
+    .from('v2_document_extractions')
+    .upsert(extractionData)
+    .select();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Verify extraction (with optional correction)
+router.patch('/extractions/:extractionId/verify', asyncHandler(async (req, res) => {
+  const { extractionId } = req.params;
+  const { verified_by, corrected_value } = req.body;
+
+  const updateData = {
+    verified: true,
+    verified_by,
+    verified_at: new Date().toISOString()
+  };
+
+  if (corrected_value !== undefined) {
+    const { data: existing } = await supabase
+      .from('v2_document_extractions')
+      .select('field_value')
+      .eq('id', extractionId)
+      .single();
+
+    if (existing) {
+      updateData.original_value = existing.field_value;
+      updateData.field_value = corrected_value;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('v2_document_extractions')
+    .update(updateData)
+    .eq('id', extractionId)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Get contract analysis
+router.get('/:id/contract-analysis', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_contract_analysis')
+    .select('*')
+    .eq('document_id', id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.json(data || null);
+}));
+
+// Save contract analysis
+router.post('/:id/contract-analysis', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const analysisData = {
+    document_id: id,
+    ...req.body,
+    analyzed_at: new Date().toISOString()
+  };
+
+  const { data, error } = await supabase
+    .from('v2_contract_analysis')
+    .upsert(analysisData, { onConflict: 'document_id' })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Get document compliance for job
+router.get('/compliance/:jobId', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  // Get compliance summary
+  const { data: summary, error: summaryError } = await supabase
+    .rpc('get_job_document_compliance', { p_job_id: jobId });
+
+  if (summaryError) throw new AppError('DATABASE_ERROR', summaryError.message);
+
+  // Get checklist items
+  const { data: checklist, error: checklistError } = await supabase
+    .from('v2_job_document_checklist')
+    .select(`
+      *,
+      requirement:v2_document_requirements(
+        *,
+        document_type:v2_document_types(*)
+      ),
+      document:v2_documents(id, name, file_url, status)
+    `)
+    .eq('job_id', jobId)
+    .order('status')
+    .order('due_date');
+
+  if (checklistError) throw new AppError('DATABASE_ERROR', checklistError.message);
+
+  res.json({
+    summary: summary && summary.length > 0 ? summary[0] : {
+      total_required: 0,
+      received: 0,
+      approved: 0,
+      pending: 0,
+      overdue: 0,
+      compliance_percent: 0
+    },
+    checklist: checklist || []
+  });
+}));
+
+// Initialize job checklist from requirements
+router.post('/compliance/:jobId/initialize', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { phase, trigger_date } = req.body;
+
+  const { data: requirements, error: reqError } = await supabase
+    .from('v2_document_requirements')
+    .select('*')
+    .eq('phase', phase);
+
+  if (reqError) throw new AppError('DATABASE_ERROR', reqError.message);
+
+  if (!requirements || requirements.length === 0) {
+    return res.json({ created: 0, message: 'No requirements for this phase' });
+  }
+
+  const baseDate = trigger_date ? new Date(trigger_date) : new Date();
+
+  const checklistItems = requirements.map(req => ({
+    job_id: jobId,
+    requirement_id: req.id,
+    status: 'pending',
+    due_date: req.due_days_offset
+      ? new Date(baseDate.getTime() + req.due_days_offset * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      : null
+  }));
+
+  const { data, error } = await supabase
+    .from('v2_job_document_checklist')
+    .upsert(checklistItems, { onConflict: 'job_id,requirement_id' })
+    .select();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json({ created: data.length, items: data });
+}));
+
+// Update checklist item
+router.patch('/compliance/items/:itemId', asyncHandler(async (req, res) => {
+  const { itemId } = req.params;
+
+  const updateData = {
+    ...req.body,
+    updated_at: new Date().toISOString()
+  };
+
+  if (req.body.document_id && req.body.status !== 'pending') {
+    updateData.received_date = new Date().toISOString().split('T')[0];
+  }
+
+  const { data, error } = await supabase
+    .from('v2_job_document_checklist')
+    .update(updateData)
+    .eq('id', itemId)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Get document requirements
+router.get('/requirements/all', asyncHandler(async (req, res) => {
+  const { phase } = req.query;
+
+  let query = supabase
+    .from('v2_document_requirements')
+    .select(`
+      *,
+      document_type:v2_document_types(*)
+    `)
+    .order('phase')
+    .order('trigger_event');
+
+  if (phase) {
+    query = query.eq('phase', phase);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data || []);
+}));
+
+// Create requirement
+router.post('/requirements', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_document_requirements')
+    .insert(req.body)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Update requirement
+router.patch('/requirements/:reqId', asyncHandler(async (req, res) => {
+  const { reqId } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_document_requirements')
+    .update(req.body)
+    .eq('id', reqId)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Delete requirement
+router.delete('/requirements/:reqId', asyncHandler(async (req, res) => {
+  const { reqId } = req.params;
+
+  const { error } = await supabase
+    .from('v2_document_requirements')
+    .delete()
+    .eq('id', reqId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json({ success: true });
+}));
+
 module.exports = router;

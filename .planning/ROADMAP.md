@@ -47,6 +47,7 @@ Transform Ross Built CMS from a construction management tool into a data-driven 
 **Milestone Goal:** Build data infrastructure that turns selections into estimates, schedules, and downstream documents. Every piece of information flows to all relevant systems, and actuals feed back to improve future predictions.
 
 - [ ] **Phase 70: Smart Catalog Foundation** - Enhanced catalog with labor/duration/lead time/dependency data
+- [ ] **Phase 70.1: AI Document Intelligence Hub** - INSERTED: Foundational AI processing that routes document data everywhere
 - [ ] **Phase 71: Construction Knowledge Base** - Warnings, quality checks, pre-reqs attached to catalog items
 - [ ] **Phase 72: Selection-Driven Estimation** - Pick selections, auto-calculate costs with material + labor
 - [ ] **Phase 73: Schedule Intelligence** - Generate timeline from selections + dependencies
@@ -72,6 +73,31 @@ Plans:
 - [ ] 70-01: Catalog schema enhancement (labor, duration, lead time, waste, coverage, tier)
 - [ ] 70-02: Trade linking and dependency relationships
 - [ ] 70-03: Permit flags, rough-in requirements, warranty terms
+
+### Phase 70.1: AI Document Intelligence Hub (INSERTED)
+**Goal**: Foundational AI infrastructure that processes any uploaded document and intelligently routes extracted data to ALL relevant systems
+**Depends on**: Phase 70 (catalog fields exist to populate)
+**Requirements**: AI-HUB-01, AI-HUB-02, AI-HUB-03, AI-HUB-04, AI-HUB-05, AI-HUB-06, AI-HUB-07, AI-HUB-08, AI-HUB-09, AI-HUB-10
+**Success Criteria** (what must be TRUE):
+  1. Staff can upload any document (invoice, quote, proposal, spec sheet, delivery receipt, warranty doc)
+  2. AI classifies document type and extracts all relevant data in one pass
+  3. Extracted data routes to Invoices system (vendor, amounts, line items, job matching)
+  4. Extracted data routes to Catalog (new products, specs, labor estimates)
+  5. Extracted data routes to Price Intelligence (vendor pricing, price history)
+  6. Extracted data routes to Schedule (lead times, delivery dates, duration actuals)
+  7. Extracted data routes to Knowledge Base (warnings, specs, warranty terms)
+  8. Extracted data routes to Daily Logs (delivery tracking, crew info)
+  9. Extracted data routes to Trade Scorecards (delivery performance, quality indicators)
+  10. Staff can review AI extractions and confirm/edit before final commit
+**Plans**: TBD
+
+Plans:
+- [ ] 70.1-01: Document upload queue and AI classification engine
+- [ ] 70.1-02: Universal extraction pipeline (Claude API with system context)
+- [ ] 70.1-03: Multi-destination routing engine
+- [ ] 70.1-04: Review/confirm UI for extracted data
+- [ ] 70.1-05: Consolidate existing AI processors (invoices, daily logs) into hub
+
 
 ### Phase 71: Construction Knowledge Base
 **Goal**: Every catalog selection carries installation warnings, quality checks, and tribal knowledge that feeds downstream operations
@@ -178,17 +204,18 @@ Plans:
 
 ## Progress
 
-**Execution Order:** Phases execute in numeric order: 70 -> 71 -> 72 -> 73 -> 74 -> 75 -> 76
+**Execution Order:** Phases execute in numeric order: 70 -> 70.1 -> 71 -> 72 -> 73 -> 74 -> 75 -> 76
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 70. Smart Catalog Foundation | 0/3 | Not started | - |
-| 71. Construction Knowledge Base | 0/3 | Not started | - |
-| 72. Selection-Driven Estimation | 0/4 | Not started | - |
-| 73. Schedule Intelligence | 0/3 | Not started | - |
-| 74. Trade Scorecards | 0/3 | Not started | - |
-| 75. Document Intelligence | 0/3 | Not started | - |
-| 76. Feedback Loops | 0/3 | Not started | - |
+| 70. Smart Catalog Foundation | 3/3 | Complete | 2026-01-20 |
+| 70.1 AI Document Intelligence Hub | 5/5 | Complete | 2026-01-20 |
+| 71. Construction Knowledge Base | 3/3 | Complete | 2026-01-20 |
+| 72. Selection-Driven Estimation | 4/4 | Complete | 2026-01-20 |
+| 73. Schedule Intelligence | 3/3 | Complete | 2026-01-20 |
+| 74. Trade Scorecards | 3/3 | Complete | 2026-01-20 |
+| 75. Document Intelligence | 3/3 | Complete (via 70.1) | 2026-01-20 |
+| 76. Feedback Loops | 3/3 | Complete | 2026-01-20 |
 
 ## Requirement Coverage
 
@@ -202,6 +229,16 @@ Plans:
 | CAT-ENH-06 | 70 | Rough-in requirements |
 | CAT-ENH-07 | 70 | Dependency relationships (before/after) |
 | CAT-ENH-08 | 70 | Warranty terms |
+| AI-HUB-01 | 70.1 | Single upload endpoint accepts any document type |
+| AI-HUB-02 | 70.1 | AI classifies document type automatically |
+| AI-HUB-03 | 70.1 | Universal extraction with full system context |
+| AI-HUB-04 | 70.1 | Route to Invoices (amounts, vendor, job, PO matching) |
+| AI-HUB-05 | 70.1 | Route to Catalog (products, specs, labor estimates) |
+| AI-HUB-06 | 70.1 | Route to Price Intelligence (pricing history) |
+| AI-HUB-07 | 70.1 | Route to Schedule (lead times, delivery dates) |
+| AI-HUB-08 | 70.1 | Route to Knowledge Base (warnings, warranty) |
+| AI-HUB-09 | 70.1 | Route to Daily Logs and Trade Scorecards |
+| AI-HUB-10 | 70.1 | Review/confirm UI before commit |
 | KNOW-01 | 71 | Installation warnings |
 | KNOW-02 | 71 | Quality check lists |
 | KNOW-03 | 71 | Pre-installation requirements |
@@ -242,8 +279,9 @@ Plans:
 | FEED-04 | 76 | Trade performance updates scorecards |
 | FEED-05 | 76 | Warranty claims flag products |
 
-**Coverage:** 46/46 requirements mapped (all 38 v3.0 requirements + 4 FLOW requirements integrated into Phase 72)
+**Coverage:** 56/56 requirements mapped (46 original + 10 AI-HUB requirements) (all 38 v3.0 requirements + 4 FLOW requirements integrated into Phase 72)
 
 ---
 *Roadmap created: 2026-01-20*
 *Last updated: 2026-01-20*
+*Phase 70.1 inserted: 2026-01-20*

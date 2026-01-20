@@ -19,6 +19,7 @@
         </div>
         <nav class="main-nav"></nav>
         <div class="header-actions">
+          <button class="btn btn-secondary" onclick="openFromSelectionsModal()">From Selections</button>
           <button class="btn btn-primary" onclick="openCreateModal()">+ New Estimate</button>
         </div>
       </div>
@@ -250,11 +251,38 @@
                 <!-- Populated by JS based on current status -->
               </div>
 
+              <!-- Markup & Contingency Section -->
+              <div id="markupSection" style="margin-top: 20px;">
+                <h3>Pricing</h3>
+                <div class="detail-row">
+                  <span class="detail-label">Subtotal</span>
+                  <span class="detail-value" id="detailSubtotal">-</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Markup (<span id="detailMarkupPct">0</span>%)</span>
+                  <span class="detail-value" id="detailMarkupAmt">$0.00</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Contingency (<span id="detailContingencyPct">0</span>%)</span>
+                  <span class="detail-value" id="detailContingencyAmt">$0.00</span>
+                </div>
+                <button class="btn btn-ghost btn-sm" onclick="openMarkupModal()" style="margin-top: 8px;">Edit Markup</button>
+              </div>
+
+              <!-- Generate Scope Section -->
+              <div id="scopeSection" style="margin-top: 20px;">
+                <h3>Scope of Work</h3>
+                <p class="text-muted">Generate scope documents for bid requests.</p>
+                <button class="btn btn-secondary btn-sm" onclick="openGenerateScopeModal()">Generate Scope</button>
+                <button class="btn btn-ghost btn-sm" onclick="openScopesListModal()">View All</button>
+              </div>
+
               <!-- Convert to Budget Section (shown for approved estimates) -->
               <div id="convertSection" style="display: none; margin-top: 20px;">
                 <h3>Convert to Budget</h3>
                 <p class="text-muted">Create budget lines from this approved estimate.</p>
-                <button class="btn btn-primary" onclick="convertToBudget()">Convert to Budget</button>
+                <button class="btn btn-primary btn-sm" onclick="convertToBudget()">Convert to Budget</button>
+                <button class="btn btn-secondary btn-sm" onclick="convertToAllowances()">To Allowances</button>
                 <div id="convertedInfo" style="display: none; margin-top: 10px;">
                   <p class="text-success">Already converted to budget</p>
                 </div>
@@ -662,11 +690,299 @@
     </div>
   </div>
 
+  <!-- Create from Selections Modal -->
+  <div id="fromSelectionsModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Create Estimate from Selections</h2>
+        <button class="close-btn" onclick="closeFromSelectionsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">Create an estimate based on approved selections for a job. All approved selections will be imported as line items.</p>
+
+        <div class="form-group">
+          <label for="selectionsJob">Job *</label>
+          <select id="selectionsJob" class="form-control" required onchange="loadJobSelectionsPreview()">
+            <option value="">Select Job...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="selectionsTitle">Estimate Title *</label>
+          <input type="text" id="selectionsTitle" class="form-control" placeholder="e.g., Selections-Based Estimate v1">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="selectionsMarkup">Markup %</label>
+            <input type="number" id="selectionsMarkup" class="form-control" step="0.1" min="0" max="100" value="0" placeholder="0">
+            <small class="form-help">Builder markup percentage</small>
+          </div>
+          <div class="form-group">
+            <label for="selectionsContingency">Contingency %</label>
+            <input type="number" id="selectionsContingency" class="form-control" step="0.1" min="0" max="50" value="5" placeholder="5">
+            <small class="form-help">For unexpected costs</small>
+          </div>
+        </div>
+
+        <div id="selectionsPreview" class="selections-preview" style="display: none;">
+          <h4>Preview</h4>
+          <div class="preview-stats">
+            <div class="preview-stat">
+              <span class="preview-stat-value" id="previewSelectionCount">0</span>
+              <span class="preview-stat-label">Selections</span>
+            </div>
+            <div class="preview-stat">
+              <span class="preview-stat-value" id="previewCategoryCount">0</span>
+              <span class="preview-stat-label">Categories</span>
+            </div>
+            <div class="preview-stat">
+              <span class="preview-stat-value" id="previewTotalValue">$0</span>
+              <span class="preview-stat-label">Est. Total</span>
+            </div>
+          </div>
+          <div id="previewCategories" class="preview-categories">
+            <!-- Categories list -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeFromSelectionsModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="createFromSelections()" id="createFromSelectionsBtn" disabled>Create Estimate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Project Details Modal -->
+  <div id="projectDetailsModal" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2>Project Details</h2>
+        <button class="close-btn" onclick="closeProjectDetailsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">Enter house dimensions for accurate quantity calculations.</p>
+
+        <div class="form-section">
+          <h4>Square Footage</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="pdTotalSqft">Total Sq Ft</label>
+              <input type="number" id="pdTotalSqft" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label for="pdConditionedSqft">Conditioned Sq Ft</label>
+              <input type="number" id="pdConditionedSqft" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label for="pdGarageSqft">Garage Sq Ft</label>
+              <input type="number" id="pdGarageSqft" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label for="pdPorchSqft">Porch/Patio Sq Ft</label>
+              <input type="number" id="pdPorchSqft" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4>Room Counts</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="pdBedrooms">Bedrooms</label>
+              <input type="number" id="pdBedrooms" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label for="pdBathrooms">Bathrooms</label>
+              <input type="number" id="pdBathrooms" class="form-control" step="0.5" min="0" placeholder="0">
+              <small class="form-help">2.5 = 2 full + 1 half</small>
+            </div>
+            <div class="form-group">
+              <label for="pdStories">Stories</label>
+              <input type="number" id="pdStories" class="form-control" step="0.5" min="1" placeholder="1">
+              <small class="form-help">1.5 = story and a half</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4>Linear Dimensions</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="pdExteriorLF">Exterior Linear Ft</label>
+              <input type="number" id="pdExteriorLF" class="form-control" step="1" min="0" placeholder="0">
+              <small class="form-help">Perimeter of house</small>
+            </div>
+            <div class="form-group">
+              <label for="pdInteriorWallLF">Interior Wall LF</label>
+              <input type="number" id="pdInteriorWallLF" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label for="pdRoofSqft">Roof Sq Ft</label>
+              <input type="number" id="pdRoofSqft" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4>Style & Source</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="pdStyleTier">Style Tier</label>
+              <select id="pdStyleTier" class="form-control">
+                <option value="builder">Builder Grade</option>
+                <option value="standard" selected>Standard</option>
+                <option value="premium">Premium</option>
+                <option value="luxury">Luxury</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="pdSource">Data Source</label>
+              <select id="pdSource" class="form-control">
+                <option value="manual">Manual Entry</option>
+                <option value="plans_extracted">Extracted from Plans</option>
+                <option value="architect_provided">Architect Provided</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeProjectDetailsModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveProjectDetails()">Save Details</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generate Scope Modal -->
+  <div id="generateScopeModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Generate Scope of Work</h2>
+        <button class="close-btn" onclick="closeGenerateScopeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">Create a scope of work document from this estimate for bid requests.</p>
+
+        <div class="form-group">
+          <label for="scopeTrade">Trade (Optional)</label>
+          <select id="scopeTrade" class="form-control">
+            <option value="">All Items</option>
+          </select>
+          <small class="form-help">Filter line items by trade for trade-specific scope</small>
+        </div>
+
+        <div class="form-group">
+          <label>Included Line Items</label>
+          <div id="scopeLineItemsPreview" class="scope-items-preview">
+            <!-- Preview of items that will be in scope -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeGenerateScopeModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="generateScopeOfWork()">Generate Scope</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Markup Modal -->
+  <div id="markupModal" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h2>Edit Markup & Contingency</h2>
+        <button class="close-btn" onclick="closeMarkupModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="editMarkupPct">Markup %</label>
+          <input type="number" id="editMarkupPct" class="form-control" step="0.1" min="0" max="100" value="0">
+          <small class="form-help">Builder profit margin</small>
+        </div>
+        <div class="form-group">
+          <label for="editContingencyPct">Contingency %</label>
+          <input type="number" id="editContingencyPct" class="form-control" step="0.1" min="0" max="50" value="0">
+          <small class="form-help">Buffer for unexpected costs</small>
+        </div>
+        <div class="markup-preview" style="margin-top: 16px; padding: 12px; background: var(--bg-card-elevated); border-radius: 6px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span>Subtotal:</span>
+            <span id="markupPreviewSubtotal">$0.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span>+ Markup:</span>
+            <span id="markupPreviewMarkup">$0.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span>+ Contingency:</span>
+            <span id="markupPreviewContingency">$0.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 8px; font-weight: 600;">
+            <span>Total:</span>
+            <span id="markupPreviewTotal">$0.00</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeMarkupModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveMarkup()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scopes List Modal -->
+  <div id="scopesListModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Scopes of Work</h2>
+        <button class="close-btn" onclick="closeScopesListModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="data-toolbar">
+          <div class="toolbar-left">
+            <select id="scopeJobFilter" class="form-control form-control-sm" onchange="loadScopes()">
+              <option value="">All Jobs</option>
+            </select>
+            <select id="scopeStatusFilter" class="form-control form-control-sm" onchange="loadScopes()">
+              <option value="">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="received_bids">Received Bids</option>
+              <option value="awarded">Awarded</option>
+            </select>
+          </div>
+        </div>
+        <div class="data-table-container">
+          <table class="data-table data-table-hover">
+            <thead>
+              <tr>
+                <th>Scope #</th>
+                <th>Name</th>
+                <th>Job</th>
+                <th>Trade</th>
+                <th>Status</th>
+                <th>Due Date</th>
+                <th>Awarded</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="scopesTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeScopesListModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toastContainer" class="toast-container"></div>
   <script src="js/toasts.js?v=20260118fix"></script>
   <script src="js/nav-sidebar.js?v=20260118fix"></script>
   <script src="js/sidebar.js?v=20260118fix"></script>
   <script src="js/realtime.js?v=20260118fix"></script>
   <script src="js/estimates.js?v=20260118fix"></script>
+  <script src="js/ai-upload.js"></script>
 </body>
 </html>

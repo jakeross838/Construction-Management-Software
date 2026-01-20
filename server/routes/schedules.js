@@ -558,4 +558,399 @@ router.get('/:id/gantt', asyncHandler(async (req, res) => {
     });
 }));
 
+// ============================================================
+// PHASE 73: SCHEDULE INTELLIGENCE
+// ============================================================
+
+// Get templates
+router.get('/templates', asyncHandler(async (req, res) => {
+  const { data: templates, error } = await supabase
+    .from('v2_schedule_templates')
+    .select('*')
+    .order('is_default', { ascending: false })
+    .order('name');
+
+  if (error) throw error;
+  res.json(templates || []);
+}));
+
+// Generate schedule from selections
+router.post('/jobs/:jobId/generate-from-selections', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { start_date, created_by } = req.body;
+
+  const { data: scheduleId, error } = await supabase
+    .rpc('generate_schedule_from_selections', {
+      p_job_id: jobId,
+      p_start_date: start_date || new Date().toISOString().split('T')[0],
+      p_created_by: created_by || 'System'
+    });
+
+  if (error) throw error;
+
+  // Fetch the created schedule with tasks
+  const { data: schedule } = await supabase
+    .from('v2_schedules')
+    .select(`
+      *,
+      job:v2_jobs(id, name)
+    `)
+    .eq('id', scheduleId)
+    .single();
+
+  const { data: tasks } = await supabase
+    .from('v2_schedule_tasks')
+    .select('*')
+    .eq('schedule_id', scheduleId)
+    .order('sort_order');
+
+  res.status(201).json({
+    success: true,
+    message: `Schedule generated with ${tasks?.length || 0} tasks`,
+    schedule: {
+      ...schedule,
+      tasks: tasks || []
+    }
+  });
+}));
+
+// ============================================================
+// DEPENDENCIES
+// ============================================================
+
+// Add dependency
+router.post('/:scheduleId/dependencies', asyncHandler(async (req, res) => {
+  const { scheduleId } = req.params;
+  const { predecessor_id, successor_id, dependency_type, lag_days, created_by } = req.body;
+
+  if (!predecessor_id || !successor_id) {
+    return res.status(400).json({ error: 'Predecessor and successor are required' });
+  }
+
+  if (predecessor_id === successor_id) {
+    return res.status(400).json({ error: 'A task cannot depend on itself' });
+  }
+
+  const { data: dependency, error } = await supabase
+    .from('v2_schedule_dependencies')
+    .insert({
+      predecessor_id,
+      successor_id,
+      dependency_type: dependency_type || 'FS',
+      lag_days: lag_days || 0,
+      source: 'manual'
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'This dependency already exists' });
+    }
+    throw error;
+  }
+
+  // Recalculate schedule
+  await supabase.rpc('recalculate_schedule', { p_schedule_id: scheduleId });
+
+  await logScheduleActivity(scheduleId, null, 'dependency_added', created_by, { dependency_type });
+
+  res.status(201).json(dependency);
+}));
+
+// Get dependencies for schedule
+router.get('/:scheduleId/dependencies', asyncHandler(async (req, res) => {
+  const { scheduleId } = req.params;
+
+  // Get all task IDs for this schedule
+  const { data: tasks } = await supabase
+    .from('v2_schedule_tasks')
+    .select('id')
+    .eq('schedule_id', scheduleId);
+
+  const taskIds = (tasks || []).map(t => t.id);
+
+  if (taskIds.length === 0) {
+    return res.json([]);
+  }
+
+  const { data: dependencies, error } = await supabase
+    .from('v2_schedule_dependencies')
+    .select(`
+      *,
+      predecessor:v2_schedule_tasks!predecessor_id(id, name),
+      successor:v2_schedule_tasks!successor_id(id, name)
+    `)
+    .in('predecessor_id', taskIds);
+
+  if (error) throw error;
+
+  res.json(dependencies || []);
+}));
+
+// Delete dependency
+router.delete('/:scheduleId/dependencies/:depId', asyncHandler(async (req, res) => {
+  const { scheduleId, depId } = req.params;
+  const { deleted_by } = req.body;
+
+  const { error } = await supabase
+    .from('v2_schedule_dependencies')
+    .delete()
+    .eq('id', depId);
+
+  if (error) throw error;
+
+  // Recalculate schedule
+  await supabase.rpc('recalculate_schedule', { p_schedule_id: scheduleId });
+
+  await logScheduleActivity(scheduleId, null, 'dependency_removed', deleted_by);
+
+  res.json({ success: true });
+}));
+
+// ============================================================
+// MILESTONES
+// ============================================================
+
+// Get milestones
+router.get('/:scheduleId/milestones', asyncHandler(async (req, res) => {
+  const { scheduleId } = req.params;
+
+  const { data: milestones, error } = await supabase
+    .from('v2_schedule_milestones')
+    .select(`
+      *,
+      linked_task:v2_schedule_tasks(id, name)
+    `)
+    .eq('schedule_id', scheduleId)
+    .order('target_date');
+
+  if (error) throw error;
+
+  res.json(milestones || []);
+}));
+
+// Add milestone
+router.post('/:scheduleId/milestones', asyncHandler(async (req, res) => {
+  const { scheduleId } = req.params;
+  const { name, description, target_date, linked_task_id, notify_days_before, created_by } = req.body;
+
+  if (!name) return res.status(400).json({ error: 'Milestone name is required' });
+  if (!target_date) return res.status(400).json({ error: 'Target date is required' });
+
+  const { data: milestone, error } = await supabase
+    .from('v2_schedule_milestones')
+    .insert({
+      schedule_id: scheduleId,
+      name,
+      description,
+      target_date,
+      linked_task_id,
+      notify_days_before: notify_days_before || 7
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  await logScheduleActivity(scheduleId, null, 'milestone_added', created_by, { name });
+
+  res.status(201).json(milestone);
+}));
+
+// Update milestone
+router.patch('/:scheduleId/milestones/:msId', asyncHandler(async (req, res) => {
+  const { scheduleId, msId } = req.params;
+  const { name, description, target_date, actual_date, status, linked_task_id, updated_by } = req.body;
+
+  const updates = {};
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (target_date !== undefined) updates.target_date = target_date;
+  if (actual_date !== undefined) updates.actual_date = actual_date;
+  if (status !== undefined) updates.status = status;
+  if (linked_task_id !== undefined) updates.linked_task_id = linked_task_id;
+
+  const { data: milestone, error } = await supabase
+    .from('v2_schedule_milestones')
+    .update(updates)
+    .eq('id', msId)
+    .eq('schedule_id', scheduleId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  await logScheduleActivity(scheduleId, null, 'milestone_updated', updated_by, { updates });
+
+  res.json(milestone);
+}));
+
+// Delete milestone
+router.delete('/:scheduleId/milestones/:msId', asyncHandler(async (req, res) => {
+  const { scheduleId, msId } = req.params;
+
+  const { error } = await supabase
+    .from('v2_schedule_milestones')
+    .delete()
+    .eq('id', msId)
+    .eq('schedule_id', scheduleId);
+
+  if (error) throw error;
+
+  res.json({ success: true });
+}));
+
+// ============================================================
+// CRITICAL PATH
+// ============================================================
+
+router.get('/:id/critical-path', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get critical tasks
+  const { data: criticalTasks, error } = await supabase
+    .from('v2_schedule_tasks')
+    .select('*')
+    .eq('schedule_id', id)
+    .eq('is_critical', true)
+    .order('earliest_start');
+
+  if (error) throw error;
+
+  // Get schedule info
+  const { data: schedule } = await supabase
+    .from('v2_schedules')
+    .select('critical_path_days, start_date, target_end_date')
+    .eq('id', id)
+    .single();
+
+  res.json({
+    critical_path_days: schedule?.critical_path_days || 0,
+    start_date: schedule?.start_date,
+    projected_end: criticalTasks?.[criticalTasks.length - 1]?.earliest_finish || null,
+    target_end_date: schedule?.target_end_date,
+    critical_tasks: criticalTasks || []
+  });
+}));
+
+// ============================================================
+// RECALCULATE SCHEDULE
+// ============================================================
+
+router.post('/:id/recalculate', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { updated_by } = req.body;
+
+  const { error } = await supabase
+    .rpc('recalculate_schedule', { p_schedule_id: id });
+
+  if (error) throw error;
+
+  // Fetch updated schedule
+  const { data: schedule } = await supabase
+    .from('v2_schedules')
+    .select('critical_path_days')
+    .eq('id', id)
+    .single();
+
+  await logScheduleActivity(id, null, 'recalculated', updated_by, {
+    critical_path_days: schedule?.critical_path_days
+  });
+
+  res.json({
+    success: true,
+    critical_path_days: schedule?.critical_path_days
+  });
+}));
+
+// ============================================================
+// ENHANCED GANTT WITH CRITICAL PATH
+// ============================================================
+
+router.get('/:id/gantt-enhanced', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: schedule, error } = await supabase
+    .from('v2_schedules')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+    throw error;
+  }
+
+  // Get tasks with all critical path fields
+  const { data: tasks } = await supabase
+    .from('v2_schedule_tasks')
+    .select('*')
+    .eq('schedule_id', id)
+    .order('sort_order');
+
+  // Get dependencies
+  const taskIds = (tasks || []).map(t => t.id);
+  const { data: dependencies } = await supabase
+    .from('v2_schedule_dependencies')
+    .select('*')
+    .in('predecessor_id', taskIds.length > 0 ? taskIds : ['00000000-0000-0000-0000-000000000000']);
+
+  // Get milestones
+  const { data: milestones } = await supabase
+    .from('v2_schedule_milestones')
+    .select('*')
+    .eq('schedule_id', id);
+
+  // Format for Gantt chart
+  const ganttData = {
+    schedule: {
+      id: schedule.id,
+      name: schedule.name,
+      start_date: schedule.start_date,
+      target_end_date: schedule.target_end_date,
+      critical_path_days: schedule.critical_path_days,
+      work_days: schedule.work_days,
+      status: schedule.status
+    },
+    tasks: (tasks || []).map(task => ({
+      id: task.id,
+      name: task.name,
+      phase: task.phase,
+      start: task.planned_start || task.earliest_start,
+      end: task.planned_end || task.earliest_finish,
+      actual_start: task.actual_start,
+      actual_end: task.actual_end,
+      duration: task.estimated_days,
+      progress: task.percent_complete,
+      status: task.status,
+      is_critical: task.is_critical,
+      total_float: task.total_float,
+      earliest_start: task.earliest_start,
+      earliest_finish: task.earliest_finish,
+      latest_start: task.latest_start,
+      latest_finish: task.latest_finish,
+      dependencies: (dependencies || [])
+        .filter(d => d.successor_id === task.id)
+        .map(d => ({
+          predecessor_id: d.predecessor_id,
+          type: d.dependency_type,
+          lag: d.lag_days
+        }))
+    })),
+    milestones: (milestones || []).map(m => ({
+      id: m.id,
+      name: m.name,
+      date: m.target_date,
+      actual_date: m.actual_date,
+      status: m.status
+    })),
+    dependencies: dependencies || []
+  };
+
+  res.json(ganttData);
+}));
+
 module.exports = router;

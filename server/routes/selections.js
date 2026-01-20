@@ -1878,4 +1878,740 @@ router.get('/stats', asyncHandler(async (req, res) => {
   res.json(stats);
 }));
 
+// ============================================================
+// CATALOG POPULARITY & SMART FEATURES
+// ============================================================
+
+/**
+ * GET /api/selections/catalog/popular
+ * Get popular catalog items, optionally by category
+ */
+router.get('/catalog/popular', asyncHandler(async (req, res) => {
+  const { category_id, limit = 20 } = req.query;
+
+  let query = supabase
+    .from('v2_catalog_popular')
+    .select('*')
+    .limit(parseInt(limit));
+
+  if (category_id) {
+    query = query.eq('category_id', category_id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * GET /api/selections/catalog/featured
+ * Get featured catalog items
+ */
+router.get('/catalog/featured', asyncHandler(async (req, res) => {
+  const { category_id, limit = 20 } = req.query;
+
+  let query = supabase
+    .from('v2_selection_catalog')
+    .select(`
+      *,
+      category:v2_selection_categories(id, name)
+    `)
+    .eq('is_active', true)
+    .eq('is_featured', true)
+    .order('times_selected', { ascending: false })
+    .limit(parseInt(limit));
+
+  if (category_id) {
+    query = query.eq('category_id', category_id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * GET /api/selections/catalog/new
+ * Get newly added catalog items
+ */
+router.get('/catalog/new', asyncHandler(async (req, res) => {
+  const { category_id, limit = 20 } = req.query;
+
+  let query = supabase
+    .from('v2_selection_catalog')
+    .select(`
+      *,
+      category:v2_selection_categories(id, name)
+    `)
+    .eq('is_active', true)
+    .eq('is_new', true)
+    .order('created_at', { ascending: false })
+    .limit(parseInt(limit));
+
+  if (category_id) {
+    query = query.eq('category_id', category_id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * GET /api/selections/catalog/by-brand/:brand
+ * Get catalog items by brand
+ */
+router.get('/catalog/by-brand/:brand', asyncHandler(async (req, res) => {
+  const { brand } = req.params;
+  const { category_id, limit = 50 } = req.query;
+
+  let query = supabase
+    .from('v2_selection_catalog')
+    .select(`
+      *,
+      category:v2_selection_categories(id, name)
+    `)
+    .eq('is_active', true)
+    .ilike('brand', brand)
+    .order('times_selected', { ascending: false })
+    .limit(parseInt(limit));
+
+  if (category_id) {
+    query = query.eq('category_id', category_id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * GET /api/selections/catalog/by-tag/:tag
+ * Get catalog items by tag
+ */
+router.get('/catalog/by-tag/:tag', asyncHandler(async (req, res) => {
+  const { tag } = req.params;
+  const { category_id, limit = 50 } = req.query;
+
+  let query = supabase
+    .from('v2_selection_catalog')
+    .select(`
+      *,
+      category:v2_selection_categories(id, name)
+    `)
+    .eq('is_active', true)
+    .contains('tags', [tag])
+    .order('times_selected', { ascending: false })
+    .limit(parseInt(limit));
+
+  if (category_id) {
+    query = query.eq('category_id', category_id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * POST /api/selections/catalog/:id/track
+ * Track when a catalog item is selected
+ */
+router.post('/catalog/:id/track', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { user_id, job_id } = req.body;
+
+  const { error } = await supabase.rpc('track_catalog_selection', {
+    p_item_id: id,
+    p_user_id: user_id || null,
+    p_job_id: job_id || null
+  });
+
+  if (error) throw error;
+  res.json({ success: true });
+}));
+
+/**
+ * GET /api/selections/catalog/recommendations
+ * Get product recommendations based on selected items
+ */
+router.get('/catalog/recommendations', asyncHandler(async (req, res) => {
+  const { items, limit = 10 } = req.query;
+
+  if (!items) {
+    return res.json([]);
+  }
+
+  const itemIds = Array.isArray(items) ? items : items.split(',');
+
+  const { data, error } = await supabase.rpc('get_catalog_recommendations', {
+    p_selected_items: itemIds,
+    p_limit: parseInt(limit)
+  });
+
+  if (error) throw error;
+  res.json(data || []);
+}));
+
+// ============================================================
+// BRANDS
+// ============================================================
+
+/**
+ * GET /api/selections/brands
+ * Get all brands, optionally filtered by category
+ */
+router.get('/brands', asyncHandler(async (req, res) => {
+  const { category, preferred_only } = req.query;
+
+  let query = supabase
+    .from('v2_catalog_brands')
+    .select('*')
+    .order('name');
+
+  if (category) {
+    query = query.eq('category', category);
+  }
+
+  if (preferred_only === 'true') {
+    query = query.eq('is_preferred', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * POST /api/selections/brands
+ * Add a new brand
+ */
+router.post('/brands', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_catalog_brands')
+    .insert(req.body)
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.json(data);
+}));
+
+// ============================================================
+// BUNDLES (Pre-configured selection packages)
+// ============================================================
+
+/**
+ * GET /api/selections/bundles
+ * Get selection bundles
+ */
+router.get('/bundles', asyncHandler(async (req, res) => {
+  const { style, tier, room_type, featured_only } = req.query;
+
+  let query = supabase
+    .from('v2_selection_bundles')
+    .select(`
+      *,
+      items:v2_selection_bundle_items(
+        *,
+        catalog_item:v2_selection_catalog(*),
+        category:v2_selection_categories(id, name)
+      )
+    `)
+    .order('times_used', { ascending: false });
+
+  if (style) query = query.eq('style', style);
+  if (tier) query = query.eq('tier', tier);
+  if (room_type) query = query.eq('room_type', room_type);
+  if (featured_only === 'true') query = query.eq('is_featured', true);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * GET /api/selections/bundles/:id
+ * Get single bundle with items
+ */
+router.get('/bundles/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_selection_bundles')
+    .select(`
+      *,
+      items:v2_selection_bundle_items(
+        *,
+        catalog_item:v2_selection_catalog(*),
+        category:v2_selection_categories(id, name)
+      )
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error) throw error;
+  res.json(data);
+}));
+
+/**
+ * POST /api/selections/bundles
+ * Create a new bundle
+ */
+router.post('/bundles', asyncHandler(async (req, res) => {
+  const { items, ...bundleData } = req.body;
+
+  // Create bundle
+  const { data: bundle, error: bundleError } = await supabase
+    .from('v2_selection_bundles')
+    .insert(bundleData)
+    .select()
+    .single();
+
+  if (bundleError) throw bundleError;
+
+  // Add items if provided
+  if (items && items.length > 0) {
+    const bundleItems = items.map(item => ({
+      bundle_id: bundle.id,
+      ...item
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('v2_selection_bundle_items')
+      .insert(bundleItems);
+
+    if (itemsError) throw itemsError;
+  }
+
+  res.json(bundle);
+}));
+
+/**
+ * POST /api/selections/bundles/:id/use
+ * Track when a bundle is used
+ */
+router.post('/bundles/:id/use', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_selection_bundles')
+    .update({ times_used: supabase.raw('times_used + 1') })
+    .eq('id', id)
+    .select()
+    .single();
+
+  // Fallback if raw doesn't work
+  if (error) {
+    const { data: current } = await supabase
+      .from('v2_selection_bundles')
+      .select('times_used')
+      .eq('id', id)
+      .single();
+
+    const { data: updated, error: updateError } = await supabase
+      .from('v2_selection_bundles')
+      .update({ times_used: (current?.times_used || 0) + 1 })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+    return res.json(updated);
+  }
+
+  res.json(data);
+}));
+
+// ============================================================
+// FAVORITES
+// ============================================================
+
+/**
+ * GET /api/selections/favorites
+ * Get user's favorite catalog items
+ */
+router.get('/favorites', asyncHandler(async (req, res) => {
+  const { user_id, company_id } = req.query;
+
+  let query = supabase
+    .from('v2_catalog_favorites')
+    .select(`
+      *,
+      catalog_item:v2_selection_catalog(
+        *,
+        category:v2_selection_categories(id, name)
+      )
+    `)
+    .order('created_at', { ascending: false });
+
+  if (user_id) query = query.eq('user_id', user_id);
+  if (company_id) query = query.eq('company_id', company_id);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * POST /api/selections/favorites
+ * Add a catalog item to favorites
+ */
+router.post('/favorites', asyncHandler(async (req, res) => {
+  const { catalog_item_id, user_id, company_id, notes } = req.body;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_favorites')
+    .insert({ catalog_item_id, user_id, company_id, notes })
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.json(data);
+}));
+
+/**
+ * DELETE /api/selections/favorites/:id
+ * Remove from favorites
+ */
+router.delete('/favorites/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { error } = await supabase
+    .from('v2_catalog_favorites')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+  res.json({ success: true });
+}));
+
+// ============================================================
+// RECENT ITEMS
+// ============================================================
+
+/**
+ * GET /api/selections/recent
+ * Get user's recently used catalog items
+ */
+router.get('/recent', asyncHandler(async (req, res) => {
+  const { user_id, limit = 20 } = req.query;
+
+  if (!user_id) {
+    return res.json([]);
+  }
+
+  const { data, error } = await supabase
+    .from('v2_catalog_recent')
+    .select(`
+      *,
+      catalog_item:v2_selection_catalog(
+        *,
+        category:v2_selection_categories(id, name)
+      )
+    `)
+    .eq('user_id', user_id)
+    .order('used_at', { ascending: false })
+    .limit(parseInt(limit));
+
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+// ============================================================
+// SEARCH WITH FILTERS
+// ============================================================
+
+/**
+ * GET /api/selections/catalog/search
+ * Search catalog with advanced filters
+ */
+router.get('/catalog/search', asyncHandler(async (req, res) => {
+  const {
+    q,
+    category_id,
+    brand,
+    tags,
+    min_price,
+    max_price,
+    finish,
+    material,
+    popular_only,
+    featured_only,
+    limit = 50
+  } = req.query;
+
+  let query = supabase
+    .from('v2_selection_catalog')
+    .select(`
+      *,
+      category:v2_selection_categories(id, name)
+    `)
+    .eq('is_active', true)
+    .order('times_selected', { ascending: false })
+    .limit(parseInt(limit));
+
+  // Text search
+  if (q) {
+    query = query.or(`name.ilike.%${q}%,brand.ilike.%${q}%,description.ilike.%${q}%,model_number.ilike.%${q}%`);
+  }
+
+  // Filters
+  if (category_id) query = query.eq('category_id', category_id);
+  if (brand) query = query.ilike('brand', brand);
+  if (finish) query = query.ilike('finish', finish);
+  if (material) query = query.ilike('material', material);
+  if (popular_only === 'true') query = query.eq('is_popular', true);
+  if (featured_only === 'true') query = query.eq('is_featured', true);
+
+  // Price range
+  if (min_price) query = query.gte('unit_price', parseFloat(min_price));
+  if (max_price) query = query.lte('unit_price', parseFloat(max_price));
+
+  // Tags filter
+  if (tags) {
+    const tagArray = Array.isArray(tags) ? tags : tags.split(',');
+    query = query.contains('tags', tagArray);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
+/**
+ * GET /api/selections/catalog/filters
+ * Get available filter options for catalog
+ */
+router.get('/catalog/filters', asyncHandler(async (req, res) => {
+  const { category_id } = req.query;
+
+  // Get distinct brands
+  let brandQuery = supabase
+    .from('v2_selection_catalog')
+    .select('brand')
+    .eq('is_active', true)
+    .not('brand', 'is', null);
+
+  if (category_id) brandQuery = brandQuery.eq('category_id', category_id);
+
+  const { data: brands } = await brandQuery;
+  const uniqueBrands = [...new Set((brands || []).map(b => b.brand))].sort();
+
+  // Get distinct finishes
+  let finishQuery = supabase
+    .from('v2_selection_catalog')
+    .select('finish')
+    .eq('is_active', true)
+    .not('finish', 'is', null);
+
+  if (category_id) finishQuery = finishQuery.eq('category_id', category_id);
+
+  const { data: finishes } = await finishQuery;
+  const uniqueFinishes = [...new Set((finishes || []).map(f => f.finish))].sort();
+
+  // Get distinct materials
+  let materialQuery = supabase
+    .from('v2_selection_catalog')
+    .select('material')
+    .eq('is_active', true)
+    .not('material', 'is', null);
+
+  if (category_id) materialQuery = materialQuery.eq('category_id', category_id);
+
+  const { data: materials } = await materialQuery;
+  const uniqueMaterials = [...new Set((materials || []).map(m => m.material))].sort();
+
+  // Get all tags
+  let tagQuery = supabase
+    .from('v2_selection_catalog')
+    .select('tags')
+    .eq('is_active', true)
+    .not('tags', 'is', null);
+
+  if (category_id) tagQuery = tagQuery.eq('category_id', category_id);
+
+  const { data: tagData } = await tagQuery;
+  const allTags = (tagData || []).flatMap(t => t.tags || []);
+  const uniqueTags = [...new Set(allTags)].sort();
+
+  // Get price range
+  let priceQuery = supabase
+    .from('v2_selection_catalog')
+    .select('unit_price')
+    .eq('is_active', true)
+    .not('unit_price', 'is', null);
+
+  if (category_id) priceQuery = priceQuery.eq('category_id', category_id);
+
+  const { data: prices } = await priceQuery;
+  const priceValues = (prices || []).map(p => parseFloat(p.unit_price));
+  const priceRange = priceValues.length > 0
+    ? { min: Math.min(...priceValues), max: Math.max(...priceValues) }
+    : { min: 0, max: 0 };
+
+  res.json({
+    brands: uniqueBrands,
+    finishes: uniqueFinishes,
+    materials: uniqueMaterials,
+    tags: uniqueTags,
+    price_range: priceRange
+  });
+}));
+
+
+// ============================================================
+// CATEGORY HIERARCHY & ENHANCED BROWSING (Added)
+// ============================================================
+
+/**
+ * GET /api/selections/categories/hierarchy
+ * Get categories as a hierarchical tree with subcategories
+ */
+router.get('/categories/hierarchy', asyncHandler(async (req, res) => {
+  const { data: categories, error } = await supabase
+    .from('v2_selection_categories')
+    .select('id, name, parent_id, display_order, icon')
+    .order('display_order');
+
+  if (error) throw error;
+
+  const { data: products } = await supabase
+    .from('v2_selection_catalog')
+    .select('category_id')
+    .eq('is_active', true);
+
+  const productCounts = {};
+  (products || []).forEach(p => {
+    productCounts[p.category_id] = (productCounts[p.category_id] || 0) + 1;
+  });
+
+  const parents = categories.filter(c => !c.parent_id);
+  const children = categories.filter(c => c.parent_id);
+
+  const hierarchy = parents.map(parent => ({
+    id: parent.id,
+    name: parent.name,
+    icon: parent.icon,
+    display_order: parent.display_order,
+    subcategories: children
+      .filter(c => c.parent_id === parent.id)
+      .map(child => ({
+        id: child.id,
+        name: child.name,
+        display_order: child.display_order,
+        product_count: productCounts[child.id] || 0
+      }))
+      .sort((a, b) => (a.display_order || 999) - (b.display_order || 999))
+  })).sort((a, b) => (a.display_order || 999) - (b.display_order || 999));
+
+  res.json(hierarchy);
+}));
+
+/**
+ * GET /api/selections/catalog/paints
+ * Get paint colors with color chips grouped by brand
+ */
+router.get('/catalog/paints', asyncHandler(async (req, res) => {
+  const { brand, type, search, popular_only } = req.query;
+
+  const { data: paintCategories } = await supabase
+    .from('v2_selection_categories')
+    .select('id, name')
+    .in('name', ['Interior Paint', 'Exterior Paint', 'Wood Stain']);
+
+  const paintCategoryIds = (paintCategories || []).map(c => c.id);
+
+  let query = supabase
+    .from('v2_selection_catalog')
+    .select('id, name, description, brand, unit_price, color_hex, is_popular, is_featured, category_id')
+    .eq('is_active', true)
+    .in('category_id', paintCategoryIds)
+    .not('color_hex', 'is', null)
+    .order('brand')
+    .order('name');
+
+  if (brand) query = query.ilike('brand', brand);
+  if (search) query = query.or('name.ilike.%' + search + '%,description.ilike.%' + search + '%');
+  if (popular_only === 'true') query = query.eq('is_popular', true);
+
+  if (type) {
+    const typeCategory = paintCategories.find(c => c.name.toLowerCase().includes(type.toLowerCase()));
+    if (typeCategory) query = query.eq('category_id', typeCategory.id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const byBrand = {};
+  (data || []).forEach(paint => {
+    if (!byBrand[paint.brand]) byBrand[paint.brand] = [];
+    byBrand[paint.brand].push({
+      id: paint.id,
+      name: paint.name,
+      color_hex: paint.color_hex,
+      description: paint.description,
+      price: paint.unit_price,
+      is_popular: paint.is_popular,
+      type: paintCategories.find(c => c.id === paint.category_id)?.name || 'Paint'
+    });
+  });
+
+  res.json({
+    brands: Object.keys(byBrand).sort(),
+    by_brand: byBrand,
+    total: (data || []).length
+  });
+}));
+
+/**
+ * GET /api/selections/catalog/brands
+ * Get all brands with product counts
+ */
+router.get('/catalog/brands', asyncHandler(async (req, res) => {
+  const { category_id } = req.query;
+
+  const { data: brandInfo } = await supabase
+    .from('v2_catalog_brands')
+    .select('name, logo_url, website_url, is_preferred, tier')
+    .order('name');
+
+  let productQuery = supabase
+    .from('v2_selection_catalog')
+    .select('brand')
+    .eq('is_active', true)
+    .not('brand', 'is', null);
+
+  if (category_id) productQuery = productQuery.eq('category_id', category_id);
+
+  const { data: products } = await productQuery;
+
+  const brandCounts = {};
+  (products || []).forEach(p => {
+    brandCounts[p.brand] = (brandCounts[p.brand] || 0) + 1;
+  });
+
+  const brands = Object.keys(brandCounts).map(brandName => {
+    const info = (brandInfo || []).find(b => b.name.toLowerCase() === brandName.toLowerCase());
+    return {
+      name: brandName,
+      product_count: brandCounts[brandName],
+      logo_url: info?.logo_url,
+      website_url: info?.website_url,
+      is_preferred: info?.is_preferred || false
+    };
+  }).sort((a, b) => b.product_count - a.product_count);
+
+  res.json(brands);
+}));
 module.exports = router;

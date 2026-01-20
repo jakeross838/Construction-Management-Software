@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const { asyncHandler, AppError, notFoundError } = require('../errors');
+const { processDailyLogIntelligence } = require('../daily-log-intelligence');
 
 // Configure multer for photo uploads
 const photoUpload = multer({
@@ -882,6 +883,15 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
     // Log activity
     await logDailyLogActivity(id, 'completed', completed_by || 'System', {});
 
+    // Process intelligence feedback
+    let intelligenceResult = null;
+    try {
+      intelligenceResult = await processDailyLogIntelligence(id);
+      console.log(`Intelligence processed for daily log ${id}:`, intelligenceResult.summary);
+    } catch (err) {
+      console.error('Intelligence processing error:', err);
+    }
+
     // Return updated log
     const { data: fullLog } = await supabase
       .from('v2_daily_logs')
@@ -892,7 +902,10 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
       .eq('id', id)
       .single();
 
-    res.json(fullLog);
+    res.json({
+      ...fullLog,
+      intelligence: intelligenceResult
+    });
 }));
 
 // Reopen a completed daily log (set back to draft)

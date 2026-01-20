@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Upload Test</title>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #1a1a1a; color: white; }
+    .btn { padding: 10px 20px; background: #4a9eff; color: white; border: none; cursor: pointer; margin: 5px; }
+    .log { background: #333; padding: 10px; margin: 10px 0; font-family: monospace; white-space: pre-wrap; max-height: 400px; overflow: auto; }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }
+    .modal.show { display: flex; justify-content: center; align-items: center; }
+    .modal-content { background: #2a2a2a; padding: 20px; border-radius: 8px; min-width: 400px; }
+    input[type="file"] { margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>Upload Test Page</h1>
+  <p>This page tests basic upload functionality.</p>
+
+  <button class="btn" onclick="test1()">Test 1: Log to console</button>
+  <button class="btn" onclick="test2()">Test 2: Open modal</button>
+  <button class="btn" onclick="test3()">Test 3: File input</button>
+  <button class="btn" onclick="test4()">Test 4: Fetch API</button>
+
+  <div class="log" id="log">Click buttons to test...\n</div>
+
+  <div id="testModal" class="modal">
+    <div class="modal-content">
+      <h2>Test Modal</h2>
+      <p>Modal opened successfully!</p>
+      <input type="file" id="testFile" accept=".pdf" onchange="onFileSelect(this)">
+      <div id="fileName"></div>
+      <br>
+      <button class="btn" onclick="uploadFile()">Upload</button>
+      <button class="btn" onclick="closeTestModal()">Close</button>
+    </div>
+  </div>
+
+  <script>
+    function log(msg) {
+      const logDiv = document.getElementById('log');
+      logDiv.textContent += new Date().toISOString().substr(11, 8) + ' - ' + msg + '\n';
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(msg);
+    }
+
+    function test1() {
+      log('Test 1: Console logging works!');
+    }
+
+    function test2() {
+      log('Test 2: Opening modal...');
+      try {
+        document.getElementById('testModal').classList.add('show');
+        log('Test 2: Modal opened!');
+      } catch (e) {
+        log('Test 2 ERROR: ' + e.message);
+      }
+    }
+
+    function closeTestModal() {
+      document.getElementById('testModal').classList.remove('show');
+      log('Modal closed');
+    }
+
+    function test3() {
+      log('Test 3: Triggering file input...');
+      try {
+        document.getElementById('testFile').click();
+        log('Test 3: File dialog should open');
+      } catch (e) {
+        log('Test 3 ERROR: ' + e.message);
+      }
+    }
+
+    function onFileSelect(input) {
+      log('File selected: ' + (input.files[0]?.name || 'none'));
+      document.getElementById('fileName').textContent = input.files[0]?.name || '';
+    }
+
+    async function test4() {
+      log('Test 4: Testing fetch API...');
+      try {
+        const res = await fetch('/api/jobs');
+        const data = await res.json();
+        log('Test 4: Fetch works! Got ' + data.length + ' jobs');
+      } catch (e) {
+        log('Test 4 ERROR: ' + e.message);
+      }
+    }
+
+    let selectedFile = null;
+
+    async function uploadFile() {
+      const fileInput = document.getElementById('testFile');
+      if (!fileInput.files[0]) {
+        log('No file selected');
+        return;
+      }
+
+      log('Starting upload...');
+      try {
+        const formData = new FormData();
+        formData.append('pdf', fileInput.files[0]);
+        formData.append('uploaded_by', 'Test');
+
+        log('Sending to /api/documents/process...');
+        const res = await fetch('/api/documents/process', {
+          method: 'POST',
+          body: formData
+        });
+
+        log('Response status: ' + res.status);
+        const data = await res.json();
+        log('Response: ' + JSON.stringify(data).substring(0, 200));
+      } catch (e) {
+        log('Upload ERROR: ' + e.message);
+      }
+    }
+
+    log('Page loaded. All functions defined.');
+  </script>
+  <script src="js/ai-upload.js"></script>
+</body>
+</html>

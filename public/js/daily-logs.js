@@ -1212,11 +1212,18 @@ async function saveLog(status) {
 
     // If marking as completed, call the complete endpoint
     if (status === 'completed' && savedLog.status !== 'completed') {
-      await fetch(`/api/daily-logs/${savedLog.id}/complete`, {
+      const completeRes = await fetch(`/api/daily-logs/${savedLog.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ completed_by: 'Jake Ross' })
       });
+
+      if (completeRes.ok) {
+        const completeData = await completeRes.json();
+        if (completeData.intelligence && completeData.intelligence.insights?.length > 0) {
+          showIntelligenceInsights(completeData.intelligence);
+        }
+      }
     }
 
     showToast(isEdit ? 'Daily log updated' : 'Daily log created', 'success');
@@ -2398,4 +2405,133 @@ async function syncPendingChanges() {
 function queueOfflineRequest(url, method, headers, body) {
   pendingSync.push({ url, method, headers, body, timestamp: Date.now() });
   savePendingSync();
+}
+
+
+// ============================================================
+// INTELLIGENCE INSIGHTS DISPLAY
+// ============================================================
+
+function showIntelligenceInsights(intelligence) {
+  if (!intelligence || !intelligence.insights?.length) return;
+
+  const { summary, insights } = intelligence;
+
+  // Create insights modal HTML
+  const insightsBySeverity = {
+    high: insights.filter(i => i.severity === 'high'),
+    medium: insights.filter(i => i.severity === 'medium'),
+    low: insights.filter(i => i.severity === 'low' || !i.severity)
+  };
+
+  let insightsHtml = '<div class="intelligence-insights">';
+
+  // Summary stats
+  if (summary) {
+    insightsHtml += `
+      <div class="insights-summary">
+        <div class="summary-stat">
+          <span class="stat-value">${summary.labor_records || 0}</span>
+          <span class="stat-label">Labor Records</span>
+        </div>
+        <div class="summary-stat">
+          <span class="stat-value">${summary.pricing_records || 0}</span>
+          <span class="stat-label">Price Updates</span>
+        </div>
+        <div class="summary-stat">
+          <span class="stat-value">${summary.schedule_records || 0}</span>
+          <span class="stat-label">Schedule Records</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // High priority insights
+  if (insightsBySeverity.high.length > 0) {
+    insightsHtml += '<div class="insights-section severity-high">';
+    insightsHtml += '<h4>⚠️ High Priority</h4>';
+    insightsBySeverity.high.forEach(insight => {
+      insightsHtml += renderInsightCard(insight);
+    });
+    insightsHtml += '</div>';
+  }
+
+  // Medium priority insights
+  if (insightsBySeverity.medium.length > 0) {
+    insightsHtml += '<div class="insights-section severity-medium">';
+    insightsHtml += '<h4>📊 Notable Changes</h4>';
+    insightsBySeverity.medium.forEach(insight => {
+      insightsHtml += renderInsightCard(insight);
+    });
+    insightsHtml += '</div>';
+  }
+
+  insightsHtml += '</div>';
+
+  // Show in a toast or modal
+  showToast(`📊 ${insights.length} intelligence insight${insights.length === 1 ? '' : 's'} generated`, 'success');
+
+  // Optionally show a detailed modal
+  if (insightsBySeverity.high.length > 0) {
+    showInsightsModal(insightsHtml);
+  }
+}
+
+function renderInsightCard(insight) {
+  const typeIcons = {
+    labor_variance: '⏱️',
+    price_change: '💰',
+    duration_variance: '📅',
+    pattern_detected: '🔍',
+    recommendation: '💡',
+    warning: '⚠️'
+  };
+
+  return `
+    <div class="insight-card insight-${insight.type}">
+      <div class="insight-icon">${typeIcons[insight.type] || '📊'}</div>
+      <div class="insight-content">
+        <div class="insight-title">${insight.catalog_item_name || insight.item || insight.task_name || 'Update'}</div>
+        <div class="insight-detail">${insight.suggestion || ''}</div>
+        ${insight.variance_percent ? `<div class="insight-variance">${insight.variance_percent > 0 ? '+' : ''}${insight.variance_percent}% variance</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function showInsightsModal(html) {
+  // Check if modal already exists
+  let modal = document.getElementById('intelligenceModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'intelligenceModal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content modal-md">
+        <div class="modal-header">
+          <h2>📊 Intelligence Insights</h2>
+          <button class="close-btn" onclick="closeInsightsModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="intelligenceModalBody">
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeInsightsModal()">Got it</button>
+          <a href="/catalog.html" class="btn btn-primary">Review in Catalog</a>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+
+  document.getElementById('intelligenceModalBody').innerHTML = html;
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeInsightsModal() {
+  const modal = document.getElementById('intelligenceModal');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = 'none';
+  }
 }

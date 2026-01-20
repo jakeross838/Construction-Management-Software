@@ -201,6 +201,11 @@ function closeAllModals() {
   closeAssemblyModal();
   closeDuplicateModal();
   closeCommandPalette();
+  closeFromSelectionsModal();
+  closeProjectDetailsModal();
+  closeMarkupModal();
+  closeGenerateScopeModal();
+  closeScopesListModal();
 }
 
 async function deleteSelectedLines() {
@@ -916,6 +921,9 @@ async function openEstimateDetail(estimateId) {
     document.getElementById('detailLineCount').textContent = currentEstimate.lines?.length || 0;
     document.getElementById('detailCreated').textContent = `${formatDateTime(currentEstimate.created_at)} by ${currentEstimate.created_by || 'System'}`;
     document.getElementById('detailNotes').textContent = currentEstimate.notes || '-';
+
+    // Update markup display
+    updateDetailMarkupDisplay();
 
     // Submitted info
     if (currentEstimate.submitted_at) {
@@ -3354,5 +3362,610 @@ function dismissDiscoveryTooltip(tooltipId, element) {
   if (element) {
     element.classList.add('dismissing');
     setTimeout(() => element.remove(), 300);
+  }
+}
+
+// ============================================================
+// SELECTION-DRIVEN ESTIMATION (Phase 72)
+// ============================================================
+
+let currentProjectDetails = null;
+let trades = [];
+
+// Load trades for scope generation
+async function loadTrades() {
+  try {
+    const res = await fetch('/api/labor-categories');
+    if (res.ok) {
+      trades = await res.json();
+    }
+  } catch (err) {
+    console.error('Failed to load trades:', err);
+  }
+}
+
+// ============================================================
+// CREATE FROM SELECTIONS MODAL
+// ============================================================
+
+function openFromSelectionsModal() {
+  const modal = document.getElementById('fromSelectionsModal');
+  const jobSelect = document.getElementById('selectionsJob');
+
+  // Populate jobs
+  jobSelect.innerHTML = '<option value="">Select Job...</option>';
+  jobs.forEach(job => {
+    jobSelect.innerHTML += `<option value="${job.id}">${job.name}</option>`;
+  });
+
+  // Reset form
+  document.getElementById('selectionsTitle').value = '';
+  document.getElementById('selectionsMarkup').value = '0';
+  document.getElementById('selectionsContingency').value = '5';
+  document.getElementById('selectionsPreview').style.display = 'none';
+  document.getElementById('createFromSelectionsBtn').disabled = true;
+
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeFromSelectionsModal() {
+  const modal = document.getElementById('fromSelectionsModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function loadJobSelectionsPreview() {
+  const jobId = document.getElementById('selectionsJob').value;
+  const preview = document.getElementById('selectionsPreview');
+  const createBtn = document.getElementById('createFromSelectionsBtn');
+
+  if (!jobId) {
+    preview.style.display = 'none';
+    createBtn.disabled = true;
+    return;
+  }
+
+  try {
+    // Fetch approved selections for this job
+    const res = await fetch(`/api/selections/jobs/${jobId}/selections?status=approved`);
+    if (!res.ok) throw new Error('Failed to load selections');
+
+    const selections = await res.json();
+
+    if (!selections || selections.length === 0) {
+      preview.style.display = 'block';
+      document.getElementById('previewSelectionCount').textContent = '0';
+      document.getElementById('previewCategoryCount').textContent = '0';
+      document.getElementById('previewTotalValue').textContent = '$0';
+      document.getElementById('previewCategories').innerHTML = '<p class="text-muted">No approved selections found for this job.</p>';
+      createBtn.disabled = true;
+      return;
+    }
+
+    // Group by category
+    const byCategory = {};
+    let total = 0;
+    for (const sel of selections) {
+      const catName = sel.category_name || sel.catalog_item?.category?.name || 'Uncategorized';
+      if (!byCategory[catName]) {
+        byCategory[catName] = { count: 0, total: 0 };
+      }
+      byCategory[catName].count++;
+      const price = parseFloat(sel.actual_price || sel.quoted_price || sel.catalog_item?.unit_price || 0);
+      const qty = parseFloat(sel.quantity || 1);
+      byCategory[catName].total += price * qty;
+      total += price * qty;
+    }
+
+    // Update preview
+    document.getElementById('previewSelectionCount').textContent = selections.length;
+    document.getElementById('previewCategoryCount').textContent = Object.keys(byCategory).length;
+    document.getElementById('previewTotalValue').textContent = formatCurrency(total);
+
+    // Render categories
+    const categoriesHtml = Object.entries(byCategory).map(([name, data]) => `
+      <div class="preview-category-item">
+        <span class="preview-category-name">${name}</span>
+        <span class="preview-category-count">${data.count} items</span>
+        <span class="preview-category-total">${formatCurrency(data.total)}</span>
+      </div>
+    `).join('');
+    document.getElementById('previewCategories').innerHTML = categoriesHtml;
+
+    preview.style.display = 'block';
+    createBtn.disabled = false;
+
+    // Auto-fill title if empty
+    const titleInput = document.getElementById('selectionsTitle');
+    if (!titleInput.value) {
+      const job = jobs.find(j => j.id === jobId);
+      titleInput.value = `${job?.name || 'Job'} - Selections Estimate`;
+    }
+
+  } catch (err) {
+    console.error('Error loading selections preview:', err);
+    showToast('Failed to load selections preview', 'error');
+    createBtn.disabled = true;
+  }
+}
+
+async function createFromSelections() {
+  const jobId = document.getElementById('selectionsJob').value;
+  const title = document.getElementById('selectionsTitle').value.trim();
+  const markup = parseFloat(document.getElementById('selectionsMarkup').value) || 0;
+  const contingency = parseFloat(document.getElementById('selectionsContingency').value) || 0;
+
+  if (!jobId) {
+    showToast('Please select a job', 'error');
+    return;
+  }
+  if (!title) {
+    showToast('Please enter a title', 'error');
+    return;
+  }
+
+  const createBtn = document.getElementById('createFromSelectionsBtn');
+  createBtn.disabled = true;
+  createBtn.textContent = 'Creating...';
+
+  try {
+    const res = await fetch('/api/estimates/from-selections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_id: jobId,
+        title,
+        markup_percent: markup,
+        contingency_percent: contingency,
+        created_by: 'User'
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to create estimate');
+    }
+
+    const result = await res.json();
+
+    showToast(result.message || 'Estimate created from selections', 'success');
+    closeFromSelectionsModal();
+    await loadEstimates();
+
+    // Open the new estimate
+    if (result.estimate?.id) {
+      openDetailModal(result.estimate.id);
+    }
+
+  } catch (err) {
+    console.error('Error creating estimate from selections:', err);
+    showToast(err.message || 'Failed to create estimate', 'error');
+  } finally {
+    createBtn.disabled = false;
+    createBtn.textContent = 'Create Estimate';
+  }
+}
+
+// ============================================================
+// PROJECT DETAILS MODAL
+// ============================================================
+
+function openProjectDetailsModal(jobId) {
+  const modal = document.getElementById('projectDetailsModal');
+  loadProjectDetails(jobId);
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeProjectDetailsModal() {
+  const modal = document.getElementById('projectDetailsModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function loadProjectDetails(jobId) {
+  try {
+    const res = await fetch(`/api/estimates/project-details/${jobId}`);
+    const details = res.ok ? await res.json() : null;
+
+    currentProjectDetails = details;
+
+    // Populate form
+    document.getElementById('pdTotalSqft').value = details?.total_sqft || '';
+    document.getElementById('pdConditionedSqft').value = details?.conditioned_sqft || '';
+    document.getElementById('pdGarageSqft').value = details?.garage_sqft || '';
+    document.getElementById('pdPorchSqft').value = details?.porch_sqft || '';
+    document.getElementById('pdBedrooms').value = details?.bedroom_count || '';
+    document.getElementById('pdBathrooms').value = details?.bathroom_count || '';
+    document.getElementById('pdStories').value = details?.story_count || '';
+    document.getElementById('pdExteriorLF').value = details?.exterior_linear_ft || '';
+    document.getElementById('pdInteriorWallLF').value = details?.interior_wall_linear_ft || '';
+    document.getElementById('pdRoofSqft').value = details?.roof_sqft || '';
+    document.getElementById('pdStyleTier').value = details?.style_tier || 'standard';
+    document.getElementById('pdSource').value = details?.source || 'manual';
+
+  } catch (err) {
+    console.error('Error loading project details:', err);
+  }
+}
+
+async function saveProjectDetails() {
+  if (!currentEstimate?.job_id) {
+    showToast('No job selected', 'error');
+    return;
+  }
+
+  try {
+    const data = {
+      total_sqft: parseFloat(document.getElementById('pdTotalSqft').value) || null,
+      conditioned_sqft: parseFloat(document.getElementById('pdConditionedSqft').value) || null,
+      garage_sqft: parseFloat(document.getElementById('pdGarageSqft').value) || null,
+      porch_sqft: parseFloat(document.getElementById('pdPorchSqft').value) || null,
+      bedroom_count: parseInt(document.getElementById('pdBedrooms').value) || null,
+      bathroom_count: parseFloat(document.getElementById('pdBathrooms').value) || null,
+      story_count: parseFloat(document.getElementById('pdStories').value) || null,
+      exterior_linear_ft: parseFloat(document.getElementById('pdExteriorLF').value) || null,
+      interior_wall_linear_ft: parseFloat(document.getElementById('pdInteriorWallLF').value) || null,
+      roof_sqft: parseFloat(document.getElementById('pdRoofSqft').value) || null,
+      style_tier: document.getElementById('pdStyleTier').value,
+      source: document.getElementById('pdSource').value
+    };
+
+    const res = await fetch(`/api/estimates/project-details/${currentEstimate.job_id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!res.ok) throw new Error('Failed to save');
+
+    showToast('Project details saved', 'success');
+    closeProjectDetailsModal();
+
+  } catch (err) {
+    console.error('Error saving project details:', err);
+    showToast('Failed to save project details', 'error');
+  }
+}
+
+// ============================================================
+// MARKUP & CONTINGENCY
+// ============================================================
+
+let markupSubtotal = 0;
+
+function openMarkupModal() {
+  if (!currentEstimate) return;
+
+  const modal = document.getElementById('markupModal');
+  markupSubtotal = parseFloat(currentEstimate.subtotal) || parseFloat(currentEstimate.total_amount) || 0;
+
+  document.getElementById('editMarkupPct').value = currentEstimate.markup_percent || 0;
+  document.getElementById('editContingencyPct').value = currentEstimate.contingency_percent || 0;
+
+  updateMarkupPreview();
+
+  // Add input listeners
+  document.getElementById('editMarkupPct').oninput = updateMarkupPreview;
+  document.getElementById('editContingencyPct').oninput = updateMarkupPreview;
+
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeMarkupModal() {
+  const modal = document.getElementById('markupModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+function updateMarkupPreview() {
+  const markupPct = parseFloat(document.getElementById('editMarkupPct').value) || 0;
+  const contingencyPct = parseFloat(document.getElementById('editContingencyPct').value) || 0;
+
+  const markupAmt = markupSubtotal * (markupPct / 100);
+  const contingencyAmt = markupSubtotal * (contingencyPct / 100);
+  const total = markupSubtotal + markupAmt + contingencyAmt;
+
+  document.getElementById('markupPreviewSubtotal').textContent = formatCurrency(markupSubtotal);
+  document.getElementById('markupPreviewMarkup').textContent = formatCurrency(markupAmt);
+  document.getElementById('markupPreviewContingency').textContent = formatCurrency(contingencyAmt);
+  document.getElementById('markupPreviewTotal').textContent = formatCurrency(total);
+}
+
+async function saveMarkup() {
+  if (!currentEstimate) return;
+
+  const markupPct = parseFloat(document.getElementById('editMarkupPct').value) || 0;
+  const contingencyPct = parseFloat(document.getElementById('editContingencyPct').value) || 0;
+
+  try {
+    const res = await fetch(`/api/estimates/${currentEstimate.id}/recalculate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        markup_percent: markupPct,
+        contingency_percent: contingencyPct,
+        updated_by: 'User'
+      })
+    });
+
+    if (!res.ok) throw new Error('Failed to update');
+
+    const updated = await res.json();
+    currentEstimate = { ...currentEstimate, ...updated };
+
+    // Update detail modal display
+    updateDetailMarkupDisplay();
+
+    showToast('Markup updated', 'success');
+    closeMarkupModal();
+
+  } catch (err) {
+    console.error('Error saving markup:', err);
+    showToast('Failed to save markup', 'error');
+  }
+}
+
+function updateDetailMarkupDisplay() {
+  if (!currentEstimate) return;
+
+  document.getElementById('detailSubtotal').textContent = formatCurrency(currentEstimate.subtotal || currentEstimate.total_amount || 0);
+  document.getElementById('detailMarkupPct').textContent = currentEstimate.markup_percent || '0';
+  document.getElementById('detailMarkupAmt').textContent = formatCurrency(currentEstimate.markup_amount || 0);
+  document.getElementById('detailContingencyPct').textContent = currentEstimate.contingency_percent || '0';
+  document.getElementById('detailContingencyAmt').textContent = formatCurrency(currentEstimate.contingency_amount || 0);
+  document.getElementById('detailAmount').textContent = formatCurrency(currentEstimate.total_amount || 0);
+}
+
+// ============================================================
+// SCOPE OF WORK GENERATION
+// ============================================================
+
+function openGenerateScopeModal() {
+  if (!currentEstimate) return;
+
+  const modal = document.getElementById('generateScopeModal');
+  const tradeSelect = document.getElementById('scopeTrade');
+
+  // Load trades if not loaded
+  if (trades.length === 0) {
+    loadTrades().then(() => populateTradeSelect());
+  } else {
+    populateTradeSelect();
+  }
+
+  function populateTradeSelect() {
+    tradeSelect.innerHTML = '<option value="">All Items</option>';
+    trades.forEach(trade => {
+      tradeSelect.innerHTML += `<option value="${trade.id}">${trade.name}</option>`;
+    });
+  }
+
+  // Show line items preview
+  renderScopeLineItemsPreview();
+
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+
+  // Filter preview when trade changes
+  tradeSelect.onchange = renderScopeLineItemsPreview;
+}
+
+function closeGenerateScopeModal() {
+  const modal = document.getElementById('generateScopeModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+function renderScopeLineItemsPreview() {
+  const preview = document.getElementById('scopeLineItemsPreview');
+  if (!currentEstimate?.lines) {
+    preview.innerHTML = '<p class="text-muted">No line items</p>';
+    return;
+  }
+
+  const items = currentEstimate.lines.slice(0, 10);
+  const total = currentEstimate.lines.length;
+
+  let html = items.map(line => `
+    <div class="scope-preview-item">
+      <span class="scope-preview-desc">${line.description || 'Unnamed item'}</span>
+      <span class="scope-preview-amount">${formatCurrency(line.amount || 0)}</span>
+    </div>
+  `).join('');
+
+  if (total > 10) {
+    html += `<p class="text-muted" style="margin-top: 8px;">+ ${total - 10} more items</p>`;
+  }
+
+  preview.innerHTML = html || '<p class="text-muted">No line items</p>';
+}
+
+async function generateScopeOfWork() {
+  if (!currentEstimate) return;
+
+  const tradeId = document.getElementById('scopeTrade').value || null;
+
+  try {
+    const res = await fetch(`/api/estimates/${currentEstimate.id}/generate-scope`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trade_id: tradeId,
+        created_by: 'User'
+      })
+    });
+
+    if (!res.ok) throw new Error('Failed to generate scope');
+
+    const result = await res.json();
+    showToast(result.message || 'Scope generated', 'success');
+    closeGenerateScopeModal();
+
+    // Optionally open scopes list
+    openScopesListModal();
+
+  } catch (err) {
+    console.error('Error generating scope:', err);
+    showToast('Failed to generate scope', 'error');
+  }
+}
+
+// ============================================================
+// SCOPES LIST
+// ============================================================
+
+let scopes = [];
+
+function openScopesListModal() {
+  const modal = document.getElementById('scopesListModal');
+  const jobSelect = document.getElementById('scopeJobFilter');
+
+  // Populate job filter
+  jobSelect.innerHTML = '<option value="">All Jobs</option>';
+  jobs.forEach(job => {
+    jobSelect.innerHTML += `<option value="${job.id}">${job.name}</option>`;
+  });
+
+  // If we have current estimate, pre-select its job
+  if (currentEstimate?.job_id) {
+    jobSelect.value = currentEstimate.job_id;
+  }
+
+  loadScopes();
+
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeScopesListModal() {
+  const modal = document.getElementById('scopesListModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function loadScopes() {
+  const jobId = document.getElementById('scopeJobFilter')?.value || '';
+  const status = document.getElementById('scopeStatusFilter')?.value || '';
+
+  try {
+    let url = '/api/estimates/scopes?';
+    if (jobId) url += `job_id=${jobId}&`;
+    if (status) url += `status=${status}&`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to load scopes');
+
+    scopes = await res.json();
+    renderScopesList();
+
+  } catch (err) {
+    console.error('Error loading scopes:', err);
+    showToast('Failed to load scopes', 'error');
+  }
+}
+
+function renderScopesList() {
+  const tbody = document.getElementById('scopesTableBody');
+
+  if (!scopes || scopes.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No scopes found</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = scopes.map(scope => `
+    <tr onclick="viewScope('${scope.id}')">
+      <td>${scope.scope_number || '-'}</td>
+      <td>${scope.name || '-'}</td>
+      <td>${scope.job?.name || '-'}</td>
+      <td>${scope.trade?.name || 'All'}</td>
+      <td><span class="badge badge-${getScopeStatusColor(scope.status)}">${scope.status}</span></td>
+      <td>${scope.due_date ? formatDate(scope.due_date) : '-'}</td>
+      <td>${scope.awarded_vendor?.name ? `${scope.awarded_vendor.name} (${formatCurrency(scope.awarded_amount || 0)})` : '-'}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); editScope('${scope.id}')">Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); deleteScope('${scope.id}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function getScopeStatusColor(status) {
+  const colors = {
+    draft: 'warning',
+    sent: 'info',
+    received_bids: 'info',
+    awarded: 'success',
+    cancelled: 'error'
+  };
+  return colors[status] || 'default';
+}
+
+function viewScope(scopeId) {
+  showToast('Scope detail view coming soon', 'info');
+}
+
+function editScope(scopeId) {
+  showToast('Scope edit coming soon', 'info');
+}
+
+async function deleteScope(scopeId) {
+  if (!confirm('Are you sure you want to delete this scope?')) return;
+
+  try {
+    const res = await fetch(`/api/estimates/scopes/${scopeId}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) throw new Error('Failed to delete');
+
+    showToast('Scope deleted', 'success');
+    loadScopes();
+
+  } catch (err) {
+    console.error('Error deleting scope:', err);
+    showToast('Failed to delete scope', 'error');
+  }
+}
+
+// ============================================================
+// CONVERT TO ALLOWANCES
+// ============================================================
+
+async function convertToAllowances() {
+  if (!currentEstimate) return;
+
+  if (currentEstimate.status !== 'approved') {
+    showToast('Only approved estimates can be converted', 'error');
+    return;
+  }
+
+  if (!confirm('This will create allowances from catalog items in this estimate. Continue?')) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/estimates/${currentEstimate.id}/convert-to-allowances`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ converted_by: 'User' })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to convert');
+    }
+
+    const result = await res.json();
+    showToast(result.message || 'Converted to allowances', 'success');
+
+    // Refresh estimate to show conversions
+    await loadEstimateDetail(currentEstimate.id);
+
+  } catch (err) {
+    console.error('Error converting to allowances:', err);
+    showToast(err.message || 'Failed to convert', 'error');
   }
 }

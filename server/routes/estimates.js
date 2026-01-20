@@ -1568,4 +1568,521 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
   });
 }));
 
+// ============================================================
+// SELECTION-DRIVEN ESTIMATION (Phase 72)
+// ============================================================
+
+// ============================================================
+// PROJECT DETAILS
+// ============================================================
+
+// Get project details for a job
+router.get('/project-details/:jobId', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  const { data: details, error } = await supabase
+    .from('v2_project_details')
+    .select('*')
+    .eq('job_id', jobId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.json(details || null);
+}));
+
+// Create/update project details
+router.post('/project-details/:jobId', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const {
+    total_sqft, conditioned_sqft, garage_sqft, porch_sqft,
+    bedroom_count, bathroom_count, story_count,
+    exterior_linear_ft, interior_wall_linear_ft, roof_sqft,
+    room_details, style_tier, source
+  } = req.body;
+
+  // Check if exists
+  const { data: existing } = await supabase
+    .from('v2_project_details')
+    .select('id')
+    .eq('job_id', jobId)
+    .single();
+
+  const detailsData = {
+    job_id: jobId,
+    total_sqft, conditioned_sqft, garage_sqft, porch_sqft,
+    bedroom_count, bathroom_count, story_count,
+    exterior_linear_ft, interior_wall_linear_ft, roof_sqft,
+    room_details: room_details || [],
+    style_tier: style_tier || 'standard',
+    source
+  };
+
+  let result;
+  if (existing) {
+    const { data, error } = await supabase
+      .from('v2_project_details')
+      .update(detailsData)
+      .eq('id', existing.id)
+      .select()
+      .single();
+    if (error) throw new AppError('DATABASE_ERROR', error.message);
+    result = data;
+  } else {
+    const { data, error } = await supabase
+      .from('v2_project_details')
+      .insert(detailsData)
+      .select()
+      .single();
+    if (error) throw new AppError('DATABASE_ERROR', error.message);
+    result = data;
+  }
+
+  res.json(result);
+}));
+
+// ============================================================
+// CREATE ESTIMATE FROM SELECTIONS
+// ============================================================
+
+router.post('/from-selections', asyncHandler(async (req, res) => {
+  const {
+    job_id,
+    title,
+    markup_percent,
+    contingency_percent,
+    created_by
+  } = req.body;
+
+  if (!job_id) throw new AppError('VALIDATION_ERROR', 'Job is required');
+  if (!title) throw new AppError('VALIDATION_ERROR', 'Title is required');
+
+  // Check if job has approved selections
+  const { data: selectionCount } = await supabase
+    .from('v2_selections')
+    .select('id', { count: 'exact' })
+    .eq('status', 'approved')
+    .is('deleted_at', null)
+    .in('allowance_id',
+      supabase.from('v2_allowances').select('id').eq('job_id', job_id)
+    );
+
+  // Call the database function to create estimate from selections
+  const { data: result, error } = await supabase
+    .rpc('create_estimate_from_selections', {
+      p_job_id: job_id,
+      p_title: title,
+      p_created_by: created_by || 'System',
+      p_markup_percent: markup_percent || 0,
+      p_contingency_percent: contingency_percent || 0
+    });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Fetch the created estimate with details
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select(`
+      *,
+      job:v2_jobs(id, name)
+    `)
+    .eq('id', result)
+    .single();
+
+  // Get line count
+  const { data: lines } = await supabase
+    .from('v2_estimate_lines')
+    .select('id')
+    .eq('estimate_id', result);
+
+  await logEstimateActivity(result, 'created_from_selections', created_by || 'System', {
+    job_id,
+    line_count: lines?.length || 0
+  });
+
+  res.status(201).json({
+    success: true,
+    message: `Estimate created with ${lines?.length || 0} line items from selections`,
+    estimate: {
+      ...estimate,
+      line_count: lines?.length || 0
+    }
+  });
+}));
+
+// ============================================================
+// RECALCULATE WITH MARKUP
+// ============================================================
+
+router.post('/:id/recalculate', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { markup_percent, contingency_percent, updated_by } = req.body;
+
+  // Update markup/contingency if provided
+  if (markup_percent !== undefined || contingency_percent !== undefined) {
+    const updates = {};
+    if (markup_percent !== undefined) updates.markup_percent = markup_percent;
+    if (contingency_percent !== undefined) updates.contingency_percent = contingency_percent;
+
+    await supabase
+      .from('v2_estimates')
+      .update(updates)
+      .eq('id', id);
+  }
+
+  // Call the recalculate function
+  const { error } = await supabase
+    .rpc('recalculate_estimate_with_markup', { p_estimate_id: id });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Fetch updated estimate
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select(`
+      *,
+      job:v2_jobs(id, name)
+    `)
+    .eq('id', id)
+    .single();
+
+  await logEstimateActivity(id, 'recalculated', updated_by || 'System', {
+    markup_percent: estimate.markup_percent,
+    contingency_percent: estimate.contingency_percent,
+    total_amount: estimate.total_amount
+  });
+
+  res.json(estimate);
+}));
+
+// ============================================================
+// SCOPES OF WORK
+// ============================================================
+
+// List scopes
+router.get('/scopes', asyncHandler(async (req, res) => {
+  const { job_id, estimate_id, status } = req.query;
+
+  let query = supabase
+    .from('v2_scopes_of_work')
+    .select(`
+      *,
+      job:v2_jobs(id, name),
+      estimate:v2_estimates(id, title),
+      trade:v2_labor_categories(id, name),
+      awarded_vendor:v2_vendors(id, name)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (job_id) query = query.eq('job_id', job_id);
+  if (estimate_id) query = query.eq('estimate_id', estimate_id);
+  if (status) query = query.eq('status', status);
+
+  const { data, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(data || []);
+}));
+
+// Get single scope
+router.get('/scopes/:scopeId', asyncHandler(async (req, res) => {
+  const { scopeId } = req.params;
+
+  const { data: scope, error } = await supabase
+    .from('v2_scopes_of_work')
+    .select(`
+      *,
+      job:v2_jobs(id, name, address),
+      estimate:v2_estimates(id, title, total_amount),
+      trade:v2_labor_categories(id, name),
+      awarded_vendor:v2_vendors(id, name, email, phone)
+    `)
+    .eq('id', scopeId)
+    .single();
+
+  if (error) throw new AppError('NOT_FOUND', 'Scope not found');
+
+  res.json(scope);
+}));
+
+// Create scope from estimate
+router.post('/:id/generate-scope', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { trade_id, created_by } = req.body;
+
+  // Call the database function
+  const { data: scopeId, error } = await supabase
+    .rpc('generate_scope_from_estimate', {
+      p_estimate_id: id,
+      p_trade_id: trade_id || null,
+      p_created_by: created_by || 'System'
+    });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Fetch the created scope
+  const { data: scope } = await supabase
+    .from('v2_scopes_of_work')
+    .select(`
+      *,
+      job:v2_jobs(id, name),
+      trade:v2_labor_categories(id, name)
+    `)
+    .eq('id', scopeId)
+    .single();
+
+  await logEstimateActivity(id, 'scope_generated', created_by || 'System', {
+    scope_id: scopeId,
+    trade_id
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Scope of work generated',
+    scope
+  });
+}));
+
+// Update scope
+router.patch('/scopes/:scopeId', asyncHandler(async (req, res) => {
+  const { scopeId } = req.params;
+  const {
+    name, description, scope_text, inclusions, exclusions,
+    due_date, status, updated_by
+  } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (scope_text !== undefined) updates.scope_text = scope_text;
+  if (inclusions !== undefined) updates.inclusions = inclusions;
+  if (exclusions !== undefined) updates.exclusions = exclusions;
+  if (due_date !== undefined) updates.due_date = due_date;
+  if (status !== undefined) updates.status = status;
+
+  const { data: scope, error } = await supabase
+    .from('v2_scopes_of_work')
+    .update(updates)
+    .eq('id', scopeId)
+    .select(`
+      *,
+      job:v2_jobs(id, name),
+      trade:v2_labor_categories(id, name)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(scope);
+}));
+
+// Award scope to vendor
+router.post('/scopes/:scopeId/award', asyncHandler(async (req, res) => {
+  const { scopeId } = req.params;
+  const { vendor_id, awarded_amount, awarded_by } = req.body;
+
+  if (!vendor_id) throw new AppError('VALIDATION_ERROR', 'Vendor is required');
+  if (!awarded_amount) throw new AppError('VALIDATION_ERROR', 'Amount is required');
+
+  const { data: scope, error } = await supabase
+    .from('v2_scopes_of_work')
+    .update({
+      status: 'awarded',
+      awarded_vendor_id: vendor_id,
+      awarded_amount,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', scopeId)
+    .select(`
+      *,
+      job:v2_jobs(id, name),
+      awarded_vendor:v2_vendors(id, name)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json({
+    success: true,
+    message: 'Scope awarded to vendor',
+    scope
+  });
+}));
+
+// Delete scope
+router.delete('/scopes/:scopeId', asyncHandler(async (req, res) => {
+  const { scopeId } = req.params;
+
+  const { error } = await supabase
+    .from('v2_scopes_of_work')
+    .delete()
+    .eq('id', scopeId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json({ success: true, message: 'Scope deleted' });
+}));
+
+// ============================================================
+// ESTIMATE CONVERSIONS
+// ============================================================
+
+// Get conversions for an estimate
+router.get('/:id/conversions', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: conversions, error } = await supabase
+    .from('v2_estimate_conversions')
+    .select('*')
+    .eq('estimate_id', id)
+    .order('converted_at', { ascending: false });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(conversions || []);
+}));
+
+// Track a conversion
+router.post('/:id/conversions', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { conversion_type, target_id, converted_by, notes } = req.body;
+
+  if (!conversion_type) throw new AppError('VALIDATION_ERROR', 'Conversion type is required');
+  if (!target_id) throw new AppError('VALIDATION_ERROR', 'Target ID is required');
+
+  const { data: conversion, error } = await supabase
+    .from('v2_estimate_conversions')
+    .insert({
+      estimate_id: id,
+      conversion_type,
+      target_id,
+      converted_by: converted_by || 'System',
+      notes
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(id, 'converted', converted_by || 'System', {
+    conversion_type,
+    target_id
+  });
+
+  res.status(201).json(conversion);
+}));
+
+// ============================================================
+// CONVERT ESTIMATE TO ALLOWANCES
+// ============================================================
+
+router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { converted_by } = req.body;
+
+  // Get estimate with lines
+  const { data: estimate, error: fetchError } = await supabase
+    .from('v2_estimates')
+    .select('*, job:v2_jobs(id, name)')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
+
+  // Get lines with catalog items
+  const { data: lines } = await supabase
+    .from('v2_estimate_lines')
+    .select(`
+      *,
+      catalog_item:v2_selection_catalog(
+        id, name, category_id,
+        category:v2_selection_categories(id, name)
+      )
+    `)
+    .eq('estimate_id', id)
+    .not('catalog_item_id', 'is', null);
+
+  if (!lines?.length) {
+    throw new AppError('VALIDATION_ERROR', 'No catalog items in estimate to convert to allowances');
+  }
+
+  // Group lines by category
+  const byCategory = {};
+  for (const line of lines) {
+    const catName = line.catalog_item?.category?.name || 'General';
+    if (!byCategory[catName]) {
+      byCategory[catName] = {
+        category_id: line.catalog_item?.category_id,
+        lines: []
+      };
+    }
+    byCategory[catName].lines.push(line);
+  }
+
+  // Create allowances for each category
+  const allowances = [];
+  for (const [catName, data] of Object.entries(byCategory)) {
+    const total = data.lines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+
+    // Create allowance
+    const { data: allowance, error: allowError } = await supabase
+      .from('v2_allowances')
+      .insert({
+        job_id: estimate.job_id,
+        category_id: data.category_id,
+        name: `${catName} Allowance`,
+        budgeted_amount: total,
+        status: 'active',
+        source_estimate_id: id
+      })
+      .select()
+      .single();
+
+    if (allowError) {
+      console.error('Error creating allowance:', allowError);
+      continue;
+    }
+
+    // Create selections from lines
+    for (const line of data.lines) {
+      await supabase
+        .from('v2_selections')
+        .insert({
+          allowance_id: allowance.id,
+          catalog_item_id: line.catalog_item_id,
+          quantity: line.quantity || 1,
+          quoted_price: line.unit_cost,
+          status: 'approved',
+          room: line.room,
+          notes: `From estimate: ${estimate.title}`
+        });
+    }
+
+    allowances.push(allowance);
+  }
+
+  // Track conversion
+  for (const allowance of allowances) {
+    await supabase.from('v2_estimate_conversions').insert({
+      estimate_id: id,
+      conversion_type: 'allowance',
+      target_id: allowance.id,
+      converted_by: converted_by || 'System'
+    });
+  }
+
+  await logEstimateActivity(id, 'converted_to_allowances', converted_by || 'System', {
+    allowance_count: allowances.length
+  });
+
+  res.json({
+    success: true,
+    message: `Created ${allowances.length} allowances from estimate`,
+    allowances
+  });
+}));
+
 module.exports = router;
