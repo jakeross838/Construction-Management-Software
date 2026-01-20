@@ -1685,16 +1685,16 @@ router.get('/:id/validate-totals', asyncHandler(async (req, res) => {
     // Note: We can't verify exact amounts without knowing all POs, but we can flag missing budget lines
     for (const [costCodeId, coAmount] of Object.entries(coByCostCode)) {
       if (budgetByCC[costCodeId] === undefined) {
-        warnings.push({
-          type: 'CO_NOT_IN_BUDGET',
-          severity: 'warning',
+        warnings.push(createValidationWarning('CO_NOT_IN_BUDGET', {
+          po_id: po.id,
+          po_number: po.po_number,
+          cost_code_id: costCodeId,
+          message: `No budget line found for cost code with CO amount ${formatAmount(coAmount)}`,
           details: {
             cost_code_id: costCodeId,
-            co_amount: coAmount,
-            message: 'No budget line found for this cost code'
-          },
-          fix_hint: 'Ensure budget line exists for this cost code and committed_amount includes CO values'
-        });
+            co_amount: coAmount
+          }
+        }));
       }
     }
   }
