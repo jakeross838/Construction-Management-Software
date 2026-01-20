@@ -28348,3 +28348,340 @@ td.empty-state {
 .btn-fix:hover {
   background: var(--accent-blue-hover, #4393e6);
 }
+
+/* ==========================================================================
+   Bulk Fix Modal Styles
+   Extended modal for bulk fixing all errors of the same type
+   ========================================================================== */
+
+.bulk-fix-modal {
+  max-width: 600px;
+}
+
+.bulk-fix-modal .bulk-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--accent-blue);
+  color: var(--bg-primary);
+  border-radius: 50%;
+  font-size: 0.85rem;
+  margin-right: 0.5rem;
+}
+
+.bulk-fix-modal .bulk-icon::before {
+  content: "B";
+  font-weight: bold;
+}
+
+.bulk-fix-summary {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.bulk-count {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem 0;
+  color: var(--text-primary);
+}
+
+.bulk-count strong {
+  color: var(--accent-blue);
+}
+
+.bulk-action {
+  color: var(--text-secondary);
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.bulk-fix-preview {
+  margin-bottom: 1.25rem;
+}
+
+.bulk-fix-preview h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.affected-items-list {
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+}
+
+.affected-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.affected-item:last-child {
+  border-bottom: none;
+}
+
+.affected-item span {
+  white-space: nowrap;
+}
+
+.more-items {
+  text-align: center;
+  padding: 0.5rem;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.bulk-fix-progress {
+  padding: 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+
+.progress-bar {
+  height: 8px;
+  background: var(--bg-card-elevated);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent-blue);
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+.progress-text {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.bulk-fix-results {
+  padding: 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.results-success,
+.results-error {
+  text-align: center;
+  padding: 1rem;
+}
+
+.results-success .success-icon,
+.results-error .error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.results-success .success-icon {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--accent-green);
+}
+
+.results-success .success-icon::before {
+  content: "\2713"; /* checkmark */
+}
+
+.results-error .error-icon {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--accent-red);
+}
+
+.results-error .error-icon::before {
+  content: "\2717"; /* X mark */
+}
+
+.results-success p,
+.results-error p {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.failed-note {
+  color: var(--accent-orange) !important;
+  font-size: 0.9rem;
+  margin-top: 0.5rem !important;
+}
+
+/* ==========================================================================
+   Validation Summary Styles
+   Component for displaying grouped validation errors with bulk fix options
+   ========================================================================== */
+
+.validation-summary {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.validation-summary.success {
+  border: 1px solid var(--accent-green);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.validation-summary.success .status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--accent-green);
+  border-radius: 50%;
+  font-size: 1rem;
+}
+
+.validation-summary.success .status-icon.success-check::before {
+  content: "\2713"; /* checkmark */
+}
+
+.validation-summary.success .status-text {
+  color: var(--accent-green);
+  font-weight: 500;
+}
+
+.summary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.summary-stats .error-count {
+  color: var(--accent-red);
+  font-weight: 500;
+}
+
+.summary-stats .warning-count {
+  color: var(--accent-orange);
+  font-weight: 500;
+}
+
+.error-groups h4,
+.warning-groups h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.warning-groups {
+  margin-top: 1rem;
+}
+
+.error-group,
+.warning-group {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.875rem;
+  margin-bottom: 0.625rem;
+}
+
+.error-group:last-child,
+.warning-group:last-child {
+  margin-bottom: 0;
+}
+
+.error-group-header,
+.warning-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.error-type-name,
+.warning-type-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.error-count-badge {
+  background: var(--accent-red);
+  color: white;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.warning-count-badge {
+  background: var(--accent-orange);
+  color: white;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.error-group-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.error-group-details {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.warning-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.warning-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* Button success variant for completed bulk fix */
+.btn-success {
+  background: var(--accent-green) !important;
+  border-color: var(--accent-green) !important;
+  color: white !important;
+}
+
+.btn-success:hover {
+  background: #2ea043 !important;
+}
