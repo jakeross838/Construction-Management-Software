@@ -75,31 +75,31 @@ Which phases cover which requirements. Updated by create-roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| NAV-01 | TBD | Pending |
-| NAV-02 | TBD | Pending |
-| NAV-03 | TBD | Pending |
-| CAT-01 | TBD | Pending |
-| CAT-02 | TBD | Pending |
-| CAT-03 | TBD | Pending |
-| CAT-04 | TBD | Pending |
-| CAT-05 | TBD | Pending |
-| CAT-06 | TBD | Pending |
-| CAT-07 | TBD | Pending |
-| CAT-08 | TBD | Pending |
-| MGT-01 | TBD | Pending |
-| MGT-02 | TBD | Pending |
-| MGT-03 | TBD | Pending |
-| MGT-04 | TBD | Pending |
-| MGT-05 | TBD | Pending |
-| INT-01 | TBD | Pending |
-| INT-02 | TBD | Pending |
-| INT-03 | TBD | Pending |
+| NAV-01 | Phase 65 | Pending |
+| NAV-02 | Phase 65 | Pending |
+| NAV-03 | Phase 65 | Pending |
+| CAT-01 | Phase 67 | Pending |
+| CAT-02 | Phase 67 | Pending |
+| CAT-03 | Phase 67 | Pending |
+| CAT-04 | Phase 67 | Pending |
+| CAT-05 | Phase 67 | Pending |
+| CAT-06 | Phase 66 | Pending |
+| CAT-07 | Phase 67 | Pending |
+| CAT-08 | Phase 67 | Pending |
+| MGT-01 | Phase 68 | Pending |
+| MGT-02 | Phase 68 | Pending |
+| MGT-03 | Phase 66 | Pending |
+| MGT-04 | Phase 68 | Pending |
+| MGT-05 | Phase 68 | Pending |
+| INT-01 | Phase 69 | Pending |
+| INT-02 | Phase 69 | Pending |
+| INT-03 | Phase 69 | Pending |
 
 **Coverage:**
 - v2.1 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19 (pending roadmap creation)
+- Mapped to phases: 19
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-20*
-*Last updated: 2026-01-20 after initial definition*
+*Last updated: 2026-01-20 after roadmap creation*
