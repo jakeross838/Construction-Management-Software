@@ -1725,6 +1725,108 @@ router.get('/:id/validate-totals', asyncHandler(async (req, res) => {
   });
 }));
 
+/**
+ * Fix PO total mismatches by recalculating from COs
+ * POST /api/purchase-orders/:id/fix-totals
+ * Body: { fix_actions: ['co_total', 'po_total'], performed_by }
+ */
+router.post('/:id/fix-totals', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { fix_actions = ['co_total', 'po_total'], performed_by } = req.body;
+
+  // Get PO with original amount
+  const { data: po, error: poError } = await supabase
+    .from('v2_purchase_orders')
+    .select('id, po_number, original_amount, change_order_total, total_amount')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (poError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Calculate correct CO total from approved COs
+  const { data: approvedCOs, error: coError } = await supabase
+    .from('v2_change_orders')
+    .select('amount_change')
+    .eq('po_id', id)
+    .eq('status', 'approved');
+
+  if (coError) {
+    throw new AppError('DATABASE_ERROR', `Failed to fetch change orders: ${coError.message}`);
+  }
+
+  const calculatedCOTotal = (approvedCOs || []).reduce((sum, co) => sum + parseFloat(co.amount_change || 0), 0);
+
+  const updates = {};
+  const fixes = [];
+
+  if (fix_actions.includes('co_total')) {
+    if (Math.abs((parseFloat(po.change_order_total) || 0) - calculatedCOTotal) > 0.01) {
+      updates.change_order_total = calculatedCOTotal;
+      fixes.push({
+        field: 'change_order_total',
+        old_value: po.change_order_total,
+        new_value: calculatedCOTotal
+      });
+    }
+  }
+
+  if (fix_actions.includes('po_total')) {
+    const coTotalToUse = updates.change_order_total !== undefined ? updates.change_order_total : calculatedCOTotal;
+    const expectedTotal = (parseFloat(po.original_amount) || 0) + coTotalToUse;
+    if (Math.abs((parseFloat(po.total_amount) || 0) - expectedTotal) > 0.01) {
+      updates.total_amount = expectedTotal;
+      fixes.push({
+        field: 'total_amount',
+        old_value: po.total_amount,
+        new_value: expectedTotal
+      });
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    updates.updated_at = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from('v2_purchase_orders')
+      .update(updates)
+      .eq('id', id);
+
+    if (updateError) {
+      throw new AppError('DATABASE_ERROR', `Failed to update PO: ${updateError.message}`);
+    }
+
+    await supabase.from('v2_po_activity').insert({
+      po_id: id,
+      action: 'totals_fixed',
+      details: { fixes, performed_by: performed_by || 'System' }
+    });
+  }
+
+  // Re-validate to confirm fix worked
+  const storedOriginal = parseFloat(po.original_amount || 0);
+  const newCOTotal = updates.change_order_total !== undefined ? updates.change_order_total : parseFloat(po.change_order_total || 0);
+  const newTotal = updates.total_amount !== undefined ? updates.total_amount : parseFloat(po.total_amount || 0);
+  const expectedTotal = storedOriginal + calculatedCOTotal;
+
+  const revalidation = {
+    valid: Math.abs(newCOTotal - calculatedCOTotal) <= 0.01 && Math.abs(newTotal - expectedTotal) <= 0.01,
+    calculated_co_total: calculatedCOTotal,
+    expected_total: expectedTotal,
+    stored_co_total: newCOTotal,
+    stored_total: newTotal
+  };
+
+  res.json({
+    success: true,
+    po_id: id,
+    po_number: po.po_number,
+    fixes_applied: fixes,
+    validation_after: revalidation
+  });
+}));
+
 // ============================================================
 // PUNCH LIST STATUS
 // ============================================================
