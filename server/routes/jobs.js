@@ -200,6 +200,173 @@ router.get('/:id/purchase-orders', asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
+// Validate all PO totals for a job
+router.get('/:id/validate-po-totals', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+
+  // 1. Fetch all POs for this job (non-deleted, non-cancelled)
+  const { data: pos, error: posError } = await supabase
+    .from('v2_purchase_orders')
+    .select('id, po_number, job_id, original_amount, change_order_total, total_amount, status, status_detail')
+    .eq('job_id', jobId)
+    .is('deleted_at', null)
+    .not('status', 'eq', 'cancelled');
+
+  if (posError) throw new AppError('DATABASE_ERROR', posError.message, { code: posError.code });
+
+  if (!pos || pos.length === 0) {
+    return res.json({
+      job_id: jobId,
+      valid: true,
+      summary: {
+        pos_checked: 0,
+        pos_with_errors: 0,
+        pos_with_warnings: 0,
+        total_co_discrepancy: 0,
+        total_vpo_untracked: 0
+      },
+      po_results: [],
+      errors: [],
+      warnings: []
+    });
+  }
+
+  const poIds = pos.map(p => p.id);
+
+  // 2. Fetch all approved COs for these POs
+  const { data: allCOs } = await supabase
+    .from('v2_change_orders')
+    .select('id, po_id, change_order_number, amount_change, status')
+    .in('po_id', poIds)
+    .eq('status', 'approved');
+
+  // 3. Fetch all approved VPOs for these POs
+  const { data: allVPOs } = await supabase
+    .from('v2_verbal_purchase_orders')
+    .select('id, po_id, vpo_number, amount, status')
+    .in('po_id', poIds)
+    .eq('status', 'approved');
+
+  // Group COs and VPOs by PO
+  const cosByPO = {};
+  const vposByPO = {};
+  (allCOs || []).forEach(co => {
+    if (!cosByPO[co.po_id]) cosByPO[co.po_id] = [];
+    cosByPO[co.po_id].push(co);
+  });
+  (allVPOs || []).forEach(vpo => {
+    if (!vposByPO[vpo.po_id]) vposByPO[vpo.po_id] = [];
+    vposByPO[vpo.po_id].push(vpo);
+  });
+
+  // 4. Run validation for each PO
+  const allErrors = [];
+  const allWarnings = [];
+  const poResults = [];
+
+  for (const po of pos) {
+    const poCOs = cosByPO[po.id] || [];
+    const poVPOs = vposByPO[po.id] || [];
+
+    const calculatedCOTotal = poCOs.reduce((sum, co) => sum + parseFloat(co.amount_change || 0), 0);
+    const calculatedVPOTotal = poVPOs.reduce((sum, vpo) => sum + parseFloat(vpo.amount || 0), 0);
+
+    const storedOriginal = parseFloat(po.original_amount || 0);
+    const storedCOTotal = parseFloat(po.change_order_total || 0);
+    const storedTotal = parseFloat(po.total_amount || 0);
+    const expectedTotal = storedOriginal + calculatedCOTotal;
+
+    const poErrors = [];
+    const poWarnings = [];
+
+    // Check CO total mismatch
+    const coDiscrepancy = storedCOTotal - calculatedCOTotal;
+    if (Math.abs(coDiscrepancy) > 0.01) {
+      const err = {
+        type: 'CO_TOTAL_MISMATCH',
+        severity: 'error',
+        po_id: po.id,
+        po_number: po.po_number,
+        details: {
+          stored_co_total: storedCOTotal,
+          calculated_co_total: calculatedCOTotal,
+          discrepancy: coDiscrepancy,
+          approved_co_count: poCOs.length
+        },
+        fix_hint: 'Recalculate change_order_total by summing all approved CO amount_changes'
+      };
+      poErrors.push(err);
+      allErrors.push(err);
+    }
+
+    // Check PO total mismatch
+    const totalDiscrepancy = storedTotal - expectedTotal;
+    if (Math.abs(totalDiscrepancy) > 0.01) {
+      const err = {
+        type: 'PO_TOTAL_MISMATCH',
+        severity: 'error',
+        po_id: po.id,
+        po_number: po.po_number,
+        details: {
+          stored_total: storedTotal,
+          expected_total: expectedTotal,
+          original_amount: storedOriginal,
+          co_total: calculatedCOTotal,
+          discrepancy: totalDiscrepancy
+        },
+        fix_hint: 'Recalculate total_amount as original_amount + sum of approved CO amounts'
+      };
+      poErrors.push(err);
+      allErrors.push(err);
+    }
+
+    // Report VPOs not tracked
+    if (calculatedVPOTotal > 0) {
+      const warn = {
+        type: 'VPO_NOT_TRACKED',
+        severity: 'warning',
+        po_id: po.id,
+        po_number: po.po_number,
+        details: {
+          vpo_total: calculatedVPOTotal,
+          approved_vpo_count: poVPOs.length
+        },
+        fix_hint: 'VPOs exist but may not be reflected in PO totals'
+      };
+      poWarnings.push(warn);
+      allWarnings.push(warn);
+    }
+
+    poResults.push({
+      po_id: po.id,
+      po_number: po.po_number,
+      valid: poErrors.length === 0,
+      error_count: poErrors.length,
+      warning_count: poWarnings.length,
+      co_discrepancy: Math.abs(coDiscrepancy) > 0.01 ? coDiscrepancy : 0
+    });
+  }
+
+  // 5. Calculate summary
+  const summary = {
+    pos_checked: pos.length,
+    pos_with_errors: poResults.filter(r => r.error_count > 0).length,
+    pos_with_warnings: poResults.filter(r => r.warning_count > 0).length,
+    total_co_discrepancy: poResults.reduce((sum, r) => sum + Math.abs(r.co_discrepancy), 0),
+    total_vpo_untracked: allWarnings.filter(w => w.type === 'VPO_NOT_TRACKED')
+      .reduce((sum, w) => sum + (w.details?.vpo_total || 0), 0)
+  };
+
+  res.json({
+    job_id: jobId,
+    valid: allErrors.length === 0,
+    summary,
+    po_results: poResults,
+    errors: allErrors,
+    warnings: allWarnings
+  });
+}));
+
 // Get job budget
 router.get('/:id/budget', asyncHandler(async (req, res) => {
   const jobId = req.params.id;
