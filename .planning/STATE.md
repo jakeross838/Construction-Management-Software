@@ -4,15 +4,15 @@
 
 See: .planning/PROJECT.md (updated 2026-01-19)
 
-**Core value:** Streamline construction financial workflows from bidding through payment
-**Current focus:** Planning next milestone
+**Core value:** Run your entire construction business from one system
+**Current focus:** v2.0 Business Operating System
 
 ## Current Position
 
-Phase: None (milestone complete)
-Plan: N/A
-Status: Ready to plan next milestone
-Last activity: 2026-01-19 — v1.9 milestone shipped
+Phase: Not started (run /gsd:define-requirements or /gsd:create-roadmap)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-01-19 — Milestone v2.0 started
 
 ## Milestone History
 
@@ -44,21 +44,22 @@ None
 ## Session Continuity
 
 Last session: 2026-01-19
-Stopped at: Completed v1.9 milestone (retroactive documentation)
+Stopped at: Started v2.0 milestone
 Resume file: None
 
 ## Next Actions
 
-1. `/gsd:discuss-milestone` — thinking partner for next milestone
-2. `/gsd:new-milestone` — update PROJECT.md with new goals
-3. `/gsd:define-requirements` — scope what to build
-4. `/gsd:create-roadmap` — plan how to build it
+1. `/gsd:define-requirements` — formalize requirements with acceptance criteria
+2. `/gsd:create-roadmap` — break features into phases
+3. `/gsd:plan-phase 57` — create first phase plan
 
 ## Research
 
-All v1.9 codebase reorganization complete:
-- Security: .gitignore verified, .env.example created
-- Navigation: Compact dropdown menus by construction workflow
-- Config: Centralized constants in config/constants.js
-- Routes: Extracted to modular files (cost-codes.js, ai.js, admin.js)
-- Migrations: 8 duplicate files renamed to 067-074
+v2.0 Business Operating System - 7 major feature areas:
+- CRM: Contacts, companies, relationships, communication logging
+- Job Hub: 360° view, financial summary, activity timeline, status dashboard
+- Jobs Management: Categories, timeline tracking, contract health
+- Crew Scheduling: PM requests, auto-scheduling, calendar, task queue
+- Permitting: Applications, inspections, documents, status
+- Business Planning: Timeline tracking, contract remaining, burn rate
+- Business Reports: Company-wide metrics dashboard

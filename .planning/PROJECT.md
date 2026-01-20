@@ -5,11 +5,24 @@
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
 **Last Milestone:** v1.9 - Codebase Reorganization (shipped 2026-01-19)
-**Current Milestone:** Planning next milestone
+**Current Milestone:** v2.0 - Business Operating System
 
 ## Core Value
 
-**Streamline construction financial workflows** - from receiving vendor bids through final payment, with AI-powered invoice processing and AIA G702/G703 pay application generation.
+**Run your entire construction business from one system** - from leads through closeout, with AI-powered processing, crew scheduling, and complete financial visibility.
+
+## Current Milestone: v2.0 Business Operating System
+
+**Goal:** Transform from construction project management into a complete business operating system for running a construction company.
+
+**Target features:**
+- Full CRM with contacts/companies database, relationships, communication logging
+- Job Hub providing 360° view of each job (financials, activity, status)
+- Jobs Management with categories, timeline tracking, contract health metrics
+- Crew Scheduling with PM requests, auto-scheduling, calendar view, task queue
+- Permitting workflow (applications, inspections, documents, status tracking)
+- Business Planning with timeline tracking, contract remaining, burn rate analysis
+- Business Reports dashboard with company-wide metrics
 
 ## Current State
 
@@ -172,6 +185,37 @@ Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardize
 - [x] AIPO-01 to AIPO-03 — AI PO generation improvements
 - [x] FIX-01 to FIX-03 — Quick fix endpoints and UI
 
+### v2.0 Business Operating System (Active)
+
+**CRM & Contacts:**
+- [ ] CRM-01: Contacts database with roles (client, vendor, sub, architect, inspector)
+- [ ] CRM-02: Company/organization records with contact relationships
+- [ ] CRM-03: Communication logging (calls, emails, meetings) tied to contacts/jobs
+
+**Job Hub & Management:**
+- [ ] JOB-HUB-01: 360° job view with financial summary (budget, invoices, draws, P&L)
+- [ ] JOB-HUB-02: Activity timeline showing recent actions across all areas
+- [ ] JOB-HUB-03: Status dashboard (punch lists, inspections, RFIs, submittals)
+- [ ] JOB-MGT-01: Job categories (new construction, remodel, addition, commercial)
+- [ ] JOB-MGT-02: Timeline tracking (start/projected end/actual end)
+- [ ] JOB-MGT-03: Contract health (remaining value, burn rate, profit tracking)
+
+**Crew Scheduling:**
+- [ ] CREW-01: PM work requests that create schedulable items
+- [ ] CREW-02: Auto-scheduling based on crew availability
+- [ ] CREW-03: Visual calendar with drag-to-reschedule
+- [ ] CREW-04: Task queue for crew to check off between jobs
+
+**Permitting:**
+- [ ] PERM-01: Permit applications (type, submission, status tracking)
+- [ ] PERM-02: Inspection scheduling with inspectors
+- [ ] PERM-03: Permit document management (permits, approvals, COO)
+
+**Business Planning & Reports:**
+- [ ] BIZ-01: Job timeline tracking and contract remaining calculations
+- [ ] BIZ-02: Burn rate analysis and profit projections
+- [ ] BIZ-03: Company-wide metrics dashboard (pipeline, capacity, health)
+
 ### Out of Scope
 
 - Mobile native app — web works on mobile now
@@ -217,4 +261,4 @@ Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardize
 - [x] MIG-01: Fix duplicate migration file numbers
 
 ---
-*Last updated: 2026-01-19 — v1.9 Codebase Reorganization shipped*
+*Last updated: 2026-01-19 — v2.0 Business Operating System started*
