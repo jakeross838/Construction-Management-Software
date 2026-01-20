@@ -418,6 +418,8 @@ async function detectVariances(invoice) {
   const result = {
     hasVariances: false,
     warnings: [],
+    price_warnings: [],
+    potential_savings: 0,
     details: {
       poTotal: 0,
       poBilled: 0,
@@ -430,7 +432,64 @@ async function detectVariances(invoice) {
     }
   };
 
+  // Extract invoice line items (needed for both PO matching and price comparison)
+  const invoiceLineItems = invoice.ai_extracted_data?.line_items ||
+                          invoice.ai_extracted_data?.lineItems ||
+                          [];
+
+  // If no PO, still run price intelligence check
   if (!invoice.po_id) {
+    // Price intelligence check for non-PO invoices
+    if (invoiceLineItems.length > 0) {
+      let totalPotentialSavings = 0;
+
+      for (const invLine of invoiceLineItems) {
+        const invAmount = parseFloat(invLine.amount) || 0;
+        const invDesc = invLine.description || '';
+
+        // Skip small amounts and items without description
+        if (Math.abs(invAmount) < 10 || !invDesc.trim()) continue;
+
+        try {
+          const bestPrice = await findBestPrice(supabase, invDesc, invoice.vendor_id, invLine.cost_code_id);
+
+          if (bestPrice && bestPrice.lowest_price > 0) {
+            const invUnitPrice = invLine.quantity && invLine.quantity > 0
+              ? invAmount / invLine.quantity
+              : invAmount;
+
+            const percentAbove = ((invUnitPrice - bestPrice.lowest_price) / bestPrice.lowest_price) * 100;
+
+            if (percentAbove > 10) {
+              const potentialSavings = invAmount - (bestPrice.lowest_price * (invLine.quantity || 1));
+
+              result.price_warnings.push({
+                type: 'price_above_best',
+                severity: percentAbove > 25 ? 'high' : 'medium',
+                line_description: invDesc,
+                invoice_price: invUnitPrice,
+                best_price: bestPrice.lowest_price,
+                best_vendor: bestPrice.lowest_vendor_name,
+                best_vendor_id: bestPrice.lowest_vendor_id,
+                percent_above: Math.round(percentAbove),
+                potential_savings: Math.max(0, potentialSavings),
+                price_unit: bestPrice.price_unit,
+                confidence: bestPrice.confidence,
+                sample_size: bestPrice.sample_size,
+                message: `Invoice price $${invUnitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} is ${Math.round(percentAbove)}% above best known price $${bestPrice.lowest_price.toLocaleString('en-US', { minimumFractionDigits: 2 })} from ${bestPrice.lowest_vendor_name}`
+              });
+
+              totalPotentialSavings += Math.max(0, potentialSavings);
+            }
+          }
+        } catch (priceErr) {
+          console.error('[Variance] Price check error for non-PO invoice:', priceErr);
+        }
+      }
+
+      result.potential_savings = totalPotentialSavings;
+    }
+
     return result;
   }
 
@@ -521,10 +580,7 @@ async function detectVariances(invoice) {
     }
 
     // Check 3: LINE ITEM MATCHING - Compare invoice line items to PO line items
-    const invoiceLineItems = invoice.ai_extracted_data?.line_items ||
-                            invoice.ai_extracted_data?.lineItems ||
-                            [];
-
+    // (invoiceLineItems already extracted above for price comparison)
     if (invoiceLineItems.length > 0 && po.line_items && po.line_items.length > 0) {
       const usedMatches = new Set();
 
@@ -702,6 +758,59 @@ async function detectVariances(invoice) {
         message: `PO is ${billedPercent.toFixed(0)}% billed after this invoice`,
         details: { percentBilled: billedPercent, remaining: poTotal - totalBilledIncludingThis }
       });
+    }
+
+    // Check 6: Price intelligence - compare invoice prices to known best prices
+    // Only run if we have line items to compare
+    if (invoiceLineItems.length > 0) {
+      let totalPotentialSavings = 0;
+
+      for (const invLine of invoiceLineItems) {
+        const invAmount = parseFloat(invLine.amount) || 0;
+        const invDesc = invLine.description || '';
+
+        // Skip small amounts and items without description
+        if (Math.abs(invAmount) < 10 || !invDesc.trim()) continue;
+
+        // Look up best known price for this item
+        const bestPrice = await findBestPrice(supabase, invDesc, invoice.vendor_id, invLine.cost_code_id);
+
+        if (bestPrice && bestPrice.lowest_price > 0) {
+          // Calculate percentage above best price
+          // For proper comparison, we need to normalize by quantity if possible
+          // If line item has quantity, compare unit prices; otherwise compare totals
+          const invUnitPrice = invLine.quantity && invLine.quantity > 0
+            ? invAmount / invLine.quantity
+            : invAmount;
+
+          const percentAbove = ((invUnitPrice - bestPrice.lowest_price) / bestPrice.lowest_price) * 100;
+
+          // Only flag if >10% above best price
+          if (percentAbove > 10) {
+            const potentialSavings = invAmount - (bestPrice.lowest_price * (invLine.quantity || 1));
+
+            result.price_warnings.push({
+              type: 'price_above_best',
+              severity: percentAbove > 25 ? 'high' : 'medium',
+              line_description: invDesc,
+              invoice_price: invUnitPrice,
+              best_price: bestPrice.lowest_price,
+              best_vendor: bestPrice.lowest_vendor_name,
+              best_vendor_id: bestPrice.lowest_vendor_id,
+              percent_above: Math.round(percentAbove),
+              potential_savings: Math.max(0, potentialSavings),
+              price_unit: bestPrice.price_unit,
+              confidence: bestPrice.confidence,
+              sample_size: bestPrice.sample_size,
+              message: `Invoice price $${invUnitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} is ${Math.round(percentAbove)}% above best known price $${bestPrice.lowest_price.toLocaleString('en-US', { minimumFractionDigits: 2 })} from ${bestPrice.lowest_vendor_name}`
+            });
+
+            totalPotentialSavings += Math.max(0, potentialSavings);
+          }
+        }
+      }
+
+      result.potential_savings = totalPotentialSavings;
     }
 
   } catch (err) {
