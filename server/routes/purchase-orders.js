@@ -259,6 +259,57 @@ router.post('/price-check', asyncHandler(async (req, res) => {
   });
 }));
 
+// ============================================================
+// AI COST CODE LEARNING (before /:id routes)
+// ============================================================
+
+// Learn cost code mapping from user correction
+// POST /api/purchase-orders/learn-cost-code
+router.post('/learn-cost-code', asyncHandler(async (req, res) => {
+  const { description, cost_code_id, vendor_trade } = req.body;
+
+  if (!description || !cost_code_id) {
+    throw new AppError('VALIDATION_FAILED', 'description and cost_code_id are required');
+  }
+
+  const { learnCostCodeMapping } = require('../ai-po-processor');
+  const success = await learnCostCodeMapping(description, cost_code_id, vendor_trade || null);
+
+  if (!success) {
+    throw new AppError('DATABASE_ERROR', 'Failed to save cost code mapping');
+  }
+
+  res.json({
+    success: true,
+    message: 'Cost code mapping learned successfully',
+    pattern: description.toLowerCase().trim().substring(0, 50)
+  });
+}));
+
+// Get learned cost code mappings (for debugging/admin)
+// GET /api/purchase-orders/cost-code-mappings
+router.get('/cost-code-mappings', asyncHandler(async (req, res) => {
+  const { vendor_trade, limit = 50 } = req.query;
+
+  let query = supabase
+    .from('v2_cost_code_mappings')
+    .select(`
+      id, description_pattern, vendor_trade, confidence, usage_count, created_at,
+      cost_code:v2_cost_codes(id, code, name)
+    `)
+    .order('usage_count', { ascending: false })
+    .limit(parseInt(limit));
+
+  if (vendor_trade) {
+    query = query.eq('vendor_trade', vendor_trade);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(data || []);
+}));
+
 // Get single purchase order
 router.get('/:id', async (req, res) => {
   try {
