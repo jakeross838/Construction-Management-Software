@@ -84,42 +84,42 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Updated by create-roadmap.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CRM-01 | — | Pending |
-| CRM-02 | — | Pending |
-| CRM-03 | — | Pending |
-| CRM-04 | — | Pending |
-| CRM-05 | — | Pending |
-| HUB-01 | — | Pending |
-| HUB-02 | — | Pending |
-| HUB-03 | — | Pending |
-| JMGT-01 | — | Pending |
-| JMGT-02 | — | Pending |
-| JMGT-03 | — | Pending |
-| CNTR-01 | — | Pending |
-| CNTR-02 | — | Pending |
-| CNTR-03 | — | Pending |
-| CREW-01 | — | Pending |
-| CREW-02 | — | Pending |
-| CREW-03 | — | Pending |
-| CREW-04 | — | Pending |
-| PERM-01 | — | Pending |
-| PERM-02 | — | Pending |
-| PERM-03 | — | Pending |
-| PERM-04 | — | Pending |
-| BIZ-01 | — | Pending |
-| BIZ-02 | — | Pending |
-| BIZ-03 | — | Pending |
-| BIZ-04 | — | Pending |
+| CRM-01 | Phase 57 | Pending |
+| CRM-02 | Phase 57 | Pending |
+| CRM-03 | Phase 57 | Pending |
+| CRM-04 | Phase 58 | Pending |
+| CRM-05 | Phase 58 | Pending |
+| JMGT-01 | Phase 59 | Pending |
+| JMGT-02 | Phase 59 | Pending |
+| JMGT-03 | Phase 59 | Pending |
+| CNTR-01 | Phase 60 | Pending |
+| CNTR-02 | Phase 60 | Pending |
+| CNTR-03 | Phase 60 | Pending |
+| HUB-01 | Phase 61 | Pending |
+| HUB-02 | Phase 61 | Pending |
+| HUB-03 | Phase 61 | Pending |
+| CREW-01 | Phase 62 | Pending |
+| CREW-02 | Phase 62 | Pending |
+| CREW-03 | Phase 62 | Pending |
+| CREW-04 | Phase 62 | Pending |
+| PERM-01 | Phase 63 | Pending |
+| PERM-02 | Phase 63 | Pending |
+| PERM-03 | Phase 63 | Pending |
+| PERM-04 | Phase 63 | Pending |
+| BIZ-01 | Phase 64 | Pending |
+| BIZ-02 | Phase 64 | Pending |
+| BIZ-03 | Phase 64 | Pending |
+| BIZ-04 | Phase 64 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 26 total
-- Mapped to phases: 0 (awaiting create-roadmap)
-- Unmapped: 26
+- Mapped to phases: 26 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-19*
-*Last updated: 2026-01-19 after initial definition*
+*Last updated: 2026-01-19 after roadmap creation*
