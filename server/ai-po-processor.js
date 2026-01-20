@@ -491,17 +491,25 @@ async function findOrCreateVendor(vendorData) {
 }
 
 // ============================================================
-// COST CODE SUGGESTIONS - IMPROVED
+// COST CODE SUGGESTIONS - DATABASE-DRIVEN
 // ============================================================
 
 /**
- * Suggest cost codes for line items based on descriptions and trade type
+ * Suggest cost codes for line items based on:
+ * 1. Learned mappings (highest priority - from user corrections)
+ * 2. Cost code keywords (from database)
+ * 3. Trade type defaults
+ *
+ * @param {Array} lineItems - Line items with descriptions
+ * @param {string} tradeType - Vendor trade type for context
+ * @param {string} jobId - Optional job ID for future job-specific patterns
+ * @returns {Array} Line items with cost_code_id, cost_code_confidence, cost_code_match_reason
  */
 async function suggestCostCodes(lineItems, tradeType, jobId = null) {
-  // Load all cost codes
+  // 1. Load cost codes with keywords and trade_types
   const { data: costCodes, error } = await supabase
     .from('v2_cost_codes')
-    .select('id, code, name, category');
+    .select('id, code, name, category, keywords, trade_types');
 
   if (error || !costCodes?.length) {
     console.log('[AI-PO] No cost codes loaded');
@@ -510,198 +518,150 @@ async function suggestCostCodes(lineItems, tradeType, jobId = null) {
 
   console.log(`[AI-PO] Loaded ${costCodes.length} cost codes, trade: ${tradeType}`);
 
-  // Build keyword -> cost code mappings (using actual Ross Built cost codes)
-  const keywordMap = {
-    // Cabinets & Millwork (21101)
-    'cabinet': '21101',
-    'cabinets': '21101',
-    'cabinetry': '21101',
-    'vanity': '21101',
-    'millwork': '21101',
-    'kitchen': '21101',
-    'pantry': '21101',
-    'laundry': '21101',
-    'bath': '21101',
-    'bathroom': '21101',
-    'master': '21101',
+  // 2. Load learned mappings for this trade (highest confidence first)
+  const { data: mappings } = await supabase
+    .from('v2_cost_code_mappings')
+    .select('description_pattern, cost_code_id, confidence')
+    .or(`vendor_trade.eq.${tradeType || 'general'},vendor_trade.is.null`)
+    .order('confidence', { ascending: false });
 
-    // Cabinet Installation (21102)
-    'cabinet install': '21102',
-    'cabinetry install': '21102',
+  console.log(`[AI-PO] Loaded ${mappings?.length || 0} learned mappings`);
 
-    // Countertops (21103)
-    'countertop': '21103',
-    'countertops': '21103',
-    'granite': '21103',
-    'quartz': '21103',
-    'marble': '21103',
-    'stone': '21103',
-
-    // Hardware - Door (29101) or Bath (30101)
-    'hardware': '29101',
-    'pulls': '29101',
-    'knobs': '29101',
-    'hinges': '29101',
-    'door hardware': '29101',
-    'bath hardware': '30101',
-
-    // Appliances (22101)
-    'appliance': '22101',
-    'appliances': '22101',
-    'refrigerator': '22101',
-    'range': '22101',
-    'dishwasher': '22101',
-    'microwave': '22101',
-    'oven': '22101',
-
-    // Plumbing (12101 labor, 12102 fixtures)
-    'plumbing': '12101',
-    'plumbing labor': '12101',
-    'plumbing fixture': '12102',
-    'faucet': '12102',
-    'toilet': '12102',
-    'sink': '12102',
-    'shower': '12102',
-
-    // Electrical (13101 labor, 13102 fixtures)
-    'electrical': '13101',
-    'electrical labor': '13101',
-    'wiring': '13101',
-    'panel': '13101',
-    'outlet': '13101',
-    'lighting': '13102',
-    'light': '13102',
-    'electrical fixture': '13102',
-
-    // HVAC (14101)
-    'hvac': '14101',
-    'ac': '14101',
-    'air conditioning': '14101',
-    'duct': '14101',
-
-    // Drywall (19101)
-    'drywall': '19101',
-    'sheetrock': '19101',
-
-    // Painting (27101)
-    'paint': '27101',
-    'painting': '27101',
-
-    // Flooring (23101 material, 23102 labor)
-    'floor': '23101',
-    'flooring': '23101',
-    'flooring material': '23101',
-    'flooring labor': '23102',
-    'carpet': '23101',
-    'hardwood': '23101',
-    'lvp': '23101',
-    'vinyl': '23101',
-
-    // Tile (24101 labor, 24102 material)
-    'tile': '24102',
-    'tile material': '24102',
-    'tile labor': '24101',
-
-    // Framing (10101)
-    'framing': '10101',
-    'lumber': '10101',
-
-    // Roofing (15101)
-    'roof': '15101',
-    'roofing': '15101',
-    'shingle': '15101',
-
-    // Windows/Doors (11101, 11102, 25101)
-    'window': '11101',
-    'windows': '11101',
-    'exterior door': '11102',
-    'front door': '11104',
-    'interior door': '25101',
-    'door': '25101',
-    'doors': '25101',
-    'garage door': '28101',
-
-    // Pool (34101)
-    'pool': '34101',
-    'spa': '34101',
-
-    // Landscaping (35101)
-    'landscape': '35101',
-    'landscaping': '35101',
-    'irrigation': '35102',
-    'sod': '35103',
-
-    // Delivery/Labor/General
-    'delivery': '03108',
-    'labor': '03101',
-    'installation': '21102',
-    'install': '21102',
-    'allowance': '21101'
-  };
-
-  // Trade type to default code (using actual Ross Built codes)
-  const tradeDefaultMap = {
-    'cabinets': '21101',
-    'countertops': '21103',
-    'plumbing': '12101',
-    'electrical': '13101',
-    'hvac': '14101',
-    'drywall': '19101',
-    'painting': '27101',
-    'flooring': '23101',
-    'tile': '24102',
-    'framing': '10101',
-    'roofing': '15101',
-    'windows_doors': '11101',
-    'pool': '34101',
-    'landscaping': '35101',
-    'appliances': '22101'
-  };
-
-  const defaultCode = tradeDefaultMap[tradeType] || null;
-
-  // Assign cost codes to line items
+  // 3. For each line item, find best match
   return lineItems.map(item => {
     const desc = (item.description || '').toLowerCase();
-    let matchedCodeStr = null;
+    const title = (item.title || '').toLowerCase();
+    const searchText = `${title} ${desc}`;
+
+    let matchedCode = null;
+    let matchConfidence = 0;
     let matchReason = '';
 
-    // Check keywords in description
-    for (const [keyword, code] of Object.entries(keywordMap)) {
-      if (desc.includes(keyword)) {
-        matchedCodeStr = code;
-        matchReason = `keyword: ${keyword}`;
-        break;
+    // Priority 1: Try learned mappings (highest confidence)
+    if (mappings?.length > 0) {
+      for (const mapping of mappings) {
+        const pattern = mapping.description_pattern.toLowerCase();
+        if (searchText.includes(pattern) || pattern.includes(searchText.substring(0, 30))) {
+          const cc = costCodes.find(c => c.id === mapping.cost_code_id);
+          if (cc) {
+            matchedCode = cc;
+            matchConfidence = parseFloat(mapping.confidence) || 0.80;
+            matchReason = 'learned_pattern';
+            break;
+          }
+        }
       }
     }
 
-    // Fall back to trade default
-    if (!matchedCodeStr && defaultCode) {
-      matchedCodeStr = defaultCode;
-      matchReason = `trade default: ${tradeType}`;
+    // Priority 2: Try cost code keywords from database
+    if (!matchedCode) {
+      for (const cc of costCodes) {
+        if (cc.keywords?.length > 0) {
+          const matchedKeyword = cc.keywords.find(kw =>
+            searchText.includes(kw.toLowerCase())
+          );
+          if (matchedKeyword) {
+            matchedCode = cc;
+            matchConfidence = 0.75;
+            matchReason = `keyword: ${matchedKeyword}`;
+            break;
+          }
+        }
+      }
     }
 
-    // Find the cost code object
-    let matchedCode = null;
-    if (matchedCodeStr) {
-      matchedCode = costCodes.find(cc => cc.code === matchedCodeStr);
-      // If exact match not found, try prefix match
-      if (!matchedCode) {
-        matchedCode = costCodes.find(cc => cc.code.startsWith(matchedCodeStr.substring(0, 3)));
+    // Priority 3: Try trade type default
+    if (!matchedCode && tradeType) {
+      const tradeMatch = costCodes.find(cc =>
+        cc.trade_types?.includes(tradeType)
+      );
+      if (tradeMatch) {
+        matchedCode = tradeMatch;
+        matchConfidence = 0.60;
+        matchReason = `trade_default: ${tradeType}`;
       }
     }
 
     if (matchedCode) {
-      console.log(`[AI-PO] Line "${item.description}" -> ${matchedCode.code} ${matchedCode.name} (${matchReason})`);
+      console.log(`[AI-PO] Line "${item.description}" -> ${matchedCode.code} ${matchedCode.name} (${matchReason}, ${Math.round(matchConfidence * 100)}%)`);
     }
 
     return {
       ...item,
       cost_code_id: matchedCode?.id || null,
       cost_code: matchedCode?.code || null,
-      cost_code_name: matchedCode?.name || null
+      cost_code_name: matchedCode?.name || null,
+      cost_code_confidence: matchConfidence,
+      cost_code_match_reason: matchReason
     };
   });
+}
+
+/**
+ * Learn a cost code mapping from user correction
+ * Saves the mapping for future use with confidence boost
+ *
+ * @param {string} description - Line item description
+ * @param {string} costCodeId - Correct cost code UUID
+ * @param {string} vendorTrade - Vendor trade type for context
+ * @returns {Promise<boolean>} Success indicator
+ */
+async function learnCostCodeMapping(description, costCodeId, vendorTrade = null) {
+  if (!description || !costCodeId) {
+    console.log('[AI-PO] Cannot learn mapping: missing description or costCodeId');
+    return false;
+  }
+
+  // Extract key phrase from description (first 50 chars, normalized)
+  const pattern = description.toLowerCase().trim().substring(0, 50);
+
+  console.log(`[AI-PO] Learning mapping: "${pattern}" -> ${costCodeId} (trade: ${vendorTrade})`);
+
+  // Try to upsert mapping
+  const { data: existing } = await supabase
+    .from('v2_cost_code_mappings')
+    .select('id, usage_count')
+    .eq('description_pattern', pattern)
+    .eq('vendor_trade', vendorTrade)
+    .maybeSingle();
+
+  if (existing) {
+    // Update existing mapping - increment usage
+    const { error } = await supabase
+      .from('v2_cost_code_mappings')
+      .update({
+        cost_code_id: costCodeId,
+        usage_count: existing.usage_count + 1,
+        confidence: Math.min(0.99, 0.80 + (existing.usage_count * 0.01)),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existing.id);
+
+    if (error) {
+      console.error('[AI-PO] Failed to update mapping:', error.message);
+      return false;
+    }
+    console.log(`[AI-PO] Updated existing mapping (usage: ${existing.usage_count + 1})`);
+  } else {
+    // Create new mapping
+    const { error } = await supabase
+      .from('v2_cost_code_mappings')
+      .insert({
+        description_pattern: pattern,
+        cost_code_id: costCodeId,
+        vendor_trade: vendorTrade,
+        confidence: 0.85,
+        usage_count: 1
+      });
+
+    if (error) {
+      console.error('[AI-PO] Failed to create mapping:', error.message);
+      return false;
+    }
+    console.log('[AI-PO] Created new mapping');
+  }
+
+  return true;
 }
 
 // ============================================================
@@ -905,6 +865,7 @@ module.exports = {
   findMatchingJob,
   findOrCreateVendor,
   suggestCostCodes,
+  learnCostCodeMapping,
   createDraftPO,
   CONFIDENCE_THRESHOLDS
 };
