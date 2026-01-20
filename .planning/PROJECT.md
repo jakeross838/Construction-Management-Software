@@ -4,29 +4,36 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.9 - Codebase Reorganization (shipped 2026-01-19)
-**Current Milestone:** v2.0 - Business Operating System
+**Last Milestone:** v2.0 - Business Operating System (shipped 2026-01-19)
+**Current Milestone:** None (ready for v2.1 planning)
 
 ## Core Value
 
 **Run your entire construction business from one system** - from leads through closeout, with AI-powered processing, crew scheduling, and complete financial visibility.
 
-## Current Milestone: v2.0 Business Operating System
+## Current State (v2.0 Shipped)
 
-**Goal:** Transform from construction project management into a complete business operating system for running a construction company.
+**Shipped:** 2026-01-19
 
-**Target features:**
+Ross Built CMS is now a complete business operating system with:
 - Full CRM with contacts/companies database, relationships, communication logging
 - Job Hub providing 360° view of each job (financials, activity, status)
 - Jobs Management with categories, timeline tracking, contract health metrics
 - Crew Scheduling with PM requests, auto-scheduling, calendar view, task queue
 - Permitting workflow (applications, inspections, documents, status tracking)
-- Business Planning with timeline tracking, contract remaining, burn rate analysis
-- Business Reports dashboard with company-wide metrics
+- Business Dashboard with timeline tracking, burn rate analysis, profit projections
+- Company-wide metrics dashboard (pipeline, capacity, health)
 
-## Current State
+**Next Milestone Goals (v2.1):**
+- QuickBooks integration for accounting sync
+- Calendar integration (Google/Outlook) for scheduling
+- Email integration for communication logging
+- Custom report builder
+- Automated notifications for permit/inspection status
 
-Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardized at 25,947 lines.
+## Feature Inventory
+
+Shipped v2.0 with ~103,000+ lines of JavaScript across 105+ files. CSS standardized at 25,947 lines.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
@@ -62,6 +69,14 @@ Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardize
 - AI PO Generation - Document upload, cost code learning, fuzzy matching (v1.8)
 - Quick Fixes - One-click fix endpoints, bulk operations, standardized errors (v1.8)
 - Codebase Reorganization - Dropdown nav, config centralization, route extraction (v1.9)
+- CRM Foundation - Contacts with roles, companies, contact-company linking (v2.0)
+- Communication Logging - Calls, emails, meetings tied to contacts and jobs (v2.0)
+- Jobs Enhancement - Categories, timeline tracking, contract health metrics (v2.0)
+- Contracts - Document storage, versioning, terms tracking, amendments (v2.0)
+- Job Hub - 360° job view with financials, activity timeline, status dashboard (v2.0)
+- Crew Scheduling - Work requests, auto-scheduling, calendar view, task queue (v2.0)
+- Permitting - Applications, inspections, documents, status workflow (v2.0)
+- Business Dashboard - Company metrics, burn rate analysis, profit projections (v2.0)
 
 ## Tech Stack
 
@@ -185,36 +200,36 @@ Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardize
 - [x] AIPO-01 to AIPO-03 — AI PO generation improvements
 - [x] FIX-01 to FIX-03 — Quick fix endpoints and UI
 
-### v2.0 Business Operating System (Active)
+### v2.0 Business Operating System (Shipped)
 
 **CRM & Contacts:**
-- [ ] CRM-01: Contacts database with roles (client, vendor, sub, architect, inspector)
-- [ ] CRM-02: Company/organization records with contact relationships
-- [ ] CRM-03: Communication logging (calls, emails, meetings) tied to contacts/jobs
+- [x] CRM-01: Contacts database with roles (client, vendor, sub, architect, inspector)
+- [x] CRM-02: Company/organization records with contact relationships
+- [x] CRM-03: Communication logging (calls, emails, meetings) tied to contacts/jobs
 
 **Job Hub & Management:**
-- [ ] JOB-HUB-01: 360° job view with financial summary (budget, invoices, draws, P&L)
-- [ ] JOB-HUB-02: Activity timeline showing recent actions across all areas
-- [ ] JOB-HUB-03: Status dashboard (punch lists, inspections, RFIs, submittals)
-- [ ] JOB-MGT-01: Job categories (new construction, remodel, addition, commercial)
-- [ ] JOB-MGT-02: Timeline tracking (start/projected end/actual end)
-- [ ] JOB-MGT-03: Contract health (remaining value, burn rate, profit tracking)
+- [x] JOB-HUB-01: 360° job view with financial summary (budget, invoices, draws, P&L)
+- [x] JOB-HUB-02: Activity timeline showing recent actions across all areas
+- [x] JOB-HUB-03: Status dashboard (punch lists, inspections, RFIs, submittals)
+- [x] JOB-MGT-01: Job categories (new construction, remodel, addition, commercial)
+- [x] JOB-MGT-02: Timeline tracking (start/projected end/actual end)
+- [x] JOB-MGT-03: Contract health (remaining value, burn rate, profit tracking)
 
 **Crew Scheduling:**
-- [ ] CREW-01: PM work requests that create schedulable items
-- [ ] CREW-02: Auto-scheduling based on crew availability
-- [ ] CREW-03: Visual calendar with drag-to-reschedule
-- [ ] CREW-04: Task queue for crew to check off between jobs
+- [x] CREW-01: PM work requests that create schedulable items
+- [x] CREW-02: Auto-scheduling based on crew availability
+- [x] CREW-03: Visual calendar with drag-to-reschedule
+- [x] CREW-04: Task queue for crew to check off between jobs
 
 **Permitting:**
-- [ ] PERM-01: Permit applications (type, submission, status tracking)
-- [ ] PERM-02: Inspection scheduling with inspectors
-- [ ] PERM-03: Permit document management (permits, approvals, COO)
+- [x] PERM-01: Permit applications (type, submission, status tracking)
+- [x] PERM-02: Inspection scheduling with inspectors
+- [x] PERM-03: Permit document management (permits, approvals, COO)
 
 **Business Planning & Reports:**
-- [ ] BIZ-01: Job timeline tracking and contract remaining calculations
-- [ ] BIZ-02: Burn rate analysis and profit projections
-- [ ] BIZ-03: Company-wide metrics dashboard (pipeline, capacity, health)
+- [x] BIZ-01: Job timeline tracking and contract remaining calculations
+- [x] BIZ-02: Burn rate analysis and profit projections
+- [x] BIZ-03: Company-wide metrics dashboard (pipeline, capacity, health)
 
 ### Out of Scope
 
@@ -261,4 +276,4 @@ Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardize
 - [x] MIG-01: Fix duplicate migration file numbers
 
 ---
-*Last updated: 2026-01-19 — v2.0 Business Operating System started*
+*Last updated: 2026-01-19 — v2.0 Business Operating System shipped*
