@@ -82,26 +82,34 @@ Plans:
 
 ## Phase 49: Data Correlation
 
-**Status:** Not Started
+**Status:** Complete ✓
+**Completed:** 2026-01-19
 **Goal:** Validate linkages and ensure data consistency across all entities.
+**Plans:** 4 plans
 
 **Requirements:**
-- COR-01: Validate PO ↔ Invoice ↔ Draw linkage consistency
-- COR-02: Ensure CO/VPO totals reflected correctly everywhere
-- COR-03: Integrate variance detection with price intelligence
-- COR-04: Budget vs actual accuracy validation
+- COR-01: Validate PO ↔ Invoice ↔ Draw linkage consistency ✓
+- COR-02: Ensure CO/VPO totals reflected correctly everywhere ✓
+- COR-03: Integrate variance detection with price intelligence ✓
+- COR-04: Budget vs actual accuracy validation ✓
 
 **Success Criteria:**
-1. API validates linkages and returns warnings for inconsistencies
-2. CO/VPO changes immediately reflected in PO totals, budget committed
-3. Variance warnings include price intelligence (e.g., "invoice $50 above best price")
-4. Budget reports show accurate committed/billed/paid amounts
+1. ✓ API validates linkages and returns warnings for inconsistencies
+2. ✓ CO/VPO changes immediately reflected in PO totals, budget committed
+3. ✓ Variance warnings include price intelligence (e.g., "invoice $50 above best price")
+4. ✓ Budget reports show accurate committed/billed/paid amounts
 
 **Key Files:**
 - `server/routes/invoices.js`
 - `server/routes/purchase-orders.js`
-- `server/routes/budgets.js`
+- `server/routes/jobs.js`
 - `server/services/varianceDetector.js`
+
+Plans:
+- [x] 49-01-PLAN.md - Linkage validation endpoint (COR-01)
+- [x] 49-02-PLAN.md - CO/VPO total validation (COR-02)
+- [x] 49-03-PLAN.md - Price intelligence integration (COR-03)
+- [x] 49-04-PLAN.md - Budget accuracy report (COR-04)
 
 ---
 
