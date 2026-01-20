@@ -17,17 +17,43 @@ const asyncHandler = fn => (req, res, next) =>
 
 /**
  * GET /api/selections/categories
- * List all active selection categories
+ * List all active selection categories with optional hierarchy
+ * Query params: parent_id (for subcategories), flat (to get all without nesting)
  */
 router.get('/categories', asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  const { parent_id, flat } = req.query;
+
+  let query = supabase
     .from('v2_selection_categories')
     .select('*')
     .eq('is_active', true)
     .order('display_order');
 
+  // Filter by parent if specified
+  if (parent_id === 'null' || parent_id === 'root') {
+    query = query.is('parent_id', null);
+  } else if (parent_id) {
+    query = query.eq('parent_id', parent_id);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
-  res.json(data);
+
+  // If flat=true or parent_id specified, return as-is
+  if (flat || parent_id) {
+    return res.json(data);
+  }
+
+  // Otherwise, build hierarchical structure
+  const rootCategories = data.filter(c => !c.parent_id);
+  const childCategories = data.filter(c => c.parent_id);
+
+  const hierarchical = rootCategories.map(root => ({
+    ...root,
+    children: childCategories.filter(c => c.parent_id === root.id)
+  }));
+
+  res.json(hierarchical);
 }));
 
 /**
@@ -307,34 +333,72 @@ router.get('/allowances/job/:jobId/summary', asyncHandler(async (req, res) => {
 
 /**
  * GET /api/selections/catalog
- * List catalog items with optional filters
- * Query params: category_id, vendor_id, search
+ * List catalog items with filters for visual catalog browsing
+ * Query params: category_id, vendor_id, search, room, min_price, max_price, tags, limit, offset
  */
 router.get('/catalog', asyncHandler(async (req, res) => {
-  const { category_id, vendor_id, search } = req.query;
+  const { category_id, vendor_id, search, room, min_price, max_price, tags, limit, offset } = req.query;
 
   let query = supabase
     .from('v2_selection_catalog')
     .select(`
       *,
-      category:v2_selection_categories(id, name),
-      vendor:v2_vendors(id, name)
+      category:v2_selection_categories(id, name, slug, parent_id),
+      vendor:v2_vendors(id, name),
+      images:v2_catalog_images(id, storage_path, thumbnail_path, thumb_hash, is_primary, display_order, caption)
     `)
     .eq('is_active', true)
     .order('name');
 
-  if (category_id) query = query.eq('category_id', category_id);
-  if (vendor_id) query = query.eq('vendor_id', vendor_id);
-  if (search) query = query.ilike('name', `%${search}%`);
+  // Category filter - also include items in subcategories
+  if (category_id) {
+    // First get all subcategory IDs
+    const { data: subcats } = await supabase
+      .from('v2_selection_categories')
+      .select('id')
+      .eq('parent_id', category_id);
 
-  const { data, error } = await query;
+    const categoryIds = [category_id, ...(subcats || []).map(s => s.id)];
+    query = query.in('category_id', categoryIds);
+  }
+
+  if (vendor_id) query = query.eq('vendor_id', vendor_id);
+  if (room) query = query.eq('room', room);
+
+  // Price range filters
+  if (min_price) query = query.gte('unit_price', parseFloat(min_price));
+  if (max_price) query = query.lte('unit_price', parseFloat(max_price));
+
+  // Tags filter (contains any of the specified tags)
+  if (tags) {
+    const tagArray = tags.split(',').map(t => t.trim());
+    query = query.overlaps('tags', tagArray);
+  }
+
+  // Search across multiple fields
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,model_number.ilike.%${search}%,sku.ilike.%${search}%`);
+  }
+
+  // Pagination
+  if (limit) query = query.limit(parseInt(limit));
+  if (offset) query = query.range(parseInt(offset), parseInt(offset) + parseInt(limit || 50) - 1);
+
+  const { data, error, count } = await query;
   if (error) throw error;
-  res.json(data);
+
+  // Sort images by display_order within each item
+  const itemsWithSortedImages = (data || []).map(item => ({
+    ...item,
+    images: (item.images || []).sort((a, b) => a.display_order - b.display_order)
+  }));
+
+  res.json(itemsWithSortedImages);
 }));
 
 /**
  * GET /api/selections/catalog/:id
- * Get a single catalog item
+ * Get a single catalog item with all images
  */
 router.get('/catalog/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -343,8 +407,9 @@ router.get('/catalog/:id', asyncHandler(async (req, res) => {
     .from('v2_selection_catalog')
     .select(`
       *,
-      category:v2_selection_categories(id, name),
-      vendor:v2_vendors(id, name)
+      category:v2_selection_categories(id, name, slug, parent_id),
+      vendor:v2_vendors(id, name),
+      images:v2_catalog_images(id, storage_path, thumbnail_path, thumb_hash, is_primary, display_order, caption, alt_text, file_name, width, height)
     `)
     .eq('id', id)
     .single();
@@ -353,6 +418,139 @@ router.get('/catalog/:id', asyncHandler(async (req, res) => {
   if (!data) {
     return res.status(404).json({ error: 'Catalog item not found' });
   }
+
+  // Sort images by display_order
+  data.images = (data.images || []).sort((a, b) => a.display_order - b.display_order);
+
+  res.json(data);
+}));
+
+/**
+ * GET /api/selections/catalog/:id/images
+ * Get all images for a catalog item
+ */
+router.get('/catalog/:id/images', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_images')
+    .select('*')
+    .eq('catalog_item_id', id)
+    .order('display_order');
+
+  if (error) throw error;
+  res.json(data || []);
+}));
+
+/**
+ * POST /api/selections/catalog/:id/images
+ * Add image to catalog item
+ */
+router.post('/catalog/:id/images', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    storage_path,
+    file_name,
+    file_size,
+    mime_type,
+    width,
+    height,
+    thumb_hash,
+    thumbnail_path,
+    caption,
+    alt_text,
+    is_primary,
+    uploaded_by
+  } = req.body;
+
+  if (!storage_path || !file_name) {
+    return res.status(400).json({ error: 'storage_path and file_name are required' });
+  }
+
+  // Get max display_order
+  const { data: existing } = await supabase
+    .from('v2_catalog_images')
+    .select('display_order')
+    .eq('catalog_item_id', id)
+    .order('display_order', { ascending: false })
+    .limit(1);
+
+  const display_order = existing && existing.length > 0 ? existing[0].display_order + 1 : 0;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_images')
+    .insert({
+      catalog_item_id: id,
+      storage_path,
+      file_name,
+      file_size,
+      mime_type: mime_type || 'image/jpeg',
+      width,
+      height,
+      thumb_hash,
+      thumbnail_path,
+      caption,
+      alt_text,
+      is_primary: is_primary || false,
+      display_order,
+      uploaded_by
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+
+/**
+ * DELETE /api/selections/catalog/:catalogId/images/:imageId
+ * Remove image from catalog item
+ */
+router.delete('/catalog/:catalogId/images/:imageId', asyncHandler(async (req, res) => {
+  const { catalogId, imageId } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_images')
+    .delete()
+    .eq('id', imageId)
+    .eq('catalog_item_id', catalogId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Image not found' });
+  }
+
+  res.json({ success: true, message: 'Image deleted' });
+}));
+
+/**
+ * PATCH /api/selections/catalog/:catalogId/images/:imageId
+ * Update image metadata or set as primary
+ */
+router.patch('/catalog/:catalogId/images/:imageId', asyncHandler(async (req, res) => {
+  const { catalogId, imageId } = req.params;
+  const updates = req.body;
+
+  delete updates.id;
+  delete updates.catalog_item_id;
+  delete updates.created_at;
+  delete updates.storage_path;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_images')
+    .update(updates)
+    .eq('id', imageId)
+    .eq('catalog_item_id', catalogId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Image not found' });
+  }
+
   res.json(data);
 }));
 
