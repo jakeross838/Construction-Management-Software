@@ -291,6 +291,181 @@ router.get('/:id/variance-check', asyncHandler(async (req, res) => {
   res.json(result || { warning: false });
 }));
 
+// ============================================================
+// JOB LINKAGE VALIDATION ENDPOINT
+// ============================================================
+
+// Validate linkages for a job's invoices (orphaned allocations, broken PO/Draw links)
+router.get('/jobs/:jobId/validate-linkages', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  const errors = [];
+  const warnings = [];
+  let invoicesChecked = 0;
+  let allocationsChecked = 0;
+
+  // Fetch all invoices for the job with their allocations
+  const { data: invoices, error: invoicesError } = await supabase
+    .from('v2_invoices')
+    .select(`
+      id, invoice_number, amount, status, po_id,
+      allocations:v2_invoice_allocations(
+        id, amount, po_id, po_line_item_id, change_order_id, cost_code_id
+      )
+    `)
+    .eq('job_id', jobId)
+    .is('deleted_at', null);
+
+  if (invoicesError) {
+    throw new AppError('DATABASE_ERROR', `Failed to fetch invoices: ${invoicesError.message}`);
+  }
+
+  invoicesChecked = (invoices || []).length;
+
+  // Get all valid POs for this job
+  const { data: validPOs } = await supabase
+    .from('v2_purchase_orders')
+    .select('id')
+    .eq('job_id', jobId)
+    .is('deleted_at', null);
+  const validPOIds = new Set((validPOs || []).map(po => po.id));
+
+  // Get all valid PO line items for this job's POs
+  const { data: validLineItems } = await supabase
+    .from('v2_po_line_items')
+    .select('id, po_id')
+    .in('po_id', Array.from(validPOIds));
+  const validLineItemIds = new Set((validLineItems || []).map(li => li.id));
+
+  // Get all valid change orders for this job
+  const { data: validCOs } = await supabase
+    .from('v2_job_change_orders')
+    .select('id')
+    .eq('job_id', jobId)
+    .is('deleted_at', null);
+  const validCOIds = new Set((validCOs || []).map(co => co.id));
+
+  // Get all draw invoices for this job
+  const { data: drawInvoices } = await supabase
+    .from('v2_draw_invoices')
+    .select(`
+      invoice_id,
+      draw:v2_draws!inner(id, job_id)
+    `)
+    .eq('draw.job_id', jobId);
+  const invoicesInDraws = new Set((drawInvoices || []).map(di => di.invoice_id));
+
+  // Process each invoice
+  for (const invoice of (invoices || [])) {
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    let allocationTotal = 0;
+
+    // Check each allocation
+    for (const alloc of (invoice.allocations || [])) {
+      allocationsChecked++;
+      const allocAmount = parseFloat(alloc.amount || 0);
+      allocationTotal += allocAmount;
+
+      // Check 1: Orphaned PO allocation
+      if (alloc.po_id && !validPOIds.has(alloc.po_id)) {
+        errors.push({
+          type: 'ORPHANED_PO_ALLOCATION',
+          severity: 'error',
+          invoice_id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          allocation_id: alloc.id,
+          referenced_po_id: alloc.po_id,
+          details: 'Allocation references PO that no longer exists or was deleted',
+          fix_hint: 'Remove allocation or reassign to valid PO'
+        });
+      }
+
+      // Check 2: Orphaned PO line item allocation
+      if (alloc.po_line_item_id && !validLineItemIds.has(alloc.po_line_item_id)) {
+        errors.push({
+          type: 'ORPHANED_LINE_ITEM_ALLOCATION',
+          severity: 'error',
+          invoice_id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          allocation_id: alloc.id,
+          referenced_line_item_id: alloc.po_line_item_id,
+          details: 'Allocation references PO line item that no longer exists',
+          fix_hint: 'Update allocation to use valid line item ID'
+        });
+      }
+
+      // Check 3: Orphaned change order allocation
+      if (alloc.change_order_id && !validCOIds.has(alloc.change_order_id)) {
+        errors.push({
+          type: 'ORPHANED_CO_ALLOCATION',
+          severity: 'error',
+          invoice_id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          allocation_id: alloc.id,
+          referenced_co_id: alloc.change_order_id,
+          details: 'Allocation references change order that no longer exists or was deleted',
+          fix_hint: 'Update allocation to use valid change order ID'
+        });
+      }
+    }
+
+    // Check 4: Draw status mismatch
+    if (invoicesInDraws.has(invoice.id) && !['approved', 'in_draw', 'paid'].includes(invoice.status)) {
+      errors.push({
+        type: 'DRAW_STATUS_MISMATCH',
+        severity: 'error',
+        invoice_id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        current_status: invoice.status,
+        details: `Invoice is in a draw but has status '${invoice.status}' instead of 'approved', 'in_draw', or 'paid'`,
+        fix_hint: "Remove invoice from draw or change status to 'approved'"
+      });
+    }
+
+    // Check 5: Allocation sum exceeds invoice amount
+    if (allocationTotal > invoiceAmount + 0.01) {
+      errors.push({
+        type: 'ALLOCATION_SUM_EXCEEDS_INVOICE',
+        severity: 'error',
+        invoice_id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        invoice_amount: invoiceAmount,
+        allocation_total: allocationTotal,
+        difference: allocationTotal - invoiceAmount,
+        details: `Allocations total ($${allocationTotal.toFixed(2)}) exceeds invoice amount ($${invoiceAmount.toFixed(2)})`,
+        fix_hint: 'Reduce allocation amounts to match invoice total'
+      });
+    }
+
+    // Check 6: Invoice has PO but no allocations (warning)
+    if (invoice.po_id && (!invoice.allocations || invoice.allocations.length === 0)) {
+      warnings.push({
+        type: 'INVOICE_PO_NO_ALLOCATIONS',
+        severity: 'warning',
+        invoice_id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        po_id: invoice.po_id,
+        details: 'Invoice is linked to a PO but has no cost code allocations',
+        fix_hint: 'Add allocations to fully utilize PO linkage'
+      });
+    }
+  }
+
+  const valid = errors.length === 0;
+
+  res.json({
+    valid,
+    errors,
+    warnings,
+    summary: {
+      invoices_checked: invoicesChecked,
+      allocations_checked: allocationsChecked,
+      errors_found: errors.length,
+      warnings_found: warnings.length
+    }
+  });
+}));
+
 // Get invoice family (parent + children for split invoices)
 router.get('/:id/family', async (req, res) => {
   try {
