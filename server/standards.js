@@ -210,6 +210,69 @@ function generatePONumber(jobName, sequence) {
 }
 
 // ============================================================
+// SIMILARITY FUNCTIONS FOR FUZZY MATCHING
+// ============================================================
+
+/**
+ * Calculate similarity ratio (0-1) based on Levenshtein distance
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @returns {number} Similarity ratio between 0 and 1
+ */
+function similarityRatio(str1, str2) {
+  if (!str1 || !str2) return 0;
+  const s1 = str1.toLowerCase();
+  const s2 = str2.toLowerCase();
+  if (s1 === s2) return 1;
+  const maxLen = Math.max(s1.length, s2.length);
+  if (maxLen === 0) return 1;
+  const distance = levenshteinDistance(s1, s2);
+  return 1 - (distance / maxLen);
+}
+
+/**
+ * Normalize address for comparison (lowercase, standardize abbreviations)
+ * Different from normalizeAddress() which is for display (Title Case)
+ * @param {string} address - Address to normalize
+ * @returns {string} Normalized address for comparison
+ */
+function normalizeAddressForComparison(address) {
+  if (!address) return '';
+  return address.toLowerCase()
+    .replace(/\b(street|st\.?)\b/g, 'st')
+    .replace(/\b(avenue|ave\.?)\b/g, 'ave')
+    .replace(/\b(road|rd\.?)\b/g, 'rd')
+    .replace(/\b(drive|dr\.?)\b/g, 'dr')
+    .replace(/\b(lane|ln\.?)\b/g, 'ln')
+    .replace(/\b(court|ct\.?)\b/g, 'ct')
+    .replace(/\b(boulevard|blvd\.?)\b/g, 'blvd')
+    .replace(/\b(circle|cir\.?)\b/g, 'cir')
+    .replace(/\b(place|pl\.?)\b/g, 'pl')
+    .replace(/\b(terrace|ter\.?)\b/g, 'ter')
+    .replace(/\b(highway|hwy\.?)\b/g, 'hwy')
+    .replace(/\b(apartment|apt\.?)\b/g, 'apt')
+    .replace(/\b(suite|ste\.?)\b/g, 'ste')
+    .replace(/\b(north|n\.?)\b/g, 'n')
+    .replace(/\b(south|s\.?)\b/g, 's')
+    .replace(/\b(east|e\.?)\b/g, 'e')
+    .replace(/\b(west|w\.?)\b/g, 'w')
+    .replace(/[.,#]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Extract street number from address
+ * @param {string} address - Address string
+ * @returns {string|null} Street number or null if not found
+ */
+function extractStreetNumber(address) {
+  if (!address) return null;
+  const match = address.match(/^(\d+)/);
+  return match ? match[1] : null;
+}
+
+// ============================================================
 // VENDOR NORMALIZATION & MATCHING
 // ============================================================
 
@@ -491,6 +554,12 @@ module.exports = {
   zeroPad,
   getMonthAbbrev,
   getYear,
+
+  // Similarity & Fuzzy Matching
+  levenshteinDistance,
+  similarityRatio,
+  normalizeAddressForComparison,
+  extractStreetNumber,
 
   // Vendor matching
   normalizeVendorName,
