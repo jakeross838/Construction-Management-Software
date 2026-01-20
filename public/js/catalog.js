@@ -82,6 +82,17 @@ function setupEventListeners() {
       }
     });
   });
+
+  // Product management buttons
+  document.getElementById('btnAddProduct').addEventListener('click', openAddProductModal);
+  document.getElementById('btnEditProduct').addEventListener('click', openEditProductModal);
+  document.getElementById('btnArchiveProduct').addEventListener('click', archiveProduct);
+
+  // Category management
+  document.getElementById('btnManageCategories').addEventListener('click', openCategoryModal);
+
+  // Image upload
+  document.getElementById('imageInput').addEventListener('change', handleImageUpload);
 }
 
 // ============================================================
