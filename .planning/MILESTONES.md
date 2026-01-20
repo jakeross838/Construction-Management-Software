@@ -2,6 +2,39 @@
 
 Historical record of shipped milestones.
 
+## v1.8 Invoice Variance & Data Linkage
+
+**Shipped:** 2026-01-19
+**Phases:** 5 (47-51)
+**Plans executed:** 17
+
+### Highlights
+
+- **Variance Detection**: Polished line item matching with 35 unit tests, VPO/CO creation directly from variance warnings
+- **Cost Code Linkage**: Fuzzy matching (Levenshtein) for 90%+ accuracy, G703 validation blocks bad allocations
+- **Data Correlation**: Validation endpoints for linkages, CO/VPO totals, price intelligence, budget accuracy
+- **AI PO Generation**: Document upload extracts line items, assigns cost codes via learned patterns, fuzzy job/vendor matching
+- **Quick Fixes**: One-click fix endpoints, Fix Modal UI with bulk operations, standardized error messages with actionable hints
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Phases | 5 (47-51) |
+| Plans | 17 |
+| Requirements | 17 (VAR-*, CCL-*, COR-*, AIPO-*, FIX-*) |
+| Files Modified | 20 |
+| Lines Added | 7,087 |
+| Timeline | 1 day |
+
+### Archive
+
+- `.planning/milestones/v1.8-ROADMAP.md`
+- `.planning/milestones/v1.8-REQUIREMENTS.md`
+- `.planning/milestones/v1.8-MILESTONE-AUDIT.md`
+
+---
+
 ## v1.7 Data Integrity & AI Accuracy
 
 **Shipped:** 2026-01-19

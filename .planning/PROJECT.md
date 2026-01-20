@@ -4,8 +4,8 @@
 
 Construction management software for Ross Built Custom Homes. Manages the full lifecycle from bidding through payment: Bids → Estimates → Budgets → POs → Invoices → Draws → Payment.
 
-**Last Milestone:** v1.7 - Data Integrity & AI Accuracy (shipped 2026-01-19)
-**Current Milestone:** v1.8 - Invoice Variance & Data Linkage
+**Last Milestone:** v1.8 - Invoice Variance & Data Linkage (shipped 2026-01-19)
+**Current Milestone:** Planning next milestone
 
 ## Core Value
 
@@ -13,7 +13,7 @@ Construction management software for Ross Built Custom Homes. Manages the full l
 
 ## Current State
 
-Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardized at 25,947 lines.
+Shipped v1.8 with ~93,000+ lines of JavaScript across 95+ files. CSS standardized at 25,947 lines.
 
 **Fully Complete:**
 - Invoices - AI extraction, OCR, approval workflow, PDF stamping, splits, credits
@@ -44,6 +44,10 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 - Selections/Allowances - Categories, budgets, variance tracking, change orders (v1.6)
 - RFIs, Submittals, Tasks, Messaging, Notifications, Warranties, Closeout - Full modules (v1.6)
 - Grouped Navigation - 9 groups following construction lifecycle (v1.6)
+- Variance Detection - VPO/CO creation from warnings, 35 unit tests (v1.8)
+- Data Correlation - Validation endpoints, price intelligence integration (v1.8)
+- AI PO Generation - Document upload, cost code learning, fuzzy matching (v1.8)
+- Quick Fixes - One-click fix endpoints, bulk operations, standardized errors (v1.8)
 
 ## Tech Stack
 
@@ -159,36 +163,13 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 - [x] PO-INT-01 to PO-INT-04 — PO/CO linking and invoiced_amount sync
 - [x] AI-INT-01 to AI-INT-04 — AI accuracy improvements (70% threshold, date validation)
 
-### v1.8 Invoice Variance & Data Linkage (Active)
+### v1.8 Invoice Variance & Data Linkage (Shipped)
 
-**Goal:** Comprehensive data linkage with variance detection, quick fixes, and correlated data across POs, invoices, draws, and budgets.
-
-**Variance Detection:**
-- [ ] VAR-01: Polish variance detection service (test, refine matching algorithms)
-- [ ] VAR-02: Add UI to create CO or VPO directly from variance warnings
-- [ ] VAR-03: Complete VPO UI integration in invoice and PO modals
-
-**Cost Code Linkage:**
-- [ ] CCL-01: Improve AI cost code assignment accuracy on invoice processing
-- [ ] CCL-02: Ensure PO line items have proper cost codes (validation)
-- [ ] CCL-03: Fix line item matching between invoices and PO line items
-- [ ] CCL-04: Validate G703 cost code accuracy and completeness
-
-**Data Correlation:**
-- [ ] COR-01: Validate PO ↔ Invoice ↔ Draw linkage consistency
-- [ ] COR-02: Ensure CO/VPO totals reflected correctly everywhere
-- [ ] COR-03: Integrate variance detection with price intelligence (flag overpriced)
-- [ ] COR-04: Budget vs actual accuracy validation
-
-**AI PO Generation:**
-- [ ] AIPO-01: Refine document upload auto-PO generation (line item extraction)
-- [ ] AIPO-02: Improve cost code assignment on AI-generated PO line items
-- [ ] AIPO-03: Better linking of generated POs to vendors and jobs
-
-**Quick Fixes:**
-- [ ] FIX-01: One-click to fix broken linkages from error displays
-- [ ] FIX-02: Bulk correction tools for common issues
-- [ ] FIX-03: Clear error messages showing what's wrong and how to fix
+- [x] VAR-01 to VAR-03 — Variance detection polish, VPO/CO from warnings
+- [x] CCL-01 to CCL-04 — Cost code linkage and validation
+- [x] COR-01 to COR-04 — Data correlation and price intelligence
+- [x] AIPO-01 to AIPO-03 — AI PO generation improvements
+- [x] FIX-01 to FIX-03 — Quick fix endpoints and UI
 
 ### Out of Scope
 
@@ -214,6 +195,9 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 | 2026-01-18 | Master items schema with vendor aliases | Organic growth from invoices/quotes | ✓ Good |
 | 2026-01-18 | Materialized view for current prices | Fast lookups without complex queries | ✓ Good |
 | 2026-01-18 | 10% threshold for price warnings | Balances noise vs value | ✓ Good |
+| 2026-01-19 | Levenshtein distance for fuzzy matching | Better typo tolerance than exact match | ✓ Good |
+| 2026-01-19 | Standardized validation error structure | Consistent fix_hint across all endpoints | ✓ Good |
+| 2026-01-19 | Database-driven cost code learning | Patterns improve with usage | ✓ Good |
 
 ## References
 
@@ -223,4 +207,4 @@ Shipped v1.6 with ~110,000+ lines of JavaScript across 95+ files. CSS standardiz
 - `database/migration-*.sql` - Schema history
 
 ---
-*Last updated: 2026-01-19 — v1.8 Invoice Variance & Data Linkage started*
+*Last updated: 2026-01-19 — v1.8 Invoice Variance & Data Linkage shipped*
