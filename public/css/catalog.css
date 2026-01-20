@@ -692,6 +692,149 @@
 }
 
 /* ============================================================
+   ALLOWANCE VARIANCE INDICATOR
+   ============================================================ */
+
+.allowance-variance {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0 1rem 0;
+  border-left: 3px solid var(--accent-green);
+}
+
+.allowance-variance.variance-over {
+  border-left-color: var(--accent-red);
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.allowance-variance.variance-under {
+  border-left-color: var(--accent-green);
+}
+
+.variance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8125rem;
+  padding: 0.25rem 0;
+}
+
+.variance-label {
+  color: var(--text-secondary);
+}
+
+.variance-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.variance-after-row {
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.variance-after-row .variance-value {
+  font-weight: 600;
+}
+
+.allowance-variance.variance-over .variance-after-row .variance-value {
+  color: var(--accent-red);
+}
+
+.allowance-variance.variance-under .variance-after-row .variance-value {
+  color: var(--accent-green);
+}
+
+/* ============================================================
+   CO CREATION PROMPT
+   ============================================================ */
+
+.co-prompt {
+  background: rgba(210, 153, 34, 0.15);
+  border: 1px solid var(--accent-orange);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin: 0.5rem 0 1rem 0;
+}
+
+.co-prompt-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--accent-orange);
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+}
+
+.co-prompt-header svg {
+  flex-shrink: 0;
+}
+
+.co-prompt-body p {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.75rem 0;
+}
+
+.co-prompt-body p strong {
+  color: var(--accent-red);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.co-markup-section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.markup-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.markup-row label {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.markup-input {
+  width: 80px;
+}
+
+.co-total-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.co-total-preview strong {
+  color: var(--accent-orange);
+  font-size: 1rem;
+}
+
+/* ============================================================
    MODAL BADGES
    ============================================================ */
 

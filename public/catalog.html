@@ -257,6 +257,55 @@
             </select>
           </div>
 
+          <!-- Allowance Variance Indicator -->
+          <div id="allowanceVariance" class="allowance-variance" style="display: none;">
+            <div class="variance-row">
+              <span class="variance-label">Budget:</span>
+              <span id="varianceBudget" class="variance-value">$0</span>
+            </div>
+            <div class="variance-row">
+              <span class="variance-label">Already Selected:</span>
+              <span id="varianceSelected" class="variance-value">$0</span>
+            </div>
+            <div class="variance-row">
+              <span class="variance-label">Remaining:</span>
+              <span id="varianceRemaining" class="variance-value">$0</span>
+            </div>
+            <div class="variance-row variance-after-row">
+              <span class="variance-label">After This Selection:</span>
+              <span id="varianceAfter" class="variance-value">$0</span>
+            </div>
+          </div>
+
+          <!-- CO Creation Prompt (shown when over budget) -->
+          <div id="coPrompt" class="co-prompt" style="display: none;">
+            <div class="co-prompt-header">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <span>Selection exceeds allowance budget</span>
+            </div>
+            <div class="co-prompt-body">
+              <p>This selection will exceed the allowance by <strong id="coPromptOverage">$0</strong></p>
+              <label class="checkbox-label">
+                <input type="checkbox" id="createCOCheckbox">
+                <span>Create change order for the overage</span>
+              </label>
+              <div id="coMarkupSection" class="co-markup-section" style="display: none;">
+                <div class="markup-row">
+                  <label for="coMarkupInput">Markup %</label>
+                  <input type="number" id="coMarkupInput" value="15" min="0" step="1" class="form-input markup-input">
+                </div>
+                <div class="co-total-preview">
+                  <span>CO Total:</span>
+                  <strong id="coTotalPreview">$0</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="form-row">
             <div class="form-group">
               <label for="selectionQty">Quantity</label>

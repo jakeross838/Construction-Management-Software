@@ -11,6 +11,7 @@ let allCategories = [];
 let allVendors = [];
 let allProducts = [];
 let allJobs = [];
+let allJobAllowances = []; // Store full allowance data for variance calculations
 let currentCategoryId = null;
 let currentProduct = null;
 let viewMode = 'grid'; // 'grid' or 'list'
@@ -70,8 +71,23 @@ function setupEventListeners() {
   // Job selection changes allowances
   document.getElementById('selectionJob').addEventListener('change', loadJobAllowances);
 
-  // Quantity changes total
-  document.getElementById('selectionQty').addEventListener('input', updateSelectionTotal);
+  // Quantity changes total and variance
+  document.getElementById('selectionQty').addEventListener('input', () => {
+    updateSelectionTotal();
+    showAllowanceVariance();
+  });
+
+  // Allowance selection changes variance display
+  document.getElementById('selectionAllowance').addEventListener('change', showAllowanceVariance);
+
+  // CO checkbox toggle
+  document.getElementById('createCOCheckbox').addEventListener('change', (e) => {
+    document.getElementById('coMarkupSection').style.display = e.target.checked ? 'block' : 'none';
+    if (e.target.checked) calculateCOPreview();
+  });
+
+  // CO markup input changes preview
+  document.getElementById('coMarkupInput').addEventListener('input', calculateCOPreview);
 
   // Close modals on outside click
   document.querySelectorAll('.modal').forEach(modal => {
@@ -188,6 +204,11 @@ async function loadJobAllowances() {
   const allowanceSelect = document.getElementById('selectionAllowance');
 
   allowanceSelect.innerHTML = '<option value="">Select an allowance</option>';
+  allJobAllowances = []; // Reset stored allowances
+
+  // Hide variance indicator when job changes
+  document.getElementById('allowanceVariance').style.display = 'none';
+  document.getElementById('coPrompt').style.display = 'none';
 
   if (!jobId) return;
 
@@ -196,11 +217,34 @@ async function loadJobAllowances() {
     if (!res.ok) throw new Error('Failed to load allowances');
     const allowances = await res.json();
 
+    // Store full allowance data for variance calculations
+    allJobAllowances = allowances;
+
     allowances.forEach(a => {
-      const variance = parseFloat(a.variance) || 0;
-      const varianceText = variance > 0 ? ` (+$${Math.abs(variance).toFixed(0)} over)` :
-                          variance < 0 ? ` ($${Math.abs(variance).toFixed(0)} remaining)` : '';
-      allowanceSelect.innerHTML += `<option value="${a.id}">${escapeHtml(a.name)}${varianceText}</option>`;
+      const budget = parseFloat(a.budgeted_amount) || 0;
+      const selected = parseFloat(a.selected_amount) || 0;
+      const remaining = budget - selected;
+
+      // Color-code the option text based on budget status
+      let varianceText = '';
+      let optionClass = '';
+      if (remaining < 0) {
+        varianceText = ` ($${Math.abs(remaining).toFixed(0)} over)`;
+        optionClass = 'over-budget';
+      } else if (remaining > 0) {
+        varianceText = ` ($${remaining.toFixed(0)} remaining)`;
+        optionClass = 'under-budget';
+      } else {
+        varianceText = ' (at budget)';
+      }
+
+      const option = document.createElement('option');
+      option.value = a.id;
+      option.textContent = `${a.name}${varianceText}`;
+      option.dataset.budgeted = budget;
+      option.dataset.selected = selected;
+      option.dataset.remaining = remaining;
+      allowanceSelect.appendChild(option);
     });
   } catch (err) {
     console.error('Failed to load allowances:', err);
@@ -571,6 +615,13 @@ function openAddSelectionModal() {
   document.getElementById('selectionJob').value = '';
   document.getElementById('selectionAllowance').innerHTML = '<option value="">Select an allowance</option>';
 
+  // Reset variance indicator and CO prompt
+  document.getElementById('allowanceVariance').style.display = 'none';
+  document.getElementById('coPrompt').style.display = 'none';
+  document.getElementById('createCOCheckbox').checked = false;
+  document.getElementById('coMarkupSection').style.display = 'none';
+  allJobAllowances = [];
+
   updateSelectionTotal();
 
   const modal = document.getElementById('addSelectionModal');
@@ -593,6 +644,111 @@ function updateSelectionTotal() {
 
   document.getElementById('summaryUnitPrice').textContent = formatCurrency(price);
   document.getElementById('summaryTotal').textContent = formatCurrency(total);
+}
+
+/**
+ * Show allowance variance indicator when an allowance is selected
+ * Updates to show budget impact of current selection
+ */
+function showAllowanceVariance() {
+  const allowanceSelect = document.getElementById('selectionAllowance');
+  const varianceDiv = document.getElementById('allowanceVariance');
+  const coPrompt = document.getElementById('coPrompt');
+
+  const selectedOption = allowanceSelect.options[allowanceSelect.selectedIndex];
+
+  // Hide if no allowance selected
+  if (!selectedOption || !selectedOption.value) {
+    varianceDiv.style.display = 'none';
+    coPrompt.style.display = 'none';
+    return;
+  }
+
+  // Get allowance data from stored array
+  const allowance = allJobAllowances.find(a => a.id === selectedOption.value);
+  if (!allowance) {
+    varianceDiv.style.display = 'none';
+    coPrompt.style.display = 'none';
+    return;
+  }
+
+  const budget = parseFloat(allowance.budgeted_amount) || 0;
+  const alreadySelected = parseFloat(allowance.selected_amount) || 0;
+  const remaining = budget - alreadySelected;
+
+  // Calculate this selection's total
+  const qty = parseFloat(document.getElementById('selectionQty').value) || 0;
+  const price = parseFloat(currentProduct?.unit_price) || 0;
+  const thisSelectionTotal = qty * price;
+
+  // Calculate projected amount after this selection
+  const projectedTotal = alreadySelected + thisSelectionTotal;
+  const afterRemaining = budget - projectedTotal;
+
+  // Update variance display
+  document.getElementById('varianceBudget').textContent = formatCurrency(budget);
+  document.getElementById('varianceSelected').textContent = formatCurrency(alreadySelected);
+  document.getElementById('varianceRemaining').textContent = formatCurrency(remaining);
+  document.getElementById('varianceAfter').textContent = formatCurrency(afterRemaining);
+
+  // Toggle over/under classes
+  varianceDiv.classList.remove('variance-over', 'variance-under');
+  if (afterRemaining < 0) {
+    varianceDiv.classList.add('variance-over');
+  } else {
+    varianceDiv.classList.add('variance-under');
+  }
+
+  varianceDiv.style.display = 'block';
+
+  // Show CO prompt if selection exceeds budget
+  if (afterRemaining < 0) {
+    const overage = Math.abs(afterRemaining);
+    document.getElementById('coPromptOverage').textContent = formatCurrency(overage);
+    coPrompt.style.display = 'block';
+
+    // Reset checkbox state
+    document.getElementById('createCOCheckbox').checked = false;
+    document.getElementById('coMarkupSection').style.display = 'none';
+
+    // Calculate preview
+    calculateCOPreview();
+  } else {
+    coPrompt.style.display = 'none';
+  }
+}
+
+/**
+ * Calculate and display CO total preview based on overage and markup
+ */
+function calculateCOPreview() {
+  const allowanceSelect = document.getElementById('selectionAllowance');
+  const selectedOption = allowanceSelect.options[allowanceSelect.selectedIndex];
+
+  if (!selectedOption || !selectedOption.value) return;
+
+  const allowance = allJobAllowances.find(a => a.id === selectedOption.value);
+  if (!allowance) return;
+
+  const budget = parseFloat(allowance.budgeted_amount) || 0;
+  const alreadySelected = parseFloat(allowance.selected_amount) || 0;
+
+  // Calculate this selection's total
+  const qty = parseFloat(document.getElementById('selectionQty').value) || 0;
+  const price = parseFloat(currentProduct?.unit_price) || 0;
+  const thisSelectionTotal = qty * price;
+
+  // Calculate overage
+  const projectedTotal = alreadySelected + thisSelectionTotal;
+  const overage = projectedTotal - budget;
+
+  if (overage <= 0) return;
+
+  // Apply markup
+  const markupPercent = parseFloat(document.getElementById('coMarkupInput').value) || 0;
+  const coTotal = overage * (1 + markupPercent / 100);
+
+  document.getElementById('coTotalPreview').textContent = formatCurrency(coTotal);
 }
 
 async function saveSelection() {
@@ -636,12 +792,54 @@ async function saveSelection() {
       throw new Error(err.error || 'Failed to save selection');
     }
 
+    const result = await res.json();
+
+    // After successful selection save, check for CO creation
+    const createCOCheckbox = document.getElementById('createCOCheckbox');
+    if (createCOCheckbox && createCOCheckbox.checked) {
+      const markup = parseFloat(document.getElementById('coMarkupInput').value) || 0;
+      await createCOFromSelection(result.id, markup);
+    }
+
     showToast('Selection added successfully', 'success');
     closeAddSelectionModal();
     closeProductModal();
   } catch (err) {
     console.error('Failed to save selection:', err);
     showToast(err.message, 'error');
+  }
+}
+
+/**
+ * Create a Change Order from a selection that exceeds allowance budget
+ * @param {string} selectionId - The selection item ID
+ * @param {number} markupPercent - Markup percentage to apply
+ */
+async function createCOFromSelection(selectionId, markupPercent) {
+  try {
+    const res = await fetch(`/api/selections/items/${selectionId}/create-co`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        markup_percent: markupPercent,
+        description: `Upgrade selection from catalog: ${currentProduct?.name || 'Product'}`,
+        created_by: 'Jake Ross'
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      // Don't throw - just warn. Selection was saved successfully.
+      console.warn('CO creation failed:', err.error);
+      showToast('Selection saved, but CO creation failed: ' + err.error, 'warning');
+      return;
+    }
+
+    const result = await res.json();
+    showToast(`Change order created: ${formatCurrency(result.final_amount || result.amount)}`, 'success');
+  } catch (err) {
+    console.error('CO creation error:', err);
+    showToast('Selection saved, but CO creation failed', 'warning');
   }
 }
 
