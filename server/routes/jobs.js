@@ -367,6 +367,142 @@ router.get('/:id/validate-po-totals', asyncHandler(async (req, res) => {
   });
 }));
 
+// Get job budget accuracy report with variance analysis
+router.get('/:id/budget-accuracy', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+
+  // 1. Verify job exists and get name
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id, name')
+    .eq('id', jobId)
+    .is('deleted_at', null)
+    .single();
+
+  if (jobError?.code === 'PGRST116' || !job) throw notFoundError('job', jobId);
+  if (jobError) throw new AppError('DATABASE_ERROR', jobError.message);
+
+  // 2. Fetch all budget lines with cost code details
+  const { data: budgetLines, error: blError } = await supabase
+    .from('v2_budget_lines')
+    .select(`
+      id, job_id, cost_code_id,
+      budgeted_amount, committed_amount, billed_amount, paid_amount,
+      cost_code:v2_cost_codes(id, code, name)
+    `)
+    .eq('job_id', jobId);
+
+  if (blError) throw new AppError('DATABASE_ERROR', blError.message, { code: blError.code });
+
+  // 3. Calculate variance for each cost code
+  const errors = [];
+  const warnings = [];
+  const byCostCode = (budgetLines || []).map(bl => {
+    const budgeted = parseFloat(bl.budgeted_amount || 0);
+    const committed = parseFloat(bl.committed_amount || 0);
+    const billed = parseFloat(bl.billed_amount || 0);
+    const paid = parseFloat(bl.paid_amount || 0);
+
+    const varianceCommitted = committed - budgeted;
+    const varianceBilled = billed - budgeted;
+    const remainingToCommit = budgeted - committed;
+    const remainingToBill = committed - billed;
+    const percentCommitted = budgeted > 0 ? (committed / budgeted) * 100 : 0;
+
+    // Determine status
+    let status = 'ok';
+    if (billed > committed + 0.01) {
+      status = 'over_billed';
+      errors.push({
+        type: 'OVER_BILLED',
+        severity: 'error',
+        cost_code_id: bl.cost_code_id,
+        cost_code: bl.cost_code?.code || 'Unknown',
+        cost_code_name: bl.cost_code?.name || 'Unknown',
+        budgeted,
+        committed,
+        billed,
+        excess: billed - committed,
+        message: `Cost code ${bl.cost_code?.code} billed $${(billed - committed).toFixed(2)} more than committed`
+      });
+    } else if (committed > budgeted + 0.01) {
+      status = 'over_committed';
+      errors.push({
+        type: 'OVER_COMMITTED',
+        severity: 'error',
+        cost_code_id: bl.cost_code_id,
+        cost_code: bl.cost_code?.code || 'Unknown',
+        cost_code_name: bl.cost_code?.name || 'Unknown',
+        budgeted,
+        committed,
+        excess: committed - budgeted,
+        message: `Cost code ${bl.cost_code?.code} committed $${(committed - budgeted).toFixed(2)} over budget`
+      });
+    } else if (percentCommitted > 90) {
+      status = 'approaching';
+      warnings.push({
+        type: 'APPROACHING_LIMIT',
+        severity: 'warning',
+        cost_code_id: bl.cost_code_id,
+        cost_code: bl.cost_code?.code || 'Unknown',
+        cost_code_name: bl.cost_code?.name || 'Unknown',
+        budgeted,
+        committed,
+        percent_committed: percentCommitted,
+        remaining: budgeted - committed,
+        message: `Cost code ${bl.cost_code?.code} is ${percentCommitted.toFixed(1)}% committed ($${(budgeted - committed).toFixed(2)} remaining)`
+      });
+    }
+
+    return {
+      cost_code_id: bl.cost_code_id,
+      cost_code: bl.cost_code?.code || 'Unknown',
+      cost_code_name: bl.cost_code?.name || 'Unknown',
+      budgeted,
+      committed,
+      billed,
+      paid,
+      variance_committed: varianceCommitted,
+      variance_billed: varianceBilled,
+      remaining_to_commit: remainingToCommit,
+      remaining_to_bill: remainingToBill,
+      percent_committed: percentCommitted,
+      status
+    };
+  });
+
+  // 4. Calculate job-level summary
+  const summary = byCostCode.reduce((acc, cc) => {
+    acc.total_budgeted += cc.budgeted;
+    acc.total_committed += cc.committed;
+    acc.total_billed += cc.billed;
+    acc.total_paid += cc.paid;
+    return acc;
+  }, { total_budgeted: 0, total_committed: 0, total_billed: 0, total_paid: 0 });
+
+  summary.overall_variance_committed = summary.total_committed - summary.total_budgeted;
+  summary.overall_variance_billed = summary.total_billed - summary.total_budgeted;
+  summary.percent_committed = summary.total_budgeted > 0
+    ? (summary.total_committed / summary.total_budgeted) * 100
+    : 0;
+  summary.percent_billed = summary.total_budgeted > 0
+    ? (summary.total_billed / summary.total_budgeted) * 100
+    : 0;
+  summary.cost_codes_over_committed = errors.filter(e => e.type === 'OVER_COMMITTED').length;
+  summary.cost_codes_over_billed = errors.filter(e => e.type === 'OVER_BILLED').length;
+  summary.cost_codes_approaching_limit = warnings.filter(w => w.type === 'APPROACHING_LIMIT').length;
+
+  res.json({
+    job_id: jobId,
+    job_name: job.name,
+    valid: errors.length === 0,
+    summary,
+    by_cost_code: byCostCode,
+    errors,
+    warnings
+  });
+}));
+
 // Get job budget
 router.get('/:id/budget', asyncHandler(async (req, res) => {
   const jobId = req.params.id;
