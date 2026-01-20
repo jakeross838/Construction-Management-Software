@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><text y='32' font-size='32'>🏗️</text></svg>">
+  <title>Ross Built - Permits</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260119">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New Permit</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <main class="main">
+        <!-- Stats Bar -->
+        <div class="page-header-bar">
+          <h1 class="page-title">Permits</h1>
+          <div class="page-header-stats">
+            <div class="stat-chip">
+              <span class="stat-chip-value" id="statTotal">0</span>
+              <span class="stat-chip-label">Total</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-chip-value" id="statSubmitted">0</span>
+              <span class="stat-chip-label">Submitted</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-chip-value" id="statApproved">0</span>
+              <span class="stat-chip-label">Approved</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toolbar with Filters -->
+        <div class="data-toolbar">
+          <div class="toolbar-left">
+            <div class="filter-group">
+              <select id="jobFilter" class="form-control form-control-sm">
+                <option value="">All Jobs</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <select id="typeFilter" class="form-control form-control-sm">
+                <option value="">All Types</option>
+                <option value="building">Building</option>
+                <option value="electrical">Electrical</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="mechanical">Mechanical</option>
+                <option value="roofing">Roofing</option>
+                <option value="demo">Demolition</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <select id="statusFilter" class="form-control form-control-sm">
+                <option value="">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="under_review">Under Review</option>
+                <option value="approved">Approved</option>
+                <option value="denied">Denied</option>
+                <option value="expired">Expired</option>
+              </select>
+            </div>
+            <div class="search-input-wrap">
+              <input type="text" id="searchInput" placeholder="Search permits..." class="form-control form-control-sm">
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="data-table-container">
+          <table class="data-table" id="permitTable">
+            <thead>
+              <tr>
+                <th>Permit #</th>
+                <th>Type</th>
+                <th>Job</th>
+                <th>Status</th>
+                <th>Submitted</th>
+                <th>Expires</th>
+                <th>Fee</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <tr><td colspan="7" class="empty-state">Loading permits...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div id="permitModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <h2 id="modalTitle">New Permit</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="permitForm">
+          <input type="hidden" id="permitId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="permitType">Permit Type *</label>
+              <select id="permitType" class="form-control" required>
+                <option value="">-- Select Type --</option>
+                <option value="building">Building</option>
+                <option value="electrical">Electrical</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="mechanical">Mechanical</option>
+                <option value="roofing">Roofing</option>
+                <option value="demo">Demolition</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="permitNumber">Permit Number</label>
+              <input type="text" id="permitNumber" class="form-control" placeholder="Assigned when approved">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="jobId">Job</label>
+              <select id="jobId" class="form-control">
+                <option value="">-- No Job --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="issuedBy">Issued By (Jurisdiction)</label>
+              <input type="text" id="issuedBy" class="form-control" placeholder="e.g., Sarasota County">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" class="form-control" rows="2"></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="submissionDate">Submission Date</label>
+              <input type="date" id="submissionDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="expirationDate">Expiration Date</label>
+              <input type="date" id="expirationDate" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="feeAmount">Fee Amount</label>
+              <input type="number" id="feeAmount" class="form-control" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+              <label for="feePaid">Fee Paid</label>
+              <select id="feePaid" class="form-control">
+                <option value="false">No</option>
+                <option value="true">Yes</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="notes">Notes</label>
+            <textarea id="notes" class="form-control" rows="2"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="savePermit()">Save Permit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="detailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 900px;">
+      <div class="modal-header">
+        <h2 id="detailTitle">Permit Details</h2>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" data-tab="overview">Overview</button>
+          <button class="tab" data-tab="inspections">Inspections</button>
+          <button class="tab" data-tab="documents">Documents</button>
+          <button class="tab" data-tab="activity">Activity</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="tab-overview" class="tab-content active">
+          <div id="overviewContent"></div>
+        </div>
+
+        <!-- Inspections Tab -->
+        <div id="tab-inspections" class="tab-content" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4 style="margin: 0;">Scheduled Inspections</h4>
+            <button class="btn btn-secondary btn-sm" onclick="openInspectionModal()">+ Schedule Inspection</button>
+          </div>
+          <div id="inspectionsList"></div>
+        </div>
+
+        <!-- Documents Tab -->
+        <div id="tab-documents" class="tab-content" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4 style="margin: 0;">Permit Documents</h4>
+            <button class="btn btn-secondary btn-sm" onclick="openDocumentModal()">+ Add Document</button>
+          </div>
+          <div id="documentsList"></div>
+        </div>
+
+        <!-- Activity Tab -->
+        <div id="tab-activity" class="tab-content" style="display: none;">
+          <div id="activityList"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDetailModal()">Close</button>
+        <button type="button" class="btn btn-danger" id="deleteBtn" onclick="deleteCurrentPermit()">Delete</button>
+        <button type="button" class="btn btn-warning" id="submitBtn" onclick="submitPermit()">Submit</button>
+        <button type="button" class="btn btn-success" id="approveBtn" onclick="approvePermit()">Approve</button>
+        <button type="button" class="btn btn-primary" onclick="editCurrentPermit()">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inspection Modal -->
+  <div id="inspectionModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Schedule Inspection</h2>
+        <button class="close-btn" onclick="closeInspectionModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="inspectionForm">
+          <div class="form-group">
+            <label for="inspectionType">Inspection Type *</label>
+            <select id="inspectionType" class="form-control" required>
+              <option value="">-- Select Type --</option>
+              <option value="foundation">Foundation</option>
+              <option value="framing">Framing</option>
+              <option value="rough_in">Rough-In</option>
+              <option value="insulation">Insulation</option>
+              <option value="drywall">Drywall</option>
+              <option value="final">Final</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="inspectionDate">Date *</label>
+              <input type="date" id="inspectionDate" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="inspectionTime">Time</label>
+              <input type="time" id="inspectionTime" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="inspectorContact">Inspector (Contact)</label>
+            <select id="inspectorContact" class="form-control">
+              <option value="">-- Select Contact --</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="inspectorName">Inspector Name</label>
+              <input type="text" id="inspectorName" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="inspectorPhone">Inspector Phone</label>
+              <input type="tel" id="inspectorPhone" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="inspectionDescription">Notes</label>
+            <textarea id="inspectionDescription" class="form-control" rows="2"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeInspectionModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveInspection()">Schedule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Document Modal -->
+  <div id="documentModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Add Document</h2>
+        <button class="close-btn" onclick="closeDocumentModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="documentForm">
+          <div class="form-group">
+            <label for="documentType">Document Type *</label>
+            <select id="documentType" class="form-control" required>
+              <option value="">-- Select Type --</option>
+              <option value="application">Application</option>
+              <option value="permit">Permit</option>
+              <option value="approval">Approval Letter</option>
+              <option value="coo">Certificate of Occupancy</option>
+              <option value="inspection_report">Inspection Report</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="documentName">Document Name *</label>
+            <input type="text" id="documentName" class="form-control" required>
+          </div>
+
+          <div class="form-group">
+            <label for="documentUrl">File URL</label>
+            <input type="url" id="documentUrl" class="form-control" placeholder="https://...">
+          </div>
+
+          <div class="form-group">
+            <label for="documentDescription">Description</label>
+            <textarea id="documentDescription" class="form-control" rows="2"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDocumentModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveDocument()">Add Document</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/nav-sidebar.js"></script>
+  <script src="js/toasts.js"></script>
+  <script src="js/permits.js"></script>
+</body>
+</html>

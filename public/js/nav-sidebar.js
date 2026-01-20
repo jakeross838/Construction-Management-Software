@@ -40,6 +40,7 @@
         { id: 'rfis', label: 'RFIs', href: 'rfis.html' },
         { id: 'submittals', label: 'Submittals', href: 'submittals.html' },
         { id: 'inspections', label: 'Inspections', href: 'inspections.html' },
+        { id: 'permits', label: 'Permits', href: 'permits.html' },
         { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' }
       ]
     },
