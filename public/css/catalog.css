@@ -1100,3 +1100,26 @@
   font-size: 0.875rem;
   color: var(--text-secondary);
 }
+
+/* Image URL Preview */
+.image-preview-container {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.image-preview-container img {
+  max-width: 200px;
+  max-height: 150px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}

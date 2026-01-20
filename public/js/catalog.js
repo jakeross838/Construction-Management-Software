@@ -104,6 +104,13 @@ function setupEventListeners() {
   document.getElementById('btnEditProduct').addEventListener('click', openEditProductModal);
   document.getElementById('btnArchiveProduct').addEventListener('click', archiveProduct);
 
+  // Image URL preview with debounce
+  let imageUrlTimer;
+  document.getElementById('productFormImageUrl').addEventListener('input', (e) => {
+    clearTimeout(imageUrlTimer);
+    imageUrlTimer = setTimeout(() => previewImageUrl(e.target.value), 500);
+  });
+
   // Category management
   document.getElementById('btnManageCategories').addEventListener('click', openCategoryModal);
 
@@ -922,14 +929,55 @@ function showToast(message, type = 'info') {
 // PRODUCT FORM MODAL (ADD/EDIT)
 // ============================================================
 
+/**
+ * Preview image from URL
+ */
+function previewImageUrl(url) {
+  const container = document.getElementById('imagePreviewContainer');
+  const preview = document.getElementById('imagePreview');
+
+  if (!url || !url.trim()) {
+    container.style.display = 'none';
+    return;
+  }
+
+  // Validate it looks like a URL
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    container.style.display = 'none';
+    return;
+  }
+
+  // Try to load the image
+  preview.onload = () => {
+    container.style.display = 'flex';
+  };
+  preview.onerror = () => {
+    container.style.display = 'none';
+    showToast('Could not load image from URL', 'error');
+  };
+  preview.src = url;
+}
+
+/**
+ * Clear image preview
+ */
+function clearImagePreview() {
+  document.getElementById('productFormImageUrl').value = '';
+  document.getElementById('imagePreviewContainer').style.display = 'none';
+}
+
 function openAddProductModal() {
   // Reset form
   document.getElementById('productForm').reset();
   document.getElementById('editProductId').value = '';
   document.getElementById('productFormTitle').textContent = 'Add Product';
 
-  // Reset uploaded images preview
-  document.getElementById('uploadedImages').innerHTML = '';
+  // Clear image preview
+  document.getElementById('imagePreviewContainer').style.display = 'none';
+
+  // Reset existing images display
+  const existingImages = document.getElementById('existingImages');
+  if (existingImages) existingImages.style.display = 'none';
 
   // Populate category dropdown
   const categorySelect = document.getElementById('productFormCategory');
@@ -987,6 +1035,15 @@ function openEditProductModal() {
   document.getElementById('productFormDescription').value = p.description || '';
   document.getElementById('productFormTags').value = (p.tags || []).join(', ');
 
+  // Fill image URLs
+  document.getElementById('productFormImageUrl').value = p.image_url || '';
+  document.getElementById('productFormSpecSheetUrl').value = p.spec_sheet_url || '';
+
+  // Show image preview if URL exists
+  if (p.image_url) {
+    previewImageUrl(p.image_url);
+  }
+
   // Fill specs if available
   if (p.specs) {
     document.getElementById('specColor').value = p.specs.color || '';
@@ -1029,6 +1086,8 @@ async function saveProduct() {
   const description = document.getElementById('productFormDescription').value.trim();
   const tagsInput = document.getElementById('productFormTags').value.trim();
   const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+  const image_url = document.getElementById('productFormImageUrl').value.trim() || null;
+  const spec_sheet_url = document.getElementById('productFormSpecSheetUrl').value.trim() || null;
 
   // Gather specs
   const specs = {};
@@ -1081,7 +1140,9 @@ async function saveProduct() {
     square_footage,
     tags,
     specs: Object.keys(specs).length > 0 ? specs : null,
-    dimensions: Object.keys(dimensions).length > 0 ? dimensions : null
+    dimensions: Object.keys(dimensions).length > 0 ? dimensions : null,
+    image_url,
+    spec_sheet_url
   };
 
   try {

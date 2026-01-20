@@ -474,10 +474,29 @@
             <input type="text" id="productFormTags" class="form-input" placeholder="e.g., undermount, single-bowl, stainless">
           </div>
 
-          <!-- Image Upload -->
-          <div class="form-section" id="productImageUpload">
-            <h4>Images</h4>
-            <div id="imageUploadContainer">
+          <!-- Image URL -->
+          <div class="form-section" id="productImageSection">
+            <h4>Product Image</h4>
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="productFormImageUrl">Image URL</label>
+                <input type="url" id="productFormImageUrl" class="form-input" placeholder="Paste image URL from vendor website (e.g., Build.com, Ferguson)">
+              </div>
+              <div class="form-group">
+                <label for="productFormSpecSheetUrl">Spec Sheet URL</label>
+                <input type="url" id="productFormSpecSheetUrl" class="form-input" placeholder="Link to PDF spec sheet">
+              </div>
+            </div>
+
+            <!-- Image Preview -->
+            <div id="imagePreviewContainer" class="image-preview-container" style="display: none;">
+              <img id="imagePreview" src="" alt="Product preview">
+              <button type="button" class="btn btn-sm btn-secondary" onclick="clearImagePreview()">Clear</button>
+            </div>
+
+            <!-- Additional Image Upload (for after save) -->
+            <div id="imageUploadContainer" style="margin-top: 1rem;">
+              <p class="text-small text-secondary">Or upload additional images after saving:</p>
               <!-- Show existing images when editing -->
               <div id="existingImages" class="image-gallery-edit" style="display: none;"></div>
 
