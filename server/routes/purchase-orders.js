@@ -1431,6 +1431,196 @@ router.get('/:id/pdf', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// PO TOTAL VALIDATION
+// ============================================================
+
+// Validate PO totals against actual CO/VPO data
+router.get('/:id/validate-totals', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // 1. Fetch the PO with its stored totals
+  const { data: po, error: poError } = await supabase
+    .from('v2_purchase_orders')
+    .select('id, po_number, job_id, original_amount, change_order_total, total_amount')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (poError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  const errors = [];
+  const warnings = [];
+
+  // 2. Fetch all approved COs for this PO and sum their amount_change
+  const { data: changeOrders, error: coError } = await supabase
+    .from('v2_change_orders')
+    .select('id, change_order_number, amount_change, status')
+    .eq('po_id', id)
+    .eq('status', 'approved');
+
+  if (coError) {
+    console.error('Error fetching change orders:', coError);
+  }
+
+  const approvedCOs = changeOrders || [];
+  const calculatedCOTotal = approvedCOs.reduce((sum, co) => sum + parseFloat(co.amount_change || 0), 0);
+
+  // 3. Fetch all approved VPOs for this PO and sum their amounts
+  const { data: vpos, error: vpoError } = await supabase
+    .from('v2_verbal_purchase_orders')
+    .select('id, vpo_number, amount, status')
+    .eq('po_id', id)
+    .eq('status', 'approved');
+
+  if (vpoError) {
+    console.error('Error fetching VPOs:', vpoError);
+  }
+
+  const approvedVPOs = vpos || [];
+  const calculatedVPOTotal = approvedVPOs.reduce((sum, vpo) => sum + parseFloat(vpo.amount || 0), 0);
+
+  // 4. Compare stored vs calculated values
+  const storedOriginal = parseFloat(po.original_amount || 0);
+  const storedCOTotal = parseFloat(po.change_order_total || 0);
+  const storedTotal = parseFloat(po.total_amount || 0);
+
+  // Expected total = original + CO total (VPOs may or may not be included)
+  const expectedTotal = storedOriginal + calculatedCOTotal;
+
+  // 4a. Check if change_order_total matches sum of approved COs
+  const coDiscrepancy = Math.abs(storedCOTotal - calculatedCOTotal);
+  if (coDiscrepancy > 0.01) {
+    errors.push({
+      type: 'CO_TOTAL_MISMATCH',
+      severity: 'error',
+      details: {
+        stored_co_total: storedCOTotal,
+        calculated_co_total: calculatedCOTotal,
+        discrepancy: storedCOTotal - calculatedCOTotal,
+        approved_co_count: approvedCOs.length
+      },
+      fix_hint: 'Recalculate change_order_total by summing all approved CO amount_changes'
+    });
+  }
+
+  // 4b. Check if total_amount matches original + change_order_total
+  const totalDiscrepancy = Math.abs(storedTotal - expectedTotal);
+  if (totalDiscrepancy > 0.01) {
+    errors.push({
+      type: 'PO_TOTAL_MISMATCH',
+      severity: 'error',
+      details: {
+        stored_total: storedTotal,
+        expected_total: expectedTotal,
+        original_amount: storedOriginal,
+        co_total: calculatedCOTotal,
+        discrepancy: storedTotal - expectedTotal
+      },
+      fix_hint: 'Recalculate total_amount as original_amount + sum of approved CO amounts'
+    });
+  }
+
+  // 4c. Report VPOs if they exist but are not tracked in any total (warning)
+  if (calculatedVPOTotal > 0) {
+    warnings.push({
+      type: 'VPO_NOT_TRACKED',
+      severity: 'warning',
+      details: {
+        vpo_total: calculatedVPOTotal,
+        approved_vpo_count: approvedVPOs.length,
+        vpos: approvedVPOs.map(v => ({ id: v.id, vpo_number: v.vpo_number, amount: parseFloat(v.amount || 0) }))
+      },
+      fix_hint: 'VPOs exist but may not be reflected in PO totals. Review if VPOs should be included in change_order_total.'
+    });
+  }
+
+  // 5. Fetch budget lines and CO line items to validate committed_amount
+  let coLineItems = [];
+  if (approvedCOs.length > 0) {
+    const { data: coliData, error: coliError } = await supabase
+      .from('v2_change_order_line_items')
+      .select('id, cost_code_id, amount, change_order_id')
+      .in('change_order_id', approvedCOs.map(co => co.id));
+
+    if (coliError) {
+      console.error('Error fetching CO line items:', coliError);
+    }
+    coLineItems = coliData || [];
+  }
+
+  // Sum CO line item amounts by cost code
+  const coByCostCode = {};
+  for (const li of coLineItems) {
+    if (li.cost_code_id) {
+      coByCostCode[li.cost_code_id] = (coByCostCode[li.cost_code_id] || 0) + parseFloat(li.amount || 0);
+    }
+  }
+
+  // Fetch budget lines for this job
+  if (po.job_id && Object.keys(coByCostCode).length > 0) {
+    const { data: budgetLines, error: blError } = await supabase
+      .from('v2_budget_lines')
+      .select('id, cost_code_id, committed_amount')
+      .eq('job_id', po.job_id)
+      .in('cost_code_id', Object.keys(coByCostCode));
+
+    if (blError) {
+      console.error('Error fetching budget lines:', blError);
+    }
+
+    // Create a map of budget committed amounts by cost code
+    const budgetByCC = {};
+    for (const bl of (budgetLines || [])) {
+      budgetByCC[bl.cost_code_id] = parseFloat(bl.committed_amount || 0);
+    }
+
+    // Check if CO amounts are missing from budget committed_amount
+    // Note: We can't verify exact amounts without knowing all POs, but we can flag missing budget lines
+    for (const [costCodeId, coAmount] of Object.entries(coByCostCode)) {
+      if (budgetByCC[costCodeId] === undefined) {
+        warnings.push({
+          type: 'CO_NOT_IN_BUDGET',
+          severity: 'warning',
+          details: {
+            cost_code_id: costCodeId,
+            co_amount: coAmount,
+            message: 'No budget line found for this cost code'
+          },
+          fix_hint: 'Ensure budget line exists for this cost code and committed_amount includes CO values'
+        });
+      }
+    }
+  }
+
+  // Calculate committed amount to budget from COs
+  const committedToBudget = Object.values(coByCostCode).reduce((sum, amt) => sum + amt, 0);
+
+  const valid = errors.length === 0;
+
+  res.json({
+    valid,
+    po_id: po.id,
+    po_number: po.po_number,
+    calculated: {
+      original_amount: storedOriginal,
+      co_total: calculatedCOTotal,
+      vpo_total: calculatedVPOTotal,
+      expected_total: expectedTotal,
+      committed_to_budget: committedToBudget
+    },
+    stored: {
+      original_amount: storedOriginal,
+      change_order_total: storedCOTotal,
+      total_amount: storedTotal
+    },
+    errors,
+    warnings
+  });
+}));
+
+// ============================================================
 // PUNCH LIST STATUS
 // ============================================================
 
