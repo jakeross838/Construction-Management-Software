@@ -269,9 +269,15 @@ function closeModal() {
 
 async function openDetailModal(id) {
   try {
-    const response = await fetch(`/api/contacts/${id}`);
-    const data = await response.json();
+    // Load contact and communications in parallel
+    const [contactRes, commsRes] = await Promise.all([
+      fetch(`/api/contacts/${id}`),
+      fetch(`/api/communications?contact_id=${id}&limit=10`)
+    ]);
+    const data = await contactRes.json();
+    const commsData = await commsRes.json();
     currentContact = data.contact;
+    const communications = commsData.communications || [];
 
     document.getElementById('detailTitle').textContent =
       `${currentContact.first_name} ${currentContact.last_name}`;
@@ -349,6 +355,24 @@ async function openDetailModal(id) {
           <h4>Notes</h4>
           <p>${escapeHtml(currentContact.notes)}</p>
         </div>` : ''}
+
+        <div class="detail-section">
+          <h4>
+            Recent Communications
+            <button class="btn btn-sm btn-primary" onclick="openCommModal()" style="float: right; margin-top: -4px;">+ Log</button>
+          </h4>
+          ${communications.length ? communications.map(comm => `
+            <div class="detail-row" style="flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border);">
+              <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
+                <span class="badge badge-${getCommTypeColor(comm.comm_type)}">${formatCommType(comm.comm_type)}</span>
+                ${comm.direction ? `<span class="text-muted">${comm.direction}</span>` : ''}
+                <span class="text-muted" style="margin-left: auto;">${formatDate(comm.comm_date)}</span>
+              </div>
+              ${comm.subject ? `<strong>${escapeHtml(comm.subject)}</strong>` : ''}
+              ${comm.summary ? `<p class="text-muted" style="margin: 0;">${escapeHtml(comm.summary)}</p>` : ''}
+            </div>
+          `).join('') : '<p class="text-muted">No communications logged yet</p>'}
+        </div>
       </div>
     `;
 
@@ -405,4 +429,98 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function getCommTypeColor(type) {
+  const colors = {
+    call: 'info',
+    email: 'primary',
+    note: 'secondary',
+    meeting: 'success',
+    text: 'warning',
+    other: 'secondary'
+  };
+  return colors[type] || 'secondary';
+}
+
+function formatCommType(type) {
+  const labels = {
+    call: 'Call',
+    email: 'Email',
+    note: 'Note',
+    meeting: 'Meeting',
+    text: 'Text',
+    other: 'Other'
+  };
+  return labels[type] || 'Other';
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ============================================================
+// COMMUNICATION MODAL
+// ============================================================
+
+function openCommModal() {
+  const modal = document.getElementById('commModal');
+  if (!modal) return;
+
+  document.getElementById('commForm').reset();
+  document.getElementById('commType').value = 'note';
+  document.getElementById('commDate').value = new Date().toISOString().slice(0, 16);
+
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+  document.getElementById('commSubject').focus();
+}
+
+function closeCommModal() {
+  const modal = document.getElementById('commModal');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = 'none';
+  }
+}
+
+async function saveComm() {
+  if (!currentContact) {
+    showToast('No contact selected', 'error');
+    return;
+  }
+
+  const data = {
+    comm_type: document.getElementById('commType').value,
+    direction: document.getElementById('commDirection').value || null,
+    subject: document.getElementById('commSubject').value.trim() || null,
+    summary: document.getElementById('commSummary').value.trim() || null,
+    body: document.getElementById('commBody').value.trim() || null,
+    comm_date: document.getElementById('commDate').value || new Date().toISOString(),
+    duration_minutes: document.getElementById('commDuration').value ? parseInt(document.getElementById('commDuration').value) : null,
+    contact_id: currentContact.id,
+    company_id: currentContact.company_id || null
+  };
+
+  try {
+    const response = await fetch('/api/communications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.message || 'Save failed');
+    }
+
+    showToast('Communication logged', 'success');
+    closeCommModal();
+    // Refresh the detail modal to show new communication
+    openDetailModal(currentContact.id);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }

@@ -225,6 +225,71 @@
     </div>
   </div>
 
+  <!-- Communication Modal -->
+  <div id="commModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Log Communication</h2>
+        <button class="close-btn" onclick="closeCommModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="commForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="commType">Type *</label>
+              <select id="commType" class="form-control" required>
+                <option value="note">Note</option>
+                <option value="call">Phone Call</option>
+                <option value="email">Email</option>
+                <option value="meeting">Meeting</option>
+                <option value="text">Text Message</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="commDirection">Direction</label>
+              <select id="commDirection" class="form-control">
+                <option value="">-</option>
+                <option value="inbound">Inbound</option>
+                <option value="outbound">Outbound</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="commDate">Date/Time</label>
+              <input type="datetime-local" id="commDate" class="form-control">
+            </div>
+            <div class="form-group" style="width: 100px;">
+              <label for="commDuration">Minutes</label>
+              <input type="number" id="commDuration" class="form-control" min="0">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="commSubject">Subject</label>
+            <input type="text" id="commSubject" class="form-control" placeholder="Brief subject">
+          </div>
+
+          <div class="form-group">
+            <label for="commSummary">Summary</label>
+            <textarea id="commSummary" class="form-control" rows="2" placeholder="Key points..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="commBody">Full Notes</label>
+            <textarea id="commBody" class="form-control" rows="4" placeholder="Detailed notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCommModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveComm()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/nav-sidebar.js"></script>
   <script src="js/toasts.js"></script>
   <script src="js/contacts.js"></script>
