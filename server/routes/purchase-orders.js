@@ -142,6 +142,60 @@ router.get('/stats', asyncHandler(async (req, res) => {
   res.json(stats);
 }));
 
+// ============================================================
+// AI DOCUMENT PROCESSING
+// ============================================================
+
+// Process a PO/Quote document with AI extraction (must be before /:id route)
+router.post('/process-document', upload.single('file'), asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new AppError('VALIDATION_FAILED', 'No file uploaded');
+  }
+
+  const previewOnly = req.query.preview === 'true';
+  const { processPODocument } = require('../ai-po-processor');
+
+  try {
+    // Process the document
+    const results = await processPODocument(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype
+    );
+
+    // In preview mode, don't return auto-created PO
+    if (previewOnly) {
+      return res.json({
+        success: results.success,
+        extracted: results.extracted,
+        matchedJob: results.matchedJob,
+        vendor: results.vendor,
+        lineItems: results.lineItems || results.extracted?.lineItems || [],
+        po: null, // Don't return PO in preview mode
+        confidence: results.confidence,
+        messages: results.messages,
+        needsReview: true // Always needs review in preview mode
+      });
+    }
+
+    // Normal flow - return full results including auto-created PO
+    res.json({
+      success: results.success,
+      extracted: results.extracted,
+      matchedJob: results.matchedJob,
+      vendor: results.vendor,
+      lineItems: results.lineItems || results.extracted?.lineItems || [],
+      po: results.po,
+      confidence: results.confidence,
+      messages: results.messages,
+      needsReview: !results.po // True if auto-create failed
+    });
+  } catch (err) {
+    console.error('[PO Process Document] Error:', err);
+    throw new AppError('AI_PROCESSING_ERROR', `Document processing failed: ${err.message}`);
+  }
+}));
+
 // Price check for PO line items (must be before /:id route)
 // Compares proposed prices against current best prices in the database
 router.post('/price-check', asyncHandler(async (req, res) => {
