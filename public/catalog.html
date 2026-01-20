@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Catalog | Ross Built CMS</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/catalog.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-top">
+      <div class="header-brand">
+        <h1>Ross Built</h1>
+      </div>
+      <nav class="main-nav">
+        <!-- Filled by nav-sidebar.js -->
+      </nav>
+      <div class="header-actions">
+        <span class="user-info">Jake Ross</span>
+      </div>
+    </div>
+    <div class="header-sub">
+      <nav class="sub-nav">
+        <!-- Filled by nav-sidebar.js -->
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Layout -->
+  <div class="catalog-layout">
+    <!-- Category Sidebar -->
+    <aside class="catalog-sidebar" id="categorySidebar">
+      <div class="sidebar-header">
+        <h3>Categories</h3>
+        <button class="btn-icon" id="toggleSidebar" title="Collapse">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="11 17 6 12 11 7"></polyline>
+            <polyline points="18 17 13 12 18 7"></polyline>
+          </svg>
+        </button>
+      </div>
+      <div class="category-tree" id="categoryTree">
+        <!-- Categories loaded dynamically -->
+        <div class="loading-spinner">Loading...</div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="catalog-main">
+      <!-- Search and Filters Bar -->
+      <div class="catalog-toolbar">
+        <div class="search-box">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="search" id="searchInput" placeholder="Search products..." class="search-input">
+        </div>
+
+        <div class="filter-group">
+          <select id="vendorFilter" class="form-select">
+            <option value="">All Vendors</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <select id="roomFilter" class="form-select">
+            <option value="">All Rooms</option>
+            <option value="Kitchen">Kitchen</option>
+            <option value="Master Bath">Master Bath</option>
+            <option value="Guest Bath">Guest Bath</option>
+            <option value="Living Room">Living Room</option>
+            <option value="Bedroom">Bedroom</option>
+            <option value="Laundry">Laundry</option>
+            <option value="Exterior">Exterior</option>
+          </select>
+        </div>
+
+        <div class="filter-group price-filter">
+          <input type="number" id="minPrice" placeholder="Min $" class="form-input price-input">
+          <span class="price-separator">-</span>
+          <input type="number" id="maxPrice" placeholder="Max $" class="form-input price-input">
+        </div>
+
+        <div class="toolbar-actions">
+          <button class="btn btn-secondary btn-sm" id="btnClearFilters">Clear Filters</button>
+          <div class="view-toggle">
+            <button class="btn-icon active" id="viewGrid" title="Grid View">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+              </svg>
+            </button>
+            <button class="btn-icon" id="viewList" title="List View">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Breadcrumb -->
+      <div class="catalog-breadcrumb" id="breadcrumb">
+        <a href="#" class="breadcrumb-item active" data-category="">All Products</a>
+      </div>
+
+      <!-- Results Info -->
+      <div class="results-info">
+        <span id="resultCount">0 products</span>
+        <span class="category-name" id="currentCategoryName"></span>
+      </div>
+
+      <!-- Product Grid -->
+      <div class="product-grid" id="productGrid">
+        <!-- Products loaded dynamically -->
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Loading products...</p>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="emptyState" style="display: none;">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <h3>No Products Found</h3>
+        <p>Try adjusting your filters or search term.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Product Detail Modal -->
+  <div id="productModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <h3 id="productName">Product Name</h3>
+          <div class="product-badges">
+            <span class="badge" id="productCategory">Category</span>
+            <span class="badge badge-outline" id="productVendor">Vendor</span>
+          </div>
+        </div>
+        <div class="modal-header-right">
+          <button class="btn btn-secondary" id="btnAddToSelection">Add to Selection</button>
+          <button class="modal-close" onclick="closeProductModal()">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="product-detail-layout">
+          <!-- Image Gallery -->
+          <div class="product-gallery">
+            <div class="gallery-main">
+              <img id="mainImage" src="" alt="Product image">
+              <div class="gallery-placeholder" id="galleryPlaceholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                  <polyline points="21 15 16 10 5 21"></polyline>
+                </svg>
+                <span>No image</span>
+              </div>
+            </div>
+            <div class="gallery-thumbnails" id="galleryThumbnails">
+              <!-- Thumbnails loaded dynamically -->
+            </div>
+          </div>
+
+          <!-- Product Info -->
+          <div class="product-info">
+            <div class="info-section">
+              <h4>Pricing</h4>
+              <div class="price-display">
+                <span class="price-value" id="productPrice">$0</span>
+                <span class="price-unit" id="productUnit">/each</span>
+              </div>
+              <div class="price-meta" id="priceMeta"></div>
+            </div>
+
+            <div class="info-section">
+              <h4>Details</h4>
+              <div class="detail-grid" id="productDetails">
+                <!-- Details loaded dynamically -->
+              </div>
+            </div>
+
+            <div class="info-section" id="specsSection" style="display: none;">
+              <h4>Specifications</h4>
+              <div class="specs-grid" id="productSpecs">
+                <!-- Specs loaded dynamically -->
+              </div>
+            </div>
+
+            <div class="info-section" id="dimensionsSection" style="display: none;">
+              <h4>Dimensions</h4>
+              <div class="dimensions-display" id="productDimensions">
+                <!-- Dimensions loaded dynamically -->
+              </div>
+            </div>
+
+            <div class="info-section" id="descriptionSection" style="display: none;">
+              <h4>Description</h4>
+              <p id="productDescription"></p>
+            </div>
+
+            <div class="info-section" id="tagsSection" style="display: none;">
+              <h4>Tags</h4>
+              <div class="tag-list" id="productTags">
+                <!-- Tags loaded dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add to Selection Modal -->
+  <div id="addSelectionModal" class="modal modal-centered">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h3>Add to Selection</h3>
+        <button class="modal-close" onclick="closeAddSelectionModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="addSelectionForm">
+          <input type="hidden" id="catalogItemId">
+
+          <div class="form-group">
+            <label for="selectionJob">Job *</label>
+            <select id="selectionJob" class="form-select" required>
+              <option value="">Select a job</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="selectionAllowance">Allowance *</label>
+            <select id="selectionAllowance" class="form-select" required>
+              <option value="">Select an allowance</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="selectionQty">Quantity</label>
+              <input type="number" id="selectionQty" class="form-input" min="0.01" step="0.01" value="1">
+            </div>
+            <div class="form-group">
+              <label for="selectionUnit">Unit</label>
+              <input type="text" id="selectionUnit" class="form-input" readonly>
+            </div>
+          </div>
+
+          <div class="selection-price-summary">
+            <div class="price-row">
+              <span>Unit Price</span>
+              <span id="summaryUnitPrice">$0</span>
+            </div>
+            <div class="price-row total">
+              <span>Total</span>
+              <span id="summaryTotal">$0</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="selectionNotes">Notes</label>
+            <textarea id="selectionNotes" class="form-input" rows="2" placeholder="Optional notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeAddSelectionModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveSelection()">Add Selection</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/toasts.js"></script>
+  <script defer src="js/nav-sidebar.js"></script>
+  <script defer src="js/sidebar.js"></script>
+  <script src="js/catalog.js"></script>
+</body>
+</html>
