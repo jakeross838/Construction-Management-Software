@@ -35,9 +35,9 @@ Requirements for v1.8 Invoice Variance & Data Linkage milestone.
 
 ### Quick Fixes
 
-- [ ] **FIX-01**: One-click to fix broken linkages from error displays - reassign cost code, change PO link, etc.
-- [ ] **FIX-02**: Bulk correction tools for common issues - batch reassign cost codes, batch fix allocations
-- [ ] **FIX-03**: Clear error messages showing what's wrong and how to fix - actionable guidance, not just errors
+- [x] **FIX-01**: One-click to fix broken linkages from error displays - reassign cost code, change PO link, etc.
+- [x] **FIX-02**: Bulk correction tools for common issues - batch reassign cost codes, batch fix allocations
+- [x] **FIX-03**: Clear error messages showing what's wrong and how to fix - actionable guidance, not just errors
 
 ## v2 Requirements
 
@@ -75,9 +75,9 @@ Deferred to future release.
 | AIPO-01 | 50 | Complete |
 | AIPO-02 | 50 | Complete |
 | AIPO-03 | 50 | Complete |
-| FIX-01 | 51 | Pending |
-| FIX-02 | 51 | Pending |
-| FIX-03 | 51 | Pending |
+| FIX-01 | 51 | Complete |
+| FIX-02 | 51 | Complete |
+| FIX-03 | 51 | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total
