@@ -458,50 +458,89 @@ async function findMatchingJob(jobData) {
 }
 
 // ============================================================
-// VENDOR MATCHING
+// VENDOR MATCHING - ENHANCED WITH FUZZY MATCHING
 // ============================================================
 
 /**
- * Find or create vendor from extracted data
+ * Find or create vendor from extracted data using fuzzy matching
+ * Returns vendor with alternates for user selection
+ *
+ * Matching strategies (priority order):
+ * 1. Exact name match (0.99 confidence)
+ * 2. Similarity match > 0.85 (scaled confidence)
+ * 3. First word match > 0.9 similarity (0.80)
+ *
+ * @param {Object} vendorData - Extracted vendor data with companyName, phone, email, address, tradeType
+ * @param {boolean} autoCreate - Whether to create vendor if no match found (default: true)
+ * @returns {Object} Result with vendor, isNew, confidence, matchReason, and alternates
  */
-async function findOrCreateVendor(vendorData) {
+async function findOrCreateVendor(vendorData, autoCreate = true) {
   if (!vendorData?.companyName) {
     return { vendor: null, isNew: false, confidence: 0 };
   }
 
   const vendorName = vendorData.companyName.trim();
+  const normalizedName = standards.normalizeVendorName(vendorName);
 
-  // Search for existing vendor
+  // Load all vendors for comparison
   const { data: vendors, error } = await supabase
     .from('v2_vendors')
-    .select('*')
-    .or(`name.ilike.%${vendorName}%,name.ilike.%${vendorName.split(' ')[0]}%`);
+    .select('*');
 
   if (!error && vendors?.length > 0) {
-    // Find best match
-    const exactMatch = vendors.find(v =>
-      v.name.toLowerCase() === vendorName.toLowerCase()
-    );
+    // Score all vendors
+    const scored = vendors.map(v => {
+      const vName = standards.normalizeVendorName(v.name || '');
 
-    if (exactMatch) {
-      return { vendor: exactMatch, isNew: false, confidence: 0.98 };
-    }
+      // Exact match (normalized)
+      if (vName === normalizedName) {
+        return { vendor: v, score: 0.99, reason: 'exact' };
+      }
 
-    // Partial match
-    const partialMatch = vendors.find(v =>
-      v.name.toLowerCase().includes(vendorName.toLowerCase().split(' ')[0])
-    );
+      // Similarity match using Levenshtein
+      const sim = standards.similarityRatio(normalizedName, vName);
+      if (sim > 0.85) {
+        return { vendor: v, score: sim, reason: 'fuzzy' };
+      }
 
-    if (partialMatch) {
-      return { vendor: partialMatch, isNew: false, confidence: 0.85 };
+      // First word match (company name often starts with key identifier)
+      const firstWord = normalizedName.split(/\s+/)[0];
+      const vFirstWord = vName.split(/\s+/)[0];
+      if (firstWord && vFirstWord && firstWord.length > 3 && vFirstWord.length > 3) {
+        const firstWordSim = standards.similarityRatio(firstWord, vFirstWord);
+        if (firstWordSim > 0.9) {
+          return { vendor: v, score: 0.80, reason: 'first_word' };
+        }
+      }
+
+      return null;
+    }).filter(Boolean);
+
+    // Sort by score descending
+    scored.sort((a, b) => b.score - a.score);
+
+    // Return best match if above threshold
+    if (scored.length > 0 && scored[0].score > 0.75) {
+      return {
+        vendor: scored[0].vendor,
+        isNew: false,
+        confidence: scored[0].score,
+        matchReason: scored[0].reason,
+        alternates: scored.slice(1, 3) // Top 2 alternates
+      };
     }
   }
 
-  // Create new vendor
+  // No match found - create if allowed
+  if (!autoCreate) {
+    return { vendor: null, isNew: false, confidence: 0 };
+  }
+
+  // Create new vendor using standards for normalization
   const newVendor = {
-    name: vendorName,
-    phone: vendorData.phone || null,
-    email: vendorData.email || null,
+    name: standards.toTitleCase(vendorName),
+    phone: vendorData.phone ? standards.normalizePhone(vendorData.phone) : null,
+    email: vendorData.email?.toLowerCase() || null,
     address: vendorData.address || null,
     trade: vendorData.tradeType || 'other'
   };
