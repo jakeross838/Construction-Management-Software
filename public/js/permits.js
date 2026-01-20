@@ -10,6 +10,7 @@
   let jobs = [];
   let contacts = [];
   let currentPermit = null;
+  let selectedJobId = ''; // From sidebar
 
   // Format currency
   function formatCurrency(amount) {
@@ -78,12 +79,12 @@
 
   async function loadPermits() {
     try {
-      const jobId = document.getElementById('jobFilter').value;
       const type = document.getElementById('typeFilter').value;
       const status = document.getElementById('statusFilter').value;
 
       let url = '/api/permits?';
-      if (jobId) url += `job_id=${jobId}&`;
+      // Job filter comes from sidebar
+      if (selectedJobId) url += `job_id=${selectedJobId}&`;
       if (type) url += `type=${type}&`;
       if (status) url += `status=${status}&`;
 
@@ -118,12 +119,11 @@
       if (!response.ok) throw new Error('Failed to load jobs');
       jobs = await response.json();
 
+      // Populate job dropdown in create/edit modal (not the filter - sidebar handles that)
       const jobOptions = '<option value="">-- No Job --</option>' +
         jobs.map(j => `<option value="${j.id}">${j.name}</option>`).join('');
 
       document.getElementById('jobId').innerHTML = jobOptions;
-      document.getElementById('jobFilter').innerHTML = '<option value="">All Jobs</option>' +
-        jobs.map(j => `<option value="${j.id}">${j.name}</option>`).join('');
     } catch (err) {
       console.error('Error loading jobs:', err);
     }
@@ -680,7 +680,7 @@
   // ============ FILTERS ============
 
   function setupFilters() {
-    document.getElementById('jobFilter').addEventListener('change', loadPermits);
+    // Job filter is handled by sidebar - see init()
     document.getElementById('typeFilter').addEventListener('change', loadPermits);
     document.getElementById('statusFilter').addEventListener('change', loadPermits);
 
@@ -697,13 +697,21 @@
     setupTabs();
     setupFilters();
 
+    // Listen for job selection changes from the sidebar
+    if (window.JobSidebar) {
+      window.JobSidebar.onJobChange((jobId) => {
+        selectedJobId = jobId || '';
+        loadPermits();
+      });
+    }
+
     await Promise.all([
       loadJobs(),
       loadContacts(),
       loadStats()
     ]);
 
-    await loadPermits();
+    // Initial load (sidebar will trigger loadPermits via onJobChange)
   }
 
   // Auto-init when DOM ready

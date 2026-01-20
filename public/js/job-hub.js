@@ -43,33 +43,8 @@
     return formatDate(dateStr);
   }
 
-  // Load jobs for selector
-  async function loadJobs() {
-    try {
-      const response = await fetch('/api/jobs');
-      if (!response.ok) throw new Error('Failed to load jobs');
-      const jobs = await response.json();
-
-      const select = document.getElementById('jobSelect');
-      jobs.forEach(job => {
-        const option = document.createElement('option');
-        option.value = job.id;
-        option.textContent = job.name;
-        select.appendChild(option);
-      });
-
-      // Check for job_id in URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const jobId = urlParams.get('job_id');
-      if (jobId) {
-        select.value = jobId;
-        loadJobHub(jobId);
-      }
-    } catch (err) {
-      console.error('Error loading jobs:', err);
-      showToast('Failed to load jobs', 'error');
-    }
-  }
+  // Job selection is handled by the sidebar (sidebar.js)
+  // This page listens for job changes via JobSidebar.onJobChange()
 
   // Load job hub data
   async function loadJobHub(jobId) {
@@ -89,10 +64,7 @@
 
       renderJobHub(data);
 
-      // Update URL
-      const url = new URL(window.location);
-      url.searchParams.set('job_id', jobId);
-      window.history.replaceState({}, '', url);
+      // URL is now managed by sidebar.js via ?job= parameter
 
     } catch (err) {
       console.error('Error loading job hub:', err);
@@ -229,12 +201,21 @@
 
   // Initialize
   function init() {
-    loadJobs();
-
-    // Job selector change
-    document.getElementById('jobSelect').addEventListener('change', (e) => {
-      loadJobHub(e.target.value);
-    });
+    // Listen for job selection changes from the sidebar
+    if (window.JobSidebar) {
+      window.JobSidebar.onJobChange((jobId) => {
+        loadJobHub(jobId);
+      });
+    } else {
+      // Fallback: wait for sidebar to initialize
+      document.addEventListener('DOMContentLoaded', () => {
+        if (window.JobSidebar) {
+          window.JobSidebar.onJobChange((jobId) => {
+            loadJobHub(jobId);
+          });
+        }
+      });
+    }
   }
 
   // Auto-init when DOM ready

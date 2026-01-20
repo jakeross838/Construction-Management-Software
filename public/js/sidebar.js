@@ -10,6 +10,8 @@
     SIDEBAR_COLLAPSED: 'cms_sidebar_collapsed'
   };
 
+  const URL_PARAM = 'job'; // URL parameter for job selection (?job=uuid)
+
   // Sidebar State
   const SidebarState = {
     jobs: [],
@@ -50,11 +52,21 @@
 
   function loadPersistedState() {
     try {
+      // URL params take priority over localStorage
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlJobId = urlParams.get(URL_PARAM);
+
       const savedJobId = localStorage.getItem(STORAGE_KEYS.SELECTED_JOB);
       const savedCollapsed = localStorage.getItem(STORAGE_KEYS.SIDEBAR_COLLAPSED);
 
-      SidebarState.selectedJobId = savedJobId || '';
+      // URL param takes priority, then localStorage, then empty
+      SidebarState.selectedJobId = urlJobId || savedJobId || '';
       SidebarState.isCollapsed = savedCollapsed === 'true';
+
+      // If URL had a job param, save it to localStorage for consistency
+      if (urlJobId) {
+        localStorage.setItem(STORAGE_KEYS.SELECTED_JOB, urlJobId);
+      }
     } catch (e) {
       console.warn('Sidebar: Failed to load state from localStorage:', e);
     }
@@ -237,7 +249,7 @@
   // JOB SELECTION
   // ============================================================
 
-  function selectJob(jobId) {
+  function selectJob(jobId, options = {}) {
     const previousJobId = SidebarState.selectedJobId;
     SidebarState.selectedJobId = jobId;
 
@@ -249,12 +261,31 @@
     // Update collapsed indicator
     updateCollapsedIndicator();
 
-    // Persist
+    // Persist to localStorage
     savePersistedState();
+
+    // Update URL (unless skipUrl option is set, e.g., from popstate handler)
+    if (!options.skipUrl) {
+      updateUrlState(jobId);
+    }
 
     // Notify page-specific listeners
     if (previousJobId !== jobId) {
       notifyListeners();
+    }
+  }
+
+  function updateUrlState(jobId) {
+    try {
+      const url = new URL(window.location);
+      if (jobId) {
+        url.searchParams.set(URL_PARAM, jobId);
+      } else {
+        url.searchParams.delete(URL_PARAM);
+      }
+      window.history.replaceState({}, '', url);
+    } catch (e) {
+      console.warn('Sidebar: Failed to update URL:', e);
     }
   }
 
@@ -356,6 +387,15 @@
         } else {
           toggleSidebar();
         }
+      }
+    });
+
+    // Handle browser back/forward navigation
+    window.addEventListener('popstate', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlJobId = urlParams.get(URL_PARAM) || '';
+      if (urlJobId !== SidebarState.selectedJobId) {
+        selectJob(urlJobId, { skipUrl: true });
       }
     });
   }

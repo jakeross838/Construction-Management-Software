@@ -12,14 +12,17 @@ let aiEstimate = null;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadJobs();
-
-  // Check for job_id in URL
-  const urlParams = new URLSearchParams(window.location.search);
-  const jobId = urlParams.get('job_id');
-  if (jobId) {
-    document.getElementById('jobSelect').value = jobId;
-    await loadJobBudget();
+  // Listen for job selection changes from the sidebar
+  if (window.JobSidebar) {
+    window.JobSidebar.onJobChange(async (jobId) => {
+      currentJobId = jobId || null;
+      if (jobId) {
+        await loadJobBudgetForJob(jobId);
+      } else {
+        comparisonData = null;
+        renderEmptyState();
+      }
+    });
   }
 
   // Setup event listeners
@@ -34,30 +37,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 // DATA LOADING
 // ============================================================
 
-async function loadJobs() {
-  try {
-    const response = await fetch('/api/jobs');
-    const jobs = await response.json();
+// Job selection is handled by the sidebar (sidebar.js)
 
-    const select = document.getElementById('jobSelect');
-    const currentValue = select.value;
-
-    jobs.forEach(job => {
-      const option = document.createElement('option');
-      option.value = job.id;
-      option.textContent = job.name;
-      select.appendChild(option);
-    });
-
-    if (currentValue) select.value = currentValue;
-  } catch (err) {
-    console.error('Error loading jobs:', err);
-    showToast('Failed to load jobs', 'error');
-  }
-}
-
-async function loadJobBudget() {
-  const jobId = document.getElementById('jobSelect').value;
+async function loadJobBudgetForJob(jobId) {
   if (!jobId) {
     currentJobId = null;
     comparisonData = null;
@@ -88,10 +70,7 @@ async function loadJobBudget() {
       noAiEstimate.style.display = 'none';
     }
 
-    // Update URL
-    const url = new URL(window.location);
-    url.searchParams.set('job_id', jobId);
-    window.history.replaceState({}, '', url);
+    // URL is now managed by sidebar.js via ?job= parameter
 
   } catch (err) {
     console.error('Error loading job budget:', err);
