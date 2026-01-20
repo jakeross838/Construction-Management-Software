@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 50 (AI PO Generation) - **IN PROGRESS**
-Plan: 1 of 3 complete
-Status: Plan 50-01 complete, continuing with Wave 1
-Last activity: 2026-01-19 - Completed 50-01 (Document-to-PO Route Handler)
+Plan: 2 of 3 complete
+Status: Wave 1 complete, ready for Wave 2
+Last activity: 2026-01-19 - Completed 50-02 (Database-Driven Cost Code Assignment)
 
-Progress: 1/3 Phase 50 plans complete
+Progress: 2/3 Phase 50 plans complete
 
 ### Phase 50 Plans
 
 | Plan | Name | Wave | Status |
 |------|------|------|--------|
 | 50-01 | Document-to-PO Route Handler | 1 | Complete |
-| 50-02 | Database-Driven Cost Code Assignment | 1 | Pending |
+| 50-02 | Database-Driven Cost Code Assignment | 1 | Complete |
 | 50-03 | Enhanced Job and Vendor Matching | 2 | Pending |
 
 ## Milestone History
@@ -61,6 +61,8 @@ Progress: 1/3 Phase 50 plans complete
 - **49-03**: Price comparison runs for both PO-linked and non-PO invoices
 - **49-04**: Over-committed and over-billed are errors, approaching 90% is warning
 - **49-04**: VPOs tracked at job level only (no cost code line items)
+- **50-02**: Cost code matching priority: learned_pattern (0.80-0.99) > keyword (0.75) > trade_default (0.60)
+- **50-02**: Learned patterns boost confidence by 0.01 per usage up to 0.99 max
 
 ### Pending Todos
 
@@ -73,13 +75,12 @@ None
 ## Session Continuity
 
 Last session: 2026-01-19
-Stopped at: Completed 50-01-PLAN.md (Document-to-PO Route Handler)
+Stopped at: Completed 50-02-PLAN.md (Database-Driven Cost Code Assignment)
 Resume file: None
 
 ## Next Actions
 
-1. Execute 50-02 (Database-Driven Cost Code Assignment) - Wave 1
-2. Execute 50-03 (Enhanced Job and Vendor Matching) - Wave 2
+1. Execute 50-03 (Enhanced Job and Vendor Matching) - Wave 2
 
 ## Research
 
