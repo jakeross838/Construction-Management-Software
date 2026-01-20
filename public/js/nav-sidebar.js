@@ -1,69 +1,55 @@
 /**
- * Group Navigation Component
- * Creates a two-level navigation: groups (top) and sub-items (below)
- * Reorganized for v1.6: Sales → Pre-Con → Execution → Field → Finance → Closeout → Admin → Comms
+ * Dropdown Navigation Component
+ * Compact header with dropdown menus organized by construction workflow
+ * Flow: Dashboard → Pre-Construction → Active Projects → Finance → Closeout → Admin
  */
 
 (function() {
   'use strict';
 
-  // Navigation structure - groups with sub-items
-  // Flow: Dashboard → Sales → Pre-Con → Execution → Field → Finance → Closeout → Admin → Comms
-  // Organized to follow construction project lifecycle
+  // Navigation structure - organized by construction workflow
   const navGroups = [
     {
       id: 'dashboard',
       label: 'Dashboard',
       href: 'dashboard.html',
-      items: [] // No sub-items, direct link
-    },
-    {
-      id: 'sales',
-      label: 'Sales',
-      items: [
-        { id: 'leads', label: 'Leads', href: 'leads.html' },
-        { id: 'job-profile', label: 'Job Profile', href: 'job-profile.html' }
-      ]
+      items: [] // Direct link, no dropdown
     },
     {
       id: 'precon',
-      label: 'Pre-Con',
+      label: 'Pre-Construction',
       items: [
+        { id: 'leads', label: 'Leads', href: 'leads.html' },
+        { id: 'job-profile', label: 'Job Profile', href: 'job-profile.html' },
         { id: 'bids', label: 'Bids', href: 'bids.html' },
         { id: 'estimates', label: 'Estimates', href: 'estimates.html' },
-        { id: 'budget-builder', label: 'Budget Builder', href: 'budget-builder.html' }
+        { id: 'budget-builder', label: 'Budget Builder', href: 'budget-builder.html' },
+        { id: 'selections', label: 'Selections', href: 'selections.html' }
       ]
     },
     {
-      id: 'execution',
-      label: 'Execution',
+      id: 'active',
+      label: 'Active Projects',
       items: [
-        { id: 'selections', label: 'Selections', href: 'selections.html' },
         { id: 'schedule', label: 'Schedule', href: 'schedule.html' },
-        { id: 'documents', label: 'Documents', href: 'documents.html' }
-      ]
-    },
-    {
-      id: 'field',
-      label: 'Field',
-      items: [
         { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' },
-        { id: 'inspections', label: 'Inspections', href: 'inspections.html' },
-        { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' },
         { id: 'photos', label: 'Photos', href: 'photos.html' },
+        { id: 'documents', label: 'Documents', href: 'documents.html' },
         { id: 'rfis', label: 'RFIs', href: 'rfis.html' },
-        { id: 'submittals', label: 'Submittals', href: 'submittals.html' }
+        { id: 'submittals', label: 'Submittals', href: 'submittals.html' },
+        { id: 'inspections', label: 'Inspections', href: 'inspections.html' },
+        { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' }
       ]
     },
     {
       id: 'finance',
       label: 'Finance',
       items: [
-        { id: 'budget', label: 'Budget', href: 'budgets.html' },
+        { id: 'invoices', label: 'Invoices', href: 'index.html' },
         { id: 'pos', label: 'Purchase Orders', href: 'pos.html' },
         { id: 'cos', label: 'Change Orders', href: 'change-orders.html' },
-        { id: 'invoices', label: 'Invoices', href: 'index.html' },
         { id: 'draws', label: 'Draws', href: 'draws.html' },
+        { id: 'budget', label: 'Budgets', href: 'budgets.html' },
         { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' },
         { id: 'price-intel', label: 'Price Intelligence', href: 'price-intelligence.html' }
       ]
@@ -73,7 +59,8 @@
       label: 'Closeout',
       items: [
         { id: 'warranties', label: 'Warranties', href: 'warranties.html' },
-        { id: 'closeout', label: 'Project Closeout', href: 'closeout.html' }
+        { id: 'closeout-page', label: 'Project Closeout', href: 'closeout.html' },
+        { id: 'recon', label: 'Reconciliation', href: 'reconciliation.html' }
       ]
     },
     {
@@ -81,17 +68,7 @@
       label: 'Admin',
       items: [
         { id: 'vendors', label: 'Vendors', href: 'vendors.html' },
-        { id: 'cost-codes', label: 'Cost Codes', href: 'cost-codes.html' },
-        { id: 'recon', label: 'Reconciliation', href: 'reconciliation.html' }
-      ]
-    },
-    {
-      id: 'comms',
-      label: 'Comms',
-      items: [
-        { id: 'messaging', label: 'Messaging', href: 'messaging.html' },
-        { id: 'notifications', label: 'Notifications', href: 'notifications.html' },
-        { id: 'tasks', label: 'Tasks', href: 'tasks.html' }
+        { id: 'cost-codes', label: 'Cost Codes', href: 'cost-codes.html' }
       ]
     }
   ];
@@ -113,40 +90,145 @@
         }
       }
     }
-    return { groupId: 'dashboard', itemId: 'dashboard' }; // Default to Dashboard
+    return { groupId: 'dashboard', itemId: 'dashboard' };
   }
 
-  // Create the navigation HTML
+  // Create the navigation HTML with dropdowns
   function createNavHTML() {
     const current = getCurrentPage();
 
-    // Main nav (groups)
-    const mainNavHTML = navGroups.map(group => {
+    const navHTML = navGroups.map(group => {
       const isActive = group.id === current.groupId;
+
       if (group.href) {
         // Direct link (like Dashboard)
-        return `<a href="${group.href}" class="main-nav-link ${isActive ? 'active' : ''}">${group.label}</a>`;
+        return `<a href="${group.href}" class="nav-dropdown-item ${isActive ? 'active' : ''}">${group.label}</a>`;
       } else {
-        // Group with sub-items - link to first item
-        const firstItem = group.items[0];
-        return `<a href="${firstItem?.href || '#'}" class="main-nav-link ${isActive ? 'active' : ''}">${group.label}</a>`;
+        // Group with dropdown
+        const dropdownItems = group.items.map(item => {
+          const itemActive = item.id === current.itemId;
+          return `<a href="${item.href}" class="dropdown-menu-item ${itemActive ? 'active' : ''}">${item.label}</a>`;
+        }).join('');
+
+        return `
+          <div class="nav-dropdown ${isActive ? 'active' : ''}">
+            <button class="nav-dropdown-trigger" aria-expanded="false" aria-haspopup="true">
+              ${group.label}
+              <svg class="dropdown-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <div class="dropdown-menu">
+              ${dropdownItems}
+            </div>
+          </div>
+        `;
       }
     }).join('');
 
-    // Find current group for sub-nav
-    const currentGroup = navGroups.find(g => g.id === current.groupId);
+    return navHTML;
+  }
 
-    // Sub nav (items within current group)
-    let subNavHTML = '';
-    if (currentGroup && currentGroup.items.length > 0) {
-      subNavHTML = currentGroup.items.map(item => {
-        const isActive = item.id === current.itemId;
-        const badgeHTML = item.badge ? `<span class="nav-badge">${item.badge}</span>` : '';
-        return `<a href="${item.href}" class="sub-nav-link ${isActive ? 'active' : ''}">${item.label}${badgeHTML}</a>`;
-      }).join('');
-    }
+  // Handle dropdown interactions
+  function setupDropdownInteractions() {
+    const dropdowns = document.querySelectorAll('.nav-dropdown');
+    let activeDropdown = null;
+    let hoverTimeout = null;
 
-    return { mainNavHTML, subNavHTML, hasSubNav: subNavHTML.length > 0 };
+    dropdowns.forEach(dropdown => {
+      const trigger = dropdown.querySelector('.nav-dropdown-trigger');
+      const menu = dropdown.querySelector('.dropdown-menu');
+
+      // Mouse enter - open dropdown
+      dropdown.addEventListener('mouseenter', () => {
+        clearTimeout(hoverTimeout);
+        if (activeDropdown && activeDropdown !== dropdown) {
+          closeDropdown(activeDropdown);
+        }
+        openDropdown(dropdown);
+        activeDropdown = dropdown;
+      });
+
+      // Mouse leave - close with delay
+      dropdown.addEventListener('mouseleave', () => {
+        hoverTimeout = setTimeout(() => {
+          closeDropdown(dropdown);
+          if (activeDropdown === dropdown) {
+            activeDropdown = null;
+          }
+        }, 150);
+      });
+
+      // Click trigger for mobile/accessibility
+      trigger.addEventListener('click', (e) => {
+        e.preventDefault();
+        const isOpen = dropdown.classList.contains('open');
+
+        // Close all other dropdowns
+        dropdowns.forEach(d => closeDropdown(d));
+
+        if (!isOpen) {
+          openDropdown(dropdown);
+          activeDropdown = dropdown;
+        } else {
+          activeDropdown = null;
+        }
+      });
+
+      // Keyboard navigation
+      trigger.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          trigger.click();
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          openDropdown(dropdown);
+          const firstItem = menu.querySelector('.dropdown-menu-item');
+          if (firstItem) firstItem.focus();
+        } else if (e.key === 'Escape') {
+          closeDropdown(dropdown);
+          trigger.focus();
+        }
+      });
+
+      // Menu item keyboard navigation
+      menu.querySelectorAll('.dropdown-menu-item').forEach((item, index, items) => {
+        item.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = items[index + 1] || items[0];
+            next.focus();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prev = items[index - 1] || items[items.length - 1];
+            prev.focus();
+          } else if (e.key === 'Escape') {
+            closeDropdown(dropdown);
+            trigger.focus();
+          }
+        });
+      });
+    });
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.nav-dropdown')) {
+        dropdowns.forEach(d => closeDropdown(d));
+        activeDropdown = null;
+      }
+    });
+  }
+
+  function openDropdown(dropdown) {
+    dropdown.classList.add('open');
+    const trigger = dropdown.querySelector('.nav-dropdown-trigger');
+    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeDropdown(dropdown) {
+    dropdown.classList.remove('open');
+    const trigger = dropdown.querySelector('.nav-dropdown-trigger');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
   }
 
   // Initialize navigation
@@ -154,26 +236,21 @@
     const header = document.querySelector('.header');
     if (!header) return;
 
-    const { mainNavHTML, subNavHTML, hasSubNav } = createNavHTML();
+    // Hide the sub-nav (we're moving to single-row dropdowns)
+    const headerSub = header.querySelector('.header-sub');
+    if (headerSub) {
+      headerSub.style.display = 'none';
+    }
 
-    // Check if header already has the structure we need
+    // Update main nav with dropdown structure
     let mainNav = header.querySelector('.main-nav');
-    let subNav = header.querySelector('.sub-nav');
-
-    // If main-nav exists, update it
     if (mainNav) {
-      mainNav.innerHTML = mainNavHTML;
+      mainNav.innerHTML = createNavHTML();
+      mainNav.classList.add('nav-dropdown-container');
     }
 
-    // If sub-nav exists, update it
-    if (subNav) {
-      if (hasSubNav) {
-        subNav.innerHTML = subNavHTML;
-        subNav.parentElement.style.display = '';
-      } else {
-        subNav.parentElement.style.display = 'none';
-      }
-    }
+    // Setup dropdown interactions
+    setupDropdownInteractions();
 
     // Add mobile hamburger if not exists
     if (!document.querySelector('.mobile-menu-btn')) {
@@ -182,7 +259,7 @@
       if (brand && headerTop) {
         const hamburger = document.createElement('button');
         hamburger.className = 'mobile-menu-btn';
-        hamburger.innerHTML = '☰';
+        hamburger.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>';
         hamburger.setAttribute('aria-label', 'Toggle menu');
         hamburger.onclick = window.NavSidebar.toggleMobile;
         headerTop.insertBefore(hamburger, brand.nextSibling);
@@ -208,20 +285,15 @@
     toggle: () => {},
     toggleMobile: () => {
       const mainNav = document.querySelector('.main-nav');
-      const headerSub = document.querySelector('.header-sub');
       const isOpen = mainNav?.classList.contains('mobile-open');
 
       if (mainNav) {
         mainNav.classList.toggle('mobile-open', !isOpen);
       }
-      if (headerSub) {
-        headerSub.classList.toggle('mobile-open', !isOpen);
-      }
       document.body.classList.toggle('mobile-menu-open', !isOpen);
     },
     closeMobile: () => {
       document.querySelector('.main-nav')?.classList.remove('mobile-open');
-      document.querySelector('.header-sub')?.classList.remove('mobile-open');
       document.body.classList.remove('mobile-menu-open');
     },
     isCollapsed: () => false
