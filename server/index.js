@@ -152,6 +152,7 @@ const contactsRoutes = require('./routes/contacts');
 const companiesRoutes = require('./routes/companies');
 const communicationsRoutes = require('./routes/communications');
 const contractsRoutes = require('./routes/contracts');
+const crewRoutes = require('./routes/crew');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -197,6 +198,7 @@ app.use('/api/contacts', contactsRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/communications', communicationsRoutes);
 app.use('/api/contracts', contractsRoutes);
+app.use('/api/crew', crewRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete

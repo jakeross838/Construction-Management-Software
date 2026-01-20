@@ -72,7 +72,8 @@
         { id: 'companies', label: 'Companies', href: 'companies.html' },
         { id: 'contacts', label: 'Contacts', href: 'contacts.html' },
         { id: 'vendors', label: 'Vendors', href: 'vendors.html' },
-        { id: 'cost-codes', label: 'Cost Codes', href: 'cost-codes.html' }
+        { id: 'cost-codes', label: 'Cost Codes', href: 'cost-codes.html' },
+        { id: 'crew-schedule', label: 'Crew Scheduling', href: 'crew-schedule.html' }
       ]
     }
   ];
