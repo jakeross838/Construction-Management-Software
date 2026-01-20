@@ -15,14 +15,14 @@ Requirements for Selections & Navigation Polish milestone. Each maps to roadmap 
 
 ### Visual Catalog Core
 
-- [ ] **CAT-01**: Staff can browse products in visual grid with large photo thumbnails
-- [ ] **CAT-02**: Staff can navigate multi-level category hierarchy (Category > Subcategory)
-- [ ] **CAT-03**: Staff can search products by keyword across names/descriptions
-- [ ] **CAT-04**: Staff can filter products by category, vendor, price range, room
-- [ ] **CAT-05**: Staff can view product detail modal with photo gallery
+- [x] **CAT-01**: Staff can browse products in visual grid with large photo thumbnails
+- [x] **CAT-02**: Staff can navigate multi-level category hierarchy (Category > Subcategory)
+- [x] **CAT-03**: Staff can search products by keyword across names/descriptions
+- [x] **CAT-04**: Staff can filter products by category, vendor, price range, room
+- [x] **CAT-05**: Staff can view product detail modal with photo gallery
 - [x] **CAT-06**: Product details include quantities, square footage, and specs
-- [ ] **CAT-07**: Staff can see selection status (Pending → Selected → Ordered → Installed)
-- [ ] **CAT-08**: Staff can see allowance variance indicators (green/red for under/over)
+- [x] **CAT-07**: Staff can see selection status (Pending → Selected → Ordered → Installed)
+- [x] **CAT-08**: Staff can see allowance variance indicators (green/red for under/over)
 
 ### Catalog Management
 
@@ -78,14 +78,14 @@ Which phases cover which requirements. Updated by create-roadmap.
 | NAV-01 | Phase 65 | Complete |
 | NAV-02 | Phase 65 | Complete |
 | NAV-03 | Phase 65 | Complete |
-| CAT-01 | Phase 67 | Pending |
-| CAT-02 | Phase 67 | Pending |
-| CAT-03 | Phase 67 | Pending |
-| CAT-04 | Phase 67 | Pending |
-| CAT-05 | Phase 67 | Pending |
+| CAT-01 | Phase 67 | Complete |
+| CAT-02 | Phase 67 | Complete |
+| CAT-03 | Phase 67 | Complete |
+| CAT-04 | Phase 67 | Complete |
+| CAT-05 | Phase 67 | Complete |
 | CAT-06 | Phase 66 | Complete |
-| CAT-07 | Phase 67 | Pending |
-| CAT-08 | Phase 67 | Pending |
+| CAT-07 | Phase 67 | Complete |
+| CAT-08 | Phase 67 | Complete |
 | MGT-01 | Phase 68 | Pending |
 | MGT-02 | Phase 68 | Pending |
 | MGT-03 | Phase 66 | Complete |
