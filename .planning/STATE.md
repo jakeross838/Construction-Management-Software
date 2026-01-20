@@ -57,6 +57,9 @@ Progress: 4/4 Phase 49 plans complete
 - **49-02**: 0.01 threshold for discrepancy detection (floating point tolerance)
 - **49-02**: VPOs tracked as warnings (not errors) since they may intentionally not be in totals
 - **49-02**: Batch validation fetches all data in parallel for efficiency
+- **49-03**: 10% threshold for price warnings, 25% for high severity
+- **49-03**: Confidence >= 3 (0.6) filter for price data reliability
+- **49-03**: Price comparison runs for both PO-linked and non-PO invoices
 - **49-04**: Over-committed and over-billed are errors, approaching 90% is warning
 - **49-04**: VPOs tracked at job level only (no cost code line items)
 
