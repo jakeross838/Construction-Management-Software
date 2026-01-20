@@ -1277,5 +1277,270 @@ router.post('/:id/extract-all-specs', asyncHandler(async (req, res) => {
   });
 }));
 
+// ============================================================
+// JOB MILESTONES / TIMELINE
+// ============================================================
+
+// Get milestones for a job
+router.get('/:id/milestones', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.query;
+
+  let query = supabase
+    .from('v2_job_milestones')
+    .select('*')
+    .eq('job_id', id)
+    .is('deleted_at', null)
+    .order('sort_order')
+    .order('target_date');
+
+  if (status) query = query.eq('status', status);
+
+  const { data, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Calculate overall progress
+  const total = data?.length || 0;
+  const completed = data?.filter(m => m.status === 'completed').length || 0;
+  const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  res.json({
+    milestones: data || [],
+    summary: {
+      total,
+      completed,
+      pending: data?.filter(m => m.status === 'pending').length || 0,
+      in_progress: data?.filter(m => m.status === 'in_progress').length || 0,
+      delayed: data?.filter(m => m.status === 'delayed').length || 0,
+      progress_percent: progressPercent
+    }
+  });
+}));
+
+// Get milestone timeline summary for a job
+router.get('/:id/timeline', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get job info
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id, name, estimated_start, estimated_completion, actual_start, actual_completion, phase_current')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (jobError || !job) throw notFoundError('job', id);
+
+  // Get milestones
+  const { data: milestones, error } = await supabase
+    .from('v2_job_milestones')
+    .select('*')
+    .eq('job_id', id)
+    .is('deleted_at', null)
+    .order('sort_order')
+    .order('target_date');
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Group by phase
+  const phases = {};
+  (milestones || []).forEach(m => {
+    const phase = m.phase_number || 0;
+    if (!phases[phase]) {
+      phases[phase] = { milestones: [], completed: 0, total: 0 };
+    }
+    phases[phase].milestones.push(m);
+    phases[phase].total++;
+    if (m.status === 'completed') phases[phase].completed++;
+  });
+
+  // Calculate phase progress
+  Object.keys(phases).forEach(p => {
+    phases[p].progress_percent = phases[p].total > 0
+      ? Math.round((phases[p].completed / phases[p].total) * 100)
+      : 0;
+  });
+
+  const total = milestones?.length || 0;
+  const completed = milestones?.filter(m => m.status === 'completed').length || 0;
+
+  res.json({
+    job,
+    timeline: {
+      start_date: job.actual_start || job.estimated_start,
+      end_date: job.actual_completion || job.estimated_completion,
+      current_phase: job.phase_current,
+      overall_progress: total > 0 ? Math.round((completed / total) * 100) : 0,
+      phases,
+      milestones: milestones || []
+    }
+  });
+}));
+
+// Create a milestone
+router.post('/:id/milestones', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    description,
+    milestone_type,
+    target_date,
+    phase_number,
+    depends_on_id,
+    assigned_to,
+    sort_order,
+    notes,
+    created_by
+  } = req.body;
+
+  if (!name || !milestone_type) {
+    throw new AppError('VALIDATION_FAILED', 'Name and milestone type are required');
+  }
+
+  const { data, error } = await supabase
+    .from('v2_job_milestones')
+    .insert({
+      job_id: id,
+      name,
+      description,
+      milestone_type,
+      target_date,
+      phase_number,
+      depends_on_id,
+      assigned_to,
+      sort_order: sort_order || 0,
+      notes,
+      created_by: created_by || 'User',
+      status: 'pending'
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.status(201).json({ milestone: data });
+}));
+
+// Update a milestone
+router.patch('/:jobId/milestones/:milestoneId', asyncHandler(async (req, res) => {
+  const { milestoneId } = req.params;
+  const updates = { ...req.body };
+
+  delete updates.id;
+  delete updates.job_id;
+  delete updates.created_at;
+  delete updates.deleted_at;
+
+  // If marking as completed, set completed_at
+  if (updates.status === 'completed' && !updates.completed_at) {
+    updates.completed_at = new Date().toISOString();
+    updates.progress_percent = 100;
+  }
+
+  const { data, error } = await supabase
+    .from('v2_job_milestones')
+    .update(updates)
+    .eq('id', milestoneId)
+    .is('deleted_at', null)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!data) throw notFoundError('milestone', milestoneId);
+
+  res.json({ milestone: data });
+}));
+
+// Complete a milestone
+router.post('/:jobId/milestones/:milestoneId/complete', asyncHandler(async (req, res) => {
+  const { milestoneId } = req.params;
+  const { completion_notes, completed_by, actual_date } = req.body;
+
+  const { data, error } = await supabase
+    .from('v2_job_milestones')
+    .update({
+      status: 'completed',
+      progress_percent: 100,
+      actual_date: actual_date || new Date().toISOString().split('T')[0],
+      completed_at: new Date().toISOString(),
+      completed_by: completed_by || 'User',
+      completion_notes
+    })
+    .eq('id', milestoneId)
+    .is('deleted_at', null)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!data) throw notFoundError('milestone', milestoneId);
+
+  // Update job milestone progress
+  const { data: allMilestones } = await supabase
+    .from('v2_job_milestones')
+    .select('status')
+    .eq('job_id', data.job_id)
+    .is('deleted_at', null);
+
+  const total = allMilestones?.length || 0;
+  const completed = allMilestones?.filter(m => m.status === 'completed').length || 0;
+  const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  await supabase
+    .from('v2_jobs')
+    .update({ milestone_progress: progressPercent })
+    .eq('id', data.job_id);
+
+  res.json({ milestone: data });
+}));
+
+// Delete a milestone (soft)
+router.delete('/:jobId/milestones/:milestoneId', asyncHandler(async (req, res) => {
+  const { milestoneId } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_job_milestones')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', milestoneId)
+    .is('deleted_at', null)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!data) throw notFoundError('milestone', milestoneId);
+
+  res.json({ success: true });
+}));
+
+// Bulk create milestones from template
+router.post('/:id/milestones/bulk', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { milestones, created_by } = req.body;
+
+  if (!Array.isArray(milestones) || milestones.length === 0) {
+    throw new AppError('VALIDATION_FAILED', 'Milestones array is required');
+  }
+
+  const toInsert = milestones.map((m, idx) => ({
+    job_id: id,
+    name: m.name,
+    description: m.description,
+    milestone_type: m.milestone_type || 'custom',
+    target_date: m.target_date,
+    phase_number: m.phase_number,
+    sort_order: m.sort_order ?? idx,
+    assigned_to: m.assigned_to,
+    notes: m.notes,
+    created_by: created_by || 'User',
+    status: 'pending'
+  }));
+
+  const { data, error } = await supabase
+    .from('v2_job_milestones')
+    .insert(toInsert)
+    .select();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.status(201).json({ milestones: data, count: data.length });
+}));
+
 module.exports = router;
 
