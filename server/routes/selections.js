@@ -405,7 +405,7 @@ router.get('/catalog', asyncHandler(async (req, res) => {
 
 /**
  * GET /api/selections/catalog/:id
- * Get a single catalog item with all images
+ * Get a single catalog item with all images, trades, and dependencies
  */
 router.get('/catalog/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -428,6 +428,42 @@ router.get('/catalog/:id', asyncHandler(async (req, res) => {
 
   // Sort images by display_order
   data.images = (data.images || []).sort((a, b) => a.display_order - b.display_order);
+
+  // Get linked trades
+  const { data: trades, error: tradesError } = await supabase
+    .from('v2_catalog_trades')
+    .select(`
+      id,
+      trade_id,
+      is_primary,
+      labor_hours_override,
+      hourly_rate_override,
+      notes,
+      trade:v2_labor_categories(id, name, code, primary_metric, metric_label)
+    `)
+    .eq('catalog_item_id', id)
+    .order('is_primary', { ascending: false });
+
+  if (tradesError) console.error('Error loading trades:', tradesError);
+  data.trades = trades || [];
+
+  // Get dependencies
+  const { data: dependencies, error: depsError } = await supabase
+    .from('v2_catalog_dependencies')
+    .select(`
+      id,
+      dependency_type,
+      depends_on_item_id,
+      depends_on_category_id,
+      gap_days,
+      notes,
+      depends_on_item:v2_selection_catalog!depends_on_item_id(id, name),
+      depends_on_category:v2_selection_categories!depends_on_category_id(id, name)
+    `)
+    .eq('catalog_item_id', id);
+
+  if (depsError) console.error('Error loading dependencies:', depsError);
+  data.dependencies = dependencies || [];
 
   res.json(data);
 }));
@@ -645,6 +681,318 @@ router.post('/catalog/:id/upload-image', upload.fields([
   if (error) throw error;
 
   res.status(201).json(data);
+}));
+
+// ============================================================
+// TRADES (for linking trades to catalog items)
+// ============================================================
+
+/**
+ * GET /api/selections/trades
+ * List all active trades (from labor categories) for linking to catalog items
+ */
+router.get('/trades', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_labor_categories')
+    .select('id, name, code, primary_metric, metric_label, typical_low, typical_high')
+    .eq('is_active', true)
+    .order('sort_order');
+
+  if (error) throw error;
+  res.json(data || []);
+}));
+
+/**
+ * GET /api/selections/catalog/:id/trades
+ * Get all trades linked to a catalog item
+ */
+router.get('/catalog/:id/trades', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_trades')
+    .select(`
+      id,
+      trade_id,
+      is_primary,
+      labor_hours_override,
+      hourly_rate_override,
+      notes,
+      created_at,
+      trade:v2_labor_categories(id, name, code, primary_metric, typical_low, typical_high)
+    `)
+    .eq('catalog_item_id', id)
+    .order('is_primary', { ascending: false });
+
+  if (error) throw error;
+  res.json(data || []);
+}));
+
+/**
+ * POST /api/selections/catalog/:id/trades
+ * Link a trade to a catalog item
+ */
+router.post('/catalog/:id/trades', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { trade_id, is_primary, labor_hours_override, hourly_rate_override, notes } = req.body;
+
+  if (!trade_id) {
+    return res.status(400).json({ error: 'trade_id is required' });
+  }
+
+  // If setting as primary, unset other primaries first
+  if (is_primary) {
+    await supabase
+      .from('v2_catalog_trades')
+      .update({ is_primary: false })
+      .eq('catalog_item_id', id);
+  }
+
+  const { data, error } = await supabase
+    .from('v2_catalog_trades')
+    .insert({
+      catalog_item_id: id,
+      trade_id,
+      is_primary: is_primary || false,
+      labor_hours_override,
+      hourly_rate_override,
+      notes
+    })
+    .select(`
+      id,
+      trade_id,
+      is_primary,
+      labor_hours_override,
+      hourly_rate_override,
+      notes,
+      trade:v2_labor_categories(id, name, code)
+    `)
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'This trade is already linked to this item' });
+    }
+    throw error;
+  }
+
+  res.status(201).json(data);
+}));
+
+/**
+ * PATCH /api/selections/catalog/:catalogId/trades/:linkId
+ * Update a catalog-trade link
+ */
+router.patch('/catalog/:catalogId/trades/:linkId', asyncHandler(async (req, res) => {
+  const { catalogId, linkId } = req.params;
+  const { is_primary, labor_hours_override, hourly_rate_override, notes } = req.body;
+
+  // If setting as primary, unset others first
+  if (is_primary) {
+    await supabase
+      .from('v2_catalog_trades')
+      .update({ is_primary: false })
+      .eq('catalog_item_id', catalogId)
+      .neq('id', linkId);
+  }
+
+  const { data, error } = await supabase
+    .from('v2_catalog_trades')
+    .update({ is_primary, labor_hours_override, hourly_rate_override, notes })
+    .eq('id', linkId)
+    .eq('catalog_item_id', catalogId)
+    .select(`
+      id,
+      trade_id,
+      is_primary,
+      labor_hours_override,
+      hourly_rate_override,
+      notes,
+      trade:v2_labor_categories(id, name, code)
+    `)
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Trade link not found' });
+  }
+
+  res.json(data);
+}));
+
+/**
+ * DELETE /api/selections/catalog/:catalogId/trades/:linkId
+ * Remove a trade link from a catalog item
+ */
+router.delete('/catalog/:catalogId/trades/:linkId', asyncHandler(async (req, res) => {
+  const { catalogId, linkId } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_trades')
+    .delete()
+    .eq('id', linkId)
+    .eq('catalog_item_id', catalogId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Trade link not found' });
+  }
+
+  res.json({ success: true, message: 'Trade link removed' });
+}));
+
+// ============================================================
+// DEPENDENCIES (for scheduling relationships)
+// ============================================================
+
+/**
+ * GET /api/selections/catalog/:id/dependencies
+ * Get all dependencies for a catalog item
+ */
+router.get('/catalog/:id/dependencies', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_dependencies')
+    .select(`
+      id,
+      dependency_type,
+      depends_on_item_id,
+      depends_on_category_id,
+      gap_days,
+      notes,
+      created_at,
+      depends_on_item:v2_selection_catalog!depends_on_item_id(id, name, category_id),
+      depends_on_category:v2_selection_categories!depends_on_category_id(id, name)
+    `)
+    .eq('catalog_item_id', id);
+
+  if (error) throw error;
+  res.json(data || []);
+}));
+
+/**
+ * POST /api/selections/catalog/:id/dependencies
+ * Add a dependency to a catalog item
+ * dependency_type: 'must_precede' | 'must_follow' | 'incompatible'
+ */
+router.post('/catalog/:id/dependencies', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { dependency_type, depends_on_item_id, depends_on_category_id, gap_days, notes } = req.body;
+
+  // Validation
+  if (!dependency_type) {
+    return res.status(400).json({ error: 'dependency_type is required' });
+  }
+  if (!['must_precede', 'must_follow', 'incompatible'].includes(dependency_type)) {
+    return res.status(400).json({
+      error: 'dependency_type must be one of: must_precede, must_follow, incompatible'
+    });
+  }
+  if (!depends_on_item_id && !depends_on_category_id) {
+    return res.status(400).json({
+      error: 'Either depends_on_item_id or depends_on_category_id is required'
+    });
+  }
+  // Prevent self-dependency
+  if (depends_on_item_id === id) {
+    return res.status(400).json({ error: 'Item cannot depend on itself' });
+  }
+
+  const { data, error } = await supabase
+    .from('v2_catalog_dependencies')
+    .insert({
+      catalog_item_id: id,
+      dependency_type,
+      depends_on_item_id: depends_on_item_id || null,
+      depends_on_category_id: depends_on_category_id || null,
+      gap_days: gap_days || 0,
+      notes
+    })
+    .select(`
+      id,
+      dependency_type,
+      depends_on_item_id,
+      depends_on_category_id,
+      gap_days,
+      notes,
+      depends_on_item:v2_selection_catalog!depends_on_item_id(id, name),
+      depends_on_category:v2_selection_categories!depends_on_category_id(id, name)
+    `)
+    .single();
+
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+
+/**
+ * PATCH /api/selections/catalog/:catalogId/dependencies/:depId
+ * Update a dependency
+ */
+router.patch('/catalog/:catalogId/dependencies/:depId', asyncHandler(async (req, res) => {
+  const { catalogId, depId } = req.params;
+  const updates = req.body;
+
+  // Validate dependency_type if provided
+  if (updates.dependency_type && !['must_precede', 'must_follow', 'incompatible'].includes(updates.dependency_type)) {
+    return res.status(400).json({
+      error: 'dependency_type must be one of: must_precede, must_follow, incompatible'
+    });
+  }
+
+  // Remove fields that shouldn't be updated
+  delete updates.id;
+  delete updates.catalog_item_id;
+  delete updates.created_at;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_dependencies')
+    .update(updates)
+    .eq('id', depId)
+    .eq('catalog_item_id', catalogId)
+    .select(`
+      id,
+      dependency_type,
+      depends_on_item_id,
+      depends_on_category_id,
+      gap_days,
+      notes,
+      depends_on_item:v2_selection_catalog!depends_on_item_id(id, name),
+      depends_on_category:v2_selection_categories!depends_on_category_id(id, name)
+    `)
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Dependency not found' });
+  }
+
+  res.json(data);
+}));
+
+/**
+ * DELETE /api/selections/catalog/:catalogId/dependencies/:depId
+ * Remove a dependency from a catalog item
+ */
+router.delete('/catalog/:catalogId/dependencies/:depId', asyncHandler(async (req, res) => {
+  const { catalogId, depId } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_catalog_dependencies')
+    .delete()
+    .eq('id', depId)
+    .eq('catalog_item_id', catalogId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Dependency not found' });
+  }
+
+  res.json({ success: true, message: 'Dependency removed' });
 }));
 
 /**

@@ -13,6 +13,13 @@ let allCategories = [];
 let currentAllowance = null;
 let currentSelections = [];
 
+// Catalog state
+let catalogProducts = [];
+let catalogVendors = [];
+let currentCatalogCategory = null;
+let currentCatalogProduct = null;
+let currentView = 'allowances';
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -59,12 +66,57 @@ function setupEventListeners() {
   // CO markup calculation
   document.getElementById('coMarkup').addEventListener('input', calculateCOTotal);
 
-  // Catalog search
+  // Catalog search (selection modal)
   let catalogTimer;
   document.getElementById('catalogSearch').addEventListener('input', (e) => {
     clearTimeout(catalogTimer);
     catalogTimer = setTimeout(() => searchCatalog(e.target.value), 200);
   });
+
+  // Catalog view search with debounce
+  let catalogViewSearchTimer;
+  const catalogSearchInput = document.getElementById('catalogSearchInput');
+  if (catalogSearchInput) {
+    catalogSearchInput.addEventListener('input', (e) => {
+      clearTimeout(catalogViewSearchTimer);
+      catalogViewSearchTimer = setTimeout(() => loadCatalogProducts(), 200);
+    });
+  }
+
+  // Catalog view filters
+  const catalogVendorFilter = document.getElementById('catalogVendorFilter');
+  if (catalogVendorFilter) {
+    catalogVendorFilter.addEventListener('change', loadCatalogProducts);
+  }
+
+  const catalogRoomFilter = document.getElementById('catalogRoomFilter');
+  if (catalogRoomFilter) {
+    catalogRoomFilter.addEventListener('change', loadCatalogProducts);
+  }
+
+  // Clear catalog filters button
+  const btnClearCatalogFilters = document.getElementById('btnClearCatalogFilters');
+  if (btnClearCatalogFilters) {
+    btnClearCatalogFilters.addEventListener('click', clearCatalogFilters);
+  }
+
+  // Add product button
+  const btnAddProduct = document.getElementById('btnAddProduct');
+  if (btnAddProduct) {
+    btnAddProduct.addEventListener('click', openAddProductModal);
+  }
+
+  // Manage categories button
+  const btnManageCategories = document.getElementById('btnManageCategories');
+  if (btnManageCategories) {
+    btnManageCategories.addEventListener('click', openCategoryManagement);
+  }
+
+  // Catalog product modal job dropdown
+  const catalogProductJob = document.getElementById('catalogProductJob');
+  if (catalogProductJob) {
+    catalogProductJob.addEventListener('change', loadCatalogProductAllowances);
+  }
 
   // Close modals on outside click
   document.querySelectorAll('.modal').forEach(modal => {
@@ -907,5 +959,845 @@ function showToast(message, type = 'info') {
     window.showToast(message, type);
   } else {
     console.log(`[${type}] ${message}`);
+  }
+}
+
+// ============================================================
+// VIEW TOGGLE
+// ============================================================
+
+function switchView(view) {
+  currentView = view;
+
+  // Update tab buttons
+  document.querySelectorAll('.view-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.view === view);
+  });
+
+  // Update view content
+  document.querySelectorAll('.view-content').forEach(content => {
+    content.classList.toggle('active', content.id === view + 'View');
+  });
+
+  // Update header buttons
+  const newAllowanceBtn = document.getElementById('btnNewAllowance');
+  const addProductBtn = document.getElementById('btnAddProduct');
+
+  if (view === 'allowances') {
+    newAllowanceBtn.style.display = 'flex';
+    addProductBtn.style.display = 'none';
+  } else {
+    newAllowanceBtn.style.display = 'none';
+    addProductBtn.style.display = 'flex';
+    // Load catalog data if not already loaded
+    if (catalogProducts.length === 0) {
+      loadCatalogData();
+    }
+  }
+}
+
+// ============================================================
+// CATALOG VIEW FUNCTIONS
+// ============================================================
+
+async function loadCatalogData() {
+  // Load categories if not already loaded from allowances
+  if (allCategories.length === 0) {
+    await loadCategories();
+  }
+  renderCatalogCategoryTree();
+
+  // Load vendors for filter
+  await loadCatalogVendors();
+
+  // Load products
+  await loadCatalogProducts();
+}
+
+async function loadCatalogVendors() {
+  try {
+    const res = await fetch('/api/vendors');
+    if (!res.ok) throw new Error('Failed to load vendors');
+    catalogVendors = await res.json();
+
+    const vendorFilter = document.getElementById('catalogVendorFilter');
+    vendorFilter.innerHTML = '<option value="">All Vendors</option>';
+    catalogVendors.forEach(v => {
+      vendorFilter.innerHTML += `<option value="${v.id}">${escapeHtml(v.name)}</option>`;
+    });
+  } catch (err) {
+    console.error('Failed to load vendors:', err);
+  }
+}
+
+async function loadCatalogProducts() {
+  const grid = document.getElementById('catalogProductGrid');
+  const emptyState = document.getElementById('catalogEmptyState');
+
+  // Show loading
+  grid.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Loading products...</p></div>';
+  emptyState.style.display = 'none';
+
+  try {
+    // Build query params
+    const params = new URLSearchParams();
+
+    if (currentCatalogCategory) params.append('category_id', currentCatalogCategory);
+
+    const search = document.getElementById('catalogSearchInput').value.trim();
+    if (search) params.append('search', search);
+
+    const vendor = document.getElementById('catalogVendorFilter').value;
+    if (vendor) params.append('vendor_id', vendor);
+
+    const room = document.getElementById('catalogRoomFilter').value;
+    if (room) params.append('room', room);
+
+    const res = await fetch(`/api/selections/catalog?${params.toString()}`);
+    if (!res.ok) throw new Error('Failed to load products');
+    catalogProducts = await res.json();
+
+    renderCatalogProducts();
+    updateCatalogResultCount();
+  } catch (err) {
+    console.error('Failed to load products:', err);
+    showToast('Failed to load products', 'error');
+    grid.innerHTML = '<div class="error-state"><p>Failed to load products</p></div>';
+  }
+}
+
+function renderCatalogCategoryTree() {
+  const tree = document.getElementById('catalogCategoryTree');
+
+  // All Products option
+  let html = `
+    <div class="category-item ${!currentCatalogCategory ? 'active' : ''}" data-category="" onclick="selectCatalogCategory('')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7"></rect>
+        <rect x="14" y="3" width="7" height="7"></rect>
+        <rect x="14" y="14" width="7" height="7"></rect>
+        <rect x="3" y="14" width="7" height="7"></rect>
+      </svg>
+      <span>All Products</span>
+    </div>
+  `;
+
+  // Build hierarchical categories
+  allCategories.forEach(cat => {
+    const hasChildren = cat.children && cat.children.length > 0;
+    const isActive = currentCatalogCategory === cat.id;
+
+    html += `
+      <div class="category-parent ${hasChildren ? 'has-children' : ''} ${isActive ? 'active' : ''}">
+        <div class="category-item" data-category="${cat.id}" onclick="selectCatalogCategory('${cat.id}')">
+          <span class="category-icon">${getCategoryIcon(cat.name)}</span>
+          <span>${escapeHtml(cat.name)}</span>
+          ${hasChildren ? `
+            <svg class="expand-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          ` : ''}
+        </div>
+        ${hasChildren ? `
+          <div class="category-children">
+            ${cat.children.map(child => `
+              <div class="category-item child ${currentCatalogCategory === child.id ? 'active' : ''}"
+                   data-category="${child.id}"
+                   onclick="event.stopPropagation(); selectCatalogCategory('${child.id}')">
+                <span>${escapeHtml(child.name)}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+
+  tree.innerHTML = html;
+}
+
+function selectCatalogCategory(categoryId) {
+  currentCatalogCategory = categoryId || null;
+  renderCatalogCategoryTree();
+  loadCatalogProducts();
+}
+
+function renderCatalogProducts() {
+  const grid = document.getElementById('catalogProductGrid');
+  const emptyState = document.getElementById('catalogEmptyState');
+
+  if (catalogProducts.length === 0) {
+    grid.innerHTML = '';
+    emptyState.style.display = 'flex';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+
+  grid.innerHTML = catalogProducts.map(product => {
+    const primaryImage = product.images?.find(img => img.is_primary) || product.images?.[0];
+    const imageUrl = primaryImage?.thumbnail_path || primaryImage?.storage_path || product.image_url;
+
+    const price = parseFloat(product.unit_price) || 0;
+    const unit = product.unit || 'each';
+
+    return `
+      <div class="product-card" onclick="openCatalogProductDetail('${product.id}')">
+        <div class="product-image">
+          ${imageUrl ? `
+            <img src="${imageUrl}" alt="${escapeHtml(product.name)}"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+            <div class="image-placeholder" style="display: none;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </div>
+          ` : `
+            <div class="image-placeholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </div>
+          `}
+          ${product.images?.length > 1 ? `
+            <span class="image-count">${product.images.length} photos</span>
+          ` : ''}
+        </div>
+        <div class="product-content">
+          <div class="product-category">${escapeHtml(product.category?.name || 'Uncategorized')}</div>
+          <h4 class="product-title">${escapeHtml(product.name)}</h4>
+          ${product.vendor?.name ? `
+            <div class="product-vendor">${escapeHtml(product.vendor.name)}</div>
+          ` : ''}
+          <div class="product-price">
+            <span class="price">${formatCurrency(price)}</span>
+            <span class="unit">/${unit}</span>
+          </div>
+          ${product.room ? `
+            <div class="product-room">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              </svg>
+              ${escapeHtml(product.room)}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateCatalogResultCount() {
+  document.getElementById('catalogResultCount').textContent =
+    `${catalogProducts.length} product${catalogProducts.length !== 1 ? 's' : ''}`;
+}
+
+async function openCatalogProductDetail(productId) {
+  try {
+    const res = await fetch(`/api/selections/catalog/${productId}`);
+    if (!res.ok) throw new Error('Failed to load product');
+    currentCatalogProduct = await res.json();
+
+    renderCatalogProductModal();
+
+    const modal = document.getElementById('catalogProductModal');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+  } catch (err) {
+    console.error('Failed to load product:', err);
+    showToast('Failed to load product details', 'error');
+  }
+}
+
+function renderCatalogProductModal() {
+  const p = currentCatalogProduct;
+  if (!p) return;
+
+  // Basic info
+  document.getElementById('catalogProductName').textContent = p.name;
+  document.getElementById('catalogProductCategory').textContent = p.category?.name || 'Uncategorized';
+  document.getElementById('catalogProductPrice').textContent = formatCurrency(p.unit_price || 0);
+  document.getElementById('catalogProductUnit').textContent = '/' + (p.unit || 'each');
+  document.getElementById('catalogProductVendor').textContent = p.vendor?.name ? `Vendor: ${p.vendor.name}` : '';
+  document.getElementById('catalogProductModel').textContent = p.model_number ? `Model: ${p.model_number}` : '';
+  document.getElementById('catalogProductDescription').textContent = p.description || 'No description available';
+  document.getElementById('catalogProductQty').value = p.quantity_default || 1;
+
+  // Image
+  const imageContainer = document.getElementById('catalogProductImage');
+  const imageUrl = p.images?.[0]?.storage_path || p.image_url;
+  if (imageUrl) {
+    imageContainer.innerHTML = `<img src="${imageUrl}" alt="${escapeHtml(p.name)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+  } else {
+    imageContainer.innerHTML = `
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--text-secondary);">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+        <polyline points="21 15 16 10 5 21"></polyline>
+      </svg>
+    `;
+  }
+
+  // Populate job dropdown
+  const jobSelect = document.getElementById('catalogProductJob');
+  jobSelect.innerHTML = '<option value="">Select a job</option>';
+  allJobs.forEach(j => {
+    jobSelect.innerHTML += `<option value="${j.id}">${escapeHtml(j.name)}</option>`;
+  });
+
+  // Clear allowance dropdown
+  document.getElementById('catalogProductAllowance').innerHTML = '<option value="">Select a job first</option>';
+}
+
+function closeCatalogProductModal() {
+  const modal = document.getElementById('catalogProductModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function loadCatalogProductAllowances() {
+  const jobId = document.getElementById('catalogProductJob').value;
+  const allowanceSelect = document.getElementById('catalogProductAllowance');
+
+  allowanceSelect.innerHTML = '<option value="">Select an allowance</option>';
+
+  if (!jobId) return;
+
+  try {
+    const res = await fetch(`/api/selections/allowances?job_id=${jobId}`);
+    if (!res.ok) throw new Error('Failed to load allowances');
+    const allowances = await res.json();
+
+    allowances.forEach(a => {
+      const budget = parseFloat(a.budgeted_amount) || 0;
+      const selected = parseFloat(a.selected_amount) || 0;
+      const remaining = budget - selected;
+      const varianceText = remaining < 0 ? ` ($${Math.abs(remaining).toFixed(0)} over)` :
+                          remaining > 0 ? ` ($${remaining.toFixed(0)} remaining)` : ' (at budget)';
+
+      allowanceSelect.innerHTML += `<option value="${a.id}">${escapeHtml(a.name)}${varianceText}</option>`;
+    });
+  } catch (err) {
+    console.error('Failed to load allowances:', err);
+    showToast('Failed to load allowances', 'error');
+  }
+}
+
+async function addCatalogProductToAllowance() {
+  const allowanceId = document.getElementById('catalogProductAllowance').value;
+  const quantity = parseFloat(document.getElementById('catalogProductQty').value) || 1;
+
+  if (!allowanceId) {
+    showToast('Please select an allowance', 'error');
+    return;
+  }
+
+  if (!currentCatalogProduct) {
+    showToast('No product selected', 'error');
+    return;
+  }
+
+  const p = currentCatalogProduct;
+
+  try {
+    const res = await fetch('/api/selections/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        allowance_id: allowanceId,
+        catalog_item_id: p.id,
+        name: p.name,
+        description: p.description,
+        model_number: p.model_number,
+        vendor_name: p.vendor?.name,
+        quantity,
+        unit: p.unit || 'each',
+        unit_price: parseFloat(p.unit_price) || 0,
+        markup_percent: 0,
+        image_url: p.image_url || p.images?.[0]?.storage_path,
+        client_notes: ''
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to save selection');
+    }
+
+    showToast('Selection added successfully', 'success');
+    closeCatalogProductModal();
+
+    // Reload allowances to show updated amounts
+    await loadAllowances();
+  } catch (err) {
+    console.error('Failed to save selection:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+function clearCatalogFilters() {
+  document.getElementById('catalogSearchInput').value = '';
+  document.getElementById('catalogVendorFilter').value = '';
+  document.getElementById('catalogRoomFilter').value = '';
+  currentCatalogCategory = null;
+  renderCatalogCategoryTree();
+  loadCatalogProducts();
+}
+
+function openAddProductModal() {
+  // Redirect to catalog.html for full product management
+  window.location.href = 'catalog.html';
+}
+
+function openCategoryManagement() {
+  // Redirect to catalog.html for category management
+  window.location.href = 'catalog.html';
+}
+
+// ============================================================
+// SMART CATALOG - PRODUCT DETAIL
+// ============================================================
+
+let isEditingCatalogProduct = false;
+let availableTrades = [];
+
+function renderCatalogProductModal() {
+  const p = currentCatalogProduct;
+  if (!p) return;
+
+  // Basic info
+  document.getElementById('catalogProductName').textContent = p.name;
+  document.getElementById('catalogProductCategory').textContent = p.category?.name || 'Uncategorized';
+  document.getElementById('catalogProductPrice').textContent = formatCurrency(p.unit_price || 0);
+  document.getElementById('catalogProductUnit').textContent = '/' + (p.unit || 'each');
+  document.getElementById('catalogProductVendor').textContent = p.vendor?.name ? `Vendor: ${p.vendor.name}` : '';
+  document.getElementById('catalogProductModel').textContent = p.model_number ? `Model: ${p.model_number}` : '';
+  document.getElementById('catalogProductDescription').textContent = p.description || 'No description available';
+  document.getElementById('catalogProductQty').value = p.quantity_default || 1;
+
+  // Quality tier badge
+  const tierBadge = document.getElementById('catalogProductTier');
+  const tierColors = { builder: 'badge-warning', standard: 'badge-info', premium: 'badge-success' };
+  const tierLabels = { builder: 'Builder', standard: 'Standard', premium: 'Premium' };
+  tierBadge.className = `badge ${tierColors[p.quality_tier] || 'badge-secondary'}`;
+  tierBadge.textContent = tierLabels[p.quality_tier] || 'Standard';
+
+  // Quick stats
+  document.getElementById('statLeadTime').textContent = p.lead_time_days ? `${p.lead_time_days} days` : '-';
+  document.getElementById('statLabor').textContent = p.labor_hours ? `${p.labor_hours} hrs` : '-';
+  document.getElementById('statWarranty').textContent = p.warranty_months ? `${p.warranty_months} mo` : '-';
+  document.getElementById('statPermit').textContent = p.requires_permit ? (p.permit_type || 'Yes') : 'No';
+
+  // Image
+  const imageContainer = document.getElementById('catalogProductImage');
+  const imageUrl = p.images?.[0]?.storage_path || p.image_url;
+  if (imageUrl) {
+    imageContainer.innerHTML = `<img src="${imageUrl}" alt="${escapeHtml(p.name)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+  } else {
+    imageContainer.innerHTML = `
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--text-secondary);">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+        <polyline points="21 15 16 10 5 21"></polyline>
+      </svg>
+    `;
+  }
+
+  // Populate form fields for editing
+  document.getElementById('editLaborHours').value = p.labor_hours || '';
+  document.getElementById('editInstallDuration').value = p.install_duration_hours || '';
+  document.getElementById('editCrewSize').value = p.crew_size || 1;
+  document.getElementById('editLeadTime').value = p.lead_time_days || 0;
+  document.getElementById('editCoverageRate').value = p.coverage_rate || '';
+  document.getElementById('editCoverageUnit').value = p.coverage_unit || '';
+  document.getElementById('editWasteFactor').value = p.waste_factor_percent || 0;
+  document.getElementById('editQualityTier').value = p.quality_tier || 'standard';
+  document.getElementById('editRequiresPermit').checked = p.requires_permit || false;
+  document.getElementById('editPermitType').value = p.permit_type || '';
+  document.getElementById('editRoughInRequired').checked = p.rough_in_required || false;
+  document.getElementById('editRoughInNotes').value = p.rough_in_notes || '';
+  document.getElementById('editWarrantyMonths').value = p.warranty_months || '';
+  document.getElementById('editWarrantyNotes').value = p.warranty_notes || '';
+
+  // Render trades and dependencies
+  renderTradesList();
+  renderDependenciesList();
+
+  // Populate job dropdown
+  const jobSelect = document.getElementById('catalogProductJob');
+  jobSelect.innerHTML = '<option value="">Select a job</option>';
+  allJobs.forEach(j => {
+    jobSelect.innerHTML += `<option value="${j.id}">${escapeHtml(j.name)}</option>`;
+  });
+
+  // Clear allowance dropdown
+  document.getElementById('catalogProductAllowance').innerHTML = '<option value="">Select a job first</option>';
+
+  // Reset to overview tab and view mode
+  switchCatalogProductTab('overview');
+  setEditMode(false);
+}
+
+function switchCatalogProductTab(tabName) {
+  // Update tab buttons
+  document.querySelectorAll('#catalogProductModal .tabs .tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.tab === tabName);
+  });
+
+  // Update tab content
+  document.querySelectorAll('#catalogProductModal .tab-content').forEach(content => {
+    content.style.display = content.id === `tab-${tabName}` ? 'block' : 'none';
+  });
+}
+
+function toggleCatalogProductEdit() {
+  isEditingCatalogProduct = !isEditingCatalogProduct;
+  setEditMode(isEditingCatalogProduct);
+}
+
+function setEditMode(editing) {
+  isEditingCatalogProduct = editing;
+  const btn = document.getElementById('btnEditCatalogProduct');
+  const saveBtn = document.getElementById('btnSaveCatalogProduct');
+
+  btn.textContent = editing ? 'Cancel Edit' : 'Edit Product';
+  btn.className = editing ? 'btn btn-warning' : 'btn btn-secondary';
+  saveBtn.style.display = editing ? 'inline-flex' : 'none';
+
+  // Toggle form field disabled state
+  const editFields = [
+    'editLaborHours', 'editInstallDuration', 'editCrewSize', 'editLeadTime',
+    'editCoverageRate', 'editCoverageUnit', 'editWasteFactor', 'editQualityTier',
+    'editRequiresPermit', 'editPermitType', 'editRoughInRequired', 'editRoughInNotes',
+    'editWarrantyMonths', 'editWarrantyNotes'
+  ];
+  editFields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !editing;
+  });
+
+  // Toggle trade/dependency buttons
+  document.getElementById('btnAddTrade').disabled = !editing;
+  document.getElementById('btnAddDependency').disabled = !editing;
+}
+
+async function saveCatalogProduct() {
+  if (!currentCatalogProduct) return;
+
+  const updates = {
+    labor_hours: parseFloat(document.getElementById('editLaborHours').value) || null,
+    install_duration_hours: parseFloat(document.getElementById('editInstallDuration').value) || null,
+    crew_size: parseInt(document.getElementById('editCrewSize').value) || 1,
+    lead_time_days: parseInt(document.getElementById('editLeadTime').value) || 0,
+    coverage_rate: parseFloat(document.getElementById('editCoverageRate').value) || null,
+    coverage_unit: document.getElementById('editCoverageUnit').value || null,
+    waste_factor_percent: parseFloat(document.getElementById('editWasteFactor').value) || 0,
+    quality_tier: document.getElementById('editQualityTier').value || 'standard',
+    requires_permit: document.getElementById('editRequiresPermit').checked,
+    permit_type: document.getElementById('editPermitType').value || null,
+    rough_in_required: document.getElementById('editRoughInRequired').checked,
+    rough_in_notes: document.getElementById('editRoughInNotes').value || null,
+    warranty_months: parseInt(document.getElementById('editWarrantyMonths').value) || null,
+    warranty_notes: document.getElementById('editWarrantyNotes').value || null
+  };
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${currentCatalogProduct.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+
+    if (!res.ok) throw new Error('Failed to save');
+
+    const updated = await res.json();
+    currentCatalogProduct = { ...currentCatalogProduct, ...updated };
+    renderCatalogProductModal();
+    showToast('Product updated', 'success');
+    loadCatalogProducts();
+  } catch (err) {
+    console.error('Save error:', err);
+    showToast('Failed to save product', 'error');
+  }
+}
+
+// ============================================================
+// TRADES MANAGEMENT
+// ============================================================
+
+function renderTradesList() {
+  const container = document.getElementById('tradesList');
+  const trades = currentCatalogProduct?.trades || [];
+
+  if (trades.length === 0) {
+    container.innerHTML = '<p style="color: var(--text-secondary); font-style: italic;">No trades linked</p>';
+    return;
+  }
+
+  container.innerHTML = trades.map(t => `
+    <div class="trade-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-secondary); border-radius: 6px; margin-bottom: 0.5rem;">
+      <div>
+        <strong>${escapeHtml(t.trade?.name || 'Unknown')}</strong>
+        ${t.is_primary ? '<span class="badge badge-success" style="margin-left: 0.5rem;">Primary</span>' : ''}
+        <div style="font-size: 0.875rem; color: var(--text-secondary);">
+          ${t.labor_hours_override ? `Labor: ${t.labor_hours_override} hrs` : ''}
+          ${t.hourly_rate_override ? ` | Rate: $${t.hourly_rate_override}/hr` : ''}
+          ${t.notes ? ` | ${t.notes}` : ''}
+        </div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="removeTrade('${t.id}')" ${!isEditingCatalogProduct ? 'disabled' : ''}>Remove</button>
+    </div>
+  `).join('');
+}
+
+async function openAddTradeModal() {
+  // Load available trades
+  try {
+    const res = await fetch('/api/selections/trades');
+    if (!res.ok) throw new Error('Failed to load trades');
+    availableTrades = await res.json();
+
+    const select = document.getElementById('addTradeSelect');
+    select.innerHTML = '<option value="">Select a trade</option>';
+
+    // Filter out already-linked trades
+    const linkedIds = (currentCatalogProduct?.trades || []).map(t => t.trade_id);
+    availableTrades
+      .filter(t => !linkedIds.includes(t.id))
+      .forEach(t => {
+        select.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`;
+      });
+
+    // Reset form
+    document.getElementById('addTradeIsPrimary').checked = false;
+    document.getElementById('addTradeLaborHours').value = '';
+    document.getElementById('addTradeHourlyRate').value = '';
+    document.getElementById('addTradeNotes').value = '';
+
+    const modal = document.getElementById('addTradeModal');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+  } catch (err) {
+    console.error('Failed to load trades:', err);
+    showToast('Failed to load trades', 'error');
+  }
+}
+
+function closeAddTradeModal() {
+  const modal = document.getElementById('addTradeModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+async function saveTrade() {
+  const tradeId = document.getElementById('addTradeSelect').value;
+  if (!tradeId) {
+    showToast('Please select a trade', 'error');
+    return;
+  }
+
+  const data = {
+    trade_id: tradeId,
+    is_primary: document.getElementById('addTradeIsPrimary').checked,
+    labor_hours_override: parseFloat(document.getElementById('addTradeLaborHours').value) || null,
+    hourly_rate_override: parseFloat(document.getElementById('addTradeHourlyRate').value) || null,
+    notes: document.getElementById('addTradeNotes').value || null
+  };
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${currentCatalogProduct.id}/trades`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add trade');
+    }
+
+    const newTrade = await res.json();
+    currentCatalogProduct.trades = [...(currentCatalogProduct.trades || []), newTrade];
+    renderTradesList();
+    closeAddTradeModal();
+    showToast('Trade linked', 'success');
+  } catch (err) {
+    console.error('Save trade error:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+async function removeTrade(linkId) {
+  if (!confirm('Remove this trade link?')) return;
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${currentCatalogProduct.id}/trades/${linkId}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) throw new Error('Failed to remove');
+
+    currentCatalogProduct.trades = (currentCatalogProduct.trades || []).filter(t => t.id !== linkId);
+    renderTradesList();
+    showToast('Trade removed', 'success');
+  } catch (err) {
+    console.error('Remove trade error:', err);
+    showToast('Failed to remove trade', 'error');
+  }
+}
+
+// ============================================================
+// DEPENDENCIES MANAGEMENT
+// ============================================================
+
+function renderDependenciesList() {
+  const container = document.getElementById('dependenciesList');
+  const deps = currentCatalogProduct?.dependencies || [];
+
+  if (deps.length === 0) {
+    container.innerHTML = '<p style="color: var(--text-secondary); font-style: italic;">No dependencies defined</p>';
+    return;
+  }
+
+  const typeLabels = {
+    must_follow: 'Must Follow',
+    must_precede: 'Must Precede',
+    incompatible: 'Incompatible'
+  };
+
+  const typeColors = {
+    must_follow: 'badge-info',
+    must_precede: 'badge-warning',
+    incompatible: 'badge-danger'
+  };
+
+  container.innerHTML = deps.map(d => {
+    const targetName = d.depends_on_item?.name || d.depends_on_category?.name || 'Unknown';
+    const targetType = d.depends_on_item_id ? 'Item' : 'Category';
+
+    return `
+      <div class="dep-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-secondary); border-radius: 6px; margin-bottom: 0.5rem;">
+        <div>
+          <span class="badge ${typeColors[d.dependency_type] || 'badge-secondary'}">${typeLabels[d.dependency_type] || d.dependency_type}</span>
+          <span style="margin-left: 0.5rem;">${targetType}: <strong>${escapeHtml(targetName)}</strong></span>
+          ${d.gap_days > 0 ? `<span style="color: var(--text-secondary); margin-left: 0.5rem;">(${d.gap_days} day gap)</span>` : ''}
+          ${d.notes ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">${escapeHtml(d.notes)}</div>` : ''}
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="removeDependency('${d.id}')" ${!isEditingCatalogProduct ? 'disabled' : ''}>Remove</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function openAddDependencyModal() {
+  // Populate category dropdown
+  const catSelect = document.getElementById('addDepCategory');
+  catSelect.innerHTML = '<option value="">Select a category</option>';
+  allCategories.forEach(c => {
+    catSelect.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`;
+    // Add children if hierarchical
+    (c.children || []).forEach(child => {
+      catSelect.innerHTML += `<option value="${child.id}">&nbsp;&nbsp;${escapeHtml(child.name)}</option>`;
+    });
+  });
+
+  // Populate item dropdown with all catalog products
+  const itemSelect = document.getElementById('addDepItem');
+  itemSelect.innerHTML = '<option value="">Select an item</option>';
+  catalogProducts
+    .filter(p => p.id !== currentCatalogProduct?.id)
+    .forEach(p => {
+      itemSelect.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
+    });
+
+  // Reset form
+  document.getElementById('addDepType').value = 'must_follow';
+  document.getElementById('addDepTargetType').value = 'category';
+  document.getElementById('addDepGapDays').value = 0;
+  document.getElementById('addDepNotes').value = '';
+  toggleDepTarget();
+
+  const modal = document.getElementById('addDependencyModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeAddDependencyModal() {
+  const modal = document.getElementById('addDependencyModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+function toggleDepTarget() {
+  const targetType = document.getElementById('addDepTargetType').value;
+  document.getElementById('depCategoryGroup').style.display = targetType === 'category' ? 'block' : 'none';
+  document.getElementById('depItemGroup').style.display = targetType === 'item' ? 'block' : 'none';
+}
+
+async function saveDependency() {
+  const targetType = document.getElementById('addDepTargetType').value;
+  const catId = document.getElementById('addDepCategory').value;
+  const itemId = document.getElementById('addDepItem').value;
+
+  if (targetType === 'category' && !catId) {
+    showToast('Please select a category', 'error');
+    return;
+  }
+  if (targetType === 'item' && !itemId) {
+    showToast('Please select an item', 'error');
+    return;
+  }
+
+  const data = {
+    dependency_type: document.getElementById('addDepType').value,
+    depends_on_category_id: targetType === 'category' ? catId : null,
+    depends_on_item_id: targetType === 'item' ? itemId : null,
+    gap_days: parseInt(document.getElementById('addDepGapDays').value) || 0,
+    notes: document.getElementById('addDepNotes').value || null
+  };
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${currentCatalogProduct.id}/dependencies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add dependency');
+    }
+
+    const newDep = await res.json();
+    currentCatalogProduct.dependencies = [...(currentCatalogProduct.dependencies || []), newDep];
+    renderDependenciesList();
+    closeAddDependencyModal();
+    showToast('Dependency added', 'success');
+  } catch (err) {
+    console.error('Save dependency error:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+async function removeDependency(depId) {
+  if (!confirm('Remove this dependency?')) return;
+
+  try {
+    const res = await fetch(`/api/selections/catalog/${currentCatalogProduct.id}/dependencies/${depId}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) throw new Error('Failed to remove');
+
+    currentCatalogProduct.dependencies = (currentCatalogProduct.dependencies || []).filter(d => d.id !== depId);
+    renderDependenciesList();
+    showToast('Dependency removed', 'success');
+  } catch (err) {
+    console.error('Remove dependency error:', err);
+    showToast('Failed to remove dependency', 'error');
   }
 }

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Selections & Allowances | Ross Built CMS</title>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/catalog.css">
   <style>
     /* Page-specific overrides */
     .main-content {
@@ -41,6 +42,101 @@
       margin-top: 0.5rem;
       font-size: 0.875rem;
       color: var(--text-secondary, #8b949e);
+    }
+
+    /* View Toggle Tabs */
+    .view-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .view-tab {
+      padding: 0.75rem 1.5rem;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 0.9375rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.2s;
+    }
+    .view-tab:hover {
+      color: var(--text-primary);
+    }
+    .view-tab.active {
+      color: var(--accent-blue);
+      border-bottom-color: var(--accent-blue);
+    }
+    .view-tab svg {
+      margin-right: 0.5rem;
+      vertical-align: -2px;
+    }
+
+    /* View Content */
+    .view-content {
+      display: none;
+    }
+    .view-content.active {
+      display: block;
+    }
+
+    /* Catalog View Layout */
+    .catalog-view-layout {
+      display: flex;
+      gap: 1.5rem;
+    }
+    .catalog-sidebar-inline {
+      width: 220px;
+      flex-shrink: 0;
+      background: var(--bg-card);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .catalog-main-inline {
+      flex: 1;
+      min-width: 0;
+    }
+    .catalog-toolbar {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .catalog-toolbar .search-box {
+      position: relative;
+    }
+    .catalog-toolbar .search-box svg {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-secondary);
+    }
+    .catalog-toolbar .search-input {
+      padding-left: 2.5rem;
+    }
+    .loading-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem;
+      color: var(--text-secondary);
+    }
+    .loading-state .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
   </style>
 </head>
@@ -90,9 +186,42 @@
           </svg>
           New Allowance
         </button>
+        <button class="btn btn-secondary" id="btnAddProduct" style="display: none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Add Product
+        </button>
       </div>
     </div>
 
+    <!-- View Toggle Tabs -->
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="allowances" onclick="switchView('allowances')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="8" y1="6" x2="21" y2="6"></line>
+          <line x1="8" y1="12" x2="21" y2="12"></line>
+          <line x1="8" y1="18" x2="21" y2="18"></line>
+          <line x1="3" y1="6" x2="3.01" y2="6"></line>
+          <line x1="3" y1="12" x2="3.01" y2="12"></line>
+          <line x1="3" y1="18" x2="3.01" y2="18"></line>
+        </svg>
+        Allowances
+      </button>
+      <button class="view-tab" data-view="catalog" onclick="switchView('catalog')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+        </svg>
+        Product Catalog
+      </button>
+    </div>
+
+    <!-- ALLOWANCES VIEW -->
+    <div class="view-content active" id="allowancesView">
     <!-- Job Summary Card -->
     <div class="selections-summary" id="selectionsSummary">
       <div class="summary-card">
@@ -147,6 +276,69 @@
       <h3>No Allowances Found</h3>
       <p>Create an allowance to start tracking client selections.</p>
     </div>
+    </div><!-- End Allowances View -->
+
+    <!-- CATALOG VIEW -->
+    <div class="view-content" id="catalogView">
+      <div class="catalog-view-layout">
+        <!-- Category Sidebar -->
+        <aside class="catalog-sidebar-inline">
+          <h4 style="margin: 0 0 1rem; font-size: 0.875rem; color: var(--text-secondary); text-transform: uppercase;">Categories</h4>
+          <div class="category-tree" id="catalogCategoryTree">
+            <div class="loading-spinner">Loading...</div>
+          </div>
+          <button class="btn btn-sm btn-secondary" id="btnManageCategories" style="margin-top: 1rem; width: 100%;">Manage Categories</button>
+        </aside>
+
+        <!-- Main Catalog Content -->
+        <div class="catalog-main-inline">
+          <!-- Catalog Toolbar -->
+          <div class="catalog-toolbar" style="margin-bottom: 1rem;">
+            <div class="search-box" style="flex: 1; max-width: 300px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="search" id="catalogSearchInput" placeholder="Search products..." class="search-input">
+            </div>
+            <select id="catalogVendorFilter" class="form-select">
+              <option value="">All Vendors</option>
+            </select>
+            <select id="catalogRoomFilter" class="form-select">
+              <option value="">All Rooms</option>
+              <option value="Kitchen">Kitchen</option>
+              <option value="Master Bath">Master Bath</option>
+              <option value="Guest Bath">Guest Bath</option>
+              <option value="Living Room">Living Room</option>
+              <option value="Bedroom">Bedroom</option>
+              <option value="Exterior">Exterior</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" id="btnClearCatalogFilters">Clear</button>
+          </div>
+
+          <!-- Results Info -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <span id="catalogResultCount" style="color: var(--text-secondary); font-size: 0.875rem;">0 products</span>
+          </div>
+
+          <!-- Product Grid -->
+          <div class="product-grid" id="catalogProductGrid">
+            <!-- Products will be rendered here -->
+          </div>
+
+          <!-- Catalog Empty State -->
+          <div class="empty-state" id="catalogEmptyState" style="display: none;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <h3>No Products Found</h3>
+            <p>Add products to build your catalog.</p>
+          </div>
+        </div>
+      </div>
+    </div><!-- End Catalog View -->
   </main>
 
   <!-- Create/Edit Allowance Modal -->
@@ -420,6 +612,331 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="closeCOModal()">Cancel</button>
         <button type="button" class="btn btn-warning" onclick="submitChangeOrder()">Create CO</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Catalog Product Detail Modal -->
+  <div id="catalogProductModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content" style="max-width: 1200px;">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <h3 id="catalogProductName">Product</h3>
+          <span id="catalogProductCategory" class="badge badge-secondary"></span>
+          <span id="catalogProductTier" class="badge"></span>
+        </div>
+        <div class="modal-header-right">
+          <button class="btn btn-secondary" id="btnEditCatalogProduct" onclick="toggleCatalogProductEdit()">Edit Product</button>
+          <button class="modal-close" onclick="closeCatalogProductModal()">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <!-- Tabs -->
+        <div class="tabs" style="margin-bottom: 1.5rem;">
+          <button class="tab active" data-tab="overview" onclick="switchCatalogProductTab('overview')">Overview</button>
+          <button class="tab" data-tab="estimation" onclick="switchCatalogProductTab('estimation')">Estimation</button>
+          <button class="tab" data-tab="scheduling" onclick="switchCatalogProductTab('scheduling')">Scheduling</button>
+          <button class="tab" data-tab="trades" onclick="switchCatalogProductTab('trades')">Trades</button>
+          <button class="tab" data-tab="permits" onclick="switchCatalogProductTab('permits')">Permits & Warranty</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="tab-overview" class="tab-content active">
+          <div style="display: flex; gap: 2rem;">
+            <!-- Product Image -->
+            <div style="flex: 0 0 350px;">
+              <div id="catalogProductImage" style="width: 350px; height: 262px; background: var(--bg-secondary); border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+              </div>
+            </div>
+            <!-- Product Info -->
+            <div style="flex: 1;">
+              <div style="margin-bottom: 1rem;">
+                <span id="catalogProductPrice" style="font-size: 2rem; font-weight: 600; color: var(--accent-green);"></span>
+                <span id="catalogProductUnit" style="color: var(--text-secondary); font-size: 1.25rem;"></span>
+              </div>
+              <div id="catalogProductVendor" style="margin-bottom: 0.5rem; color: var(--text-secondary);"></div>
+              <div id="catalogProductModel" style="margin-bottom: 1rem; color: var(--text-secondary);"></div>
+              <div id="catalogProductDescription" style="margin-bottom: 1rem; line-height: 1.6;"></div>
+
+              <!-- Quick Stats -->
+              <div class="product-quick-stats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 1.5rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
+                <div class="stat-item">
+                  <span class="stat-label" style="display: block; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Lead Time</span>
+                  <span class="stat-value" id="statLeadTime" style="font-size: 1.125rem; font-weight: 600;">-</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label" style="display: block; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Labor</span>
+                  <span class="stat-value" id="statLabor" style="font-size: 1.125rem; font-weight: 600;">-</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label" style="display: block; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Warranty</span>
+                  <span class="stat-value" id="statWarranty" style="font-size: 1.125rem; font-weight: 600;">-</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label" style="display: block; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Permit</span>
+                  <span class="stat-value" id="statPermit" style="font-size: 1.125rem; font-weight: 600;">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add to Allowance Section -->
+          <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+            <h4 style="margin-bottom: 1rem;">Add to Allowance</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="catalogProductJob">Job *</label>
+                <select id="catalogProductJob" class="form-select" required>
+                  <option value="">Select a job</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="catalogProductAllowance">Allowance *</label>
+                <select id="catalogProductAllowance" class="form-select" required>
+                  <option value="">Select an allowance</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 0 0 100px;">
+                <label for="catalogProductQty">Qty *</label>
+                <input type="number" id="catalogProductQty" class="form-input" value="1" min="0.01" step="0.01">
+              </div>
+              <div class="form-group" style="flex: 0 0 auto; align-self: flex-end;">
+                <button type="button" class="btn btn-primary" onclick="addCatalogProductToAllowance()">Add to Allowance</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Estimation Tab -->
+        <div id="tab-estimation" class="tab-content" style="display: none;">
+          <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+            <h4 style="margin-bottom: 1.5rem;">Material & Coverage</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Coverage Rate</label>
+                <div class="input-group">
+                  <input type="number" id="editCoverageRate" class="form-input" step="0.01" disabled>
+                  <select id="editCoverageUnit" class="form-select" disabled style="max-width: 100px;">
+                    <option value="">Unit</option>
+                    <option value="sqft">sqft</option>
+                    <option value="lnft">lnft</option>
+                    <option value="sqm">sqm</option>
+                    <option value="each">each</option>
+                  </select>
+                </div>
+                <small class="form-text">How much area one unit covers</small>
+              </div>
+              <div class="form-group">
+                <label>Waste Factor (%)</label>
+                <input type="number" id="editWasteFactor" class="form-input" step="0.1" min="0" disabled>
+                <small class="form-text">Extra material needed (e.g., 10 = 10%)</small>
+              </div>
+              <div class="form-group">
+                <label>Quality Tier</label>
+                <select id="editQualityTier" class="form-select" disabled>
+                  <option value="builder">Builder Grade</option>
+                  <option value="standard">Standard</option>
+                  <option value="premium">Premium</option>
+                </select>
+              </div>
+            </div>
+
+            <h4 style="margin: 2rem 0 1.5rem;">Labor</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Labor Hours</label>
+                <input type="number" id="editLaborHours" class="form-input" step="0.25" min="0" disabled>
+                <small class="form-text">Hours to install one unit</small>
+              </div>
+              <div class="form-group">
+                <label>Install Duration (hours)</label>
+                <input type="number" id="editInstallDuration" class="form-input" step="0.25" min="0" disabled>
+                <small class="form-text">Total duration including setup/drying</small>
+              </div>
+              <div class="form-group">
+                <label>Crew Size</label>
+                <input type="number" id="editCrewSize" class="form-input" min="1" disabled>
+                <small class="form-text">Typical crew for installation</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scheduling Tab -->
+        <div id="tab-scheduling" class="tab-content" style="display: none;">
+          <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+            <h4 style="margin-bottom: 1.5rem;">Lead Time</h4>
+            <div class="form-row">
+              <div class="form-group" style="max-width: 200px;">
+                <label>Lead Time (days)</label>
+                <input type="number" id="editLeadTime" class="form-input" min="0" disabled>
+                <small class="form-text">Days from order to delivery</small>
+              </div>
+            </div>
+
+            <h4 style="margin: 2rem 0 1.5rem;">Dependencies</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">Define what must happen before or after this item is installed.</p>
+            <div id="dependenciesList" style="margin-bottom: 1rem;">
+              <!-- Dependencies rendered here -->
+            </div>
+            <button class="btn btn-sm btn-secondary" id="btnAddDependency" onclick="openAddDependencyModal()" disabled>+ Add Dependency</button>
+          </div>
+        </div>
+
+        <!-- Trades Tab -->
+        <div id="tab-trades" class="tab-content" style="display: none;">
+          <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+            <h4 style="margin-bottom: 1.5rem;">Linked Trades</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">Trades that perform or support installation of this item.</p>
+            <div id="tradesList" style="margin-bottom: 1rem;">
+              <!-- Trades rendered here -->
+            </div>
+            <button class="btn btn-sm btn-secondary" id="btnAddTrade" onclick="openAddTradeModal()" disabled>+ Link Trade</button>
+          </div>
+        </div>
+
+        <!-- Permits & Warranty Tab -->
+        <div id="tab-permits" class="tab-content" style="display: none;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+              <h4 style="margin-bottom: 1.5rem;">Permit Requirements</h4>
+              <div class="form-group">
+                <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem;">
+                  <input type="checkbox" id="editRequiresPermit" disabled>
+                  <span>Requires Permit</span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>Permit Type</label>
+                <select id="editPermitType" class="form-select" disabled>
+                  <option value="">None</option>
+                  <option value="electrical">Electrical</option>
+                  <option value="plumbing">Plumbing</option>
+                  <option value="mechanical">Mechanical</option>
+                  <option value="building">Building</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem;">
+                  <input type="checkbox" id="editRoughInRequired" disabled>
+                  <span>Rough-In Required</span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>Rough-In Notes</label>
+                <textarea id="editRoughInNotes" class="form-input" rows="3" disabled></textarea>
+              </div>
+            </div>
+
+            <div class="detail-card" style="padding: 1.5rem; background: var(--bg-card); border-radius: 8px;">
+              <h4 style="margin-bottom: 1.5rem;">Warranty Information</h4>
+              <div class="form-group">
+                <label>Warranty Duration (months)</label>
+                <input type="number" id="editWarrantyMonths" class="form-input" min="0" disabled>
+              </div>
+              <div class="form-group">
+                <label>Warranty Notes</label>
+                <textarea id="editWarrantyNotes" class="form-input" rows="4" disabled></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" id="catalogProductFooter">
+        <button type="button" class="btn btn-secondary" onclick="closeCatalogProductModal()">Close</button>
+        <button type="button" class="btn btn-primary" id="btnSaveCatalogProduct" onclick="saveCatalogProduct()" style="display: none;">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Trade Modal -->
+  <div id="addTradeModal" class="modal modal-centered">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h3>Link Trade</h3>
+        <button class="modal-close" onclick="closeAddTradeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Trade *</label>
+          <select id="addTradeSelect" class="form-select" required>
+            <option value="">Select a trade</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem;">
+            <input type="checkbox" id="addTradeIsPrimary">
+            <span>Primary Trade</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Labor Hours Override</label>
+          <input type="number" id="addTradeLaborHours" class="form-input" step="0.25" min="0" placeholder="Use default">
+        </div>
+        <div class="form-group">
+          <label>Hourly Rate Override ($)</label>
+          <input type="number" id="addTradeHourlyRate" class="form-input" step="0.01" min="0" placeholder="Use default">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="addTradeNotes" class="form-input" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAddTradeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveTrade()">Add Trade</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Dependency Modal -->
+  <div id="addDependencyModal" class="modal modal-centered">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h3>Add Dependency</h3>
+        <button class="modal-close" onclick="closeAddDependencyModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Dependency Type *</label>
+          <select id="addDepType" class="form-select" required>
+            <option value="must_follow">Must Follow (install AFTER)</option>
+            <option value="must_precede">Must Precede (install BEFORE)</option>
+            <option value="incompatible">Incompatible (cannot both be selected)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Target Type</label>
+          <select id="addDepTargetType" class="form-select" onchange="toggleDepTarget()">
+            <option value="category">Category (all items in category)</option>
+            <option value="item">Specific Item</option>
+          </select>
+        </div>
+        <div class="form-group" id="depCategoryGroup">
+          <label>Category</label>
+          <select id="addDepCategory" class="form-select">
+            <option value="">Select a category</option>
+          </select>
+        </div>
+        <div class="form-group" id="depItemGroup" style="display: none;">
+          <label>Item</label>
+          <select id="addDepItem" class="form-select">
+            <option value="">Select an item</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Gap Days</label>
+          <input type="number" id="addDepGapDays" class="form-input" min="0" value="0">
+          <small class="form-text">Required days between installations</small>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="addDepNotes" class="form-input" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAddDependencyModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveDependency()">Add Dependency</button>
       </div>
     </div>
   </div>
