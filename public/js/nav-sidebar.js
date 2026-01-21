@@ -64,6 +64,7 @@
         { id: 'overhead', label: 'Overhead Allocation', href: 'overhead.html' },
         { id: 'profitability', label: 'Job Profitability', href: 'profitability.html' },
         { id: 'wip', label: 'WIP Schedule', href: 'wip.html' },
+        { id: 'pnl', label: 'Company P&L', href: 'pnl.html' },
         { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' },
         { id: 'price-intel', label: 'Price Intelligence', href: 'price-intelligence.html' }
       ]

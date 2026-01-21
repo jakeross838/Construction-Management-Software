@@ -31889,3 +31889,171 @@ td.empty-state {
 .empty-state p {
   margin-bottom: 1rem;
 }
+
+/* ===========================================
+   COMPANY P&L STYLES
+   =========================================== */
+
+/* P&L Summary Cards */
+.pnl-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1200px) {
+  .pnl-summary-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .pnl-summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.summary-card.highlight {
+  border: 1px solid var(--accent-green);
+  background: rgba(63, 185, 80, 0.05);
+}
+
+.summary-value.loss {
+  color: var(--accent-red);
+}
+
+/* P&L Statement */
+.pnl-statement {
+  padding: 0.5rem 0;
+}
+
+.pnl-section {
+  margin-bottom: 1.5rem;
+}
+
+.pnl-header {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.5rem;
+}
+
+.pnl-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  color: var(--foreground);
+}
+
+.pnl-row.total {
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+}
+
+.pnl-row.gross-profit,
+.pnl-row.operating-income,
+.pnl-row.net-income {
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 0.75rem 0;
+}
+
+.pnl-row.positive {
+  color: var(--accent-green);
+}
+
+.pnl-row.negative {
+  color: var(--accent-red);
+}
+
+.pnl-row small {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+/* Top Jobs List */
+.top-jobs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.top-job-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.job-rank {
+  width: 28px;
+  height: 28px;
+  background: var(--bg-card-elevated);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.top-job-item:nth-child(-n+3) .job-rank {
+  background: var(--accent-green);
+  color: #000;
+}
+
+.job-info {
+  flex: 1;
+}
+
+.job-info .job-name {
+  font-weight: 500;
+  color: var(--foreground);
+  margin-bottom: 0.25rem;
+}
+
+.job-info .job-profit {
+  font-size: 0.9rem;
+}
+
+.job-info .job-profit.positive {
+  color: var(--accent-green);
+}
+
+.job-info .job-profit.negative {
+  color: var(--accent-red);
+}
+
+.job-info .margin {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.job-contract {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Comparison Table */
+.comparison-table .positive {
+  color: var(--accent-green);
+}
+
+.comparison-table .negative {
+  color: var(--accent-red);
+}
+
+.comparison-table .total-row {
+  background: var(--bg-secondary);
+  border-top: 2px solid var(--border);
+}
