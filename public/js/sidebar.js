@@ -12,6 +12,48 @@
 
   const URL_PARAM = 'job'; // URL parameter for job selection (?job=uuid)
 
+  // Company-context pages where job sidebar should NOT appear
+  const COMPANY_CONTEXT_PAGES = [
+    'dashboard.html',
+    'business-dashboard.html',
+    'catalog.html',
+    'vendors.html',
+    'cost-codes.html',
+    'employees.html',
+    'crew-schedule.html',
+    'timesheets.html',
+    'companies.html',
+    'contacts.html',
+    'price-intelligence.html',
+    'expenses.html',
+    'financial-periods.html',
+    'overhead.html',
+    'profitability.html',
+    'wip.html',
+    'pnl.html',
+    'cash-flow.html',
+    'business-planning.html'
+  ];
+
+  // Detect page context (job vs company)
+  function getPageContext() {
+    // Check data attribute first
+    const bodyContext = document.body.dataset.pageContext;
+    if (bodyContext === 'job' || bodyContext === 'company') {
+      return bodyContext;
+    }
+
+    // Check if NavSidebar has detection (prefer unified source)
+    if (window.NavSidebar && typeof window.NavSidebar.detectPageContext === 'function') {
+      return window.NavSidebar.detectPageContext();
+    }
+
+    // Fallback to local list
+    const path = window.location.pathname;
+    const filename = path.split('/').pop() || 'index.html';
+    return COMPANY_CONTEXT_PAGES.includes(filename) ? 'company' : 'job';
+  }
+
   // Sidebar State
   const SidebarState = {
     jobs: [],
@@ -27,6 +69,15 @@
 
   function init() {
     if (SidebarState.isInitialized) return;
+
+    // Check if this page should have job sidebar
+    const pageContext = getPageContext();
+    if (pageContext !== 'job') {
+      console.log('[Sidebar] Company context page - sidebar disabled');
+      SidebarState.isInitialized = true;
+      // Still set up the API so listeners don't error
+      return;
+    }
 
     // Load persisted state
     loadPersistedState();
@@ -120,43 +171,41 @@
     const sidebar = document.createElement('aside');
     sidebar.className = 'job-sidebar';
     sidebar.id = 'jobSidebar';
-    sidebar.innerHTML = `
-      <div class="sidebar-header">
-        <h3 class="sidebar-title">Jobs</h3>
-        <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar (Ctrl+B)">
-          <svg class="sidebar-toggle-icon" viewBox="0 0 24 24" width="20" height="20">
-            <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-      <div class="sidebar-content">
-        <div class="sidebar-search">
-          <input type="text" id="jobSearchInput" placeholder="Search jobs..." class="sidebar-search-input">
-        </div>
-        <div class="job-list" id="jobList">
-          <div class="job-item all-jobs" data-job-id="">
-            <span class="job-item-icon">
-              <svg viewBox="0 0 24 24" width="16" height="16">
-                <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" fill="currentColor"/>
-              </svg>
-            </span>
-            <span class="job-item-name">All Jobs</span>
-            <span class="job-item-count" id="allJobsCount">-</span>
-          </div>
-          <div class="job-list-items" id="jobListItems">
-            <div class="sidebar-loading">Loading jobs...</div>
-          </div>
-        </div>
-      </div>
-      <div class="sidebar-collapsed-indicator">
-        <span class="collapsed-job-icon">
-          <svg viewBox="0 0 24 24" width="20" height="20">
-            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z" fill="currentColor"/>
-          </svg>
-        </span>
-        <span class="collapsed-job-name" id="collapsedJobName">All</span>
-      </div>
-    `;
+    sidebar.innerHTML = '<div class="sidebar-header">' +
+      '<h3 class="sidebar-title">Jobs</h3>' +
+      '<button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar (Ctrl+B)">' +
+        '<svg class="sidebar-toggle-icon" viewBox="0 0 24 24" width="20" height="20">' +
+          '<path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>' +
+      '</button>' +
+    '</div>' +
+    '<div class="sidebar-content">' +
+      '<div class="sidebar-search">' +
+        '<input type="text" id="jobSearchInput" placeholder="Search jobs..." class="sidebar-search-input">' +
+      '</div>' +
+      '<div class="job-list" id="jobList">' +
+        '<div class="job-item all-jobs" data-job-id="">' +
+          '<span class="job-item-icon">' +
+            '<svg viewBox="0 0 24 24" width="16" height="16">' +
+              '<path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" fill="currentColor"/>' +
+            '</svg>' +
+          '</span>' +
+          '<span class="job-item-name">All Jobs</span>' +
+          '<span class="job-item-count" id="allJobsCount">-</span>' +
+        '</div>' +
+        '<div class="job-list-items" id="jobListItems">' +
+          '<div class="sidebar-loading">Loading jobs...</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="sidebar-collapsed-indicator">' +
+      '<span class="collapsed-job-icon">' +
+        '<svg viewBox="0 0 24 24" width="20" height="20">' +
+          '<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z" fill="currentColor"/>' +
+        '</svg>' +
+      '</span>' +
+      '<span class="collapsed-job-name" id="collapsedJobName">All</span>' +
+    '</div>';
     return sidebar;
   }
 
@@ -168,11 +217,9 @@
     toggle.className = 'mobile-sidebar-toggle';
     toggle.id = 'mobileSidebarToggle';
     toggle.title = 'Toggle job sidebar';
-    toggle.innerHTML = `
-      <svg viewBox="0 0 24 24" width="20" height="20">
-        <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" fill="currentColor"/>
-      </svg>
-    `;
+    toggle.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20">' +
+      '<path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" fill="currentColor"/>' +
+    '</svg>';
     headerBrand.prepend(toggle);
 
     // Add overlay for mobile
@@ -225,13 +272,14 @@
       return a.name.localeCompare(b.name);
     });
 
-    container.innerHTML = sortedJobs.map(job => `
-      <div class="job-item ${job.id === SidebarState.selectedJobId ? 'active' : ''}"
-           data-job-id="${job.id}" title="${job.name}">
-        <span class="job-item-status ${job.status || 'active'}"></span>
-        <span class="job-item-name">${escapeHtml(job.name)}</span>
-      </div>
-    `).join('');
+    container.innerHTML = sortedJobs.map(job => {
+      const activeClass = job.id === SidebarState.selectedJobId ? 'active' : '';
+      const statusClass = job.status || 'active';
+      return '<div class="job-item ' + activeClass + '" data-job-id="' + job.id + '" title="' + job.name + '">' +
+        '<span class="job-item-status ' + statusClass + '"></span>' +
+        '<span class="job-item-name">' + escapeHtml(job.name) + '</span>' +
+      '</div>';
+    }).join('');
 
     // Update "All Jobs" active state
     updateAllJobsState();
@@ -405,6 +453,13 @@
   // ============================================================
 
   function onJobChange(callback) {
+    // If we're on a company page, don't register listeners but don't error
+    if (getPageContext() !== 'job') {
+      // Call with null/empty immediately to indicate no job context
+      callback('', null);
+      return () => {}; // No-op unsubscribe
+    }
+
     SidebarState.listeners.push(callback);
 
     // Call immediately with current state if jobs are loaded
@@ -431,11 +486,19 @@
   }
 
   function getSelectedJob() {
+    // On company pages, always return null
+    if (getPageContext() !== 'job') {
+      return null;
+    }
     if (!SidebarState.selectedJobId) return null;
     return SidebarState.jobs.find(j => j.id === SidebarState.selectedJobId) || null;
   }
 
   function getSelectedJobId() {
+    // On company pages, always return empty (no job filter)
+    if (getPageContext() !== 'job') {
+      return '';
+    }
     return SidebarState.selectedJobId;
   }
 
