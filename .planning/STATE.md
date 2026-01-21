@@ -9,14 +9,17 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 78 of 87 (Financial Foundation & Periods)
+Phase: 79 of 87 (Expense Tracking Enhancements)
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-01-20 — Roadmap created (10 phases, 46 requirements)
+Last activity: 2026-01-20 — Phase 78 completed
 
-Progress: [          ] 0% (Phase 78 ready to plan)
+Progress: [#         ] 10% (Phase 78 complete, Phase 79 ready)
 
 ## Performance Metrics
+
+**v3.1 Milestone (in progress):**
+- Phase 78: 1 plan, 10 tasks, 2 commits
 
 **v3.0 Milestone (completed):**
 - Phases: 9 (70-77)
@@ -39,9 +42,14 @@ Research findings:
 - Labor burden adds 30-60% to base wages
 - Quarterly burden review = 12-18% better cost control (AGC)
 
+Phase 78 decisions:
+- Auto-period assignment: Expenses auto-assigned to matching open period by date
+- Period locking: Closed periods automatically locked
+- Overhead types: office, fleet, equipment, admin, other
+
 ### Pending Todos
 
-None — roadmap created, ready to plan Phase 78.
+None — Phase 78 complete, ready for Phase 79.
 
 ### Blockers/Concerns
 
@@ -50,17 +58,17 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: v3.1 milestone started
+Stopped at: Phase 78 complete
 Resume file: None
 
 ## Next Actions
 
-1. `/gsd:plan-phase 78` — Plan Financial Foundation & Periods phase
-2. `/gsd:execute-phase 78` — Execute the phase
+1. `/gsd:plan-phase 79` — Plan Expense Tracking Enhancements phase
+2. `/gsd:execute-phase 79` — Execute the phase
 
 ## Milestone History
 
-- **v3.1 Business Intelligence & Financial Management** (in progress): Started 2026-01-20
+- **v3.1 Business Intelligence & Financial Management** (in progress): Started 2026-01-20, Phase 78 complete
 - **v3.0 Smart Catalog & Estimation Engine** (shipped 2026-01-20): 9 phases (70-77)
 - **v2.1 Selections & Navigation Polish** (shipped 2026-01-20): 5 phases (65-69)
 - **v2.0 Business Operating System** (shipped 2026-01-19): 8 phases (57-64)

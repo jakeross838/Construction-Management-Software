@@ -203,7 +203,7 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| 78. Financial Foundation | TBD | Not started | - |
+| 78. Financial Foundation | 1 | Complete | 2026-01-20 |
 | 79. Expense Tracking | TBD | Not started | - |
 | 80. Employee & Labor Setup | TBD | Not started | - |
 | 81. Digital Timesheets | TBD | Not started | - |

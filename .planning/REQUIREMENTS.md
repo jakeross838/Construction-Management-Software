@@ -9,12 +9,12 @@ Requirements for Business Intelligence & Financial Management milestone. Each ma
 
 ### Expense Tracking
 
-- [ ] **EXP-01**: Admin can enter non-invoice expenses (amount, vendor, category, date, notes)
-- [ ] **EXP-02**: Admin can categorize expenses by overhead type (office, fleet, equipment, admin)
-- [ ] **EXP-03**: Admin can open/close financial periods (monthly close with lock)
+- [x] **EXP-01**: Admin can enter non-invoice expenses (amount, vendor, category, date, notes)
+- [x] **EXP-02**: Admin can categorize expenses by overhead type (office, fleet, equipment, admin)
+- [x] **EXP-03**: Admin can open/close financial periods (monthly close with lock)
 - [ ] **EXP-04**: Admin can configure recurring expenses (auto-create monthly)
 - [ ] **EXP-05**: Admin can attach receipts/documents to expenses
-- [ ] **EXP-06**: Admin can view expense list with filters (period, category, vendor)
+- [x] **EXP-06**: Admin can view expense list with filters (period, category, vendor)
 
 ### Labor Tracking & Burden
 
@@ -126,12 +126,12 @@ Which phases cover which requirements. Updated by create-roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| EXP-01 | Phase 78 | Pending |
-| EXP-02 | Phase 78 | Pending |
-| EXP-03 | Phase 78 | Pending |
+| EXP-01 | Phase 78 | Complete |
+| EXP-02 | Phase 78 | Complete |
+| EXP-03 | Phase 78 | Complete |
 | EXP-04 | Phase 79 | Pending |
 | EXP-05 | Phase 79 | Pending |
-| EXP-06 | Phase 78 | Pending |
+| EXP-06 | Phase 78 | Complete |
 | LAB-01 | Phase 81 | Pending |
 | LAB-02 | Phase 80 | Pending |
 | LAB-03 | Phase 80 | Pending |
