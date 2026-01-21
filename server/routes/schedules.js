@@ -559,21 +559,305 @@ router.get('/:id/gantt', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// PHASE 102: BASELINE SCHEDULES
+// ============================================================
+
+// Set baseline snapshot
+router.post('/:id/set-baseline', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { set_by, force } = req.body;
+
+  // Check if baseline already exists
+  const { data: schedule, error: fetchError } = await supabase
+    .from('v2_schedules')
+    .select('baseline_set_at, baseline_set_by')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) {
+    if (fetchError.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+    throw fetchError;
+  }
+
+  // Warn if baseline already exists (unless force=true)
+  if (schedule.baseline_set_at && !force) {
+    return res.status(409).json({
+      error: 'Baseline already exists',
+      existing_baseline: {
+        set_at: schedule.baseline_set_at,
+        set_by: schedule.baseline_set_by
+      },
+      message: 'Use force: true to overwrite existing baseline'
+    });
+  }
+
+  // Call copy_to_baseline RPC
+  const { error } = await supabase.rpc('copy_to_baseline', {
+    p_schedule_id: id,
+    p_set_by: set_by || 'System'
+  });
+
+  if (error) throw error;
+
+  // Get updated schedule
+  const { data: updated } = await supabase
+    .from('v2_schedules')
+    .select('baseline_set_at, baseline_set_by')
+    .eq('id', id)
+    .single();
+
+  await logScheduleActivity(id, null, 'baseline_set', set_by, {
+    force: !!force,
+    previous_baseline: schedule.baseline_set_at
+  });
+
+  res.json({
+    success: true,
+    baseline_set_at: updated.baseline_set_at,
+    baseline_set_by: updated.baseline_set_by
+  });
+}));
+
+// Get baseline variance comparison
+router.get('/:id/baseline', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get schedule info
+  const { data: schedule, error: scheduleError } = await supabase
+    .from('v2_schedules')
+    .select('id, baseline_set_at, baseline_set_by')
+    .eq('id', id)
+    .single();
+
+  if (scheduleError) {
+    if (scheduleError.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+    throw scheduleError;
+  }
+
+  if (!schedule.baseline_set_at) {
+    return res.status(404).json({
+      error: 'No baseline set',
+      message: 'Use POST /:id/set-baseline to capture a baseline first'
+    });
+  }
+
+  // Get tasks with baseline data
+  const { data: tasks, error: tasksError } = await supabase
+    .from('v2_schedule_tasks')
+    .select('id, name, baseline_start, baseline_end, planned_start, planned_end, status, completion_percent, sort_order')
+    .eq('schedule_id', id)
+    .order('sort_order');
+
+  if (tasksError) throw tasksError;
+
+  // Calculate variance for each task
+  const tasksWithVariance = (tasks || []).map(task => {
+    let variance_days = 0;
+    if (task.baseline_end && task.planned_end) {
+      const baselineEnd = new Date(task.baseline_end);
+      const plannedEnd = new Date(task.planned_end);
+      variance_days = Math.round((plannedEnd - baselineEnd) / (1000 * 60 * 60 * 24));
+    }
+    return {
+      ...task,
+      variance_days
+    };
+  });
+
+  // Calculate summary
+  const tasksWithBaseline = tasksWithVariance.filter(t => t.baseline_end);
+  const summary = {
+    total_tasks: tasksWithVariance.length,
+    tasks_with_baseline: tasksWithBaseline.length,
+    on_schedule: tasksWithBaseline.filter(t => t.variance_days === 0).length,
+    behind_schedule: tasksWithBaseline.filter(t => t.variance_days > 0).length,
+    ahead_schedule: tasksWithBaseline.filter(t => t.variance_days < 0).length,
+    total_variance_days: tasksWithBaseline.reduce((sum, t) => sum + t.variance_days, 0)
+  };
+
+  res.json({
+    schedule_id: id,
+    baseline_set_at: schedule.baseline_set_at,
+    baseline_set_by: schedule.baseline_set_by,
+    tasks: tasksWithVariance,
+    summary
+  });
+}));
+
+// ============================================================
 // PHASE 73: SCHEDULE INTELLIGENCE
 // ============================================================
 
-// Get templates
+// Get templates (list)
 router.get('/templates', asyncHandler(async (req, res) => {
   const { data: templates, error } = await supabase
     .from('v2_schedule_templates')
-    .select('*')
+    .select(`
+      *,
+      task_count:v2_schedule_template_tasks(count)
+    `)
     .order('is_default', { ascending: false })
     .order('name');
 
   if (error) throw error;
-  res.json(templates || []);
+
+  // Flatten count
+  const templatesWithCount = (templates || []).map(t => ({
+    ...t,
+    task_count: t.task_count?.[0]?.count || 0
+  }));
+
+  res.json(templatesWithCount);
 }));
 
+// Get single template with tasks
+router.get('/templates/:templateId', asyncHandler(async (req, res) => {
+  const { templateId } = req.params;
+
+  const { data: template, error: templateError } = await supabase
+    .from('v2_schedule_templates')
+    .select('*')
+    .eq('id', templateId)
+    .single();
+
+  if (templateError) {
+    if (templateError.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    throw templateError;
+  }
+
+  // Get template tasks
+  const { data: tasks } = await supabase
+    .from('v2_schedule_template_tasks')
+    .select('*')
+    .eq('template_id', templateId)
+    .order('sort_order');
+
+  // Get template dependencies
+  const { data: dependencies } = await supabase
+    .from('v2_schedule_template_dependencies')
+    .select('*')
+    .eq('template_id', templateId);
+
+  res.json({
+    ...template,
+    tasks: tasks || [],
+    dependencies: dependencies || []
+  });
+}));
+
+// Save schedule as template
+router.post('/templates/from-schedule', asyncHandler(async (req, res) => {
+  const { source_schedule_id, name, description, project_type, created_by } = req.body;
+
+  if (!source_schedule_id) {
+    return res.status(400).json({ error: 'source_schedule_id is required' });
+  }
+  if (!name) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+
+  // Call RPC to save template
+  const { data: templateId, error } = await supabase.rpc('save_schedule_as_template', {
+    p_source_schedule_id: source_schedule_id,
+    p_name: name,
+    p_description: description || null,
+    p_project_type: project_type || 'residential',
+    p_created_by: created_by || 'System'
+  });
+
+  if (error) throw error;
+
+  // Get task count
+  const { data: taskCount } = await supabase
+    .from('v2_schedule_template_tasks')
+    .select('id', { count: 'exact' })
+    .eq('template_id', templateId);
+
+  res.status(201).json({
+    success: true,
+    template_id: templateId,
+    task_count: taskCount?.length || 0
+  });
+}));
+
+// Apply template to job
+router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
+  const { templateId } = req.params;
+  const { job_id, start_date, created_by } = req.body;
+
+  if (!job_id) {
+    return res.status(400).json({ error: 'job_id is required' });
+  }
+  if (!start_date) {
+    return res.status(400).json({ error: 'start_date is required' });
+  }
+
+  // Check if job already has schedule
+  const { data: existing } = await supabase
+    .from('v2_schedules')
+    .select('id')
+    .eq('job_id', job_id)
+    .single();
+
+  if (existing) {
+    return res.status(409).json({
+      error: 'Job already has a schedule',
+      existing_schedule_id: existing.id,
+      message: 'Delete the existing schedule first or use a different job'
+    });
+  }
+
+  // Call RPC to apply template
+  const { data: scheduleId, error } = await supabase.rpc('apply_template_to_job', {
+    p_template_id: templateId,
+    p_job_id: job_id,
+    p_start_date: start_date,
+    p_created_by: created_by || 'System'
+  });
+
+  if (error) throw error;
+
+  // Get created schedule with tasks
+  const { data: schedule } = await supabase
+    .from('v2_schedules')
+    .select(`
+      *,
+      job:v2_jobs(id, name),
+      tasks:v2_schedule_tasks(id, name, planned_start, planned_end)
+    `)
+    .eq('id', scheduleId)
+    .single();
+
+  res.status(201).json({
+    success: true,
+    schedule_id: scheduleId,
+    tasks_created: schedule?.tasks?.length || 0,
+    schedule
+  });
+}));
+
+// Delete template
+router.delete('/templates/:templateId', asyncHandler(async (req, res) => {
+  const { templateId } = req.params;
+
+  // Cascade deletes template_tasks and template_dependencies due to FK constraints
+  const { error } = await supabase
+    .from('v2_schedule_templates')
+    .delete()
+    .eq('id', templateId);
+
+  if (error) throw error;
+
+  res.json({ success: true });
+}));
+
+// Generate schedule from selections
 // Generate schedule from selections
 router.post('/jobs/:jobId/generate-from-selections', asyncHandler(async (req, res) => {
   const { jobId } = req.params;
