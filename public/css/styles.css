@@ -32057,3 +32057,147 @@ td.empty-state {
   background: var(--bg-secondary);
   border-top: 2px solid var(--border);
 }
+
+/* ===========================================
+   CASH FLOW STYLES
+   =========================================== */
+
+/* Cash Flow Summary */
+.cash-flow-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1000px) {
+  .cash-flow-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.summary-value.inflow {
+  color: var(--accent-green);
+}
+
+.summary-value.outflow {
+  color: var(--accent-red);
+}
+
+.summary-value.positive {
+  color: var(--accent-green);
+}
+
+.summary-value.negative {
+  color: var(--accent-red);
+}
+
+/* Payment List */
+.payment-list,
+.receipt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.payment-item,
+.receipt-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.payment-urgency {
+  width: 4px;
+  height: 40px;
+  border-radius: 2px;
+}
+
+.payment-urgency.overdue {
+  background: var(--accent-red);
+}
+
+.payment-urgency.due_soon {
+  background: var(--accent-orange);
+}
+
+.payment-urgency.upcoming {
+  background: var(--accent-green);
+}
+
+.payment-info,
+.receipt-info {
+  flex: 1;
+}
+
+.payment-vendor,
+.receipt-job {
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.payment-job,
+.payment-invoice,
+.receipt-client,
+.receipt-draw {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.payment-details,
+.receipt-details {
+  text-align: right;
+}
+
+.payment-amount,
+.receipt-amount {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.payment-due,
+.receipt-expected {
+  font-size: 0.85rem;
+}
+
+.payment-due.overdue {
+  color: var(--accent-red);
+}
+
+.payment-due.due_soon {
+  color: var(--accent-orange);
+}
+
+/* Forecast Table Colors */
+#forecastTable .inflow {
+  color: var(--accent-green);
+}
+
+#forecastTable .outflow {
+  color: var(--accent-red);
+}
+
+#forecastTable .positive {
+  color: var(--accent-green);
+}
+
+#forecastTable .negative {
+  color: var(--accent-red);
+}
+
+/* Checkbox Label */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent-blue);
+}
