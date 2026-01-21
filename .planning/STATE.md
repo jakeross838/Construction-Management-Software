@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: Not started (run /gsd:define-requirements)
+Phase: Not started (run /gsd:create-roadmap)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-01-20 — Milestone v3.1 started
+Status: Requirements defined
+Last activity: 2026-01-20 — Requirements defined (46 across 8 categories)
 
-Progress: [          ] 0% (Requirements phase)
+Progress: [=         ] 10% (Requirements complete, roadmap next)
 
 ## Performance Metrics
 
@@ -41,7 +41,7 @@ Research findings:
 
 ### Pending Todos
 
-None yet — defining requirements.
+None — requirements defined, ready for roadmap.
 
 ### Blockers/Concerns
 
@@ -55,8 +55,8 @@ Resume file: None
 
 ## Next Actions
 
-1. `/gsd:define-requirements` — Define checkable requirements for v3.1
-2. `/gsd:create-roadmap` — Create phases from requirements
+1. `/gsd:create-roadmap` — Create phases from requirements
+2. `/gsd:plan-phase` — Plan first phase for execution
 
 ## Milestone History
 
