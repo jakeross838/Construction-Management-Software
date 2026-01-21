@@ -31722,3 +31722,170 @@ td.empty-state {
 .checkbox-grid input[type="checkbox"] {
   accent-color: var(--accent-blue);
 }
+
+/* ===========================================
+   WIP SCHEDULE STYLES
+   =========================================== */
+
+/* WIP Summary Cards */
+.wip-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1400px) {
+  .wip-summary-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .wip-summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.summary-card.overbilling {
+  border-left: 3px solid var(--accent-red);
+}
+
+.summary-card.underbilling {
+  border-left: 3px solid var(--accent-blue);
+}
+
+/* WIP Table Styles */
+.wip-table .job-name {
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.wip-table .job-client {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.wip-table .overbilled {
+  color: var(--accent-red);
+}
+
+.wip-table .underbilled {
+  color: var(--accent-blue);
+}
+
+.wip-table .margin-sub {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.wip-table .totals-row {
+  background: var(--bg-secondary);
+  border-top: 2px solid var(--border);
+}
+
+/* Progress Cell */
+.progress-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progress-bar-mini {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 50px;
+}
+
+.progress-bar-mini .progress-fill {
+  height: 100%;
+  background: var(--accent-blue);
+  border-radius: 3px;
+}
+
+.progress-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-width: 35px;
+  text-align: right;
+}
+
+/* Large Progress Bar for Detail Modal */
+.progress-bar-large {
+  height: 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.progress-bar-large .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+/* WIP Detail Grid */
+.wip-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 1000px) {
+  .wip-detail-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .wip-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detail-row.total {
+  font-weight: 600;
+  border-top: 2px solid var(--border);
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+}
+
+/* Report Summary */
+.report-summary {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.report-summary .summary-card {
+  flex: 1;
+}
+
+/* Text Colors */
+.text-danger {
+  color: var(--accent-red) !important;
+}
+
+.text-success {
+  color: var(--accent-green) !important;
+}
+
+.text-info {
+  color: var(--accent-blue) !important;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: var(--text-secondary);
+}
+
+.empty-state p {
+  margin-bottom: 1rem;
+}

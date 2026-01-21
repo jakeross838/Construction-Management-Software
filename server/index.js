@@ -164,6 +164,7 @@ const employeeRoutes = require('./routes/employees');
 const timesheetRoutes = require('./routes/timesheets');
 const overheadRoutes = require('./routes/overhead');
 const profitabilityRoutes = require('./routes/profitability');
+const wipRoutes = require('./routes/wip');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -221,6 +222,7 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/timesheets', timesheetRoutes);
 app.use('/api/overhead', overheadRoutes);
 app.use('/api/profitability', profitabilityRoutes);
+app.use('/api/wip', wipRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete
