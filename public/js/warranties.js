@@ -530,7 +530,7 @@ async function submitClaim() {
     claim_date: document.getElementById('claimDate').value,
     claim_amount: document.getElementById('claimAmount').value || null,
     notes: document.getElementById('claimNotes').value || null,
-    created_by: 'Jake Ross'
+    created_by: window.currentUser || 'User'
   };
 
   if (!data.issue_description || !data.claim_date) {

@@ -296,7 +296,7 @@ function openCreateModal() {
   document.getElementById('taskId').value = '';
   document.getElementById('taskModalTitle').textContent = 'New Task';
   document.getElementById('taskForm').reset();
-  document.getElementById('taskCreatedBy').value = 'Jake Ross';
+  document.getElementById('taskCreatedBy').value = window.currentUser || 'User';
 
   const modal = document.getElementById('taskModal');
   modal.style.display = 'flex';
@@ -493,7 +493,7 @@ function editCurrentTask() {
   document.getElementById('taskAssignedTo').value = currentTask.assigned_to || '';
   document.getElementById('taskDueDate').value = currentTask.due_date || '';
   document.getElementById('taskStartDate').value = currentTask.start_date || '';
-  document.getElementById('taskCreatedBy').value = currentTask.created_by || 'Jake Ross';
+  document.getElementById('taskCreatedBy').value = currentTask.created_by || window.currentUser || 'User';
   document.getElementById('taskNotes').value = currentTask.notes || '';
 
   closeDetailModal();
@@ -733,7 +733,7 @@ async function addComment() {
     const res = await fetch(`/api/tasks/${currentTask.id}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, author: 'Jake Ross' })
+      body: JSON.stringify({ content, author: window.currentUser || 'User' })
     });
 
     if (!res.ok) throw new Error('Failed to add comment');
@@ -758,7 +758,7 @@ function openSubtaskModal() {
   document.getElementById('taskModalTitle').textContent = 'New Subtask';
   document.getElementById('taskForm').reset();
   document.getElementById('taskJob').value = currentTask.job_id || '';
-  document.getElementById('taskCreatedBy').value = 'Jake Ross';
+  document.getElementById('taskCreatedBy').value = window.currentUser || 'User';
 
   // Store parent task ID
   document.getElementById('taskId').dataset.parentId = currentTask.id;

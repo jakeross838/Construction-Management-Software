@@ -1183,8 +1183,8 @@ async function saveLog(status) {
     absent_crews: getAbsentEntries(),
     dumpster_exchange: document.getElementById('dumpsterExchange').checked,
     inspections: getInspectionEntries(),
-    created_by: 'Jake Ross',
-    updated_by: 'Jake Ross'
+    created_by: window.currentUser || 'User',
+    updated_by: window.currentUser || 'User'
   };
 
   try {
@@ -1215,7 +1215,7 @@ async function saveLog(status) {
       const completeRes = await fetch(`/api/daily-logs/${savedLog.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed_by: 'Jake Ross' })
+        body: JSON.stringify({ completed_by: window.currentUser || 'User' })
       });
 
       if (completeRes.ok) {
@@ -1248,7 +1248,7 @@ async function deleteLog() {
     const res = await fetch(`/api/daily-logs/${logId}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deleted_by: 'Jake Ross' })
+      body: JSON.stringify({ deleted_by: window.currentUser || 'User' })
     });
 
     if (!res.ok) throw new Error('Failed to delete daily log');
@@ -1550,7 +1550,7 @@ async function reopenLog() {
     const res = await fetch(`/api/daily-logs/${currentLog.id}/reopen`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reopened_by: 'Jake Ross' })
+      body: JSON.stringify({ reopened_by: window.currentUser || 'User' })
     });
 
     if (!res.ok) throw new Error('Failed to reopen daily log');
@@ -1677,7 +1677,7 @@ async function uploadPhoto(file, logId, category = 'progress') {
     const formData = new FormData();
     formData.append('photo', file);
     formData.append('category', category);
-    formData.append('uploaded_by', 'Jake Ross');
+    formData.append('uploaded_by', window.currentUser || 'User');
 
     const res = await fetch(`/api/daily-logs/${logId}/photos`, {
       method: 'POST',
@@ -1836,7 +1836,7 @@ async function deletePhoto(photoId) {
     const res = await fetch(`/api/daily-logs/${logId}/photos/${photoId}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deleted_by: 'Jake Ross' })
+      body: JSON.stringify({ deleted_by: window.currentUser || 'User' })
     });
 
     if (!res.ok) throw new Error('Delete failed');
