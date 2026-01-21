@@ -5,18 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** v3.1 Business Intelligence & Financial Management
+**Current focus:** v3.1 Business Intelligence & Financial Management + Phase 101 Research
 
 ## Current Position
 
-Phase: 83 of 87 (Job Profitability Reports)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-01-20 — Phase 82 completed
+Phase: 101 (Buildertrend Scheduling Research)
+Plan: 01 of 01 - COMPLETE
+Status: Phase 101 complete
+Last activity: 2026-01-21 - Completed 101-01-PLAN.md
 
-Progress: [#####     ] 50% (Phases 78-82 complete)
+Progress: [#####     ] 50% (Phases 78-82 complete, Phase 101 research complete)
 
 ## Performance Metrics
+
+**Phase 101 (Research - completed):**
+- Plan 101-01: 1 plan, completed
+- Duration: 3 minutes
+- Output: 101-DOCUMENTATION.md (599 lines)
 
 **v3.1 Milestone (in progress):**
 - Phase 78: 1 plan, completed
@@ -44,9 +49,14 @@ Key decisions for v3.1:
 - Overhead rate = Total Overhead / Total Labor Hours
 - Rolling 12-month average for stable rate
 
+**Phase 101 Scheduling Research Decisions:**
+- Gap priorities: P1 = Baseline schedules, Templates UI, Bulk ops, Notifications
+- Phase 102 scope: Baseline + Templates + Bulk ops + Agenda view
+- Implementation order: DB migrations -> Baseline -> Templates -> Bulk ops -> Agenda
+
 ### Pending Todos
 
-None — ready for Phase 83.
+None - Phase 101 complete, ready for Phase 102 or return to Phase 83.
 
 ### Blockers/Concerns
 
@@ -54,16 +64,18 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-20
-Stopped at: Phase 82 complete
+Last session: 2026-01-21
+Stopped at: Phase 101-01 complete
+Resume file: None
 
 ## Next Actions
 
-1. Plan and execute Phase 83 (Job Profitability Reports)
-2. Continue through Phases 84-87
+1. **Option A:** Continue Phase 102 (Schedule UI Overhaul) using 101-DOCUMENTATION.md
+2. **Option B:** Return to Phase 83 (Job Profitability Reports) in v3.1 track
 
 ## Milestone History
 
+- **Phase 101 Research** (completed 2026-01-21): Buildertrend competitive analysis
 - **v3.1 Business Intelligence & Financial Management** (in progress): Started 2026-01-20
 - **v3.0 Smart Catalog & Estimation Engine** (shipped 2026-01-20): 9 phases (70-77)
 - **v2.1 Selections & Navigation Polish** (shipped 2026-01-20): 5 phases (65-69)
