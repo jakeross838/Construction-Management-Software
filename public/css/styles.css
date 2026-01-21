@@ -32837,3 +32837,290 @@ td.empty-state {
   min-width: 40px;
   text-align: right;
 }
+
+
+/* ============================================================
+   SCHEDULE MOBILE RESPONSIVE STYLES (102-06)
+   ============================================================ */
+
+/* Mobile: < 768px */
+@media (max-width: 767px) {
+
+  /* Schedule header - stack on mobile */
+  .schedule-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .schedule-info {
+    text-align: center;
+  }
+
+  .schedule-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .schedule-actions select {
+    flex: 1;
+    min-width: 100px;
+  }
+
+  /* View toggle - icons only on small screens */
+  .view-toggle {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .view-toggle .view-btn span {
+    display: inline;
+  }
+
+  /* Stats grid - 2 columns on mobile */
+  .schedule-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  /* List view - card style on mobile */
+  .schedule-table {
+    display: block;
+  }
+
+  .schedule-table thead {
+    display: none;
+  }
+
+  .schedule-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .schedule-table tr {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card-elevated);
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .schedule-table td {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border: none;
+  }
+
+  .schedule-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  /* Hide less important columns on mobile */
+  .schedule-table .col-trade,
+  .schedule-table .col-phase {
+    display: none;
+  }
+
+  /* Task name full width */
+  .schedule-table .col-task {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .schedule-table .col-task::before {
+    display: none;
+  }
+
+  .task-name {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  /* Actions row */
+  .schedule-table .col-actions {
+    justify-content: flex-end;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+  }
+
+  .schedule-table .col-actions::before {
+    display: none;
+  }
+
+  /* Quick status select larger on mobile */
+  .quick-status-select {
+    padding: 8px 24px 8px 12px;
+    font-size: 14px;
+  }
+
+  /* Checkbox column */
+  .col-checkbox {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+  }
+
+  .task-row {
+    position: relative;
+    padding-right: 40px;
+  }
+
+  /* Bulk actions bar */
+  .bulk-actions-bar {
+    flex-wrap: wrap;
+    padding: 8px;
+  }
+
+  .bulk-actions-bar .btn {
+    flex: 1;
+    min-width: 80px;
+    text-align: center;
+  }
+
+  /* Calendar view mobile */
+  .calendar-cell {
+    min-height: 60px;
+    padding: 2px;
+  }
+
+  .calendar-date {
+    font-size: 12px;
+  }
+
+  .calendar-task {
+    font-size: 9px;
+    padding: 1px 2px;
+  }
+
+  .calendar-tasks {
+    max-height: 40px;
+    overflow: hidden;
+  }
+
+  /* Agenda view mobile */
+  .agenda-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .agenda-header select {
+    width: 100%;
+  }
+
+  .agenda-task {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .agenda-task-meta {
+    justify-content: space-between;
+  }
+
+  /* Gantt container - horizontal scroll */
+  .schedule-gantt-view {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .gantt-container {
+    min-width: 800px;
+  }
+
+  .gantt-controls {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Baseline controls */
+  .baseline-controls {
+    flex-wrap: wrap;
+  }
+
+  /* Modals on mobile */
+  .modal-content {
+    width: 95% !important;
+    max-width: none !important;
+    margin: 10px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  .form-group {
+    width: 100%;
+  }
+}
+
+/* Very small screens: < 400px */
+@media (max-width: 399px) {
+  .schedule-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .view-toggle {
+    width: 100%;
+  }
+
+  .view-toggle .view-btn {
+    flex: 1;
+    font-size: 12px;
+  }
+
+  .calendar-day-header {
+    font-size: 10px;
+    padding: 4px 2px;
+  }
+}
+
+/* Touch-friendly enhancements */
+@media (pointer: coarse) {
+  .task-row {
+    min-height: 60px;
+  }
+
+  .btn, button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .form-control, select, input {
+    min-height: 44px;
+    font-size: 16px; /* Prevents iOS zoom */
+  }
+
+  .task-checkbox {
+    width: 24px;
+    height: 24px;
+  }
+
+  .inline-editable {
+    padding: 8px;
+    margin: -8px;
+  }
+}

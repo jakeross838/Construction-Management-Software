@@ -419,17 +419,17 @@ function renderTaskRow(task, isCritical = false) {
         <div class="task-name">${escapeHtml(task.name)}</div>
         ${task.description ? `<div class="task-desc">${escapeHtml(truncate(task.description, 60))}</div>` : ''}
       </td>
-      <td class="col-trade">${escapeHtml(tradeName)}</td>
-      <td class="col-phase">${escapeHtml(phaseName)}</td>
-      <td class="col-dates">${plannedRange}</td>
-      <td class="col-dates">${actualRange}</td>
-      <td class="col-progress">
+      <td class="col-trade" data-label="Trade">${escapeHtml(tradeName)}</td>
+      <td class="col-phase" data-label="Phase">${escapeHtml(phaseName)}</td>
+      <td class="col-dates" data-label="Planned">${plannedRange}</td>
+      <td class="col-dates" data-label="Actual">${actualRange}</td>
+      <td class="col-progress" data-label="Progress">
         <div class="progress-bar-mini ${progressClass}">
           <div class="progress-fill" style="width: ${task.completion_percent || 0}%"></div>
         </div>
         <span class="progress-text">${task.completion_percent || 0}%</span>
       </td>
-      <td class="col-status">
+      <td class="col-status" data-label="Status">
         <span class="status-badge ${statusClass}">${formatStatus(task.status)}</span>
       </td>
       <td class="col-actions">
@@ -1936,3 +1936,107 @@ function updateAgendaDateButtons() {
     btn.classList.toggle("active", (btn.textContent === "Today" && state.agendaDateFilter === "today") || (btn.textContent === "This Week" && state.agendaDateFilter === "week") || (btn.textContent === "All" && state.agendaDateFilter === "all"));
   });
 }
+
+
+// ============================================================
+// MOBILE UTILITIES (102-06)
+// ============================================================
+
+function isMobileDevice() {
+  return window.matchMedia("(max-width: 767px)").matches ||
+         window.matchMedia("(pointer: coarse)").matches;
+}
+
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// ============================================================
+// MOBILE TOUCH INTERACTIONS (102-06)
+// ============================================================
+
+// Pull-to-refresh for task list
+let touchStartY = 0;
+let isPulling = false;
+
+function initMobilePullToRefresh() {
+  const listView = document.getElementById("listView");
+  if (!listView) return;
+
+  listView.addEventListener("touchstart", (e) => {
+    if (window.scrollY === 0) {
+      touchStartY = e.touches[0].clientY;
+      isPulling = true;
+    }
+  }, { passive: true });
+
+  listView.addEventListener("touchmove", (e) => {
+    if (!isPulling) return;
+    const touchY = e.touches[0].clientY;
+    const pullDistance = touchY - touchStartY;
+
+    if (pullDistance > 80 && window.scrollY === 0) {
+      listView.style.transform = "translateY(" + Math.min(pullDistance * 0.3, 50) + "px)";
+    }
+  }, { passive: true });
+
+  listView.addEventListener("touchend", async (e) => {
+    if (!isPulling) return;
+
+    const listView = document.getElementById("listView");
+    listView.style.transform = "";
+
+    const touchY = e.changedTouches[0].clientY;
+    const pullDistance = touchY - touchStartY;
+
+    if (pullDistance > 100 && window.scrollY === 0) {
+      showToast("Refreshing...", "info");
+      await loadSchedule();
+      showToast("Refreshed", "success");
+    }
+
+    isPulling = false;
+    touchStartY = 0;
+  });
+}
+
+// Swipe for calendar month navigation
+function initMobileCalendar() {
+  const calendarView = document.getElementById("calendarView");
+  if (!calendarView) return;
+
+  let touchStartX = 0;
+
+  calendarView.addEventListener("touchstart", (e) => {
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+
+  calendarView.addEventListener("touchend", (e) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchStartX - touchEndX;
+
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) {
+        calendarNextMonth();
+      } else {
+        calendarPrevMonth();
+      }
+    }
+  });
+}
+
+// Initialize mobile interactions when document is ready
+document.addEventListener("DOMContentLoaded", () => {
+  if (isMobileDevice()) {
+    initMobilePullToRefresh();
+    initMobileCalendar();
+  }
+});
