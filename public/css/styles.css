@@ -33124,3 +33124,73 @@ td.empty-state {
     margin: -8px;
   }
 }
+
+/* ============================================================
+   CONTEXT INDICATOR
+   Shows current page context (Job View vs Company View)
+   ============================================================ */
+
+.context-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-left: 16px;
+}
+
+.context-indicator .context-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.context-indicator .context-badge.job-context {
+  color: var(--accent-blue);
+}
+
+.context-indicator .context-badge.company-context {
+  color: var(--accent-green);
+}
+
+.context-indicator .context-badge svg {
+  width: 16px;
+  height: 16px;
+}
+
+.context-indicator .context-switch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.context-indicator .context-switch:hover {
+  background: var(--bg-card-elevated);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.context-indicator .context-switch svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Mobile: Hide context indicator (context is clear from sidebar presence) */
+@media (max-width: 768px) {
+  .context-indicator {
+    display: none;
+  }
+}

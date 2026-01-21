@@ -290,6 +290,48 @@
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
   }
 
+  // Create context indicator element
+  function createContextIndicator() {
+    const context = detectPageContext();
+    const isJobContext = context === 'job';
+
+    const indicator = document.createElement('div');
+    indicator.className = 'context-indicator';
+    indicator.id = 'contextIndicator';
+
+    // Icon for job context (building) vs company context (office)
+    const jobIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>';
+    const companyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M9 21V10H3v11M21 21V10h-6v11M12 21V3l-3 3M12 3l3 3M9 7h6"/></svg>';
+
+    // Switch icon (arrows)
+    const switchIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4M7 4L3 8M7 4l4 4M17 8v12M17 20l4-4M17 20l-4-4"/></svg>';
+
+    indicator.innerHTML = 
+      '<span class="context-badge ' + (isJobContext ? 'job-context' : 'company-context') + '">' +
+        (isJobContext ? jobIcon : companyIcon) +
+        (isJobContext ? 'Job View' : 'Company View') +
+      '</span>' +
+      '<button class="context-switch" onclick="NavSidebar.switchContext()" title="Switch to ' + (isJobContext ? 'Company' : 'Job') + ' View">' +
+        switchIcon +
+        (isJobContext ? 'Company' : 'Jobs') +
+      '</button>';
+
+    return indicator;
+  }
+
+  // Switch between job and company context
+  function switchContext() {
+    const currentContext = detectPageContext();
+
+    if (currentContext === 'job') {
+      // Go to company dashboard
+      window.location.href = 'dashboard.html';
+    } else {
+      // Go to job hub (main job view)
+      window.location.href = 'job-hub.html';
+    }
+  }
+
   function init() {
     const header = document.querySelector('.header');
     if (!header) return;
@@ -307,8 +349,18 @@
 
     setupDropdownInteractions();
 
+    // Add context indicator to header
+    const headerTop = document.querySelector('.header-top');
+    const headerActions = headerTop?.querySelector('.header-actions');
+    if (headerTop && headerActions) {
+      const existingIndicator = document.getElementById('contextIndicator');
+      if (!existingIndicator) {
+        const indicator = createContextIndicator();
+        headerTop.insertBefore(indicator, headerActions);
+      }
+    }
+
     if (!document.querySelector('.mobile-menu-btn')) {
-      const headerTop = document.querySelector('.header-top');
       const brand = headerTop?.querySelector('.header-brand');
       if (brand && headerTop) {
         const hamburger = document.createElement('button');
@@ -320,7 +372,6 @@
       }
     }
 
-    const headerActions = document.querySelector('.header-actions');
     if (headerActions && !document.querySelector('.search-trigger-btn')) {
       const searchBtn = document.createElement('button');
       searchBtn.className = 'search-trigger-btn';
@@ -349,7 +400,8 @@
     },
     isCollapsed: () => false,
     detectPageContext,
-    navContexts
+    navContexts,
+    switchContext
   };
 
   if (document.readyState === 'loading') {
