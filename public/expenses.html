@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+  <title>Ross Built - Expenses</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260120">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="header-brand">
+          <span class="brand-icon">🏗️</span>
+          <span class="brand-name">Ross Built</span>
+        </div>
+        <nav class="main-nav"></nav>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="openCreateModal()">+ New Expense</button>
+        </div>
+      </div>
+      <div class="header-sub">
+        <nav class="sub-nav"></nav>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <main class="main">
+        <!-- Stats Summary Bar -->
+        <div class="stats-bar">
+          <div class="stat-item">
+            <span class="stat-value" id="statTotal">$0</span>
+            <span class="stat-label">Total</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value stat-office" id="statOffice">$0</span>
+            <span class="stat-label">Office</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value stat-fleet" id="statFleet">$0</span>
+            <span class="stat-label">Fleet</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value stat-equipment" id="statEquipment">$0</span>
+            <span class="stat-label">Equipment</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value stat-admin" id="statAdmin">$0</span>
+            <span class="stat-label">Admin</span>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="table-toolbar">
+          <div class="filter-controls">
+            <select id="periodFilter" class="form-control filter-select">
+              <option value="">All Periods</option>
+            </select>
+            <select id="categoryFilter" class="form-control filter-select">
+              <option value="">All Categories</option>
+            </select>
+            <select id="overheadTypeFilter" class="form-control filter-select">
+              <option value="">All Types</option>
+              <option value="office">Office</option>
+              <option value="fleet">Fleet</option>
+              <option value="equipment">Equipment</option>
+              <option value="admin">Admin</option>
+              <option value="other">Other</option>
+            </select>
+            <select id="vendorFilter" class="form-control filter-select">
+              <option value="">All Vendors</option>
+            </select>
+          </div>
+          <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Search expenses..." class="form-control search-input">
+            <button class="search-clear-btn" id="searchClear" style="display: none;" onclick="clearSearch()">&times;</button>
+          </div>
+        </div>
+
+        <!-- Expense List -->
+        <div class="expense-list" id="expenseList">
+          <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div></div>
+          <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div></div>
+          <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create/Edit Expense Modal -->
+  <div id="expenseModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2 id="modalTitle">Add Expense</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="expenseForm">
+          <input type="hidden" id="expenseId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="expenseAmount">Amount *</label>
+              <input type="number" id="expenseAmount" class="form-control" required step="0.01" min="0.01" placeholder="0.00">
+            </div>
+            <div class="form-group">
+              <label for="expenseDate">Date *</label>
+              <input type="date" id="expenseDate" class="form-control" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="expenseCategory">Category *</label>
+            <select id="expenseCategory" class="form-control" required>
+              <option value="">Select category...</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="expenseVendor">Vendor</label>
+            <select id="expenseVendor" class="form-control">
+              <option value="">No vendor</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="expenseDescription">Description</label>
+            <input type="text" id="expenseDescription" class="form-control" placeholder="Brief description">
+          </div>
+
+          <div class="form-group">
+            <label for="expensePeriod">Financial Period</label>
+            <select id="expensePeriod" class="form-control">
+              <option value="">Auto-assign by date</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="expenseReceipt">Receipt URL</label>
+            <input type="url" id="expenseReceipt" class="form-control" placeholder="https://...">
+          </div>
+
+          <div class="form-group">
+            <label for="expenseNotes">Notes</label>
+            <textarea id="expenseNotes" class="form-control" rows="2" placeholder="Additional notes..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveExpense()">Save Expense</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expense Detail Modal -->
+  <div id="detailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <h2 id="detailTitle">Expense Details</h2>
+          <div class="modal-badges" id="detailBadges"></div>
+        </div>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="detailBody">
+        <!-- Filled dynamically -->
+      </div>
+      <div class="modal-footer" id="detailFooter">
+        <!-- Action buttons -->
+      </div>
+    </div>
+  </div>
+
+  <script src="js/nav-sidebar.js"></script>
+  <script src="js/toasts.js"></script>
+  <script src="js/expenses.js"></script>
+</body>
+</html>

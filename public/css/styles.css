@@ -30530,3 +30530,332 @@ td.empty-state {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   Financial Periods & Expenses Styles
+   v3.1 Business Intelligence
+   ========================================================================== */
+
+/* Stats Bar */
+.stats-bar {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1rem 1.5rem;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.stats-bar .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+}
+
+.stats-bar .stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stats-bar .stat-value.stat-passed { color: var(--accent-green); }
+.stats-bar .stat-value.stat-info { color: var(--accent-blue); }
+.stats-bar .stat-value.stat-office { color: #60a5fa; }
+.stats-bar .stat-value.stat-fleet { color: #f59e0b; }
+.stats-bar .stat-value.stat-equipment { color: #10b981; }
+.stats-bar .stat-value.stat-admin { color: #8b5cf6; }
+
+.stats-bar .stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-top: 0.25rem;
+}
+
+/* Period List */
+.period-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.period-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.period-card:hover {
+  border-color: var(--accent-blue);
+  background: var(--bg-card-elevated);
+}
+
+.period-card.closed {
+  opacity: 0.8;
+}
+
+.period-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.period-name {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.period-info {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.period-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.expense-count {
+  color: var(--text-secondary);
+}
+
+.expense-total {
+  font-weight: 600;
+  color: var(--accent-green);
+}
+
+.lock-indicator {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--accent-orange);
+}
+
+/* Expense List */
+.expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.expense-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.expense-card:hover {
+  border-color: var(--accent-blue);
+  background: var(--bg-card-elevated);
+}
+
+.expense-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.expense-amount {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.expense-amount-large {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--accent-green);
+}
+
+.expense-info {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.expense-category {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.expense-date {
+  color: var(--text-secondary);
+}
+
+.expense-description {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.expense-meta {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Overhead Type Badges */
+.overhead-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.overhead-badge.overhead-office {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+.overhead-badge.overhead-fleet {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.overhead-badge.overhead-equipment {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.overhead-badge.overhead-admin {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
+
+.overhead-badge.overhead-other {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
+}
+
+/* Status Badges for Periods */
+.status-badge.status-open {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.status-badge.status-closed {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
+}
+
+.status-badge.status-locked {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+/* Detail Modal Styles */
+.detail-section {
+  margin-bottom: 1.5rem;
+}
+
+.detail-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detail-item label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.detail-item span {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+/* Activity List */
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.activity-item {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-action {
+  font-weight: 500;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.activity-by {
+  color: var(--text-secondary);
+}
+
+.activity-date {
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-secondary);
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+  font-size: 1.25rem;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+  font-size: 0.9rem;
+}
+
+/* Text utilities */
+.text-muted {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
