@@ -172,6 +172,7 @@
         <section class="draw-section">
           <div class="section-header">
             <h3>G702 - Application and Certificate for Payment</h3>
+            <span class="verification-indicator" id="g702IntegrityIndicator" title="G702 calculation integrity" style="margin-left: auto; font-size: 0.75rem; display: none;"></span>
           </div>
           <div class="g702-container">
             <div class="g702-form">
@@ -259,6 +260,7 @@
         <section class="draw-section">
           <div class="section-header">
             <h3>G703 - Schedule of Values</h3>
+            <span class="verification-indicator" id="g703IntegrityIndicator" title="G703 calculation integrity" style="margin-left: auto; font-size: 0.75rem; display: none;"></span>
             <span class="section-subtitle">Budget vs Billings by Cost Code</span>
           </div>
           <div class="g703-container">
@@ -1130,8 +1132,70 @@
         unsubmitBtn.style.display = 'none';
         addCOBillingBtn.style.display = 'none';
       }
+
+      // Verify draw data integrity
+      verifyDrawIntegrity(draw);
     }
 
+    // Verify G702 and G703 calculation integrity
+    function verifyDrawIntegrity(draw) {
+      const g702Indicator = document.getElementById('g702IntegrityIndicator');
+      const g703Indicator = document.getElementById('g703IntegrityIndicator');
+
+      if (!g702Indicator || !g703Indicator) return;
+
+      // G702 integrity: Line 3 should equal Line 1 + Line 2
+      const g702 = draw.g702 || {};
+      const line1 = parseFloat(draw.g702_original_contract_override ?? draw.job?.contract_amount ?? 0);
+      const line2 = parseFloat(draw.g702_change_orders_override ?? draw.changeOrderTotal ?? 0);
+      const line3Expected = line1 + line2;
+      const line3Actual = parseFloat(g702.contractSumToDate || 0);
+      const g702Line3Valid = Math.abs(line3Expected - line3Actual) < 0.01 || !g702.contractSumToDate;
+
+      // G702 Line 6 check: Current payment should equal this period billing
+      const line6 = parseFloat(g702.currentPaymentDue || 0);
+      const thisPeriodBilling = parseFloat(g702.totalCompletedThisPeriod || 0);
+      const g702Line6Valid = Math.abs(line6 - thisPeriodBilling) < 0.01;
+
+      const g702Valid = g702Line3Valid && g702Line6Valid;
+
+      if (g702Valid) {
+        g702Indicator.innerHTML = '<span style="color: var(--accent-green);" title="G702 calculations verified">Verified</span>';
+      } else {
+        console.warn('G702 integrity mismatch:', { line1, line2, line3Expected, line3Actual, line6, thisPeriodBilling });
+        g702Indicator.innerHTML = '<span style="color: var(--accent-orange);" title="G702 calculation mismatch detected">Check calcs</span>';
+      }
+      g702Indicator.style.display = 'inline-block';
+
+      // G703 integrity: Check that row totals sum to footer totals
+      const sov = draw.scheduleOfValues || [];
+      const rowTotalThisPeriod = sov.reduce((sum, row) => sum + (parseFloat(row.thisPeriod) || 0), 0);
+
+      // Compare to G702 totals (which are derived from the same source)
+      const g702ThisPeriod = parseFloat(g702.totalCompletedThisPeriod || 0);
+
+      // Note: G702 includes CO billings, so we need to account for that
+      const coBillingThisPeriod = draw.coScheduleOfValues?.reduce((sum, co) => sum + (parseFloat(co.thisPeriod) || 0), 0) || 0;
+
+      // Also account for unlinked CO allocations
+      const unlinkedThisPeriod = parseFloat(draw.unlinkedCOAllocations?.totalThisPeriod || 0);
+
+      const expectedThisPeriod = rowTotalThisPeriod + coBillingThisPeriod + unlinkedThisPeriod;
+
+      const g703Valid = Math.abs(expectedThisPeriod - g702ThisPeriod) < 0.01;
+
+      if (sov.length === 0) {
+        g703Indicator.innerHTML = '<span style="color: var(--text-secondary);" title="No schedule of values data">No data</span>';
+      } else if (g703Valid) {
+        g703Indicator.innerHTML = '<span style="color: var(--accent-green);" title="G703 totals verified">Verified</span>';
+      } else {
+        console.warn('G703 integrity mismatch:', { rowTotalThisPeriod, coBillingThisPeriod, unlinkedThisPeriod, expectedThisPeriod, g702ThisPeriod });
+        g703Indicator.innerHTML = '<span style="color: var(--accent-orange);" title="G703 totals may not match">Check totals</span>';
+      }
+      g703Indicator.style.display = 'inline-block';
+    }
+
+    function renderG703Table(scheduleOfValues) {
     function renderG703Table(scheduleOfValues) {
       const tbody = document.getElementById('g703Body');
       const tfoot = document.getElementById('g703Footer');
