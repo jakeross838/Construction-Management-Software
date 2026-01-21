@@ -47,14 +47,14 @@ Transform Ross Built CMS from a construction management tool into a data-driven 
 **Milestone Goal:** Build data infrastructure that turns selections into estimates, schedules, and downstream documents. Every piece of information flows to all relevant systems, and actuals feed back to improve future predictions.
 
 - [x] **Phase 70: Smart Catalog Foundation** - Enhanced catalog with labor/duration/lead time/dependency data
-- [ ] **Phase 70.1: AI Document Intelligence Hub** - INSERTED: Foundational AI processing that routes document data everywhere
-- [ ] **Phase 71: Construction Knowledge Base** - Warnings, quality checks, pre-reqs attached to catalog items
-- [ ] **Phase 72: Selection-Driven Estimation** - Pick selections, auto-calculate costs with material + labor
-- [ ] **Phase 73: Schedule Intelligence** - Generate timeline from selections + dependencies
-- [ ] **Phase 74: Trade Scorecards** - Quality/speed/reliability metrics for trades and vendors
-- [ ] **Phase 75: Document Intelligence** - AI parsing routes to all systems
-- [ ] **Phase 76: Feedback Loops** - Actuals update catalog pricing and duration estimates
-- [ ] **Phase 77: UI Consistency** - Remove old upload buttons, add sidebar to all job-specific pages
+- [x] **Phase 70.1: AI Document Intelligence Hub** - INSERTED: Foundational AI processing that routes document data everywhere
+- [x] **Phase 71: Construction Knowledge Base** - Warnings, quality checks, pre-reqs attached to catalog items
+- [x] **Phase 72: Selection-Driven Estimation** - Pick selections, auto-calculate costs with material + labor
+- [x] **Phase 73: Schedule Intelligence** - Generate timeline from selections + dependencies
+- [x] **Phase 74: Trade Scorecards** - Quality/speed/reliability metrics for trades and vendors
+- [x] **Phase 75: Document Intelligence** - AI parsing routes to all systems
+- [x] **Phase 76: Feedback Loops** - Actuals update catalog pricing and duration estimates
+- [x] **Phase 77: UI Consistency** - Remove old upload buttons, add sidebar to all job-specific pages
 
 ## Phase Details
 
@@ -226,13 +226,13 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 70. Smart Catalog Foundation | 5/5 | Complete | 2026-01-20 |
-| 70.1 AI Document Intelligence Hub | 0/5 | Not Started | - |
-| 71. Construction Knowledge Base | 0/3 | Not Started | - |
-| 72. Selection-Driven Estimation | 0/4 | Not Started | - |
-| 73. Schedule Intelligence | 0/3 | Not Started | - |
-| 74. Trade Scorecards | 0/3 | Not Started | - |
-| 75. Document Intelligence | 0/3 | Not Started | - |
-| 76. Feedback Loops | 0/3 | Not Started | - |
+| 70.1 AI Document Intelligence Hub | 1/1 | Complete | 2026-01-20 |
+| 71. Construction Knowledge Base | 1/1 | Complete | 2026-01-20 |
+| 72. Selection-Driven Estimation | 1/1 | Complete | 2026-01-20 |
+| 73. Schedule Intelligence | 1/1 | Complete | 2026-01-20 |
+| 74. Trade Scorecards | 1/1 | Complete | 2026-01-20 |
+| 75. Document Intelligence | 1/1 | Complete | 2026-01-20 |
+| 76. Feedback Loops | 1/1 | Complete | 2026-01-20 |
 | 77. UI Consistency | 3/3 | Complete | 2026-01-20 |
 
 ## Requirement Coverage
