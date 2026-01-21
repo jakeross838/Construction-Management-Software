@@ -1,4 +1,379 @@
-# Stack Research: v3.0 Smart Catalog & Estimation Engine
+# Stack Research
+
+---
+
+# Section A: Financial Management (v2.x Enhancement)
+
+**Project:** Ross Built CMS - Job Costing, Overhead Allocation, Financial Reporting
+**Researched:** 2026-01-20
+**Overall Confidence:** HIGH
+
+---
+
+## Executive Summary
+
+Adding financial management features (job costing, overhead allocation, P&L reporting) to the existing Node.js/Express + Supabase + vanilla JS stack requires minimal new dependencies. The strategy:
+
+1. **Decimal.js** for all financial calculations (avoids floating-point errors)
+2. **Dinero.js** for currency formatting and display
+3. **Chart.js** (lightweight, MIT) for financial dashboards
+4. **date-fns** for period-based calculations (monthly, quarterly, fiscal)
+5. **pdfmake** for PDF financial reports
+6. **ExcelJS** (already installed) for Excel exports
+
+---
+
+## Core Technologies
+
+| Library | Version | Purpose | Why Recommended |
+|---------|---------|---------|-----------------|
+| **Decimal.js** | ^10.4 | Precision arithmetic for all financial calculations | Industry standard for JavaScript financial math. Used by Prisma ORM. Arbitrary-precision, handles currency without floating-point errors. 18M+ weekly downloads. |
+| **Dinero.js** | ^2.0 | Money/currency representation and formatting | Built specifically for monetary values following Martin Fowler's money pattern. Handles currency formatting, immutable, chainable API. |
+| **date-fns** | ^3.6 | Period-based date calculations (monthly, quarterly, fiscal) | Modular/tree-shakeable (2KB vs Moment's 60KB). Immutable. Functional API. Perfect for fiscal period calculations. |
+| **Chart.js** | ^4.4 | Financial dashboards and job profitability charts | Lightweight, MIT licensed, easy setup. Great for bar/line/pie charts needed for P&L and cost breakdowns. |
+| **ExcelJS** | ^4.4 | Excel report generation | Already used in project for G702/G703 exports. Supports formulas, formatting, conditional styling. |
+| **pdfmake** | ^0.2 | PDF financial reports (P&L, job cost reports) | Declarative JSON-based API perfect for structured financial statements. Tables, headers, footers built-in. |
+
+---
+
+## Supporting Libraries
+
+| Library | Version | Purpose | Notes |
+|---------|---------|---------|-------|
+| **lodash** | ^4.17 | Utility functions (groupBy, sumBy for aggregations) | Helpful for grouping costs by category/period |
+| **node-cron** | ^3.0 | Scheduled calculations (monthly overhead allocation) | Simple cron syntax for period-end batch jobs |
+
+---
+
+## Time Tracking Integration Options
+
+| Service | API Type | Best For | Notes |
+|---------|----------|----------|-------|
+| **Clockify** | REST API | Free tier, simple integration | 50 req/sec rate limit. npm: `clockify-ts` |
+| **QuickBooks Time** | OAuth2 REST | QuickBooks ecosystem users | Formerly TSheets. Full timesheets/jobcodes/GPS |
+| **Harvest** | OAuth2 REST | Project-based billing | 70+ integrations. Good reporting API |
+| **Manual Entry** | Custom | Small teams, no external tool | Build simple time entry in existing app |
+
+**Recommendation**: Start with manual time entry in the app. Add Clockify integration later if needed (best free tier, straightforward REST API).
+
+---
+
+## Installation Commands
+
+```bash
+# Core financial libraries
+npm install decimal.js dinero.js@2 date-fns
+
+# Charting (frontend)
+npm install chart.js
+
+# PDF reports (alternative to existing pdf-lib)
+npm install pdfmake
+
+# Scheduling (for period-end calculations)
+npm install node-cron
+
+# Utility (if not already installed)
+npm install lodash
+```
+
+**Note**: ExcelJS is already installed in the project.
+
+---
+
+## Overhead Allocation Formulas
+
+Based on construction accounting best practices:
+
+### Labor Burden Rate
+```javascript
+// Labor burden = additional costs beyond gross wages
+// Typically 30-50% of base wage
+
+const Decimal = require('decimal.js');
+
+function calculateBurdenedLabor(hours, hourlyRate, burdenRate = 0.40) {
+  const baseLaborCost = new Decimal(hours).times(hourlyRate);
+  const laborBurden = baseLaborCost.times(burdenRate);
+  const fullyBurdenedLabor = baseLaborCost.plus(laborBurden);
+
+  return {
+    baseCost: baseLaborCost.toDecimalPlaces(2).toNumber(),
+    burden: laborBurden.toDecimalPlaces(2).toNumber(),
+    totalCost: fullyBurdenedLabor.toDecimalPlaces(2).toNumber()
+  };
+}
+
+// Components of typical 40% burden rate:
+// - Payroll taxes (FICA, FUTA, SUTA): ~15-20%
+// - Workers' comp: ~8-12%
+// - Benefits: ~5-10%
+// - Equipment/overhead allocation: ~2-5%
+```
+
+### Overhead Allocation by Labor Hours
+```javascript
+// Overhead Rate = Total Overhead / Total Direct Labor Hours
+function allocateOverheadByHours(totalOverhead, jobs) {
+  const Decimal = require('decimal.js');
+
+  const totalHours = jobs.reduce((sum, job) => sum + job.laborHours, 0);
+  const overheadRate = new Decimal(totalOverhead).dividedBy(totalHours);
+
+  return jobs.map(job => ({
+    jobId: job.id,
+    laborHours: job.laborHours,
+    allocatedOverhead: overheadRate.times(job.laborHours).toDecimalPlaces(2).toNumber()
+  }));
+}
+```
+
+### Overhead Allocation by Direct Costs (Percentage Method)
+```javascript
+// Overhead Rate = Total Overhead / Total Direct Costs
+function allocateOverheadByDirectCosts(totalOverhead, jobs) {
+  const Decimal = require('decimal.js');
+
+  const totalDirectCosts = jobs.reduce((sum, job) =>
+    sum + job.laborCost + job.materialCost + job.equipmentCost, 0);
+
+  // Example: $200K overhead / $1M direct costs = 20%
+  const overheadRate = new Decimal(totalOverhead).dividedBy(totalDirectCosts);
+
+  return jobs.map(job => {
+    const jobDirectCosts = job.laborCost + job.materialCost + job.equipmentCost;
+    return {
+      jobId: job.id,
+      directCosts: jobDirectCosts,
+      overheadRate: overheadRate.times(100).toDecimalPlaces(2).toNumber(), // as percentage
+      allocatedOverhead: overheadRate.times(jobDirectCosts).toDecimalPlaces(2).toNumber()
+    };
+  });
+}
+```
+
+---
+
+## Database Schema Additions
+
+```sql
+-- Employees (for labor tracking)
+CREATE TABLE v2_employees (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    role TEXT, -- 'carpenter', 'electrician', 'laborer', etc.
+    hourly_rate DECIMAL(10,2),
+    burden_rate DECIMAL(5,4) DEFAULT 0.4000, -- 40% default
+    status TEXT DEFAULT 'active',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Labor/time entries
+CREATE TABLE v2_time_entries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID REFERENCES v2_jobs(id),
+    employee_id UUID REFERENCES v2_employees(id),
+    cost_code_id UUID REFERENCES v2_cost_codes(id),
+    date DATE NOT NULL,
+    hours DECIMAL(5,2) NOT NULL,
+    hourly_rate DECIMAL(10,2), -- snapshot at time of entry
+    burden_rate DECIMAL(5,4), -- snapshot at time of entry
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Overhead expense categories
+CREATE TABLE v2_overhead_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL, -- 'Rent', 'Utilities', 'Insurance', 'Admin Salary'
+    description TEXT,
+    is_active BOOLEAN DEFAULT true
+);
+
+-- Overhead expenses
+CREATE TABLE v2_overhead_expenses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category_id UUID REFERENCES v2_overhead_categories(id),
+    description TEXT,
+    amount DECIMAL(12,2) NOT NULL,
+    expense_date DATE NOT NULL,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Overhead allocations (calculated monthly)
+CREATE TABLE v2_overhead_allocations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID REFERENCES v2_jobs(id),
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    allocation_method TEXT NOT NULL, -- 'labor_hours', 'direct_costs'
+    allocated_amount DECIMAL(12,2) NOT NULL,
+    calculation_details JSONB, -- stores breakdown for audit
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(job_id, period_start, period_end)
+);
+
+-- Job profitability snapshots (for trend reporting)
+CREATE TABLE v2_job_profitability (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID REFERENCES v2_jobs(id),
+    as_of_date DATE NOT NULL,
+    contract_amount DECIMAL(12,2),
+    revenue_to_date DECIMAL(12,2),
+    material_costs DECIMAL(12,2),
+    labor_costs DECIMAL(12,2),
+    labor_burden DECIMAL(12,2),
+    equipment_costs DECIMAL(12,2),
+    subcontractor_costs DECIMAL(12,2),
+    overhead_allocated DECIMAL(12,2),
+    total_costs DECIMAL(12,2),
+    gross_profit DECIMAL(12,2),
+    gross_margin DECIMAL(5,4), -- as decimal, e.g., 0.2500 = 25%
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(job_id, as_of_date)
+);
+
+-- Company P&L periods
+CREATE TABLE v2_pl_periods (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    period_type TEXT NOT NULL, -- 'monthly', 'quarterly', 'annual'
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    total_revenue DECIMAL(12,2),
+    total_direct_costs DECIMAL(12,2),
+    total_overhead DECIMAL(12,2),
+    gross_profit DECIMAL(12,2),
+    net_profit DECIMAL(12,2),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(period_type, period_start)
+);
+```
+
+---
+
+## Alternatives Considered
+
+### Precision Math Libraries
+
+| Library | Why NOT Recommended |
+|---------|---------------------|
+| **Big.js** | Good but lacks currency features. Decimal.js more widely used (18M vs 13M weekly downloads). |
+| **bignumber.js** | Precision in decimal places vs significant digits - less intuitive for money. |
+| **currency.js** | Smaller community, less active maintenance than Dinero.js. |
+| **financial-number** | Native BigInt based but much smaller ecosystem (6K weekly downloads). |
+
+### Charting Libraries
+
+| Library | Why NOT Recommended |
+|---------|---------------------|
+| **Highcharts** | Paid license starting at $535/year. Overkill for this use case. |
+| **ApexCharts** | Good but known for slower rendering. Chart.js is lighter and sufficient. |
+| **D3.js** | Steep learning curve. Too low-level for simple dashboards. |
+| **ECharts** | Great but larger bundle size. Better for complex visualizations. |
+| **FusionCharts** | Commercial license ($439+/year). Not needed. |
+
+### PDF Libraries
+
+| Library | Why NOT Recommended |
+|---------|---------------------|
+| **PDFKit** | Imperative API less suited for structured reports like P&L statements. |
+| **Puppeteer** | Headless Chrome is heavy/resource-intensive for server PDF generation. |
+| **jsreport** | Full reporting server - overkill for this scope. |
+| **Carbone** | Template-based but commercial license needed for production. |
+
+### Date Libraries
+
+| Library | Why NOT Recommended |
+|---------|---------------------|
+| **Moment.js** | Officially deprecated/maintenance mode since 2020. 30x larger than alternatives (60KB vs 2KB). |
+| **Day.js** | Good alternative, but date-fns better for tree-shaking and functional programming style. |
+| **Luxon** | Good but larger than date-fns. Overkill unless heavy timezone work needed. |
+
+---
+
+## What NOT to Use
+
+| Technology | Why NOT |
+|------------|---------|
+| **Moment.js** | Deprecated. Use date-fns instead. |
+| **Native JavaScript Number for money** | Floating-point errors (0.1 + 0.2 = 0.30000000000004). Always use Decimal.js. |
+| **Highcharts/FusionCharts** | Commercial licenses unnecessary for this scope. |
+| **Puppeteer for PDF** | Too heavy (headless Chrome). Use pdfmake or existing pdf-lib. |
+| **Full accounting integrations** (QuickBooks API, Sage) | Adds complexity. Build custom first, integrate later if needed. |
+| **React/Vue charting wrappers** | Project uses vanilla JS. Use Chart.js directly. |
+| **Complex ERP systems** (Procore, Viewpoint) | SaaS platforms, not embeddable libraries. |
+
+---
+
+## Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Ross Built CMS                            │
+├─────────────────────────────────────────────────────────────┤
+│  Frontend (Vanilla JS)                                       │
+│  ├── Chart.js (P&L dashboards, job profitability charts)    │
+│  ├── Dinero.js (currency display/formatting)                │
+│  └── date-fns (period selection UI, fiscal calendars)       │
+├─────────────────────────────────────────────────────────────┤
+│  Backend (Node.js + Express)                                 │
+│  ├── Decimal.js (all financial calculations)                │
+│  ├── date-fns (period logic, fiscal month boundaries)       │
+│  ├── ExcelJS (Excel exports) [existing]                     │
+│  ├── pdfmake (PDF financial reports)                        │
+│  └── node-cron (scheduled overhead allocation jobs)         │
+├─────────────────────────────────────────────────────────────┤
+│  Database (Supabase/PostgreSQL)                              │
+│  └── DECIMAL(12,2) for all money columns [existing pattern] │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Sources
+
+### Precision Math
+- [Decimal.js GitHub](https://github.com/MikeMcl/decimal.js)
+- [Dinero.js - LogRocket Guide](https://blog.logrocket.com/store-retrieve-precise-monetary-values-javascript-dinero-js/)
+- [Financial Precision in JavaScript - DEV Community](https://dev.to/benjamin_renoux/financial-precision-in-javascript-handle-money-without-losing-a-cent-1chc)
+- [npm trends: Decimal.js vs Big.js vs Dinero.js](https://npmtrends.com/big.js-vs-currency.js-vs-decimal.js-vs-dinero.js-vs-moneysafe)
+
+### Charting
+- [JavaScript Charting Libraries Comparison - Embeddable](https://embeddable.com/blog/javascript-charting-libraries)
+- [Chart.js vs ApexCharts - StackShare](https://stackshare.io/stackups/apexcharts-vs-js-chart)
+- [Comparing JavaScript Charting Libraries - LogRocket](https://blog.logrocket.com/comparing-most-popular-javascript-charting-libraries/)
+
+### PDF Generation
+- [PDFKit vs pdfmake vs Puppeteer - LogRocket](https://blog.logrocket.com/best-html-pdf-libraries-node-js/)
+- [PDF Generation Libraries Comparison - npm-compare](https://npm-compare.com/html-pdf,pdfkit,pdfmake,puppeteer)
+- [Top PDF Libraries 2025 - Nutrient](https://www.nutrient.io/blog/top-js-pdf-libraries/)
+
+### Date Handling
+- [date-fns vs Day.js - DhiWise](https://www.dhiwise.com/post/date-fns-vs-dayjs-the-battle-of-javascript-date-libraries)
+- [You Don't Need Moment.js - GitHub](https://github.com/you-dont-need/You-Dont-Need-Momentjs)
+- [Moment.js Alternatives - Better Stack](https://betterstack.com/community/guides/scaling-nodejs/momentjs-alternatives/)
+
+### Construction Accounting
+- [Overhead Allocation for Contractors - CrewCost](https://crewcost.com/blog/what-are-the-methods-of-overhead-allocation/)
+- [Labor Burden in Construction - SmartBarrel](https://smartbarrel.io/blog/labor-burden-in-construction/)
+- [How to Calculate Overhead Costs - QuickBooks](https://quickbooks.intuit.com/r/expenses/how-to-calculate-and-track-overhead-costs/)
+- [How to Allocate Overhead Costs - Construction Cost Accounting](https://www.constructioncostaccounting.com/post/allocate-overhead-costs)
+
+### Time Tracking APIs
+- [Clockify API Documentation](https://docs.clockify.me/)
+- [Building Clockify Integration - Rollout](https://rollout.com/integration-guides/clockify/sdk/step-by-step-guide-to-building-a-clockify-api-integration-in-js)
+- [QuickBooks Time API Reference](https://tsheetsteam.github.io/api_docs/)
+- [Harvest Integrations](https://www.getharvest.com/integrations)
+
+---
+---
+---
+
+# Section B: v3.0 Smart Catalog & Estimation Engine
 
 **Project:** Ross Built CMS v3.0
 **Researched:** 2026-01-20
