@@ -167,6 +167,7 @@ const profitabilityRoutes = require('./routes/profitability');
 const wipRoutes = require('./routes/wip');
 const pnlRoutes = require('./routes/pnl');
 const cashFlowRoutes = require('./routes/cash-flow');
+const businessPlanningRoutes = require('./routes/business-planning');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -227,6 +228,7 @@ app.use('/api/profitability', profitabilityRoutes);
 app.use('/api/wip', wipRoutes);
 app.use('/api/pnl', pnlRoutes);
 app.use('/api/cash-flow', cashFlowRoutes);
+app.use('/api/business-planning', businessPlanningRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete

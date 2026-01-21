@@ -66,6 +66,7 @@
         { id: 'wip', label: 'WIP Schedule', href: 'wip.html' },
         { id: 'pnl', label: 'Company P&L', href: 'pnl.html' },
         { id: 'cash-flow', label: 'Cash Flow', href: 'cash-flow.html' },
+        { id: 'planning', label: 'Business Planning', href: 'business-planning.html' },
         { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' },
         { id: 'price-intel', label: 'Price Intelligence', href: 'price-intelligence.html' }
       ]

@@ -32201,3 +32201,198 @@ td.empty-state {
 .checkbox-label input[type="checkbox"] {
   accent-color: var(--accent-blue);
 }
+
+/* ===========================================
+   BUSINESS PLANNING STYLES
+   =========================================== */
+
+/* Plan Targets Grid */
+.plan-targets-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 1000px) {
+  .plan-targets-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.target-card {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.target-label {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.target-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-bottom: 0.5rem;
+}
+
+.target-progress {
+  margin-top: 0.5rem;
+}
+
+.target-progress .progress-bar {
+  height: 8px;
+  background: var(--bg-card-elevated);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.target-progress .progress-fill {
+  height: 100%;
+  background: var(--accent-green);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.target-progress .progress-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.target-actual {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.milestone-status {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.25rem;
+}
+
+.status-dot.on-track {
+  background: var(--accent-green);
+}
+
+.status-dot.at-risk {
+  background: var(--accent-orange);
+}
+
+/* Milestones List */
+.milestones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.milestone-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.milestone-status-indicator {
+  width: 4px;
+  height: 40px;
+  border-radius: 2px;
+}
+
+.milestone-status-indicator.pending {
+  background: var(--text-secondary);
+}
+
+.milestone-status-indicator.on_track {
+  background: var(--accent-green);
+}
+
+.milestone-status-indicator.at_risk {
+  background: var(--accent-orange);
+}
+
+.milestone-status-indicator.achieved {
+  background: var(--accent-blue);
+}
+
+.milestone-status-indicator.missed {
+  background: var(--accent-red);
+}
+
+.milestone-info {
+  flex: 1;
+}
+
+.milestone-name {
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.milestone-date {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.milestone-target {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.milestone-actions select {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* KPI Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.kpi-card {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.kpi-name {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.kpi-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-bottom: 0.25rem;
+}
+
+.kpi-target {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* Plans Table */
+.plans-table {
+  overflow-x: auto;
+}
