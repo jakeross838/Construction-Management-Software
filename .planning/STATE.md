@@ -5,23 +5,25 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** Phase 104 Application Reorganization - Wave 1 COMPLETE
+**Current focus:** Phase 104 Application Reorganization - COMPLETE
 
 ## Current Position
 
 Phase: 104 (Application Reorganization)
-Plan: 02 of 02 (Wave 1)
-Status: Wave 1 COMPLETE
-Last activity: 2026-01-21 - Completed 104-01, 104-02 (Context-aware navigation and sidebar)
+Plan: 04 of 04 (Wave 2)
+Status: COMPLETE
+Last activity: 2026-01-21 - Completed 104-03, 104-04 (Page data attributes for context detection)
 
-Progress: [##########] 100% (Wave 1 complete)
+Progress: [##########] 100% (Phase 104 complete)
 
 ## Performance Metrics
 
-**Phase 104 (Application Reorganization - Wave 1 COMPLETE):**
+**Phase 104 (Application Reorganization - COMPLETE):**
 - Plan 104-01: Navigation context architecture (completed, 5 min)
 - Plan 104-02: Job sidebar context awareness (completed, 5 min)
-- **Wave 1 Duration:** ~10 min
+- Plan 104-03: Job-context page attributes (completed, 3 min)
+- Plan 104-04: Company-context page attributes (completed, 2 min)
+- **Total Duration:** ~15 min
 
 **Phase 103 (Data Integrity Audit - COMPLETE):**
 - Plan 103-01: Audit all pages for hardcoded values (completed, 8 min)
@@ -90,16 +92,18 @@ Key decisions for v3.1:
 - Dashboard/Employees/Expenses/Schedule/Timesheets all verified data-driven
 - VERIFICATION-CHECKLIST.md created for deployment validation
 
-**Phase 104 Application Reorganization Decisions (Wave 1):**
+**Phase 104 Application Reorganization Decisions (COMPLETE):**
 - Dual-context navigation: navContexts with job/company hierarchical structure
 - detectPageContext() priority: data-page-context > URL matching
-- COMPANY_CONTEXT_PAGES: 19 pages defined for company context
+- 48 total pages classified: 29 job-context, 19 company-context
 - Sidebar disabled on company-context pages via init() check
 - Graceful API degradation: onJobChange, getSelectedJobId, getSelectedJob return empty on company pages
+- Page groups: job-finance, precon, active, closeout, company-finance, resources, team, overview
+- Role minimums set for future RBAC: owner(5), admin(4), pm(3), accounting(3), supervisor(2.5), field_crew(2), client(1.5), designer(1.5)
 
 ### Pending Todos
 
-None - Wave 1 complete.
+None - Phase 104 complete.
 
 ### Blockers/Concerns
 
@@ -108,16 +112,16 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-21
-Stopped at: Completed Phase 104 Wave 1 (104-01, 104-02)
+Stopped at: Completed Phase 104 (104-01, 104-02, 104-03, 104-04)
 Resume file: None
 
 ## Next Actions
 
-Wave 1 complete. Ready for Wave 2 plans or next phase.
+Phase 104 complete. Ready for next phase.
 
 ## Milestone History
 
-- **Phase 104 Application Reorganization** (Wave 1 completed 2026-01-21): Context-aware navigation and sidebar
+- **Phase 104 Application Reorganization** (completed 2026-01-21): Context-aware navigation, sidebar, and 48 pages with data attributes
 - **Phase 103 Data Integrity Audit** (completed 2026-01-21): Audit and fix hardcoded values, all stat cards verified
 - **Phase 101 Research** (completed 2026-01-21): Buildertrend competitive analysis
 - **v3.1 Business Intelligence & Financial Management** (in progress): Started 2026-01-20
