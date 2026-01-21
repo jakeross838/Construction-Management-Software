@@ -19,6 +19,7 @@
         </div>
         <nav class="main-nav"></nav>
         <div class="header-actions">
+          <button class="btn btn-secondary" onclick="openRecurringModal()">Recurring</button>
           <button class="btn btn-primary" onclick="openCreateModal()">+ New Expense</button>
         </div>
       </div>
@@ -171,6 +172,84 @@
       </div>
       <div class="modal-footer" id="detailFooter">
         <!-- Action buttons -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Recurring Expenses Modal -->
+  <div id="recurringModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Recurring Expenses</h2>
+        <button class="close-btn" onclick="closeRecurringModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="recurring-actions" style="margin-bottom: 1rem;">
+          <button class="btn btn-primary" onclick="openCreateRecurringModal()">+ Add Recurring Expense</button>
+          <button class="btn btn-secondary" onclick="processRecurring()">Process Due Expenses</button>
+        </div>
+        <div class="recurring-list" id="recurringList">
+          <div class="empty-state">
+            <p>No recurring expenses configured.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Recurring Expense Modal -->
+  <div id="createRecurringModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Add Recurring Expense</h2>
+        <button class="close-btn" onclick="closeCreateRecurringModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="recurringForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="recurringAmount">Amount *</label>
+              <input type="number" id="recurringAmount" class="form-control" required step="0.01" min="0.01">
+            </div>
+            <div class="form-group">
+              <label for="recurringFrequency">Frequency</label>
+              <select id="recurringFrequency" class="form-control">
+                <option value="monthly">Monthly</option>
+                <option value="weekly">Weekly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="annual">Annual</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="recurringCategory">Category</label>
+            <select id="recurringCategory" class="form-control">
+              <option value="">Select category...</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="recurringVendor">Vendor</label>
+            <select id="recurringVendor" class="form-control">
+              <option value="">No vendor</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="recurringDescription">Description</label>
+            <input type="text" id="recurringDescription" class="form-control" placeholder="e.g., Office rent">
+          </div>
+
+          <div class="form-group">
+            <label for="recurringDayOfMonth">Day of Month (1-28)</label>
+            <input type="number" id="recurringDayOfMonth" class="form-control" min="1" max="28" value="1">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCreateRecurringModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveRecurring()">Save</button>
       </div>
     </div>
   </div>

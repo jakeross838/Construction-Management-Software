@@ -289,4 +289,183 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
+// ============================================================
+// RECURRING EXPENSES
+// ============================================================
+
+// List recurring expenses
+router.get('/recurring/list', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('v2_recurring_expenses')
+    .select(`
+      *,
+      category:v2_expense_categories(id, name, overhead_type),
+      vendor:v2_vendors(id, name)
+    `)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Create recurring expense
+router.post('/recurring', asyncHandler(async (req, res) => {
+  const {
+    amount, description, category_id, vendor_id,
+    frequency, day_of_month, created_by
+  } = req.body;
+
+  if (!amount) {
+    throw new AppError('VALIDATION_FAILED', 'amount is required');
+  }
+
+  // Calculate first occurrence
+  const today = new Date();
+  let next_occurrence = new Date(today.getFullYear(), today.getMonth(), day_of_month || 1);
+  if (next_occurrence <= today) {
+    next_occurrence.setMonth(next_occurrence.getMonth() + 1);
+  }
+
+  const { data, error } = await supabase
+    .from('v2_recurring_expenses')
+    .insert({
+      amount,
+      description,
+      category_id,
+      vendor_id,
+      frequency: frequency || 'monthly',
+      day_of_month: day_of_month || 1,
+      next_occurrence: next_occurrence.toISOString().split('T')[0],
+      created_by: created_by || 'system'
+    })
+    .select(`
+      *,
+      category:v2_expense_categories(id, name, overhead_type),
+      vendor:v2_vendors(id, name)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Update recurring expense
+router.patch('/recurring/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    amount, description, category_id, vendor_id,
+    frequency, day_of_month, is_active
+  } = req.body;
+
+  const updates = {};
+  if (amount !== undefined) updates.amount = amount;
+  if (description !== undefined) updates.description = description;
+  if (category_id !== undefined) updates.category_id = category_id;
+  if (vendor_id !== undefined) updates.vendor_id = vendor_id;
+  if (frequency !== undefined) updates.frequency = frequency;
+  if (day_of_month !== undefined) updates.day_of_month = day_of_month;
+  if (is_active !== undefined) updates.is_active = is_active;
+
+  const { data, error } = await supabase
+    .from('v2_recurring_expenses')
+    .update(updates)
+    .eq('id', id)
+    .select(`
+      *,
+      category:v2_expense_categories(id, name, overhead_type),
+      vendor:v2_vendors(id, name)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Delete recurring expense
+router.delete('/recurring/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { error } = await supabase
+    .from('v2_recurring_expenses')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json({ success: true });
+}));
+
+// Process recurring expenses (create due expenses)
+router.post('/recurring/process', asyncHandler(async (req, res) => {
+  // Call the database function to process recurring expenses
+  const { data, error } = await supabase.rpc('process_recurring_expenses');
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json({ created_count: data });
+}));
+
+// ============================================================
+// EXPENSE RECEIPTS
+// ============================================================
+
+// Add receipt to expense
+router.post('/:id/receipts', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { file_name, file_url, file_type, file_size, uploaded_by } = req.body;
+
+  if (!file_url) {
+    throw new AppError('VALIDATION_FAILED', 'file_url is required');
+  }
+
+  const { data, error } = await supabase
+    .from('v2_expense_receipts')
+    .insert({
+      expense_id: id,
+      file_name: file_name || 'receipt',
+      file_url,
+      file_type,
+      file_size,
+      uploaded_by: uploaded_by || 'system'
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Also update the primary receipt_url on the expense for backwards compatibility
+  await supabase
+    .from('v2_expenses')
+    .update({ receipt_url: file_url })
+    .eq('id', id);
+
+  res.json(data);
+}));
+
+// List receipts for expense
+router.get('/:id/receipts', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_expense_receipts')
+    .select('*')
+    .eq('expense_id', id)
+    .order('uploaded_at', { ascending: false });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Delete receipt
+router.delete('/receipts/:receiptId', asyncHandler(async (req, res) => {
+  const { receiptId } = req.params;
+
+  const { error } = await supabase
+    .from('v2_expense_receipts')
+    .delete()
+    .eq('id', receiptId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json({ success: true });
+}));
+
 module.exports = router;

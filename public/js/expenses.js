@@ -549,3 +549,200 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+// ============================================================
+// RECURRING EXPENSES
+// ============================================================
+
+let recurringExpenses = [];
+
+// Open recurring modal
+async function openRecurringModal() {
+  await loadRecurringExpenses();
+
+  const modal = document.getElementById('recurringModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+// Close recurring modal
+function closeRecurringModal() {
+  const modal = document.getElementById('recurringModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+// Load recurring expenses
+async function loadRecurringExpenses() {
+  try {
+    const response = await fetch('/api/expenses/recurring/list');
+    if (!response.ok) throw new Error('Failed to load recurring expenses');
+
+    recurringExpenses = await response.json();
+    renderRecurringList();
+  } catch (err) {
+    console.error('Error loading recurring expenses:', err);
+    showToast('Failed to load recurring expenses', 'error');
+  }
+}
+
+// Render recurring list
+function renderRecurringList() {
+  const container = document.getElementById('recurringList');
+
+  if (recurringExpenses.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>No recurring expenses configured.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = recurringExpenses.map(rec => `
+    <div class="expense-card">
+      <div class="expense-header">
+        <div class="expense-amount">${formatCurrency(rec.amount)}</div>
+        <span class="status-badge ${rec.is_active ? 'status-open' : 'status-closed'}">
+          ${rec.is_active ? 'Active' : 'Paused'}
+        </span>
+      </div>
+      <div class="expense-info">
+        <span class="expense-category">${escapeHtml(rec.category?.name || 'Uncategorized')}</span>
+        <span>${rec.frequency} on day ${rec.day_of_month}</span>
+      </div>
+      ${rec.description ? `<div class="expense-description">${escapeHtml(rec.description)}</div>` : ''}
+      <div class="expense-meta">
+        ${rec.vendor ? `<span>${escapeHtml(rec.vendor.name)}</span>` : ''}
+        ${rec.next_occurrence ? `<span>Next: ${formatDate(rec.next_occurrence)}</span>` : ''}
+      </div>
+      <div style="margin-top: 0.5rem;">
+        <button class="btn btn-sm btn-secondary" onclick="toggleRecurring('${rec.id}', ${!rec.is_active})">
+          ${rec.is_active ? 'Pause' : 'Resume'}
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="deleteRecurring('${rec.id}')">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Open create recurring modal
+function openCreateRecurringModal() {
+  document.getElementById('recurringForm').reset();
+
+  // Populate dropdowns
+  const categorySelect = document.getElementById('recurringCategory');
+  const vendorSelect = document.getElementById('recurringVendor');
+
+  categorySelect.innerHTML = '<option value="">Select category...</option>' +
+    categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+  vendorSelect.innerHTML = '<option value="">No vendor</option>' +
+    vendors.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+
+  const modal = document.getElementById('createRecurringModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+// Close create recurring modal
+function closeCreateRecurringModal() {
+  const modal = document.getElementById('createRecurringModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+}
+
+// Save recurring expense
+async function saveRecurring() {
+  const data = {
+    amount: parseFloat(document.getElementById('recurringAmount').value),
+    description: document.getElementById('recurringDescription').value || null,
+    category_id: document.getElementById('recurringCategory').value || null,
+    vendor_id: document.getElementById('recurringVendor').value || null,
+    frequency: document.getElementById('recurringFrequency').value,
+    day_of_month: parseInt(document.getElementById('recurringDayOfMonth').value) || 1,
+    created_by: 'Jake Ross'
+  };
+
+  if (!data.amount) {
+    showToast('Please enter an amount', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/expenses/recurring', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to create recurring expense');
+    }
+
+    showToast('Recurring expense created', 'success');
+    closeCreateRecurringModal();
+    await loadRecurringExpenses();
+  } catch (err) {
+    console.error('Error saving recurring:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// Toggle recurring expense active status
+async function toggleRecurring(id, isActive) {
+  try {
+    const response = await fetch(`/api/expenses/recurring/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive })
+    });
+
+    if (!response.ok) throw new Error('Failed to update');
+
+    showToast(isActive ? 'Recurring expense resumed' : 'Recurring expense paused', 'success');
+    await loadRecurringExpenses();
+  } catch (err) {
+    console.error('Error toggling recurring:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// Delete recurring expense
+async function deleteRecurring(id) {
+  if (!confirm('Delete this recurring expense?')) return;
+
+  try {
+    const response = await fetch(`/api/expenses/recurring/${id}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) throw new Error('Failed to delete');
+
+    showToast('Recurring expense deleted', 'success');
+    await loadRecurringExpenses();
+  } catch (err) {
+    console.error('Error deleting recurring:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// Process due recurring expenses
+async function processRecurring() {
+  try {
+    const response = await fetch('/api/expenses/recurring/process', {
+      method: 'POST'
+    });
+
+    if (!response.ok) throw new Error('Failed to process');
+
+    const result = await response.json();
+    showToast(`Created ${result.created_count} expense(s) from recurring templates`, 'success');
+    await loadRecurringExpenses();
+    await loadExpenses();
+  } catch (err) {
+    console.error('Error processing recurring:', err);
+    showToast(err.message, 'error');
+  }
+}
