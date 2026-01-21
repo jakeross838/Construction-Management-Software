@@ -7,7 +7,7 @@
   <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Schedule</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260121-schedule-ui">
+  <link rel="stylesheet" href="css/styles.css?v=20260121-calendar">
 </head>
 <body>
   <div class="app">
@@ -26,6 +26,12 @@
             </button>
             <button class="view-btn" data-view="gantt" onclick="setView('gantt')" title="Gantt Chart">
               <span>▤</span> Gantt
+            </button>
+            <button class="view-btn" data-view="calendar" onclick="setView('calendar')" title="Calendar View">
+              <span>📅</span> Calendar
+            </button>
+            <button class="view-btn" data-view="agenda" onclick="setView('agenda')" title="Agenda by Vendor">
+              <span>👤</span> Agenda
             </button>
           </div>
           <div class="critical-path-toggle" id="criticalPathToggle" style="display: none;">
@@ -144,6 +150,38 @@
             </div>
           </div>
         </div>
+
+        <!-- Calendar View -->
+        <div class="schedule-calendar-view" id="calendarView" style="display: none;">
+          <div class="calendar-header">
+            <button class="btn btn-icon" onclick="calendarPrevMonth()">&lt;</button>
+            <h3 id="calendarMonthYear">January 2026</h3>
+            <button class="btn btn-icon" onclick="calendarNextMonth()">&gt;</button>
+            <button class="btn btn-sm btn-secondary" onclick="calendarToday()">Today</button>
+          </div>
+          <div class="calendar-grid" id="calendarGrid">
+            <!-- Calendar rendered here -->
+          </div>
+        </div>
+
+        <!-- Agenda View -->
+        <div class="schedule-agenda-view" id="agendaView" style="display: none;">
+          <div class="agenda-header">
+            <select id="agendaVendorFilter" class="form-control" onchange="filterAgenda()">
+              <option value="">All Vendors</option>
+              <option value="unassigned">Unassigned</option>
+              <!-- Vendors populated dynamically -->
+            </select>
+            <div class="agenda-date-nav">
+              <button class="btn btn-sm" onclick="agendaToday()">Today</button>
+              <button class="btn btn-sm" onclick="agendaThisWeek()">This Week</button>
+              <button class="btn btn-sm" onclick="agendaAll()">All</button>
+            </div>
+          </div>
+          <div class="agenda-content" id="agendaContent">
+            <!-- Agenda rendered here -->
+          </div>
+        </div>
       </main>
     </div>
   </div>
@@ -254,7 +292,7 @@
   <script src="js/sidebar.js?v=20260121"></script>
   <script src="js/searchable-picker.js?v=20260121"></script>
   <script src="js/realtime.js?v=20260121"></script>
-  <script src="js/schedule.js?v=20260121"></script>
+  <script src="js/schedule.js?v=20260121-calendar"></script>
   <script src="js/ai-upload.js"></script>
 </body>
 </html>

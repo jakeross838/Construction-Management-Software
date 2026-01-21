@@ -13,10 +13,15 @@ let state = {
     trade: '',
     status: ''
   },
-  currentView: 'list',  // 'list' or 'gantt'
+  currentView: "list",  // "list", "gantt", "calendar", or "agenda"
   showCriticalPath: true,  // Toggle for critical path highlighting
   criticalPath: new Set(),  // Set of critical task IDs
-  taskMetrics: {}  // ES, EF, LS, LF, slack per task
+  taskMetrics: {},  // ES, EF, LS, LF, slack per task
+  // Calendar view state
+  calendarDate: new Date(),
+  // Agenda view state
+  agendaVendorId: "",
+  agendaDateFilter: "all"
 };
 
 // ============================================================
@@ -278,22 +283,31 @@ function showSchedule() {
 
 function setView(view) {
   state.currentView = view;
+  localStorage.setItem("scheduleView", view);
 
-  // Update button states
-  document.querySelectorAll('.view-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+  document.querySelectorAll(".view-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.view === view);
   });
 
-  // Show/hide views
-  document.getElementById('listView').style.display = view === 'list' ? 'block' : 'none';
-  document.getElementById('ganttView').style.display = view === 'gantt' ? 'block' : 'none';
+  document.getElementById("listView").style.display = view === "list" ? "block" : "none";
+  document.getElementById("ganttView").style.display = view === "gantt" ? "block" : "none";
+  document.getElementById("calendarView").style.display = view === "calendar" ? "block" : "none";
+  document.getElementById("agendaView").style.display = view === "agenda" ? "block" : "none";
 
-  // Render the appropriate view
-  if (view === 'gantt') {
-    renderGantt();
-    initDragHandlers();
-  } else {
-    renderTaskList();
+  switch (view) {
+    case "gantt":
+      renderGantt();
+      initDragHandlers();
+      break;
+    case "calendar":
+      renderCalendar();
+      break;
+    case "agenda":
+      populateAgendaVendors();
+      renderAgenda();
+      break;
+    default:
+      renderTaskList();
   }
 }
 
@@ -1769,4 +1783,156 @@ async function bulkDelete() {
 
   clearSelection();
   await loadSchedule();
+}
+
+
+// ============================================================
+// CALENDAR VIEW (102-05)
+// ============================================================
+
+function renderCalendar() {
+  const grid = document.getElementById("calendarGrid");
+  if (!grid) return;
+
+  const tasks = getFilteredTasks();
+  const year = state.calendarDate.getFullYear();
+  const month = state.calendarDate.getMonth();
+
+  const monthNames = ["January", "February", "March", "April", "May", "June",
+                      "July", "August", "September", "October", "November", "December"];
+  document.getElementById("calendarMonthYear").textContent = monthNames[month] + " " + year;
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDay = firstDay.getDay();
+  const totalDays = lastDay.getDate();
+
+  let html = "<div class=\"calendar-day-headers\">";
+  ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach(d => html += "<div class=\"calendar-day-header\">" + d + "</div>");
+  html += "</div><div class=\"calendar-cells\">";
+
+  for (let i = 0; i < startDay; i++) html += "<div class=\"calendar-cell empty\"></div>";
+
+  const today = new Date();
+  for (let day = 1; day <= totalDays; day++) {
+    const cellDate = new Date(year, month, day);
+    const dateStr = cellDate.toISOString().split("T")[0];
+    const isToday = isSameDay(cellDate, today);
+    const isWeekend = cellDate.getDay() === 0 || cellDate.getDay() === 6;
+
+    const dayTasks = tasks.filter(t => {
+      if (!t.planned_start) return false;
+      const taskEnd = t.planned_end || t.planned_start;
+      return dateStr >= t.planned_start && dateStr <= taskEnd;
+    });
+
+    html += "<div class=\"calendar-cell" + (isToday ? " today" : "") + (isWeekend ? " weekend" : "") + "\">";
+    html += "<div class=\"calendar-date\">" + day + "</div>";
+
+    if (dayTasks.length > 0) {
+      html += "<div class=\"calendar-tasks\">";
+      dayTasks.slice(0, 3).forEach(task => {
+        html += "<div class=\"calendar-task " + getStatusClass(task.status) + "\" onclick=\"openTaskModal('" + task.id + "')\" title=\"" + escapeHtml(task.name) + "\">" + escapeHtml(truncate(task.name, 15)) + "</div>";
+      });
+      if (dayTasks.length > 3) html += "<div class=\"calendar-more\">+" + (dayTasks.length - 3) + " more</div>";
+      html += "</div>";
+    }
+    html += "</div>";
+  }
+
+  const endDay = lastDay.getDay();
+  for (let i = endDay; i < 6; i++) html += "<div class=\"calendar-cell empty\"></div>";
+
+  html += "</div>";
+  grid.innerHTML = html;
+}
+
+function calendarPrevMonth() {
+  state.calendarDate.setMonth(state.calendarDate.getMonth() - 1);
+  renderCalendar();
+}
+
+function calendarNextMonth() {
+  state.calendarDate.setMonth(state.calendarDate.getMonth() + 1);
+  renderCalendar();
+}
+
+function calendarToday() {
+  state.calendarDate = new Date();
+  renderCalendar();
+}
+
+// ============================================================
+// AGENDA VIEW (102-05)
+// ============================================================
+
+function populateAgendaVendors() {
+  const select = document.getElementById("agendaVendorFilter");
+  if (!select) return;
+  const assignedVendorIds = new Set(state.tasks.map(t => t.vendor_id).filter(Boolean));
+  select.innerHTML = "<option value=\"\">All Vendors</option><option value=\"unassigned\">Unassigned</option>";
+  state.vendors.filter(v => assignedVendorIds.has(v.id)).forEach(vendor => {
+    select.innerHTML += "<option value=\"" + vendor.id + "\">" + escapeHtml(vendor.name) + "</option>";
+  });
+  if (state.agendaVendorId) select.value = state.agendaVendorId;
+}
+
+function renderAgenda() {
+  const container = document.getElementById("agendaContent");
+  if (!container) return;
+  let tasks = getFilteredTasks();
+
+  if (state.agendaVendorId === "unassigned") tasks = tasks.filter(t => !t.vendor_id);
+  else if (state.agendaVendorId) tasks = tasks.filter(t => t.vendor_id === state.agendaVendorId);
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0];
+
+  if (state.agendaDateFilter === "today") {
+    tasks = tasks.filter(t => t.planned_start && (t.planned_start === todayStr || (t.planned_start <= todayStr && t.planned_end >= todayStr)));
+  } else if (state.agendaDateFilter === "week") {
+    const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
+    const weekEndStr = weekEnd.toISOString().split("T")[0];
+    tasks = tasks.filter(t => t.planned_start && t.planned_start <= weekEndStr && (t.planned_end >= todayStr || t.planned_start >= todayStr));
+  }
+
+  if (tasks.length === 0) { container.innerHTML = "<div class=\"agenda-empty\"><p>No tasks match your filters.</p></div>"; return; }
+
+  const grouped = {};
+  tasks.forEach(task => {
+    const key = task.vendor_id || "__unassigned__";
+    if (!grouped[key]) grouped[key] = { vendor: task.vendor_id ? state.vendors.find(v => v.id === task.vendor_id) : null, tasks: [] };
+    grouped[key].tasks.push(task);
+  });
+
+  const sortedKeys = Object.keys(grouped).sort((a, b) => {
+    if (a === "__unassigned__") return -1;
+    if (b === "__unassigned__") return 1;
+    return (grouped[a].vendor?.name || "").localeCompare(grouped[b].vendor?.name || "");
+  });
+
+  let html = "";
+  sortedKeys.forEach(key => {
+    const group = grouped[key];
+    const vendorName = key === "__unassigned__" ? "Unassigned" : (group.vendor?.name || "Unknown");
+    group.tasks.sort((a, b) => (a.planned_start || "").localeCompare(b.planned_start || ""));
+
+    html += "<div class=\"agenda-group\"><div class=\"agenda-group-header\"><span class=\"agenda-vendor-name\">" + escapeHtml(vendorName) + "</span><span class=\"agenda-task-count\">" + group.tasks.length + " task" + (group.tasks.length !== 1 ? "s" : "") + "</span></div><div class=\"agenda-group-tasks\">";
+    group.tasks.forEach(task => {
+      html += "<div class=\"agenda-task\" onclick=\"openTaskModal('" + task.id + "')\"><div class=\"agenda-task-info\"><span class=\"agenda-task-name\">" + escapeHtml(task.name) + "</span><span class=\"agenda-task-dates\">" + formatDateRange(task.planned_start, task.planned_end) + "</span></div><div class=\"agenda-task-meta\"><span class=\"status-badge " + getStatusClass(task.status) + "\">" + formatStatus(task.status) + "</span><span class=\"agenda-task-progress\">" + (task.completion_percent || 0) + "%</span></div></div>";
+    });
+    html += "</div></div>";
+  });
+  container.innerHTML = html;
+}
+
+function filterAgenda() { state.agendaVendorId = document.getElementById("agendaVendorFilter")?.value || ""; renderAgenda(); }
+function agendaToday() { state.agendaDateFilter = "today"; updateAgendaDateButtons(); renderAgenda(); }
+function agendaThisWeek() { state.agendaDateFilter = "week"; updateAgendaDateButtons(); renderAgenda(); }
+function agendaAll() { state.agendaDateFilter = "all"; updateAgendaDateButtons(); renderAgenda(); }
+
+function updateAgendaDateButtons() {
+  document.querySelectorAll(".agenda-date-nav .btn").forEach(btn => {
+    btn.classList.toggle("active", (btn.textContent === "Today" && state.agendaDateFilter === "today") || (btn.textContent === "This Week" && state.agendaDateFilter === "week") || (btn.textContent === "All" && state.agendaDateFilter === "all"));
+  });
 }

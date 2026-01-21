@@ -32562,3 +32562,278 @@ td.empty-state {
   background: var(--accent-blue);
   color: white;
 }
+
+
+/* ============================================================
+   CALENDAR VIEW (102-05)
+   ============================================================ */
+
+.schedule-calendar-view {
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-card-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  min-width: 150px;
+  text-align: center;
+}
+
+.calendar-header .btn-icon {
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+}
+
+.calendar-day-headers {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--bg-card-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-day-header {
+  padding: 0.75rem;
+  text-align: center;
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.calendar-cells {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.calendar-cell {
+  min-height: 100px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.calendar-cell:hover {
+  background: var(--bg-card-elevated);
+}
+
+.calendar-cell:nth-child(7n) {
+  border-right: none;
+}
+
+.calendar-cell.empty {
+  background: var(--bg-secondary);
+  cursor: default;
+}
+
+.calendar-cell.weekend {
+  background: rgba(139, 148, 158, 0.05);
+}
+
+.calendar-cell.today {
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.calendar-cell.today .calendar-date {
+  background: var(--accent-blue);
+  color: white;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-date {
+  font-weight: 500;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.calendar-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.calendar-task {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.calendar-task:hover {
+  filter: brightness(1.1);
+}
+
+.calendar-task.status-pending {
+  background: rgba(139, 148, 158, 0.2);
+  color: var(--text-secondary);
+}
+
+.calendar-task.status-progress {
+  background: rgba(88, 166, 255, 0.2);
+  color: var(--accent-blue);
+}
+
+.calendar-task.status-complete {
+  background: rgba(63, 185, 80, 0.2);
+  color: var(--accent-green);
+}
+
+.calendar-task.status-blocked {
+  background: rgba(248, 81, 73, 0.2);
+  color: var(--accent-red);
+}
+
+.calendar-more {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.calendar-more:hover {
+  color: var(--accent-blue);
+}
+
+/* ============================================================
+   AGENDA VIEW (102-05)
+   ============================================================ */
+
+.schedule-agenda-view {
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.agenda-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-card-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.agenda-header .form-control {
+  width: 200px;
+}
+
+.agenda-date-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.agenda-date-nav .btn.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.agenda-content {
+  max-height: calc(100vh - 350px);
+  overflow-y: auto;
+}
+
+.agenda-empty {
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.agenda-group {
+  border-bottom: 1px solid var(--border);
+}
+
+.agenda-group:last-child {
+  border-bottom: none;
+}
+
+.agenda-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card-elevated);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.agenda-vendor-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.agenda-task-count {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.agenda-group-tasks {
+  padding: 0.5rem;
+}
+
+.agenda-task {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 0.25rem;
+}
+
+.agenda-task:hover {
+  background: var(--bg-card-elevated);
+}
+
+.agenda-task-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.agenda-task-name {
+  font-weight: 500;
+}
+
+.agenda-task-dates {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.agenda-task-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.agenda-task-progress {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-width: 40px;
+  text-align: right;
+}
