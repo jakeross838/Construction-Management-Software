@@ -30859,3 +30859,232 @@ td.empty-state {
   color: var(--text-muted);
   font-size: 0.85rem;
 }
+
+/* ============================================================
+   EMPLOYEES PAGE
+   ============================================================ */
+
+/* Burden Review Alert */
+#burdenReviewAlert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(234, 179, 8, 0.15);
+  border: 1px solid var(--accent-orange);
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+#burdenReviewAlert .alert-content {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* Employee Stats Grid */
+#employeeStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Form sections */
+.form-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.form-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 1rem;
+}
+
+/* Burden preview */
+.burden-preview {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-top: 0.5rem;
+}
+
+.burden-preview strong {
+  color: var(--text-secondary);
+}
+
+.burden-preview span {
+  color: var(--accent-green);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+/* Rate grid for burden class form */
+.rate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.rate-grid .form-group {
+  margin-bottom: 0;
+}
+
+.rate-grid label {
+  font-size: 0.85rem;
+}
+
+.rate-grid input {
+  font-size: 0.9rem;
+}
+
+/* Burden total preview */
+.burden-total-preview {
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-green);
+  border-radius: 6px;
+  padding: 1rem;
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.burden-total-preview strong {
+  color: var(--text-secondary);
+}
+
+.burden-total-preview span {
+  color: var(--accent-green);
+  font-weight: 700;
+  font-size: 1.25rem;
+  margin-left: 0.5rem;
+}
+
+/* Review info box */
+.review-info {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.review-info p {
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+.review-info ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-secondary);
+}
+
+.review-info li {
+  margin-bottom: 0.25rem;
+}
+
+/* Calculation result */
+.calculation-result {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.calculation-result h4 {
+  font-size: 0.95rem;
+  color: var(--foreground);
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.result-row:last-child {
+  border-bottom: none;
+}
+
+.result-row span:first-child {
+  color: var(--text-secondary);
+}
+
+.result-row span:last-child {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.result-row.result-total {
+  border-top: 2px solid var(--border);
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.result-row.result-total span:last-child {
+  color: var(--accent-green);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+/* Modal toolbar */
+.modal-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+/* Employee status badges */
+.status-badge.status-active {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--accent-green);
+}
+
+.status-badge.status-inactive {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--accent-orange);
+}
+
+.status-badge.status-terminated {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-red);
+}
+
+/* Badge for default */
+.badge.badge-success {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--accent-green);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Form help text */
+.form-help {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+/* Button block */
+.btn-block {
+  display: block;
+  width: 100%;
+}

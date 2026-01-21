@@ -160,6 +160,7 @@ const intelligenceRoutes = require('./routes/intelligence');
 const documentHubRoutes = require('./routes/document-hub');
 const expenseRoutes = require('./routes/expenses');
 const financialPeriodRoutes = require('./routes/financial-periods');
+const employeeRoutes = require('./routes/employees');
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -213,6 +214,7 @@ app.use('/api/intelligence', intelligenceRoutes);
 app.use('/api/document-hub', documentHubRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/financial-periods', financialPeriodRoutes);
+app.use('/api/employees', employeeRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete
