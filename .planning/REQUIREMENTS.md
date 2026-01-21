@@ -126,64 +126,64 @@ Which phases cover which requirements. Updated by create-roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| EXP-01 | — | Pending |
-| EXP-02 | — | Pending |
-| EXP-03 | — | Pending |
-| EXP-04 | — | Pending |
-| EXP-05 | — | Pending |
-| EXP-06 | — | Pending |
-| LAB-01 | — | Pending |
-| LAB-02 | — | Pending |
-| LAB-03 | — | Pending |
-| LAB-04 | — | Pending |
-| LAB-05 | — | Pending |
-| LAB-06 | — | Pending |
-| LAB-07 | — | Pending |
-| LAB-08 | — | Pending |
-| LAB-09 | — | Pending |
-| LAB-10 | — | Pending |
-| LAB-11 | — | Pending |
-| LAB-12 | — | Pending |
-| OVH-01 | — | Pending |
-| OVH-02 | — | Pending |
-| OVH-03 | — | Pending |
-| OVH-04 | — | Pending |
-| OVH-05 | — | Pending |
-| OVH-06 | — | Pending |
-| JOB-01 | — | Pending |
-| JOB-02 | — | Pending |
-| JOB-03 | — | Pending |
-| JOB-04 | — | Pending |
-| JOB-05 | — | Pending |
-| JOB-06 | — | Pending |
-| WIP-01 | — | Pending |
-| WIP-02 | — | Pending |
-| WIP-03 | — | Pending |
-| WIP-04 | — | Pending |
-| WIP-05 | — | Pending |
-| WIP-06 | — | Pending |
-| PNL-01 | — | Pending |
-| PNL-02 | — | Pending |
-| PNL-03 | — | Pending |
-| PNL-04 | — | Pending |
-| PNL-05 | — | Pending |
-| PNL-06 | — | Pending |
-| CSH-01 | — | Pending |
-| CSH-02 | — | Pending |
-| CSH-03 | — | Pending |
-| CSH-04 | — | Pending |
-| CSH-05 | — | Pending |
-| BIZ-01 | — | Pending |
-| BIZ-02 | — | Pending |
-| BIZ-03 | — | Pending |
-| BIZ-04 | — | Pending |
-| BIZ-05 | — | Pending |
+| EXP-01 | Phase 78 | Pending |
+| EXP-02 | Phase 78 | Pending |
+| EXP-03 | Phase 78 | Pending |
+| EXP-04 | Phase 79 | Pending |
+| EXP-05 | Phase 79 | Pending |
+| EXP-06 | Phase 78 | Pending |
+| LAB-01 | Phase 81 | Pending |
+| LAB-02 | Phase 80 | Pending |
+| LAB-03 | Phase 80 | Pending |
+| LAB-04 | Phase 80 | Pending |
+| LAB-05 | Phase 80 | Pending |
+| LAB-06 | Phase 80 | Pending |
+| LAB-07 | Phase 81 | Pending |
+| LAB-08 | Phase 81 | Pending |
+| LAB-09 | Phase 81 | Pending |
+| LAB-10 | Phase 81 | Pending |
+| LAB-11 | Phase 81 | Pending |
+| LAB-12 | Phase 81 | Pending |
+| OVH-01 | Phase 82 | Pending |
+| OVH-02 | Phase 82 | Pending |
+| OVH-03 | Phase 82 | Pending |
+| OVH-04 | Phase 82 | Pending |
+| OVH-05 | Phase 82 | Pending |
+| OVH-06 | Phase 82 | Pending |
+| JOB-01 | Phase 83 | Pending |
+| JOB-02 | Phase 83 | Pending |
+| JOB-03 | Phase 83 | Pending |
+| JOB-04 | Phase 83 | Pending |
+| JOB-05 | Phase 83 | Pending |
+| JOB-06 | Phase 83 | Pending |
+| WIP-01 | Phase 84 | Pending |
+| WIP-02 | Phase 84 | Pending |
+| WIP-03 | Phase 84 | Pending |
+| WIP-04 | Phase 84 | Pending |
+| WIP-05 | Phase 84 | Pending |
+| WIP-06 | Phase 84 | Pending |
+| PNL-01 | Phase 85 | Pending |
+| PNL-02 | Phase 85 | Pending |
+| PNL-03 | Phase 85 | Pending |
+| PNL-04 | Phase 85 | Pending |
+| PNL-05 | Phase 85 | Pending |
+| PNL-06 | Phase 85 | Pending |
+| CSH-01 | Phase 86 | Pending |
+| CSH-02 | Phase 86 | Pending |
+| CSH-03 | Phase 86 | Pending |
+| CSH-04 | Phase 86 | Pending |
+| CSH-05 | Phase 86 | Pending |
+| BIZ-01 | Phase 87 | Pending |
+| BIZ-02 | Phase 87 | Pending |
+| BIZ-03 | Phase 87 | Pending |
+| BIZ-04 | Phase 87 | Pending |
+| BIZ-05 | Phase 87 | Pending |
 
 **Coverage:**
 - v3.1 requirements: 46 total
-- Mapped to phases: 0
-- Unmapped: 46 (will be mapped by create-roadmap)
+- Mapped to phases: 46
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-01-20*
-*Last updated: 2026-01-20 after initial definition*
+*Last updated: 2026-01-20 after roadmap creation*
