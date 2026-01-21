@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 104 (Application Reorganization)
-Plan: 04 of 04 (Wave 2)
+Plan: 05 of 05 (Wave 3)
 Status: COMPLETE
-Last activity: 2026-01-21 - Completed 104-03, 104-04 (Page data attributes for context detection)
+Last activity: 2026-01-21 - Completed 104-05 (Visual context indicator)
 
 Progress: [##########] 100% (Phase 104 complete)
 
@@ -23,7 +23,8 @@ Progress: [##########] 100% (Phase 104 complete)
 - Plan 104-02: Job sidebar context awareness (completed, 5 min)
 - Plan 104-03: Job-context page attributes (completed, 3 min)
 - Plan 104-04: Company-context page attributes (completed, 2 min)
-- **Total Duration:** ~15 min
+- Plan 104-05: Visual context indicator (completed, 3 min)
+- **Total Duration:** ~18 min
 
 **Phase 103 (Data Integrity Audit - COMPLETE):**
 - Plan 103-01: Audit all pages for hardcoded values (completed, 8 min)
@@ -100,6 +101,8 @@ Key decisions for v3.1:
 - Graceful API degradation: onJobChange, getSelectedJobId, getSelectedJob return empty on company pages
 - Page groups: job-finance, precon, active, closeout, company-finance, resources, team, overview
 - Role minimums set for future RBAC: owner(5), admin(4), pm(3), accounting(3), supervisor(2.5), field_crew(2), client(1.5), designer(1.5)
+- Visual context indicator: pill-shaped badge with icon + switch button
+- Context switching: Job View -> dashboard.html, Company View -> job-hub.html
 
 ### Pending Todos
 
@@ -112,7 +115,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-21
-Stopped at: Completed Phase 104 (104-01, 104-02, 104-03, 104-04)
+Stopped at: Completed Phase 104 (104-01 through 104-05)
 Resume file: None
 
 ## Next Actions
@@ -121,7 +124,7 @@ Phase 104 complete. Ready for next phase.
 
 ## Milestone History
 
-- **Phase 104 Application Reorganization** (completed 2026-01-21): Context-aware navigation, sidebar, and 48 pages with data attributes
+- **Phase 104 Application Reorganization** (completed 2026-01-21): Context-aware navigation, sidebar, 48 pages with data attributes, visual context indicator
 - **Phase 103 Data Integrity Audit** (completed 2026-01-21): Audit and fix hardcoded values, all stat cards verified
 - **Phase 101 Research** (completed 2026-01-21): Buildertrend competitive analysis
 - **v3.1 Business Intelligence & Financial Management** (in progress): Started 2026-01-20
