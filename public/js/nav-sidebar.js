@@ -61,6 +61,7 @@
         { id: 'budget', label: 'Budgets', href: 'budgets.html' },
         { id: 'expenses', label: 'Expenses', href: 'expenses.html' },
         { id: 'periods', label: 'Financial Periods', href: 'financial-periods.html' },
+        { id: 'overhead', label: 'Overhead Allocation', href: 'overhead.html' },
         { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' },
         { id: 'price-intel', label: 'Price Intelligence', href: 'price-intelligence.html' }
       ]

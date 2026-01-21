@@ -207,7 +207,7 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
 | 79. Expense Tracking | 1 | Complete | 2026-01-20 |
 | 80. Employee & Labor Setup | 1 | Complete | 2026-01-20 |
 | 81. Digital Timesheets | 1 | Complete | 2026-01-20 |
-| 82. Overhead Allocation | TBD | Not started | - |
+| 82. Overhead Allocation | 1 | Complete | 2026-01-20 |
 | 83. Job Profitability | TBD | Not started | - |
 | 84. WIP Schedule | TBD | Not started | - |
 | 85. Company P&L | TBD | Not started | - |

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overhead Allocation - Ross Built CMS</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <nav id="main-nav"></nav>
+
+    <main class="main-content">
+      <div class="page-header">
+        <div class="page-header-content">
+          <h1>Overhead Allocation</h1>
+          <p class="page-subtitle">Track and allocate overhead costs using % of Labor Hours</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-secondary" onclick="openCostPoolsModal()">
+            Cost Pools
+          </button>
+          <button class="btn btn-secondary" onclick="openSettingsModal()">
+            Settings
+          </button>
+          <button class="btn btn-primary" onclick="openRunAllocationModal()">
+            Run Allocation
+          </button>
+        </div>
+      </div>
+
+      <!-- Current Rate Cards -->
+      <div class="overhead-rate-cards">
+        <div class="rate-card rate-card-primary">
+          <div class="rate-card-header">Current Overhead Rate</div>
+          <div class="rate-card-value" id="currentRatePerHour">$0.00/hr</div>
+          <div class="rate-card-secondary" id="currentRatePercent">0% of labor</div>
+          <div class="rate-card-period" id="currentPeriod">No closed periods</div>
+        </div>
+
+        <div class="rate-card">
+          <div class="rate-card-header">12-Month Rolling Average</div>
+          <div class="rate-card-value" id="rollingRatePerHour">$0.00/hr</div>
+          <div class="rate-card-secondary" id="rollingRatePercent">0% of labor</div>
+          <div class="rate-card-period" id="rollingPeriods">0 periods</div>
+        </div>
+
+        <div class="rate-card">
+          <div class="rate-card-header">Total Overhead (Period)</div>
+          <div class="rate-card-value" id="totalOverhead">$0</div>
+          <div class="rate-card-secondary" id="totalLaborHours">0 labor hours</div>
+        </div>
+
+        <div class="rate-card">
+          <div class="rate-card-header">Active Cost Pools</div>
+          <div class="rate-card-value" id="costPoolCount">0</div>
+          <div class="rate-card-secondary">expense categories</div>
+        </div>
+      </div>
+
+      <!-- Rate Trend Chart -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Overhead Rate Trend</h2>
+        </div>
+        <div class="card-body chart-container">
+          <canvas id="rateTrendChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Two Column Layout -->
+      <div class="two-column-grid">
+        <!-- Job Allocations -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Top Jobs by Overhead</h2>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Job</th>
+                  <th>Labor Hours</th>
+                  <th>Allocated Overhead</th>
+                </tr>
+              </thead>
+              <tbody id="topJobsTable">
+                <tr>
+                  <td colspan="3" class="loading-cell">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Rate History -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Rate History</h2>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Period</th>
+                  <th>Rate/Hour</th>
+                  <th>Rate %</th>
+                  <th>Total OH</th>
+                </tr>
+              </thead>
+              <tbody id="rateHistoryTable">
+                <tr>
+                  <td colspan="4" class="loading-cell">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Cost Pools Modal -->
+  <div id="costPoolsModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2>Cost Pools</h2>
+        <button class="modal-close" onclick="closeCostPoolsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-toolbar">
+          <button class="btn btn-primary" onclick="openCreatePoolModal()">+ Add Cost Pool</button>
+        </div>
+
+        <p class="help-text">Cost pools group expense categories for overhead allocation. All expenses in linked categories are included when calculating the overhead rate.</p>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Pool Name</th>
+                <th>Method</th>
+                <th>Categories</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="costPoolsTable">
+              <tr>
+                <td colspan="5" class="loading-cell">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCostPoolsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Pool Modal -->
+  <div id="poolModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h2 id="poolModalTitle">Add Cost Pool</h2>
+        <button class="modal-close" onclick="closePoolModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="poolForm" onsubmit="savePool(event)">
+          <input type="hidden" id="poolId">
+
+          <div class="form-group">
+            <label for="poolName">Pool Name *</label>
+            <input type="text" id="poolName" required placeholder="e.g., Office Overhead">
+          </div>
+
+          <div class="form-group">
+            <label for="poolDescription">Description</label>
+            <textarea id="poolDescription" rows="2" placeholder="What expenses does this pool include?"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="poolMethod">Allocation Method</label>
+            <select id="poolMethod">
+              <option value="labor_hours">% of Labor Hours</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Expense Categories</label>
+            <div id="categoryCheckboxes" class="checkbox-grid">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closePoolModal()">Cancel</button>
+        <button type="submit" form="poolForm" class="btn btn-primary">Save Pool</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Run Allocation Modal -->
+  <div id="runAllocationModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h2>Run Overhead Allocation</h2>
+        <button class="modal-close" onclick="closeRunAllocationModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="help-text">Select a closed financial period to allocate overhead to jobs based on their labor hours.</p>
+
+        <div class="form-group">
+          <label for="allocationPeriod">Financial Period *</label>
+          <select id="allocationPeriod" onchange="previewAllocation()">
+            <option value="">-- Select Period --</option>
+          </select>
+        </div>
+
+        <div id="allocationPreview" style="display: none;">
+          <h4>Allocation Preview</h4>
+          <div class="preview-stats">
+            <div class="preview-stat">
+              <span class="label">Total Overhead:</span>
+              <span class="value" id="previewOverhead">$0</span>
+            </div>
+            <div class="preview-stat">
+              <span class="label">Total Labor Hours:</span>
+              <span class="value" id="previewHours">0</span>
+            </div>
+            <div class="preview-stat">
+              <span class="label">Rate per Hour:</span>
+              <span class="value" id="previewRate">$0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeRunAllocationModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="runAllocation()" id="runAllocationBtn" disabled>Run Allocation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Overhead Settings</h2>
+        <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="settingsForm" onsubmit="saveSettings(event)">
+          <div class="form-group">
+            <label for="settingMethod">Allocation Method</label>
+            <select id="settingMethod">
+              <option value="labor_hours">% of Labor Hours</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="settingRolling"> Use 12-Month Rolling Average
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label for="settingMonths">Rolling Average Months</label>
+            <input type="number" id="settingMonths" min="1" max="24" value="12">
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="settingIncludeOT" checked> Include Overtime Hours
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="settingAutoAllocate" checked> Auto-Allocate on Period Close
+            </label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeSettingsModal()">Cancel</button>
+        <button type="submit" form="settingsForm" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/nav-sidebar.js"></script>
+  <script src="js/toasts.js"></script>
+  <script src="js/overhead.js"></script>
+</body>
+</html>
