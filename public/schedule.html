@@ -7,7 +7,7 @@
   <link rel="dns-prefetch" href="https://fnfkowpdlffzjqtmbnmj.supabase.co">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
   <title>Ross Built - Schedule</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260118c-tabs">
+  <link rel="stylesheet" href="css/styles.css?v=20260121-schedule-ui">
 </head>
 <body>
   <div class="app">
@@ -56,7 +56,7 @@
               <span class="schedule-dates" id="scheduleDates"></span>
             </div>
           </div>
-          <div class="schedule-actions">
+          <div class="schedule-actions">            <!-- Baseline Controls -->            <div class="baseline-controls" id="baselineControls" style="display: none;">              <button class="btn btn-secondary btn-sm" onclick="setBaseline()" id="setBaselineBtn">                Set Baseline              </button>              <button class="btn btn-secondary btn-sm" onclick="toggleBaselineView()" id="toggleBaselineBtn">                Show Baseline              </button>            </div>            <div class="baseline-info" id="baselineInfo" style="display: none;">              <span class="baseline-badge">Baseline: <span id="baselineDate"></span></span>            </div>            <!-- Template Controls -->            <button class="btn btn-secondary btn-sm" onclick="openSaveTemplateModal()" id="saveTemplateBtn" style="display: none;">              Save as Template            </button>            <!-- Filters -->
             <select id="phaseFilter" class="form-control filter-select" onchange="applyFilters()">
               <option value="">All Phases</option>
             </select>
@@ -73,7 +73,7 @@
           </div>
         </div>
 
-        <!-- Schedule Stats -->
+        <!-- Bulk Actions Bar -->        <div class="bulk-actions-bar" id="bulkActionsBar" style="display: none;">          <span class="bulk-count"><span id="selectedCount">0</span> tasks selected</span>          <button class="btn btn-sm" onclick="bulkSetStatus('in_progress')">Start Selected</button>          <button class="btn btn-sm" onclick="bulkSetStatus('completed')">Complete Selected</button>          <button class="btn btn-sm btn-danger" onclick="bulkDelete()">Delete Selected</button>          <button class="btn btn-sm" onclick="clearSelection()">Clear Selection</button>        </div>        <!-- Schedule Stats -->
         <div class="schedule-stats" id="scheduleStats" style="display: none;">
           <div class="stat-card">
             <div class="stat-value" id="statTotalTasks">0</div>
@@ -109,15 +109,15 @@
           <div class="empty-icon">📅</div>
           <h3>No Schedule</h3>
           <p>This job doesn't have a schedule yet</p>
-          <button class="btn btn-primary" onclick="createSchedule()">Create Schedule</button>
+          <div class="create-schedule-options">            <button class="btn btn-primary" onclick="createSchedule()">Create Blank Schedule</button>            <button class="btn btn-secondary" onclick="openApplyTemplateModal()">Create from Template</button>          </div>
         </div>
 
         <!-- List View -->
         <div class="schedule-list-view" id="listView" style="display: none;">
-          <table class="schedule-table">
-            <thead>
+          <table class="schedule-table">            <thead id="taskTableHead">
+            <!-- thead replaced -->
               <tr>
-                <th class="col-task">Task</th>
+                <th class="col-checkbox">                  <input type="checkbox" id="selectAllTasks" onchange="toggleSelectAll(this.checked)">                </th>                <th class="col-task">Task</th>
                 <th class="col-trade">Trade</th>
                 <th class="col-phase">Phase</th>
                 <th class="col-dates">Planned</th>
@@ -244,17 +244,17 @@
     </div>
   </div>
 
-  <!-- Toast Container -->
+  <!-- Set Baseline Modal -->  <div id="baselineModal" class="modal modal-fullscreen-dark">    <div class="modal-content modal-sm">      <div class="modal-header">        <h2>Set Baseline</h2>        <button class="close-btn" onclick="closeBaselineModal()">&times;</button>      </div>      <div class="modal-body">        <p>This will capture the current planned dates as your baseline for comparison.</p>        <p id="baselineWarning" style="display: none; color: var(--accent-orange);">          Warning: A baseline already exists. Setting a new baseline will overwrite it.        </p>      </div>      <div class="modal-footer">        <button class="btn btn-secondary" onclick="closeBaselineModal()">Cancel</button>        <button class="btn btn-primary" onclick="confirmSetBaseline()">Set Baseline</button>      </div>    </div>  </div>  <!-- Save Template Modal -->  <div id="saveTemplateModal" class="modal modal-fullscreen-dark">    <div class="modal-content modal-md">      <div class="modal-header">        <h2>Save as Template</h2>        <button class="close-btn" onclick="closeSaveTemplateModal()">&times;</button>      </div>      <div class="modal-body">        <div class="form-group">          <label for="templateName">Template Name *</label>          <input type="text" id="templateName" class="form-control" placeholder="e.g., Custom Home - 6 Month">        </div>        <div class="form-group">          <label for="templateDescription">Description</label>          <textarea id="templateDescription" class="form-control" rows="2" placeholder="Optional description..."></textarea>        </div>        <div class="form-group">          <label for="templateProjectType">Project Type</label>          <select id="templateProjectType" class="form-control">            <option value="residential">Residential</option>            <option value="commercial">Commercial</option>            <option value="renovation">Renovation</option>          </select>        </div>        <p class="form-hint" id="templateTaskCount">This will save tasks with their relative timing and dependencies.</p>      </div>      <div class="modal-footer">        <button class="btn btn-secondary" onclick="closeSaveTemplateModal()">Cancel</button>        <button class="btn btn-primary" onclick="saveAsTemplate()">Save Template</button>      </div>    </div>  </div>  <!-- Apply Template Modal -->  <div id="applyTemplateModal" class="modal modal-fullscreen-dark">    <div class="modal-content modal-md">      <div class="modal-header">        <h2>Create from Template</h2>        <button class="close-btn" onclick="closeApplyTemplateModal()">&times;</button>      </div>      <div class="modal-body">        <div class="form-group">          <label for="templateSelect">Select Template *</label>          <select id="templateSelect" class="form-control" onchange="previewTemplate()">            <option value="">Choose a template...</option>          </select>        </div>        <div class="form-group">          <label for="scheduleStartDate">Start Date *</label>          <input type="date" id="scheduleStartDate" class="form-control">        </div>        <div id="templatePreview" class="template-preview" style="display: none;">          <h4>Template Preview</h4>          <p><strong>Tasks:</strong> <span id="previewTaskCount">0</span></p>          <p><strong>Duration:</strong> <span id="previewDuration">0</span> days</p>          <p><strong>Estimated End:</strong> <span id="previewEndDate">-</span></p>        </div>      </div>      <div class="modal-footer">        <button class="btn btn-secondary" onclick="closeApplyTemplateModal()">Cancel</button>        <button class="btn btn-primary" onclick="applyTemplate()">Create Schedule</button>      </div>    </div>  </div>  <!-- Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- Scripts -->
-  <script src="js/toasts.js?v=20260118fix"></script>
-  <script src="js/modal-helpers.js?v=20260118fix"></script>
-  <script src="js/nav-sidebar.js?v=20260118fix"></script>
-  <script src="js/sidebar.js?v=20260118fix"></script>
-  <script src="js/searchable-picker.js?v=20260118fix"></script>
-  <script src="js/realtime.js?v=20260118fix"></script>
-  <script src="js/schedule.js?v=20260118fix"></script>
+  <script src="js/toasts.js?v=20260121"></script>
+  <script src="js/modal-helpers.js?v=20260121"></script>
+  <script src="js/nav-sidebar.js?v=20260121"></script>
+  <script src="js/sidebar.js?v=20260121"></script>
+  <script src="js/searchable-picker.js?v=20260121"></script>
+  <script src="js/realtime.js?v=20260121"></script>
+  <script src="js/schedule.js?v=20260121"></script>
   <script src="js/ai-upload.js"></script>
 </body>
 </html>

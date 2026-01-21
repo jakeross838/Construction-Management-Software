@@ -1338,3 +1338,435 @@ function toggleCriticalPath() {
     renderTaskList();
   }
 }
+
+
+// ============================================================
+// BASELINE FUNCTIONALITY (102-03)
+// ============================================================
+
+async function loadBaselineInfo() {
+  if (!state.schedule) return;
+
+  try {
+    const res = await fetch('/api/schedules/' + state.schedule.id + '/baseline');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.baseline_set_at) {
+        state.hasBaseline = true;
+        state.baselineData = data;
+
+        const baselineInfo = document.getElementById('baselineInfo');
+        const baselineDate = document.getElementById('baselineDate');
+        if (baselineInfo && baselineDate) {
+          baselineDate.textContent = new Date(data.baseline_set_at).toLocaleDateString();
+          baselineInfo.style.display = 'flex';
+        }
+
+        const setBtn = document.getElementById('setBaselineBtn');
+        if (setBtn) setBtn.textContent = 'Update Baseline';
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load baseline:', err);
+  }
+}
+
+function setBaseline() {
+  const modal = document.getElementById('baselineModal');
+  const warning = document.getElementById('baselineWarning');
+
+  if (warning) {
+    warning.style.display = state.hasBaseline ? 'block' : 'none';
+  }
+
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+  }
+}
+
+function closeBaselineModal() {
+  const modal = document.getElementById('baselineModal');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = 'none';
+  }
+}
+
+async function confirmSetBaseline() {
+  if (!state.schedule) return;
+
+  try {
+    const res = await fetch('/api/schedules/' + state.schedule.id + '/set-baseline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to set baseline');
+    }
+
+    closeBaselineModal();
+    await loadBaselineInfo();
+    showToast('Baseline set successfully', 'success');
+  } catch (err) {
+    console.error('Failed to set baseline:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+function toggleBaselineView() {
+  state.showBaseline = !state.showBaseline;
+
+  const toggleBtn = document.getElementById('toggleBaselineBtn');
+  if (toggleBtn) {
+    toggleBtn.textContent = state.showBaseline ? 'Hide Baseline' : 'Show Baseline';
+    toggleBtn.classList.toggle('active', state.showBaseline);
+  }
+
+  renderSchedule();
+}
+
+function calculateVariance(task) {
+  if (!state.baselineData || !state.showBaseline) return null;
+
+  const baseline = state.baselineData.tasks ? state.baselineData.tasks.find(t => t.id === task.id) : null;
+  if (!baseline || !baseline.planned_start || !task.planned_start) return null;
+
+  const baseStart = new Date(baseline.planned_start);
+  const actualStart = new Date(task.actual_start || task.planned_start);
+  const diffDays = Math.round((actualStart - baseStart) / (1000 * 60 * 60 * 24));
+
+  return {
+    days: diffDays,
+    ahead: diffDays < 0,
+    behind: diffDays > 0,
+    onTrack: diffDays === 0
+  };
+}
+
+function renderVarianceBadge(variance) {
+  if (!variance) return '';
+
+  if (variance.onTrack) {
+    return '<span class="variance-badge variance-on-track">On Track</span>';
+  } else if (variance.ahead) {
+    return '<span class="variance-badge variance-ahead">' + Math.abs(variance.days) + 'd ahead</span>';
+  } else {
+    return '<span class="variance-badge variance-behind">' + variance.days + 'd behind</span>';
+  }
+}
+
+// ============================================================
+// TEMPLATE FUNCTIONALITY (102-03)
+// ============================================================
+
+function openSaveTemplateModal() {
+  const modal = document.getElementById('saveTemplateModal');
+  const taskCountEl = document.getElementById('templateTaskCount');
+
+  document.getElementById('templateName').value = '';
+  document.getElementById('templateDescription').value = '';
+  document.getElementById('templateProjectType').value = 'residential';
+
+  if (taskCountEl) {
+    taskCountEl.textContent = 'This will save ' + state.tasks.length + ' tasks with their relative timing and dependencies.';
+  }
+
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+  }
+}
+
+function closeSaveTemplateModal() {
+  const modal = document.getElementById('saveTemplateModal');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = 'none';
+  }
+}
+
+async function saveAsTemplate() {
+  const name = document.getElementById('templateName').value.trim();
+  if (!name) {
+    showToast('Template name is required', 'error');
+    return;
+  }
+
+  const description = document.getElementById('templateDescription').value.trim();
+  const projectType = document.getElementById('templateProjectType').value;
+
+  try {
+    const res = await fetch('/api/schedules/templates/from-schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        schedule_id: state.schedule.id,
+        name: name,
+        description: description,
+        project_type: projectType
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to save template');
+    }
+
+    closeSaveTemplateModal();
+    showToast('Template saved successfully', 'success');
+  } catch (err) {
+    console.error('Failed to save template:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+async function openApplyTemplateModal() {
+  const modal = document.getElementById('applyTemplateModal');
+  const templateSelect = document.getElementById('templateSelect');
+  const startDateInput = document.getElementById('scheduleStartDate');
+
+  const today = new Date().toISOString().split('T')[0];
+  if (startDateInput) startDateInput.value = today;
+
+  try {
+    const res = await fetch('/api/schedules/templates');
+    if (res.ok) {
+      state.templates = await res.json();
+
+      if (templateSelect) {
+        templateSelect.innerHTML = '<option value="">Choose a template...</option>';
+        state.templates.forEach(t => {
+          templateSelect.innerHTML += '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>';
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load templates:', err);
+  }
+
+  const preview = document.getElementById('templatePreview');
+  if (preview) preview.style.display = 'none';
+
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+  }
+}
+
+function closeApplyTemplateModal() {
+  const modal = document.getElementById('applyTemplateModal');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = 'none';
+  }
+}
+
+function previewTemplate() {
+  const templateId = document.getElementById('templateSelect').value;
+  const startDate = document.getElementById('scheduleStartDate').value;
+  const preview = document.getElementById('templatePreview');
+
+  if (!templateId || !preview) {
+    if (preview) preview.style.display = 'none';
+    return;
+  }
+
+  const template = state.templates.find(t => t.id === templateId);
+  if (!template) return;
+
+  preview.style.display = 'block';
+  document.getElementById('previewTaskCount').textContent = template.task_count || 0;
+  document.getElementById('previewDuration').textContent = template.duration_days || 0;
+
+  if (startDate && template.duration_days) {
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + template.duration_days);
+    document.getElementById('previewEndDate').textContent = endDate.toLocaleDateString();
+  } else {
+    document.getElementById('previewEndDate').textContent = '-';
+  }
+}
+
+async function applyTemplate() {
+  const templateId = document.getElementById('templateSelect').value;
+  const startDate = document.getElementById('scheduleStartDate').value;
+
+  if (!templateId) {
+    showToast('Please select a template', 'error');
+    return;
+  }
+
+  if (!startDate) {
+    showToast('Please select a start date', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/schedules/templates/' + templateId + '/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_id: state.currentJobId,
+        start_date: startDate
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to apply template');
+    }
+
+    closeApplyTemplateModal();
+    await loadSchedule();
+    showToast('Schedule created from template', 'success');
+  } catch (err) {
+    console.error('Failed to apply template:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// BULK OPERATIONS (102-04)
+// ============================================================
+
+function toggleSelectAll(checked) {
+  const checkboxes = document.querySelectorAll('.task-checkbox');
+  checkboxes.forEach(cb => {
+    cb.checked = checked;
+    const taskId = cb.dataset.taskId;
+    if (checked) {
+      state.selectedTasks.add(taskId);
+    } else {
+      state.selectedTasks.delete(taskId);
+    }
+  });
+  updateBulkActionsBar();
+}
+
+function toggleTaskSelection(taskId, checked) {
+  if (checked) {
+    state.selectedTasks.add(taskId);
+  } else {
+    state.selectedTasks.delete(taskId);
+  }
+
+  const selectAll = document.getElementById('selectAllTasks');
+  const allCheckboxes = document.querySelectorAll('.task-checkbox');
+  if (selectAll && allCheckboxes.length > 0) {
+    selectAll.checked = state.selectedTasks.size === allCheckboxes.length;
+    selectAll.indeterminate = state.selectedTasks.size > 0 && state.selectedTasks.size < allCheckboxes.length;
+  }
+
+  updateBulkActionsBar();
+}
+
+function updateBulkActionsBar() {
+  const bar = document.getElementById('bulkActionsBar');
+  const count = document.getElementById('selectedCount');
+
+  if (bar) {
+    bar.style.display = state.selectedTasks.size > 0 ? 'flex' : 'none';
+  }
+  if (count) {
+    count.textContent = state.selectedTasks.size;
+  }
+}
+
+function clearSelection() {
+  state.selectedTasks.clear();
+  document.querySelectorAll('.task-checkbox').forEach(cb => cb.checked = false);
+  const selectAll = document.getElementById('selectAllTasks');
+  if (selectAll) {
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+  }
+  updateBulkActionsBar();
+}
+
+async function quickUpdateTask(taskId, updates) {
+  const res = await fetch('/api/schedules/tasks/' + taskId, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates)
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to update task');
+  }
+
+  return await res.json();
+}
+
+async function quickChangeStatus(taskId, newStatus) {
+  try {
+    await quickUpdateTask(taskId, { status: newStatus });
+
+    const task = state.tasks.find(t => t.id === taskId);
+    if (task) task.status = newStatus;
+
+    updateStats();
+    showToast('Status updated', 'success');
+  } catch (err) {
+    console.error('Failed to change status:', err);
+    showToast('Failed to update status', 'error');
+    renderSchedule();
+  }
+}
+
+async function bulkSetStatus(status) {
+  if (state.selectedTasks.size === 0) return;
+
+  const taskIds = Array.from(state.selectedTasks);
+  const failed = [];
+
+  for (const taskId of taskIds) {
+    try {
+      await quickUpdateTask(taskId, { status });
+      const task = state.tasks.find(t => t.id === taskId);
+      if (task) task.status = status;
+    } catch (err) {
+      failed.push(taskId);
+    }
+  }
+
+  if (failed.length > 0) {
+    showToast('Failed to update ' + failed.length + ' tasks', 'error');
+  } else {
+    showToast('Updated ' + taskIds.length + ' tasks', 'success');
+  }
+
+  clearSelection();
+  updateStats();
+  renderSchedule();
+}
+
+async function bulkDelete() {
+  if (state.selectedTasks.size === 0) return;
+
+  if (!confirm('Are you sure you want to delete ' + state.selectedTasks.size + ' tasks?')) return;
+
+  const taskIds = Array.from(state.selectedTasks);
+  const failed = [];
+
+  for (const taskId of taskIds) {
+    try {
+      const res = await fetch('/api/schedules/tasks/' + taskId, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+    } catch (err) {
+      failed.push(taskId);
+    }
+  }
+
+  if (failed.length > 0) {
+    showToast('Failed to delete ' + failed.length + ' tasks', 'error');
+  } else {
+    showToast('Deleted ' + taskIds.length + ' tasks', 'success');
+  }
+
+  clearSelection();
+  await loadSchedule();
+}
