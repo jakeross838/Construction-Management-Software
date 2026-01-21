@@ -550,8 +550,195 @@ function renderProductDetail() {
     tagsSection.style.display = 'none';
   }
 
+  // Estimation Data (Phase 70 Smart Catalog)
+  renderEstimationSection();
+
+  // Trades (Phase 70 Smart Catalog)
+  renderTradesSection();
+
+  // Dependencies (Phase 70 Smart Catalog)
+  renderDependenciesSection();
+
   // Gallery
   renderGallery();
+}
+
+/**
+ * Render estimation/scheduling fields section
+ */
+function renderEstimationSection() {
+  const p = currentProduct;
+  const section = document.getElementById('estimationSection');
+  const container = document.getElementById('estimationData');
+
+  // Check if any estimation data exists
+  const hasEstimationData = p.labor_hours || p.install_duration_hours || p.lead_time_days ||
+    p.waste_factor_percent || p.coverage_rate || p.quality_tier ||
+    p.requires_permit || p.rough_in_required || p.warranty_months;
+
+  if (!hasEstimationData) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  const items = [];
+
+  // Labor & Duration
+  if (p.labor_hours) {
+    items.push({ label: 'Labor Hours', value: `${p.labor_hours} hrs`, icon: '⏱️' });
+  }
+  if (p.install_duration_hours) {
+    const duration = p.install_duration_hours;
+    const crew = p.crew_size || 1;
+    items.push({ label: 'Install Duration', value: `${duration} hrs (crew of ${crew})`, icon: '👷' });
+  }
+  if (p.lead_time_days > 0) {
+    items.push({ label: 'Lead Time', value: `${p.lead_time_days} days`, icon: '📅' });
+  }
+
+  // Material Coverage
+  if (p.waste_factor_percent) {
+    items.push({ label: 'Waste Factor', value: `${p.waste_factor_percent}%`, icon: '📊' });
+  }
+  if (p.coverage_rate && p.coverage_unit) {
+    items.push({ label: 'Coverage', value: `${p.coverage_rate} per ${p.coverage_unit}`, icon: '📐' });
+  }
+
+  // Quality Tier
+  if (p.quality_tier) {
+    const tierLabels = { builder: 'Builder Grade', standard: 'Standard', premium: 'Premium' };
+    const tierColors = { builder: 'var(--accent-orange)', standard: 'var(--accent-blue)', premium: 'var(--accent-green)' };
+    items.push({
+      label: 'Quality Tier',
+      value: `<span style="color: ${tierColors[p.quality_tier]}">${tierLabels[p.quality_tier]}</span>`,
+      icon: '⭐',
+      html: true
+    });
+  }
+
+  // Permits
+  if (p.requires_permit) {
+    items.push({
+      label: 'Permit Required',
+      value: p.permit_type ? `Yes (${p.permit_type})` : 'Yes',
+      icon: '📋'
+    });
+  }
+
+  // Rough-in
+  if (p.rough_in_required) {
+    items.push({
+      label: 'Rough-in',
+      value: p.rough_in_notes || 'Required',
+      icon: '🔧'
+    });
+  }
+
+  // Warranty
+  if (p.warranty_months) {
+    const years = p.warranty_months >= 12 ? `${Math.floor(p.warranty_months / 12)} year` : `${p.warranty_months} month`;
+    items.push({
+      label: 'Warranty',
+      value: p.warranty_notes ? `${years} - ${p.warranty_notes}` : years,
+      icon: '🛡️'
+    });
+  }
+
+  container.innerHTML = items.map(item => `
+    <div class="estimation-item">
+      <span class="estimation-icon">${item.icon}</span>
+      <span class="estimation-label">${item.label}</span>
+      <span class="estimation-value">${item.html ? item.value : escapeHtml(String(item.value))}</span>
+    </div>
+  `).join('');
+}
+
+/**
+ * Render compatible trades section
+ */
+function renderTradesSection() {
+  const p = currentProduct;
+  const section = document.getElementById('tradesSection');
+  const container = document.getElementById('tradesList');
+
+  const trades = p.trades || [];
+
+  if (trades.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  container.innerHTML = trades.map(t => {
+    const trade = t.trade || {};
+    const isPrimary = t.is_primary;
+    const hours = t.labor_hours_override || p.labor_hours;
+    const rate = t.hourly_rate_override;
+
+    return `
+      <div class="trade-item ${isPrimary ? 'trade-primary' : ''}">
+        <div class="trade-info">
+          <span class="trade-name">${escapeHtml(trade.name || 'Unknown Trade')}</span>
+          ${isPrimary ? '<span class="badge badge-small">Primary</span>' : ''}
+        </div>
+        <div class="trade-details">
+          ${hours ? `<span class="trade-hours">${hours} hrs</span>` : ''}
+          ${rate ? `<span class="trade-rate">$${rate}/hr</span>` : ''}
+          ${t.notes ? `<span class="trade-notes">${escapeHtml(t.notes)}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * Render scheduling dependencies section
+ */
+function renderDependenciesSection() {
+  const p = currentProduct;
+  const section = document.getElementById('dependenciesSection');
+  const container = document.getElementById('dependenciesList');
+
+  const deps = p.dependencies || [];
+
+  if (deps.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  const typeLabels = {
+    must_precede: 'Must be installed BEFORE',
+    must_follow: 'Must be installed AFTER',
+    incompatible: 'Cannot be used with'
+  };
+
+  const typeIcons = {
+    must_precede: '⬆️',
+    must_follow: '⬇️',
+    incompatible: '🚫'
+  };
+
+  container.innerHTML = deps.map(d => {
+    const targetName = d.depends_on_item?.name || d.depends_on_category?.name || 'Unknown';
+    const targetType = d.depends_on_item ? 'item' : 'category';
+
+    return `
+      <div class="dependency-item dependency-${d.dependency_type}">
+        <span class="dependency-icon">${typeIcons[d.dependency_type]}</span>
+        <div class="dependency-info">
+          <span class="dependency-type">${typeLabels[d.dependency_type]}</span>
+          <span class="dependency-target">${escapeHtml(targetName)} <span class="text-muted">(${targetType})</span></span>
+        </div>
+        ${d.gap_days > 0 ? `<span class="dependency-gap">${d.gap_days} day gap</span>` : ''}
+        ${d.notes ? `<span class="dependency-notes">${escapeHtml(d.notes)}</span>` : ''}
+      </div>
+    `;
+  }).join('');
 }
 
 function renderGallery() {
@@ -1059,6 +1246,26 @@ function openEditProductModal() {
     document.getElementById('dimUnit').value = p.dimensions.unit || 'in';
   }
 
+  // Fill estimation fields (Phase 70 Smart Catalog)
+  document.getElementById('productFormLaborHours').value = p.labor_hours || '';
+  document.getElementById('productFormInstallDuration').value = p.install_duration_hours || '';
+  document.getElementById('productFormCrewSize').value = p.crew_size || 1;
+  document.getElementById('productFormLeadTime').value = p.lead_time_days || '';
+  document.getElementById('productFormQualityTier').value = p.quality_tier || 'standard';
+  document.getElementById('productFormWasteFactor').value = p.waste_factor_percent || '';
+  document.getElementById('productFormCoverageRate').value = p.coverage_rate || '';
+  document.getElementById('productFormCoverageUnit').value = p.coverage_unit || '';
+
+  // Fill permit fields
+  document.getElementById('productFormRequiresPermit').checked = p.requires_permit || false;
+  document.getElementById('productFormPermitType').value = p.permit_type || '';
+  document.getElementById('productFormRoughInRequired').checked = p.rough_in_required || false;
+  document.getElementById('productFormRoughInNotes').value = p.rough_in_notes || '';
+
+  // Fill warranty fields
+  document.getElementById('productFormWarrantyMonths').value = p.warranty_months || '';
+  document.getElementById('productFormWarrantyNotes').value = p.warranty_notes || '';
+
   // Load existing images in the image gallery
   loadExistingImages(currentProduct.id);
 }
@@ -1109,6 +1316,26 @@ async function saveProduct() {
   if (dimDepth) dimensions.depth = dimDepth;
   if (Object.keys(dimensions).length > 0) dimensions.unit = dimUnit;
 
+  // Gather estimation fields (Phase 70 Smart Catalog)
+  const labor_hours = parseFloat(document.getElementById('productFormLaborHours').value) || null;
+  const install_duration_hours = parseFloat(document.getElementById('productFormInstallDuration').value) || null;
+  const crew_size = parseInt(document.getElementById('productFormCrewSize').value) || 1;
+  const lead_time_days = parseInt(document.getElementById('productFormLeadTime').value) || 0;
+  const quality_tier = document.getElementById('productFormQualityTier').value || 'standard';
+  const waste_factor_percent = parseFloat(document.getElementById('productFormWasteFactor').value) || null;
+  const coverage_rate = parseFloat(document.getElementById('productFormCoverageRate').value) || null;
+  const coverage_unit = document.getElementById('productFormCoverageUnit').value || null;
+
+  // Gather permit fields
+  const requires_permit = document.getElementById('productFormRequiresPermit').checked;
+  const permit_type = document.getElementById('productFormPermitType').value || null;
+  const rough_in_required = document.getElementById('productFormRoughInRequired').checked;
+  const rough_in_notes = document.getElementById('productFormRoughInNotes').value.trim() || null;
+
+  // Gather warranty fields
+  const warranty_months = parseInt(document.getElementById('productFormWarrantyMonths').value) || null;
+  const warranty_notes = document.getElementById('productFormWarrantyNotes').value.trim() || null;
+
   // Validation
   if (!name) {
     showToast('Product name is required', 'error');
@@ -1142,7 +1369,22 @@ async function saveProduct() {
     specs: Object.keys(specs).length > 0 ? specs : null,
     dimensions: Object.keys(dimensions).length > 0 ? dimensions : null,
     image_url,
-    spec_sheet_url
+    spec_sheet_url,
+    // Phase 70 Smart Catalog fields
+    labor_hours,
+    install_duration_hours,
+    crew_size,
+    lead_time_days,
+    quality_tier,
+    waste_factor_percent,
+    coverage_rate,
+    coverage_unit,
+    requires_permit,
+    permit_type,
+    rough_in_required,
+    rough_in_notes,
+    warranty_months,
+    warranty_notes
   };
 
   try {

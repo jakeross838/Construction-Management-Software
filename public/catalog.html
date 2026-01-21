@@ -226,6 +226,30 @@
                 <!-- Tags loaded dynamically -->
               </div>
             </div>
+
+            <!-- Estimation Fields Section (Phase 70 Smart Catalog) -->
+            <div class="info-section" id="estimationSection" style="display: none;">
+              <h4>Estimation Data</h4>
+              <div class="estimation-grid" id="estimationData">
+                <!-- Estimation fields loaded dynamically -->
+              </div>
+            </div>
+
+            <!-- Trades Section (Phase 70 Smart Catalog) -->
+            <div class="info-section" id="tradesSection" style="display: none;">
+              <h4>Compatible Trades</h4>
+              <div class="trades-list" id="tradesList">
+                <!-- Trades loaded dynamically -->
+              </div>
+            </div>
+
+            <!-- Dependencies Section (Phase 70 Smart Catalog) -->
+            <div class="info-section" id="dependenciesSection" style="display: none;">
+              <h4>Scheduling Dependencies</h4>
+              <div class="dependencies-list" id="dependenciesList">
+                <!-- Dependencies loaded dynamically -->
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -472,6 +496,105 @@
           <div class="form-group">
             <label for="productFormTags">Tags (comma-separated)</label>
             <input type="text" id="productFormTags" class="form-input" placeholder="e.g., undermount, single-bowl, stainless">
+          </div>
+
+          <!-- Estimation Fields (Phase 70 Smart Catalog) -->
+          <div class="form-section">
+            <h4>Estimation & Scheduling</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="productFormLaborHours">Labor Hours</label>
+                <input type="number" id="productFormLaborHours" class="form-input" min="0" step="0.25" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="productFormInstallDuration">Install Duration (hrs)</label>
+                <input type="number" id="productFormInstallDuration" class="form-input" min="0" step="0.25" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="productFormCrewSize">Crew Size</label>
+                <input type="number" id="productFormCrewSize" class="form-input" min="1" step="1" value="1">
+              </div>
+              <div class="form-group">
+                <label for="productFormLeadTime">Lead Time (days)</label>
+                <input type="number" id="productFormLeadTime" class="form-input" min="0" step="1" placeholder="0">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="productFormQualityTier">Quality Tier</label>
+                <select id="productFormQualityTier" class="form-select">
+                  <option value="standard">Standard</option>
+                  <option value="builder">Builder Grade</option>
+                  <option value="premium">Premium</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="productFormWasteFactor">Waste Factor %</label>
+                <input type="number" id="productFormWasteFactor" class="form-input" min="0" max="100" step="0.5" placeholder="10">
+              </div>
+              <div class="form-group">
+                <label for="productFormCoverageRate">Coverage Rate</label>
+                <input type="number" id="productFormCoverageRate" class="form-input" min="0" step="0.01" placeholder="e.g., 100">
+              </div>
+              <div class="form-group">
+                <label for="productFormCoverageUnit">Coverage Unit</label>
+                <select id="productFormCoverageUnit" class="form-select">
+                  <option value="">Select...</option>
+                  <option value="sqft">Sq Ft</option>
+                  <option value="lnft">Linear Ft</option>
+                  <option value="sqm">Sq Meters</option>
+                  <option value="each">Each</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Permit & Rough-in (Phase 70 Smart Catalog) -->
+          <div class="form-section">
+            <h4>Permits & Installation</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="productFormRequiresPermit">
+                  <span>Requires Permit</span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label for="productFormPermitType">Permit Type</label>
+                <select id="productFormPermitType" class="form-select">
+                  <option value="">None</option>
+                  <option value="electrical">Electrical</option>
+                  <option value="plumbing">Plumbing</option>
+                  <option value="mechanical">Mechanical</option>
+                  <option value="building">Building</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="productFormRoughInRequired">
+                  <span>Rough-in Required</span>
+                </label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="productFormRoughInNotes">Rough-in Notes</label>
+              <input type="text" id="productFormRoughInNotes" class="form-input" placeholder="e.g., 1/2 inch water supply line, 1-1/2 inch drain">
+            </div>
+          </div>
+
+          <!-- Warranty (Phase 70 Smart Catalog) -->
+          <div class="form-section">
+            <h4>Warranty</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="productFormWarrantyMonths">Warranty (months)</label>
+                <input type="number" id="productFormWarrantyMonths" class="form-input" min="0" step="1" placeholder="12">
+              </div>
+              <div class="form-group flex-2">
+                <label for="productFormWarrantyNotes">Warranty Terms</label>
+                <input type="text" id="productFormWarrantyNotes" class="form-input" placeholder="e.g., Limited lifetime on finish, 5 year parts">
+              </div>
+            </div>
           </div>
 
           <!-- Image URL -->
