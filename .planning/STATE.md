@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 81 of 87 (Digital Timesheets)
+Phase: 82 of 87 (Overhead Allocation Engine)
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-01-20 — Phase 80 completed
+Last activity: 2026-01-20 — Phase 81 completed
 
-Progress: [###       ] 30% (Phases 78-80 complete)
+Progress: [####      ] 40% (Phases 78-81 complete)
 
 ## Performance Metrics
 
@@ -22,6 +22,7 @@ Progress: [###       ] 30% (Phases 78-80 complete)
 - Phase 78: 1 plan, completed
 - Phase 79: 1 plan, completed
 - Phase 80: 1 plan, completed
+- Phase 81: 1 plan, completed
 
 **v3.0 Milestone (completed):**
 - Phases: 9 (70-77)
@@ -38,10 +39,11 @@ Key decisions for v3.1:
 - Integrate with existing job/invoice/PO/draw data
 - Burden rates stored as decimals (0.0765 = 7.65%)
 - Priority cascade for burden rate: custom > class > company default
+- Timesheet costs auto-calculated with burden via triggers
 
 ### Pending Todos
 
-None — ready for Phase 81.
+None — ready for Phase 82.
 
 ### Blockers/Concerns
 
@@ -50,12 +52,12 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Phase 80 complete
+Stopped at: Phase 81 complete
 
 ## Next Actions
 
-1. Plan and execute Phase 81 (Digital Timesheets)
-2. Continue through Phases 82-87
+1. Plan and execute Phase 82 (Overhead Allocation Engine)
+2. Continue through Phases 83-87
 
 ## Milestone History
 
