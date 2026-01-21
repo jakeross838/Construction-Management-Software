@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Profitability - Ross Built CMS</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <nav id="main-nav"></nav>
+
+    <main class="main-content">
+      <div class="page-header">
+        <div class="page-header-content">
+          <h1>Job Profitability</h1>
+          <p class="page-subtitle">True all-in job costs with allocated overhead</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-secondary" onclick="openCompareModal()">
+            Compare Jobs
+          </button>
+          <button class="btn btn-primary" onclick="openSnapshotsModal()">
+            Create Snapshots
+          </button>
+        </div>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="profitability-summary-cards">
+        <div class="summary-card">
+          <div class="summary-label">Active Jobs</div>
+          <div class="summary-value" id="jobCount">0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total Contract Value</div>
+          <div class="summary-value" id="totalContract">$0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total Costs</div>
+          <div class="summary-value" id="totalCost">$0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Gross Profit</div>
+          <div class="summary-value profit" id="grossProfit">$0</div>
+          <div class="summary-sub" id="grossMargin">0% margin</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Net Profit</div>
+          <div class="summary-value profit" id="netProfit">$0</div>
+          <div class="summary-sub" id="netMargin">0% margin</div>
+        </div>
+      </div>
+
+      <!-- Alerts -->
+      <div id="unprofitableAlert" class="alert alert-danger" style="display: none;">
+        <strong>Attention:</strong> <span id="unprofitableCount">0</span> jobs are currently unprofitable (negative net margin)
+      </div>
+
+      <!-- Job Ranking Table -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Job Profitability Ranking</h2>
+          <div class="card-actions">
+            <select id="sortBy" onchange="loadDashboard()">
+              <option value="margin">Sort by Margin %</option>
+              <option value="profit">Sort by $ Profit</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Job</th>
+                <th>Contract</th>
+                <th>Direct Costs</th>
+                <th>Overhead</th>
+                <th>Total Cost</th>
+                <th>Gross Profit</th>
+                <th>Net Profit</th>
+                <th>Net Margin</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="jobRankingTable">
+              <tr>
+                <td colspan="10" class="loading-cell">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="two-column-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2>Top 5 Performers</h2>
+          </div>
+          <div class="card-body chart-container">
+            <canvas id="topPerformersChart"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>Bottom 5 Performers</h2>
+          </div>
+          <div class="card-body chart-container">
+            <canvas id="bottomPerformersChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Job Detail Modal -->
+  <div id="jobDetailModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2 id="jobDetailTitle">Job Profitability</h2>
+        <button class="modal-close" onclick="closeJobDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="tabs">
+          <button class="tab active" data-tab="summary" onclick="switchDetailTab('summary')">Summary</button>
+          <button class="tab" data-tab="costs" onclick="switchDetailTab('costs')">Cost Breakdown</button>
+          <button class="tab" data-tab="budget" onclick="switchDetailTab('budget')">Budget vs Actual</button>
+          <button class="tab" data-tab="history" onclick="switchDetailTab('history')">History</button>
+        </div>
+
+        <div id="tab-summary" class="tab-content active">
+          <div id="jobSummaryContent"></div>
+        </div>
+
+        <div id="tab-costs" class="tab-content">
+          <div id="jobCostsContent"></div>
+        </div>
+
+        <div id="tab-budget" class="tab-content">
+          <div id="jobBudgetContent"></div>
+        </div>
+
+        <div id="tab-history" class="tab-content">
+          <div id="jobHistoryContent"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeJobDetailModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compare Modal -->
+  <div id="compareModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2>Compare Jobs</h2>
+        <button class="modal-close" onclick="closeCompareModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Select jobs to compare (up to 5):</label>
+          <div id="compareJobCheckboxes" class="checkbox-grid"></div>
+        </div>
+
+        <button class="btn btn-primary" onclick="runComparison()">Compare Selected</button>
+
+        <div id="comparisonResult" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCompareModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Snapshots Modal -->
+  <div id="snapshotsModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h2>Create Profitability Snapshots</h2>
+        <button class="modal-close" onclick="closeSnapshotsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="help-text">Create monthly snapshots of job profitability for trend analysis. Select a closed financial period to snapshot all active jobs.</p>
+
+        <div class="form-group">
+          <label for="snapshotPeriod">Financial Period</label>
+          <select id="snapshotPeriod">
+            <option value="">-- Select Period --</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeSnapshotsModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="createSnapshots()">Create Snapshots</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/nav-sidebar.js"></script>
+  <script src="js/toasts.js"></script>
+  <script src="js/profitability.js"></script>
+</body>
+</html>

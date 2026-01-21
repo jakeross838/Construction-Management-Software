@@ -31423,3 +31423,302 @@ td.empty-state {
   background: var(--bg-secondary);
   border-radius: 6px;
 }
+
+/* ===========================================
+   JOB PROFITABILITY STYLES
+   =========================================== */
+
+/* Profitability Summary Cards */
+.profitability-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1200px) {
+  .profitability-summary-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .profitability-summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Profit/Loss Colors */
+.summary-value.profit {
+  color: var(--accent-green);
+}
+
+.summary-value.loss {
+  color: var(--accent-red);
+}
+
+/* Margin Badges */
+.margin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.margin-badge.positive {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--accent-green);
+}
+
+.margin-badge.negative {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--accent-red);
+}
+
+.margin-badge.neutral {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+/* Ranking Table */
+.rank-cell {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.rank-cell.top-3 {
+  color: var(--accent-green);
+}
+
+.rank-cell.bottom-3 {
+  color: var(--accent-red);
+}
+
+/* Job Detail Modal */
+.job-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 900px) {
+  .job-detail-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detail-section {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.detail-section h4 {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+}
+
+.detail-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-row .label {
+  color: var(--text-secondary);
+}
+
+.detail-row .value {
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.detail-row .value.profit {
+  color: var(--accent-green);
+}
+
+.detail-row .value.loss {
+  color: var(--accent-red);
+}
+
+/* Cost Breakdown Table */
+.cost-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cost-breakdown-table th,
+.cost-breakdown-table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.cost-breakdown-table th {
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cost-breakdown-table .category-header {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+.cost-breakdown-table .subtotal-row {
+  font-weight: 600;
+  background: var(--bg-secondary);
+}
+
+.cost-breakdown-table .total-row {
+  font-weight: 700;
+  background: var(--bg-card-elevated);
+  border-top: 2px solid var(--border);
+}
+
+/* Budget vs Actual Progress */
+.budget-progress-bar {
+  height: 8px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.budget-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.budget-progress-fill.under-budget {
+  background: var(--accent-green);
+}
+
+.budget-progress-fill.near-budget {
+  background: var(--accent-orange);
+}
+
+.budget-progress-fill.over-budget {
+  background: var(--accent-red);
+}
+
+.budget-variance {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.budget-variance.positive {
+  color: var(--accent-green);
+}
+
+.budget-variance.negative {
+  color: var(--accent-red);
+}
+
+/* History Timeline */
+.history-timeline {
+  padding: 1rem 0;
+}
+
+.history-item {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-date {
+  min-width: 100px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.history-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  flex: 1;
+}
+
+.history-metric {
+  text-align: center;
+}
+
+.history-metric .label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.history-metric .value {
+  font-weight: 600;
+}
+
+/* Comparison Table */
+.comparison-table {
+  width: 100%;
+  margin-top: 1.5rem;
+}
+
+.comparison-table th {
+  background: var(--bg-secondary);
+}
+
+.comparison-table .winner {
+  background: rgba(63, 185, 80, 0.1);
+}
+
+.comparison-table .loser {
+  background: rgba(248, 81, 73, 0.1);
+}
+
+/* Checkbox Grid for Comparison */
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .checkbox-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.checkbox-grid label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.checkbox-grid label:hover {
+  background: var(--bg-card-elevated);
+}
+
+.checkbox-grid input[type="checkbox"] {
+  accent-color: var(--accent-blue);
+}
