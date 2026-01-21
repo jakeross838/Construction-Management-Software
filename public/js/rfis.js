@@ -196,7 +196,7 @@ function openCreateModal() {
   document.getElementById('rfiModalTitle').textContent = 'New RFI';
   document.getElementById('rfiForm').reset();
   document.getElementById('rfiId').value = '';
-  document.getElementById('rfiSubmittedBy').value = 'Jake Ross';
+  document.getElementById('rfiSubmittedBy').value = window.currentUser || 'User';
 
   const modal = document.getElementById('rfiModal');
   modal.style.display = 'flex';
@@ -215,7 +215,7 @@ function openEditModal(rfi) {
   document.getElementById('rfiAssignedTo').value = rfi.assigned_to || '';
   document.getElementById('rfiDueDate').value = rfi.due_date || '';
   document.getElementById('rfiDateRequired').value = rfi.date_required || '';
-  document.getElementById('rfiSubmittedBy').value = rfi.submitted_by || 'Jake Ross';
+  document.getElementById('rfiSubmittedBy').value = rfi.submitted_by || window.currentUser || 'User';
   document.getElementById('rfiNotes').value = rfi.notes || '';
 
   const modal = document.getElementById('rfiModal');
@@ -241,7 +241,7 @@ async function saveRfi() {
     assigned_to: document.getElementById('rfiAssignedTo').value.trim() || null,
     due_date: document.getElementById('rfiDueDate').value || null,
     date_required: document.getElementById('rfiDateRequired').value || null,
-    submitted_by: document.getElementById('rfiSubmittedBy').value.trim() || 'Jake Ross',
+    submitted_by: document.getElementById('rfiSubmittedBy').value.trim() || window.currentUser || 'User',
     notes: document.getElementById('rfiNotes').value.trim() || null
   };
 
@@ -405,7 +405,7 @@ function editCurrentRfi() {
 
 function openRespondModal() {
   document.getElementById('respondForm').reset();
-  document.getElementById('respondedBy').value = 'Jake Ross';
+  document.getElementById('respondedBy').value = window.currentUser || 'User';
   document.getElementById('costImpactAmount').style.display = 'none';
   document.getElementById('scheduleImpactDays').style.display = 'none';
 
@@ -430,7 +430,7 @@ async function submitResponse() {
   const data = {
     content,
     response_type: document.getElementById('responseType').value,
-    responded_by: document.getElementById('respondedBy').value.trim() || 'Jake Ross'
+    responded_by: document.getElementById('respondedBy').value.trim() || window.currentUser || 'User'
   };
 
   try {

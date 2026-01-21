@@ -206,7 +206,7 @@ function openCreateModal() {
   document.getElementById('submittalId').value = '';
   document.getElementById('submittalModalTitle').textContent = 'New Submittal';
   document.getElementById('submittalForm').reset();
-  document.getElementById('submittalSubmittedBy').value = 'Jake Ross';
+  document.getElementById('submittalSubmittedBy').value = window.currentUser || 'User';
 
   const modal = document.getElementById('submittalModal');
   modal.style.display = 'flex';
@@ -413,7 +413,7 @@ function editCurrentSubmittal() {
   document.getElementById('submittalSubmittedTo').value = currentSubmittal.submitted_to || '';
   document.getElementById('submittalDateRequired').value = currentSubmittal.date_required || '';
   document.getElementById('submittalLeadTime').value = currentSubmittal.lead_time_days || '';
-  document.getElementById('submittalSubmittedBy').value = currentSubmittal.submitted_by || 'Jake Ross';
+  document.getElementById('submittalSubmittedBy').value = currentSubmittal.submitted_by || window.currentUser || 'User';
   document.getElementById('submittalNotes').value = currentSubmittal.notes || '';
 
   closeDetailModal();
@@ -480,7 +480,7 @@ async function submitForReview() {
     const res = await fetch(`/api/submittals/${currentSubmittal.id}/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submitted_by: 'Jake Ross' })
+      body: JSON.stringify({ submitted_by: window.currentUser || 'User' })
     });
 
     if (!res.ok) throw new Error('Failed to submit');
@@ -498,7 +498,7 @@ async function submitForReview() {
 // Open Review Modal
 function openReviewModal() {
   document.getElementById('reviewForm').reset();
-  document.getElementById('reviewedBy').value = 'Jake Ross';
+  document.getElementById('reviewedBy').value = window.currentUser || 'User';
 
   const modal = document.getElementById('reviewModal');
   modal.style.display = 'flex';
