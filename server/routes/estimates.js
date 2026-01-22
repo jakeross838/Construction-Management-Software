@@ -866,6 +866,125 @@ router.delete('/phases/:phaseId', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// GROUP CRUD ENDPOINTS
+// ============================================================
+
+// POST /api/estimates/phases/:phaseId/groups - Add group to phase
+router.post('/phases/:phaseId/groups', asyncHandler(async (req, res) => {
+  const { phaseId } = req.params;
+  const { name, description, sort_order, created_by } = req.body;
+
+  if (!name) throw new AppError('VALIDATION_ERROR', 'Group name is required');
+
+  // Verify phase exists and get estimate_id for activity logging
+  const { data: phase } = await supabase
+    .from('v2_estimate_phases')
+    .select('id, estimate_id')
+    .eq('id', phaseId)
+    .single();
+
+  if (!phase) throw new AppError('NOT_FOUND', 'Phase not found');
+
+  // Get max sort_order if not provided
+  let order = sort_order;
+  if (order === undefined) {
+    const { data: maxOrder } = await supabase
+      .from('v2_estimate_groups')
+      .select('sort_order')
+      .eq('phase_id', phaseId)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .single();
+    order = (maxOrder?.sort_order || 0) + 1;
+  }
+
+  const { data: group, error } = await supabase
+    .from('v2_estimate_groups')
+    .insert({
+      phase_id: phaseId,
+      name,
+      description: description || null,
+      sort_order: order
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(phase.estimate_id, 'group_added', created_by || 'System', {
+    group_id: group.id,
+    group_name: name,
+    phase_id: phaseId
+  });
+
+  res.status(201).json(group);
+}));
+
+// PATCH /api/estimates/groups/:groupId - Update group
+router.patch('/groups/:groupId', asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  const { name, description, sort_order, is_collapsed, updated_by } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (sort_order !== undefined) updates.sort_order = sort_order;
+  if (is_collapsed !== undefined) updates.is_collapsed = is_collapsed;
+
+  const { data: group, error } = await supabase
+    .from('v2_estimate_groups')
+    .update(updates)
+    .eq('id', groupId)
+    .select('*, phase:v2_estimate_phases(estimate_id)')
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!group) throw new AppError('NOT_FOUND', 'Group not found');
+
+  const estimateId = group.phase?.estimate_id;
+  if (estimateId) {
+    await logEstimateActivity(estimateId, 'group_updated', updated_by || 'System', {
+      group_id: groupId,
+      updates
+    });
+  }
+
+  res.json(group);
+}));
+
+// DELETE /api/estimates/groups/:groupId - Delete group (cascades to subgroups/lines)
+router.delete('/groups/:groupId', asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  const { deleted_by } = req.body || {};
+
+  // Get group info before deletion
+  const { data: group } = await supabase
+    .from('v2_estimate_groups')
+    .select('name, phase:v2_estimate_phases(estimate_id)')
+    .eq('id', groupId)
+    .single();
+
+  if (!group) throw new AppError('NOT_FOUND', 'Group not found');
+
+  const { error } = await supabase
+    .from('v2_estimate_groups')
+    .delete()
+    .eq('id', groupId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  const estimateId = group.phase?.estimate_id;
+  if (estimateId) {
+    await logEstimateActivity(estimateId, 'group_deleted', deleted_by || 'System', {
+      group_id: groupId,
+      group_name: group.name
+    });
+  }
+
+  res.json({ success: true, message: 'Group deleted' });
+}));
+
+// ============================================================
 // CREATE ESTIMATE
 // ============================================================
 
