@@ -29214,53 +29214,20 @@ td.empty-state {
    AI DOCUMENT INTELLIGENCE - Fixed Upload Button
    ============================================================ */
 
-.ai-upload-fab {
-  position: fixed;
-  top: 80px;
-  right: 24px;
-  z-index: var(--z-fab, 1000);
-  display: flex;
+/* AI Upload button - integrated into header */
+.ai-upload-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
-  color: white;
-  border: none;
-  border-radius: 50px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4);
-  transition: all 0.2s ease;
+  gap: 6px;
 }
 
-.ai-upload-fab:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
-}
-
-.ai-upload-fab:active {
-  transform: translateY(0);
-}
-
-.ai-upload-fab svg {
-  width: 20px;
-  height: 20px;
-}
-
-.ai-upload-fab .fab-text {
-  white-space: nowrap;
+.ai-upload-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 @media (max-width: 768px) {
-  .ai-upload-fab {
-    top: auto;
-    bottom: 24px;
-    right: 24px;
-    padding: 16px;
-    border-radius: 50%;
-  }
-  .ai-upload-fab .fab-text {
+  .ai-upload-btn span {
     display: none;
   }
 }
@@ -33228,4 +33195,320 @@ td.empty-state {
   .context-indicator {
     display: none;
   }
+}
+
+/* ============================================================
+   ESTIMATE HIERARCHY
+   Collapsible phases, groups, subgroups for estimates
+   ============================================================ */
+
+.estimate-hierarchy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Phase Level */
+.estimate-phase {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.phase-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-card-elevated);
+  cursor: pointer;
+  user-select: none;
+}
+
+.phase-header:hover {
+  background: var(--accent);
+}
+
+.phase-name {
+  font-weight: 600;
+  font-size: 1rem;
+  flex: 1;
+}
+
+.phase-subtotal {
+  font-weight: 600;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  color: var(--text-primary);
+}
+
+.phase-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.phase-header:hover .phase-actions {
+  opacity: 1;
+}
+
+.phase-content {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.estimate-phase.collapsed .phase-content {
+  display: none;
+}
+
+/* Group Level */
+.estimate-group {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-left: 16px;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.group-header:hover {
+  background: var(--bg-card);
+}
+
+.group-name {
+  font-weight: 500;
+  flex: 1;
+}
+
+.group-subtotal {
+  font-weight: 500;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  color: var(--text-secondary);
+}
+
+.group-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.group-header:hover .group-actions {
+  opacity: 1;
+}
+
+.group-content {
+  padding: 8px;
+}
+
+.estimate-group.collapsed .group-content {
+  display: none;
+}
+
+/* Subgroup Level */
+.estimate-subgroup {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-left: 16px;
+}
+
+.subgroup-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.9rem;
+}
+
+.subgroup-header:hover {
+  background: var(--bg-card-elevated);
+}
+
+.subgroup-name {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.subgroup-subtotal {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.subgroup-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.subgroup-header:hover .subgroup-actions {
+  opacity: 1;
+}
+
+.subgroup-content {
+  padding: 8px 12px;
+}
+
+.estimate-subgroup.collapsed .subgroup-content {
+  display: none;
+}
+
+/* Collapse Icon */
+.collapse-icon {
+  width: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+  font-size: 0.75rem;
+}
+
+.collapsed .collapse-icon {
+  transform: rotate(-90deg);
+}
+
+/* Line Items Table within Subgroup */
+.estimate-lines-table {
+  font-size: 0.9rem;
+}
+
+.estimate-lines-table th {
+  padding: 8px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.estimate-lines-table td {
+  padding: 8px;
+}
+
+.line-item-row.has-catalog {
+  background: rgba(37, 99, 235, 0.05);
+}
+
+.line-item-row .catalog-badge {
+  font-size: 0.7rem;
+  background: var(--accent-blue);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+}
+
+/* Drag handle for line items */
+.drag-handle {
+  cursor: grab;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+/* Empty state inline */
+.empty-state-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Hierarchy toolbar */
+.hierarchy-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.hierarchy-toolbar-left {
+  display: flex;
+  gap: 8px;
+}
+
+.hierarchy-toolbar-right {
+  display: flex;
+  gap: 8px;
+}
+
+/* Template Selector Modal */
+.template-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.template-option {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.template-option:hover {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+
+.template-option.selected {
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.template-option.default {
+  border-color: var(--accent-green);
+}
+
+.template-option .template-info h4 {
+  margin: 0 0 4px 0;
+  font-size: 1rem;
+}
+
+.template-option .template-info p {
+  margin: 0 0 8px 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.template-option .template-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Estimate Total Display */
+#estimateTotalAmount {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent-green);
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
 }
