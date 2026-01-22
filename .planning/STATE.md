@@ -5,22 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** Phase 106 Estimating Data Model - In Progress
+**Current focus:** Phase 106 Estimating Data Model - COMPLETE
 
 ## Current Position
 
 Phase: 106 (Estimating Data Model)
-Plan: 01 of 02
-Status: In Progress
-Last activity: 2026-01-22 - Completed 106-01-PLAN.md (Database schema)
+Plan: 02 of 02
+Status: Phase Complete
+Last activity: 2026-01-22 - Completed 106-02-PLAN.md (Functions and triggers)
 
-Progress: [#####-----] 50% (Plan 1/2 complete)
+Progress: [##########] 100% (Plan 2/2 complete)
 
 ## Performance Metrics
 
-**Phase 106 (Estimating Data Model - IN PROGRESS):**
+**Phase 106 (Estimating Data Model - COMPLETE):**
 - Plan 106-01: Database schema (completed, 3 min)
-- Plan 106-02: API endpoints (pending)
+- Plan 106-02: Functions and triggers (completed, 4 min)
+- **Total Duration:** ~7 min
 
 **Phase 105 (Estimates & Budget Consolidation - COMPLETE):**
 - Plan 105-01: Unified estimates-budget page (completed)
@@ -115,16 +116,19 @@ Key decisions for v3.1:
 - Visual context indicator: pill-shaped badge with icon + switch button
 - Context switching: Job View -> dashboard.html, Company View -> job-hub.html
 
-**Phase 106 Estimating Data Model Decisions:**
+**Phase 106 Estimating Data Model Decisions (COMPLETE):**
 - Section deletion uses ON DELETE SET NULL - items remain but unassigned
 - Assembly templates are reusable (not per-estimate) with template_id tracing
 - Version snapshots use JSONB with pre-computed totals for quick comparison
-- Markup calculation order: subtotal -> overhead -> profit -> contingency
+- Markup calculation order: subtotal -> overhead (on subtotal) -> profit (on subtotal+overhead) -> contingency (on subtotal)
 - Status constraint includes 'sent' for client delivery workflow
+- Legacy markup_percent supported for backward compatibility
+- Assembly children excluded from totals (parent_line_id IS NULL filter)
+- Triggers cascade: line change -> section subtotal -> estimate totals -> assembly header
 
 ### Pending Todos
 
-None - awaiting Plan 106-02.
+None - Phase 106 complete.
 
 ### Blockers/Concerns
 
@@ -133,16 +137,16 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed 106-01-PLAN.md (Database schema migration)
+Stopped at: Completed 106-02-PLAN.md (Functions and triggers)
 Resume file: None
 
 ## Next Actions
 
-Ready for Plan 106-02: API endpoints for sections, templates, and version management.
+Phase 106 complete. Ready for next phase (estimating UI or API integration).
 
 ## Milestone History
 
-- **Phase 106 Estimating Data Model** (in progress 2026-01-22): Database schema for sections, templates, versions
+- **Phase 106 Estimating Data Model** (completed 2026-01-22): Database schema, functions, and triggers for estimates v4.0
 
 - **Phase 105 Estimates & Budget Consolidation** (completed 2026-01-21): Unified estimates-budget.html, navigation consolidation, redirect stubs, URL mode handling
 
