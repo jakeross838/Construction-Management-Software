@@ -968,6 +968,7 @@ function openAddLineModal() {
     // Reset form
     const lineModalTitle = document.getElementById('lineModalTitle');
     const lineItemId = document.getElementById('lineItemId');
+    const lineCatalogItemId = document.getElementById('lineCatalogItemId');
     const lineItemForm = document.getElementById('lineItemForm');
     const lineQuantity = document.getElementById('lineQuantity');
     const historicalPricing = document.getElementById('historicalPricing');
@@ -982,6 +983,7 @@ function openAddLineModal() {
 
     if (lineModalTitle) lineModalTitle.textContent = 'Add Line Item';
     if (lineItemId) lineItemId.value = '';
+    if (lineCatalogItemId) lineCatalogItemId.value = '';
     if (lineItemForm) lineItemForm.reset();
     if (lineQuantity) lineQuantity.value = 1;
 
@@ -991,6 +993,20 @@ function openAddLineModal() {
     // Clear suggestions
     if (historicalPricing) historicalPricing.innerHTML = '<p class="text-muted">Select a cost code to see historical pricing.</p>';
     if (aiSuggestions) aiSuggestions.innerHTML = '<p class="text-muted">Start typing a description to get suggestions.</p>';
+
+    // Reset catalog picker state
+    selectedCatalogItem = null;
+    const catalogSearch = document.getElementById('catalogSearch');
+    const catalogSuggestions = document.getElementById('catalogSuggestions');
+    const selectedCatalogItemDiv = document.getElementById('selectedCatalogItem');
+
+    if (catalogSearch) catalogSearch.value = '';
+    if (selectedCatalogItemDiv) selectedCatalogItemDiv.style.display = 'none';
+    if (catalogSuggestions) catalogSuggestions.style.display = 'block';
+
+    // Auto-load catalog suggestions based on subgroup context
+    const subgroupId = window.currentSubgroupId || null;
+    loadCatalogSuggestions(subgroupId);
 
     modal.style.display = 'flex';
     modal.classList.add('show');
