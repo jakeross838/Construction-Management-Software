@@ -5,16 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** Phase 105 Estimates & Budget Consolidation - COMPLETE
+**Current focus:** Phase 106 Estimating UI - Complete Implementation
 
 ## Current Position
 
-Phase: 105 (Estimates & Budget Consolidation)
-Plan: 03 of 03 (Wave 2)
-Status: COMPLETE
-Last activity: 2026-01-21 - Completed 105-02 and 105-03 (Navigation and URL mode)
+Phase: 106 (Estimating - Hierarchical Structure & Catalog Integration)
+Plan: 1 of 04 (106-01 Complete)
+Status: IN PROGRESS
+Last activity: 2026-01-21 - Completed 106-01 hierarchical schema
 
-Progress: [##########] 100% (Phase 105 complete)
+Progress: [##        ] 25% (Phase 106, Plan 1 of 4 complete)
+
+**Phase 106 Plan Summary:**
+- 106-01: Schema - Phase/Group/Subgroup tables, templates, triggers (COMPLETE)
+- 106-02: API - Hierarchical CRUD endpoints, template management
+- 106-03: UI - Collapsible hierarchy rendering, template selector
+- 106-04: Catalog - Suggestions, auto-fill, catalog linking
 
 ## Performance Metrics
 
@@ -122,12 +128,12 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-21
-Stopped at: Completed Phase 105 (105-01 through 105-03)
+Stopped at: Completed Phase 106-01 (hierarchical estimate schema)
 Resume file: None
 
 ## Next Actions
 
-Phase 105 complete. Ready for next phase.
+Continue with 106-02: Hierarchical API Endpoints.
 
 ## Milestone History
 
