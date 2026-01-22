@@ -211,7 +211,23 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   6. Navigation updated to remove redundant Budget Builder link
   7. All existing estimate and budget-builder functionality preserved
 **Research**: Unlikely (consolidation of existing features)
-**Plans**: TBD
+**Plans**: 3 (Complete)
+**Status**: Complete (2026-01-21)
+
+### Phase 106: Estimating - Hierarchical Structure & Catalog Integration
+**Goal**: Add Phase → Group → Subgroup → Line Item hierarchy with catalog integration
+**Depends on**: Phase 105
+**Success Criteria** (what must be TRUE):
+  1. Database schema for hierarchical estimates (phases, groups, subgroups)
+  2. Default residential template with 11 construction phases
+  3. API endpoints for hierarchy CRUD and template management
+  4. Collapsible accordion UI for phases/groups/subgroups
+  5. Template selector modal for applying templates to estimates
+  6. Catalog suggestions when adding line items
+  7. Auto-fill pricing from catalog selection
+**Research**: Complete
+**Plans**: 4
+**Status**: Complete (2026-01-21)
 
 ## Progress
 
@@ -227,6 +243,8 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
 | 85. Company P&L | TBD | Not started | - |
 | 86. Cash Flow | TBD | Not started | - |
 | 87. Business Planning | TBD | Not started | - |
+| 105. Estimates & Budget | 3 | Complete | 2026-01-21 |
+| 106. Estimating Hierarchy | 4 | Complete | 2026-01-21 |
 
 ---
-*Last updated: 2026-01-20*
+*Last updated: 2026-01-21*
