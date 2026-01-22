@@ -651,12 +651,65 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
   if (error || !estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
 
-  // Get line items with cost codes
+  // Get phases with full hierarchy (groups → subgroups → line items)
+  const { data: phases } = await supabase
+    .from('v2_estimate_phases')
+    .select(`
+      *,
+      groups:v2_estimate_groups(
+        *,
+        subgroups:v2_estimate_subgroups(
+          *,
+          line_items:v2_estimate_line_items(
+            *,
+            cost_code:v2_cost_codes(id, code, name),
+            catalog_item:v2_selection_catalog(id, name, unit_price, image_url)
+          )
+        )
+      )
+    `)
+    .eq('estimate_id', id)
+    .order('sort_order');
+
+  // Sort nested arrays by sort_order
+  if (phases) {
+    phases.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    phases.forEach(phase => {
+      if (phase.groups) {
+        phase.groups.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        phase.groups.forEach(group => {
+          if (group.subgroups) {
+            group.subgroups.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+            group.subgroups.forEach(subgroup => {
+              if (subgroup.line_items) {
+                subgroup.line_items.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+              }
+            });
+          }
+        });
+      }
+    });
+  }
+
+  estimate.phases = phases || [];
+
+  // Get line items with cost codes (legacy flat structure for backwards compatibility)
   const { data: lines } = await supabase
     .from('v2_estimate_lines')
     .select(`
       *,
       cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .eq('estimate_id', id)
+    .order('sort_order', { ascending: true });
+
+  // Also get line items from new table if they exist
+  const { data: lineItems } = await supabase
+    .from('v2_estimate_line_items')
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name, category),
+      catalog_item:v2_selection_catalog(id, name, unit_price, image_url)
     `)
     .eq('estimate_id', id)
     .order('sort_order', { ascending: true });
@@ -689,6 +742,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .limit(1);
 
   estimate.lines = lines || [];
+  estimate.line_items = lineItems || [];
   estimate.activity = activity || [];
   estimate.versions = versions;
   estimate.has_budget = (budgetLines?.length || 0) > 0;
