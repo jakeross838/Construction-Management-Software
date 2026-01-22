@@ -5,18 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** Phase 105 Estimates & Budget Consolidation - COMPLETE
+**Current focus:** Phase 106 Estimating Data Model - In Progress
 
 ## Current Position
 
-Phase: 105 (Estimates & Budget Consolidation)
-Plan: 03 of 03 (Wave 2)
-Status: COMPLETE
-Last activity: 2026-01-21 - Completed 105-02 and 105-03 (Navigation and URL mode)
+Phase: 106 (Estimating Data Model)
+Plan: 01 of 02
+Status: In Progress
+Last activity: 2026-01-22 - Completed 106-01-PLAN.md (Database schema)
 
-Progress: [##########] 100% (Phase 105 complete)
+Progress: [#####-----] 50% (Plan 1/2 complete)
 
 ## Performance Metrics
+
+**Phase 106 (Estimating Data Model - IN PROGRESS):**
+- Plan 106-01: Database schema (completed, 3 min)
+- Plan 106-02: API endpoints (pending)
 
 **Phase 105 (Estimates & Budget Consolidation - COMPLETE):**
 - Plan 105-01: Unified estimates-budget page (completed)
@@ -111,9 +115,16 @@ Key decisions for v3.1:
 - Visual context indicator: pill-shaped badge with icon + switch button
 - Context switching: Job View -> dashboard.html, Company View -> job-hub.html
 
+**Phase 106 Estimating Data Model Decisions:**
+- Section deletion uses ON DELETE SET NULL - items remain but unassigned
+- Assembly templates are reusable (not per-estimate) with template_id tracing
+- Version snapshots use JSONB with pre-computed totals for quick comparison
+- Markup calculation order: subtotal -> overhead -> profit -> contingency
+- Status constraint includes 'sent' for client delivery workflow
+
 ### Pending Todos
 
-None - Phase 104 complete.
+None - awaiting Plan 106-02.
 
 ### Blockers/Concerns
 
@@ -121,15 +132,17 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-21
-Stopped at: Completed Phase 105 (105-01 through 105-03)
+Last session: 2026-01-22
+Stopped at: Completed 106-01-PLAN.md (Database schema migration)
 Resume file: None
 
 ## Next Actions
 
-Phase 105 complete. Ready for next phase.
+Ready for Plan 106-02: API endpoints for sections, templates, and version management.
 
 ## Milestone History
+
+- **Phase 106 Estimating Data Model** (in progress 2026-01-22): Database schema for sections, templates, versions
 
 - **Phase 105 Estimates & Budget Consolidation** (completed 2026-01-21): Unified estimates-budget.html, navigation consolidation, redirect stubs, URL mode handling
 
