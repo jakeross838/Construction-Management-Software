@@ -74,7 +74,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   3. Admin can open/close financial periods with period locking
   4. Expense list displays with filters (period, category, vendor)
 **Research**: Unlikely (established patterns in codebase)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 79: Expense Tracking Enhancements
 **Goal**: Recurring expenses and receipt attachments
@@ -84,7 +88,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   1. Admin can configure recurring expenses (auto-create monthly)
   2. Admin can attach receipt documents to expenses
 **Research**: Unlikely (internal patterns)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 80: Employee & Labor Setup
 **Goal**: Employee management and burden rate configuration
@@ -98,7 +106,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. System prompts quarterly burden rate review
 **Research**: Likely (labor burden calculation patterns)
 **Research topics**: Industry-standard burden rate components, calculation methods
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 81: Digital Timesheets
 **Goal**: Replace paper timesheets with digital entry and approval
@@ -112,7 +124,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. Employee can edit timesheet within submission window
   6. User can view labor hours by job, employee, or period
 **Research**: Unlikely (CRUD patterns)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 82: Overhead Allocation Engine
 **Goal**: Calculate and allocate overhead to jobs using % of Labor Hours
@@ -127,7 +143,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   6. System only allocates from closed periods
 **Research**: Likely (allocation formula implementation)
 **Research topics**: Rolling 12-month average calculations, period-based allocation patterns
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 83: Job Profitability Reports
 **Goal**: Show true all-in job costs with allocated overhead
@@ -141,7 +161,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. User can view gross and net margin per job
   6. User can drill down from summary to cost details
 **Research**: Unlikely (reporting patterns established)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 84: WIP Schedule
 **Goal**: Work-in-Progress schedule with over/under billing detection
@@ -156,7 +180,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   6. System alerts on significant over/under billing
 **Research**: Likely (WIP accounting patterns)
 **Research topics**: % completion accounting methods, billing variance thresholds
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 85: Company P&L Dashboard
 **Goal**: Company-wide profit & loss visibility
@@ -170,7 +198,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. User can view net income and net margin %
   6. User can compare periods (month vs month, YoY)
 **Research**: Unlikely (Chart.js patterns established)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 86: Cash Flow & Forecasting
 **Goal**: AR/AP aging and 13-week cash flow projection
@@ -184,7 +216,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. System projects cash outflows from payables
 **Research**: Likely (cash flow forecasting patterns)
 **Research topics**: Rolling forecast models, receivables/payables aging calculations
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 87: Business Planning
 **Goal**: Backlog, KPI dashboard, capacity planning, and pipeline
@@ -197,7 +233,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   4. User can view pipeline (leads → bids → signed → in progress)
   5. Admin can configure KPI targets and thresholds
 **Research**: Unlikely (dashboard patterns established)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 105: Estimates & Budget Consolidation
 **Goal**: Merge estimates.html and budget-builder.html into unified Estimates & Budgets page
@@ -283,7 +323,11 @@ Plans:
   6. Client can approve selections (digital signature optional)
   7. Selection audit trail maintained
 **Research**: Likely (client portal patterns, approval workflows)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 109: Proposal Generation
 **Goal**: Generate professional client-facing proposals from estimates
@@ -303,8 +347,12 @@ Plans:
   4. Allowances clearly marked with selection process explained
   5. Shareable link allows client to view without login
   6. Client acceptance updates estimate status
-**Research**: Likely (PDF generation, client portal)
-**Plans**: TBD
+**Research**: Complete (109-RESEARCH.md)
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 110: Estimating UI/UX Overhaul
 **Goal**: Simplify and modernize the estimating interface, remove clutter
@@ -326,7 +374,11 @@ Plans:
   6. Works on tablet/mobile for field use
   7. Visual design matches warm light theme
 **Research**: Likely (UX patterns, competitor analysis)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ## Progress
 
@@ -351,7 +403,7 @@ Plans:
 | 106. Data Model & Architecture | 2 | Planned | - |
 | 107. Assembly Library & Builder | 3 | Planned | - |
 | 108. Selections & Allowances | TBD | Not started | - |
-| 109. Proposal Generation | TBD | Not started | - |
+| 109. Proposal Generation | 3 | Planned | - |
 | 110. UI/UX Overhaul | TBD | Not started | - |
 
 ---
