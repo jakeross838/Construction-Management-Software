@@ -87,6 +87,83 @@ router.get('/stats', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// CATALOG SUGGESTIONS (must be before /:id)
+// ============================================================
+
+router.get('/catalog-suggestions', asyncHandler(async (req, res) => {
+  const { subgroup_id, query } = req.query;
+
+  // Get subgroup context (name for matching)
+  let contextTerms = [];
+  if (subgroup_id) {
+    const { data: subgroup } = await supabase
+      .from('v2_estimate_subgroups')
+      .select(`
+        name,
+        group:v2_estimate_groups(
+          name,
+          phase:v2_estimate_phases(name, phase_code)
+        )
+      `)
+      .eq('id', subgroup_id)
+      .single();
+
+    if (subgroup) {
+      contextTerms = [
+        subgroup.name,
+        subgroup.group?.name,
+        subgroup.group?.phase?.name
+      ].filter(Boolean);
+    }
+  }
+
+  // Build search query
+  let catalogQuery = supabase
+    .from('v2_selection_catalog')
+    .select(`
+      id,
+      name,
+      description,
+      unit_price,
+      unit,
+      labor_hours,
+      material,
+      brand,
+      image_url,
+      category:v2_selection_categories(id, name)
+    `)
+    .limit(20);
+
+  // Search by query or context
+  const searchTerm = query || contextTerms.join(' ');
+  if (searchTerm) {
+    // Use ilike for name and description search
+    catalogQuery = catalogQuery.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+  }
+
+  const { data: items, error } = await catalogQuery;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Score and sort by relevance (context matches first)
+  const scored = (items || []).map(item => {
+    let score = 0;
+    const itemText = `${item.name} ${item.description || ''} ${item.category?.name || ''}`.toLowerCase();
+
+    contextTerms.forEach(term => {
+      if (itemText.includes(term.toLowerCase())) score += 10;
+    });
+
+    if (query && itemText.includes(query.toLowerCase())) score += 5;
+
+    return { ...item, relevance: score };
+  });
+
+  scored.sort((a, b) => b.relevance - a.relevance);
+
+  res.json(scored.slice(0, 10));
+}));
+
+// ============================================================
 // HISTORICAL PRICING (must be before /:id)
 // ============================================================
 
