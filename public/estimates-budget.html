@@ -1526,6 +1526,200 @@
     </div>
   </div>
 
+  <!-- Assembly Picker Modal -->
+  <div id="assemblyPickerModal" class="modal modal-fullscreen-dark">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Assembly Library</h2>
+        <button class="close-btn" onclick="closeAssemblyPickerModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="assembly-picker-layout">
+          <!-- Left sidebar: Categories and filters -->
+          <div class="assembly-picker-sidebar">
+            <div class="sidebar-search">
+              <input type="text" id="assemblySearchInput" class="form-control" placeholder="Search assemblies..." oninput="filterAssemblyTemplates()">
+            </div>
+
+            <div class="assembly-filters">
+              <h4>Categories</h4>
+              <div class="assembly-category-list" id="assemblyCategoryList">
+                <button class="assembly-category-btn active" data-category="all" onclick="filterByCategory('all')">
+                  All Assemblies
+                  <span class="category-count" id="categoryCountAll">0</span>
+                </button>
+                <!-- Categories populated by JS -->
+              </div>
+            </div>
+
+            <div class="assembly-filters" style="margin-top: 16px;">
+              <h4>Source</h4>
+              <div class="assembly-source-list">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="sourceGlobal" checked onchange="filterAssemblyTemplates()">
+                  Global Templates
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="sourceJob" checked onchange="filterAssemblyTemplates()">
+                  Job-Specific
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="sourceRecent" onchange="filterAssemblyTemplates()">
+                  Recently Used
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Main content: Assembly grid/list -->
+          <div class="assembly-picker-main">
+            <div class="assembly-picker-toolbar">
+              <div class="toolbar-left">
+                <span id="assemblyResultCount">0 assemblies</span>
+              </div>
+              <div class="toolbar-right">
+                <div class="view-toggle">
+                  <button class="view-btn active" data-view="grid" onclick="setAssemblyView('grid')" title="Grid view">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 012.5 1h3A1.5 1.5 0 017 2.5v3A1.5 1.5 0 015.5 7h-3A1.5 1.5 0 011 5.5v-3zm8 0A1.5 1.5 0 0110.5 1h3A1.5 1.5 0 0115 2.5v3A1.5 1.5 0 0113.5 7h-3A1.5 1.5 0 019 5.5v-3zm-8 8A1.5 1.5 0 012.5 9h3A1.5 1.5 0 017 10.5v3A1.5 1.5 0 015.5 15h-3A1.5 1.5 0 011 13.5v-3zm8 0A1.5 1.5 0 0110.5 9h3a1.5 1.5 0 011.5 1.5v3a1.5 1.5 0 01-1.5 1.5h-3A1.5 1.5 0 019 13.5v-3z"/></svg>
+                  </button>
+                  <button class="view-btn" data-view="list" onclick="setAssemblyView('list')" title="List view">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 12a.5.5 0 01.5-.5h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5zm0-4a.5.5 0 01.5-.5h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5zm0-4a.5.5 0 01.5-.5h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5z"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="assembly-grid" id="assemblyTemplateGrid">
+              <!-- Assembly cards populated by JS -->
+              <div class="assembly-empty-state" id="assemblyEmptyState">
+                <div class="empty-icon">&#128230;</div>
+                <h3>No assemblies found</h3>
+                <p>Try adjusting your search or filters</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right panel: Preview -->
+          <div class="assembly-picker-preview" id="assemblyPreviewPanel" style="display: none;">
+            <div class="preview-header">
+              <h3 id="previewAssemblyName">Assembly Name</h3>
+              <button class="btn btn-ghost btn-sm" onclick="closeAssemblyPreview()">x</button>
+            </div>
+            <div class="preview-meta">
+              <span class="preview-category" id="previewAssemblyCategory">Category</span>
+              <span class="preview-total" id="previewAssemblyTotal">$0.00</span>
+            </div>
+            <p class="preview-description" id="previewAssemblyDescription">Description text here...</p>
+
+            <div class="preview-components">
+              <h4>Components (<span id="previewComponentCount">0</span>)</h4>
+              <div class="preview-component-list" id="previewComponentList">
+                <!-- Component rows populated by JS -->
+              </div>
+            </div>
+
+            <div class="preview-multiplier">
+              <label for="assemblyMultiplier">Quantity Multiplier</label>
+              <input type="number" id="assemblyMultiplier" class="form-control" value="1" min="0.01" step="0.01">
+              <small class="form-help">Multiply all quantities by this factor</small>
+            </div>
+
+            <div class="preview-section-target">
+              <label for="assemblySectionTarget">Add to Section</label>
+              <select id="assemblySectionTarget" class="form-control">
+                <option value="">No Section (End of List)</option>
+                <!-- Sections populated by JS -->
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAssemblyPickerModal()">Cancel</button>
+        <button class="btn btn-primary" id="addAssemblyBtn" onclick="addSelectedAssembly()" disabled>Add Assembly</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Copy Estimate Modal (enhanced version) -->
+  <div id="copyEstimateModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2>Copy Estimate</h2>
+        <button class="close-btn" onclick="closeCopyEstimateModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="copy-source-info" id="copySourceInfo">
+          <div class="source-estimate-card">
+            <span class="source-label">Copying from:</span>
+            <span class="source-title" id="copySourceTitle">Original Estimate</span>
+            <span class="source-meta">
+              <span id="copySourceLineCount">0</span> lines |
+              <span id="copySourceTotal">$0.00</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="copyTargetJob">Target Job *</label>
+          <select id="copyTargetJob" class="form-control" onchange="onCopyTargetJobChange()">
+            <option value="">Same Job (create new version)</option>
+            <!-- Jobs populated by JS -->
+          </select>
+          <small class="form-help" id="copyTargetHint">Creates a new version of this estimate</small>
+        </div>
+
+        <div class="form-group">
+          <label for="copyNewTitle">New Title</label>
+          <input type="text" id="copyNewTitle" class="form-control" placeholder="Auto-generated if left empty">
+          <small class="form-help" id="copyTitleHint">Leave empty for: "Original Title v2"</small>
+        </div>
+
+        <div class="copy-options">
+          <h4>Copy Options</h4>
+          <label class="checkbox-label">
+            <input type="checkbox" id="copySections" checked>
+            Include sections
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="copyAssemblies" checked>
+            Preserve assemblies (grouped items)
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="copyMarkup" checked>
+            Copy markup and contingency percentages
+          </label>
+        </div>
+
+        <div class="copy-preview" id="copyPreviewSection">
+          <h4>Preview</h4>
+          <div class="preview-details">
+            <div class="preview-row">
+              <span class="preview-label">Sections:</span>
+              <span class="preview-value" id="copyPreviewSections">0</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">Line Items:</span>
+              <span class="preview-value" id="copyPreviewLines">0</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">Assemblies:</span>
+              <span class="preview-value" id="copyPreviewAssemblies">0</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">Estimated Total:</span>
+              <span class="preview-value" id="copyPreviewTotal">$0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCopyEstimateModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="executeCopyEstimate()">Create Copy</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============================================================ -->
   <!-- BUDGET MODE MODALS -->
   <!-- ============================================================ -->
