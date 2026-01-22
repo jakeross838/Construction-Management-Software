@@ -318,6 +318,112 @@
       font-size: 0.85rem;
       color: var(--text-secondary);
     }
+  
+    /* =========================
+       SECTION STYLES
+       ========================= */
+    .section-header-row {
+      background: var(--bg-card);
+      border-top: 2px solid var(--accent-blue);
+    }
+    .section-header-row td {
+      padding: 12px 8px !important;
+      background: var(--bg-card);
+    }
+    .section-header-cell {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .section-toggle-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--text-secondary);
+      transition: transform 0.2s, color 0.2s;
+    }
+    .section-toggle-btn:hover {
+      color: var(--text-primary);
+    }
+    .section-toggle-btn.collapsed {
+      transform: rotate(-90deg);
+    }
+    .section-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+    .section-name-input {
+      font-weight: 600;
+      font-size: 0.95rem;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-primary);
+      padding: 4px 8px;
+      border-radius: 4px;
+      width: 200px;
+    }
+    .section-name-input:focus {
+      border-color: var(--accent-blue);
+      outline: none;
+      background: var(--bg-card-elevated);
+    }
+    .section-count {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      padding: 2px 8px;
+      background: var(--bg-card-elevated);
+      border-radius: 10px;
+    }
+    .section-subtotal {
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .section-actions {
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .section-header-row:hover .section-actions {
+      opacity: 1;
+    }
+    .section-action-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--text-secondary);
+      border-radius: 4px;
+    }
+    .section-action-btn:hover {
+      background: var(--bg-card-elevated);
+      color: var(--text-primary);
+    }
+    .section-action-btn.danger:hover {
+      color: var(--accent-red);
+    }
+    .section-drop-indicator {
+      border-bottom: 2px dashed var(--accent-blue) !important;
+      background: rgba(88, 166, 255, 0.1) !important;
+    }
+    .line-row.in-section {
+      border-left: 2px solid var(--accent-blue);
+    }
+    .line-row.dragging {
+      opacity: 0.5;
+      background: var(--bg-card-elevated);
+    }
+    .unsectioned-divider {
+      background: var(--bg-card-elevated);
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      padding: 8px;
+      border-top: 1px dashed var(--border);
+    }
   </style>
 </head>
 <body data-page-context="job" data-page-id="estimates-budget" data-page-group="precon" data-role-min="pm">
@@ -768,6 +874,10 @@
                 <button class="btn btn-ghost btn-sm" id="createAssemblyBtn" onclick="openCreateAssemblyModal()" style="display:none">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5v3a.5.5 0 01-.5.5h-3a.5.5 0 01-.5-.5v-3zM3.5 8a.5.5 0 00-.5.5v3a.5.5 0 00.5.5h3a.5.5 0 00.5-.5v-3a.5.5 0 00-.5-.5h-3zm6 0a.5.5 0 00-.5.5v3a.5.5 0 00.5.5h3a.5.5 0 00.5-.5v-3a.5.5 0 00-.5-.5h-3z"/></svg>
                   Group
+                </button>
+                <button class="btn btn-ghost btn-sm" id="addSectionBtn" onclick="openSectionModal()">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v1a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm0 4.5a1 1 0 011-1h10a1 1 0 011 1v1a1 1 0 01-1 1H3a1 1 0 01-1-1v-1zm0 4.5a1 1 0 011-1h10a1 1 0 011 1v1a1 1 0 01-1 1H3a1 1 0 01-1-1v-1z"/></svg>
+                  + Section
                 </button>
                 <button class="btn btn-ghost btn-sm" onclick="openTemplatesModal()">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3a2.5 2.5 0 015 0v9a1.5 1.5 0 01-3 0V5a.5.5 0 011 0v7a.5.5 0 001 0V3a1.5 1.5 0 10-3 0v9a2.5 2.5 0 005 0V5a.5.5 0 011 0v7a3.5 3.5 0 11-7 0V3z"/></svg>
@@ -1419,6 +1529,35 @@
   <!-- ============================================================ -->
   <!-- BUDGET MODE MODALS -->
   <!-- ============================================================ -->
+
+  <!-- Section Modal -->
+  <div id="sectionModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2 id="sectionModalTitle">Add Section</h2>
+        <button class="close-btn" onclick="closeSectionModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">Sections help organize estimate line items into logical groups.</p>
+        
+        <div class="form-group">
+          <label for="sectionName">Section Name *</label>
+          <input type="text" id="sectionName" class="form-control" placeholder="e.g., Foundation, Framing, MEP">
+        </div>
+
+        <div class="form-group">
+          <label for="sectionDescription">Description (optional)</label>
+          <textarea id="sectionDescription" class="form-control" rows="2" placeholder="Notes about this section..."></textarea>
+        </div>
+
+        <input type="hidden" id="sectionId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeSectionModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveSection()">Save Section</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Source Change Modal -->
   <div id="sourceModal" class="modal">
