@@ -55,10 +55,12 @@
       id: 'reports',
       label: 'Reports',
       items: [
-        { id: 'profitability', label: 'Job Profitability', href: 'profitability.html' },
-        { id: 'wip', label: 'WIP Schedule', href: 'wip.html' },
-        { id: 'budget-report', label: 'Budget vs Actual', href: 'budgets.html' },
-        { id: 'cash-flow', label: 'Cash Flow', href: 'cash-flow.html' }
+        { id: 'report-selections', label: 'Selections', href: 'selections.html?view=report' },
+        { id: 'report-daily-logs', label: 'Daily Logs', href: 'daily-logs.html?view=report' },
+        { id: 'report-vendors', label: 'Vendors', href: 'vendors.html?view=report' },
+        { id: 'report-budget', label: 'Budget', href: 'budgets.html?view=report' },
+        { id: 'report-invoices', label: 'Invoices', href: 'index.html?view=report' },
+        { id: 'report-draws', label: 'Draws', href: 'draws.html?view=report' }
       ]
     },
     {
