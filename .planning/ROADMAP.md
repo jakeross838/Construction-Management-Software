@@ -199,6 +199,20 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
 **Research**: Unlikely (dashboard patterns established)
 **Plans**: TBD
 
+### Phase 105: Estimates & Budget Consolidation
+**Goal**: Merge estimates.html and budget-builder.html into unified Estimates & Budgets page
+**Depends on**: None
+**Success Criteria** (what must be TRUE):
+  1. Single unified page replaces both estimates.html and budget-builder.html
+  2. Estimate Mode: Create/edit client-facing estimates with line items, versions, statuses
+  3. Budget Mode: View/manage job budget with source tracking (bid, AI, manual)
+  4. Conversion workflow: Approved estimate converts to job budget
+  5. Source comparison view shows coverage (% from bids vs AI vs manual)
+  6. Navigation updated to remove redundant Budget Builder link
+  7. All existing estimate and budget-builder functionality preserved
+**Research**: Unlikely (consolidation of existing features)
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Plans | Status | Completed |
