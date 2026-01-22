@@ -90,3 +90,130 @@ END;
 $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION recalculate_estimate_totals_v3(UUID) IS 'Recalculates estimate with separate overhead, profit, and contingency markups';
+
+-- ============================================================
+-- 2. SECTION SUBTOTAL CALCULATION
+-- ============================================================
+CREATE OR REPLACE FUNCTION update_section_subtotal(p_section_id UUID)
+RETURNS void AS $$
+BEGIN
+  IF p_section_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  UPDATE v2_estimate_sections
+  SET
+    subtotal = (
+      SELECT COALESCE(SUM(amount), 0)
+      FROM v2_estimate_lines
+      WHERE section_id = p_section_id
+        AND parent_line_id IS NULL
+    ),
+    updated_at = NOW()
+  WHERE id = p_section_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Update all sections for an estimate
+CREATE OR REPLACE FUNCTION update_all_section_subtotals(p_estimate_id UUID)
+RETURNS void AS $$
+BEGIN
+  UPDATE v2_estimate_sections sec
+  SET
+    subtotal = (
+      SELECT COALESCE(SUM(amount), 0)
+      FROM v2_estimate_lines
+      WHERE section_id = sec.id
+        AND parent_line_id IS NULL
+    ),
+    updated_at = NOW()
+  WHERE sec.estimate_id = p_estimate_id;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION update_section_subtotal(UUID) IS 'Updates subtotal for a single section';
+COMMENT ON FUNCTION update_all_section_subtotals(UUID) IS 'Updates subtotals for all sections in an estimate';
+
+-- ============================================================
+-- 3. ASSEMBLY TEMPLATE EXPANSION
+-- ============================================================
+-- Expands an assembly template into line items within an estimate
+-- Returns the ID of the assembly header line created
+
+CREATE OR REPLACE FUNCTION expand_assembly_template(
+  p_estimate_id UUID,
+  p_template_id UUID,
+  p_section_id UUID DEFAULT NULL,
+  p_quantity_multiplier DECIMAL DEFAULT 1
+)
+RETURNS UUID AS $$
+DECLARE
+  v_template RECORD;
+  v_header_id UUID;
+  v_sort_base INTEGER;
+BEGIN
+  -- Get template info
+  SELECT * INTO v_template FROM v2_assembly_templates WHERE id = p_template_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Assembly template not found: %', p_template_id;
+  END IF;
+
+  IF NOT v_template.is_active THEN
+    RAISE EXCEPTION 'Assembly template is not active: %', v_template.name;
+  END IF;
+
+  -- Get next sort order
+  SELECT COALESCE(MAX(sort_order), 0) + 1 INTO v_sort_base
+  FROM v2_estimate_lines WHERE estimate_id = p_estimate_id;
+
+  -- Create assembly header line
+  INSERT INTO v2_estimate_lines (
+    estimate_id, section_id, description,
+    is_assembly, template_id, sort_order,
+    quantity, unit, amount
+  )
+  VALUES (
+    p_estimate_id, p_section_id, v_template.name,
+    true, p_template_id, v_sort_base,
+    1, 'ea', 0  -- Amount will be sum of children
+  )
+  RETURNING id INTO v_header_id;
+
+  -- Copy template items as child lines
+  INSERT INTO v2_estimate_lines (
+    estimate_id, section_id, cost_code_id,
+    description, quantity, unit, unit_cost, amount,
+    parent_line_id, template_id, source, sort_order
+  )
+  SELECT
+    p_estimate_id,
+    p_section_id,
+    ti.cost_code_id,
+    ti.description,
+    ti.quantity * p_quantity_multiplier,
+    ti.unit,
+    ti.unit_cost,
+    ti.quantity * p_quantity_multiplier * ti.unit_cost,
+    v_header_id,
+    p_template_id,
+    'template',
+    v_sort_base + ti.sort_order + 1
+  FROM v2_assembly_template_items ti
+  WHERE ti.template_id = p_template_id
+  ORDER BY ti.sort_order;
+
+  -- Update header with sum of children
+  UPDATE v2_estimate_lines
+  SET amount = (
+    SELECT COALESCE(SUM(amount), 0)
+    FROM v2_estimate_lines
+    WHERE parent_line_id = v_header_id
+  )
+  WHERE id = v_header_id;
+
+  RETURN v_header_id;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION expand_assembly_template(UUID, UUID, UUID, DECIMAL) IS 'Expands an assembly template into estimate line items with optional quantity multiplier';
