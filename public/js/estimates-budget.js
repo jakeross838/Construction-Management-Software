@@ -877,6 +877,9 @@ function renderLinesTable() {
 
   tbody.innerHTML = html;
 
+  // Initialize inline editing after render
+  initInlineEditing();
+
   // Update totals
   const total = lines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
   const subtotalEl = document.getElementById('linesSubtotal');
@@ -890,27 +893,37 @@ function renderLineRow(line, rowNum, inSection) {
   const isEditable = ['draft', 'rejected'].includes(currentEstimate?.status);
 
   return `
-    <tr class="line-row ${inSection ? 'in-section' : ''}" data-line-id="${line.id}">
+    <tr class="line-row ${inSection ? 'in-section' : ''}" data-id="${line.id}">
       <td class="select-col">
-        ${isEditable ? `<input type="checkbox" class="line-select" data-line-id="${line.id}">` : ''}
+        ${isEditable ? `<input type="checkbox" class="line-select" data-id="${line.id}">` : ''}
       </td>
-      <td class="drag-handle">${isEditable ? '<span style="cursor: grab;">&#8942;&#8942;</span>' : ''}</td>
-      <td style="color: var(--text-secondary)">${rowNum}</td>
-      <td>
-        ${cc ? `<span class="cost-code-tag">${escapeHtml(cc.code)}</span>` : '-'}
+      <td class="drag-handle" title="Drag to reorder">
+        ${isEditable ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" opacity="0.5"><path d="M2 4a1 1 0 110-2h12a1 1 0 110 2H2zm0 5a1 1 0 110-2h12a1 1 0 110 2H2zm0 5a1 1 0 110-2h12a1 1 0 110 2H2z"/></svg>' : ''}
       </td>
-      <td>${escapeHtml(line.description || '-')}</td>
-      <td class="col-right">${line.quantity || 1}</td>
-      <td>${escapeHtml(line.unit || '-')}</td>
-      <td class="col-right">${formatCurrency(line.unit_cost)}</td>
-      <td class="col-right" style="font-weight: 600">${formatCurrency(line.amount)}</td>
-      <td>
+      <td class="row-number">${rowNum}</td>
+      <td class="cost-code-cell">
+        ${cc ? `<span class="cost-code-badge">${escapeHtml(cc.code)}</span>` : '-'}
+      </td>
+      <td ${isEditable ? 'data-editable data-field="description" data-type="text"' : ''} class="${isEditable ? 'editable-cell' : ''}">
+        ${escapeHtml(line.description || '')}
+      </td>
+      <td ${isEditable ? 'data-editable data-field="quantity" data-type="number"' : ''} class="${isEditable ? 'editable-cell col-right' : 'col-right'}">
+        ${line.quantity || 1}
+      </td>
+      <td class="unit-cell">${escapeHtml(line.unit || 'LS')}</td>
+      <td ${isEditable ? 'data-editable data-field="unit_cost" data-type="currency"' : ''} class="${isEditable ? 'editable-cell col-right' : 'col-right'}">
+        ${formatCurrency(line.unit_cost || 0)}
+      </td>
+      <td data-field="amount" class="col-right amount-cell">
+        ${formatCurrency(line.amount || 0)}
+      </td>
+      <td class="row-actions">
         ${isEditable ? `
-          <button class="btn btn-icon btn-ghost btn-sm" onclick="editLineItem('${line.id}')" title="Edit">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146.146a.5.5 0 01.708 0l3 3a.5.5 0 010 .708l-10 10a.5.5 0 01-.168.11l-5 2a.5.5 0 01-.65-.65l2-5a.5.5 0 01.11-.168l10-10z"/></svg>
-          </button>
           <button class="btn btn-icon btn-ghost btn-sm" onclick="deleteLineItem('${line.id}')" title="Delete">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+              <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+            </svg>
           </button>
         ` : ''}
       </td>
@@ -929,8 +942,35 @@ function editLineItem(lineId) {
   showToast('Edit line item - coming in Phase 110-02', 'info');
 }
 
-function deleteLineItem(lineId) {
-  showToast('Delete line item - coming in Phase 110-02', 'info');
+async function deleteLineItem(lineId) {
+  if (!confirm('Delete this line item?')) return;
+
+  try {
+    const response = await fetch(`/api/estimate-lines/${lineId}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) throw new Error('Failed to delete');
+
+    // Remove row from table
+    const row = document.querySelector(`tr[data-id="${lineId}"]`);
+    if (row) {
+      row.style.opacity = '0';
+      setTimeout(() => {
+        row.remove();
+        recalculateTotals();
+        // Renumber rows
+        document.querySelectorAll('.line-item-row .row-number').forEach((cell, i) => {
+          cell.textContent = i + 1;
+        });
+      }, 200);
+    }
+
+    showToast('Line item deleted', 'success');
+  } catch (err) {
+    console.error('Delete failed:', err);
+    showToast('Failed to delete line item', 'error');
+  }
 }
 
 // ============================================================
