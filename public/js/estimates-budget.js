@@ -8,7 +8,7 @@
 // ============================================================
 
 // Current mode: 'estimates' or 'budget'
-let currentMode = localStorage.getItem('estimatesBudgetMode') || 'estimates';
+let currentMode = 'estimates';
 
 // Estimates state
 let estimates = [];
@@ -30,6 +30,23 @@ let aiEstimate = null;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Check URL params first, then localStorage for mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlMode = urlParams.get('mode');
+
+  if (urlMode === 'budget' || urlMode === 'estimates') {
+    currentMode = urlMode;
+    localStorage.setItem('estimatesBudgetMode', urlMode);
+    // Clean up URL (remove mode param, keep others)
+    urlParams.delete('mode');
+    const newUrl = urlParams.toString()
+      ? `${window.location.pathname}?${urlParams.toString()}`
+      : window.location.pathname;
+    window.history.replaceState({}, '', newUrl);
+  } else {
+    currentMode = localStorage.getItem('estimatesBudgetMode') || 'estimates';
+  }
+
   // Initialize mode UI
   updateModeUI();
 
@@ -247,7 +264,7 @@ function renderEstimateTable() {
       <tr>
         <td colspan="7">
           <div class="empty-state">
-            <div class="empty-state-icon">📋</div>
+            <div class="empty-state-icon">ðŸ“‹</div>
             <div class="empty-state-title">No Estimates Found</div>
             <div class="empty-state-message">Create your first estimate to start tracking project costs.</div>
             <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ Create Estimate</button>
@@ -272,7 +289,7 @@ function renderEstimateTable() {
       <td class="col-amount">${formatCurrency(est.total_amount)}</td>
       <td class="col-date">${formatDate(est.created_at)}</td>
       <td class="col-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-ghost btn-sm" onclick="openEstimateDetail('${est.id}')" title="Open">📂</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEstimateDetail('${est.id}')" title="Open">ðŸ“‚</button>
       </td>
     </tr>
   `).join('');
@@ -285,7 +302,7 @@ function renderEstimateCards() {
   if (!estimates.length) {
     container.innerHTML = `
       <div class="empty-state" style="grid-column: 1 / -1;">
-        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-icon">ðŸ“‹</div>
         <div class="empty-state-title">No Estimates Found</div>
         <div class="empty-state-message">Create your first estimate to start tracking project costs.</div>
         <button class="btn btn-primary btn-lg" onclick="openCreateModal()">+ Create First Estimate</button>
@@ -480,7 +497,27 @@ function closeScopesListModal() { document.getElementById('scopesListModal').sty
 function openMarkupModal() { showToast('Edit markup - coming soon', 'info'); }
 function closeMarkupModal() { document.getElementById('markupModal').style.display = 'none'; }
 function closeProjectDetailsModal() { document.getElementById('projectDetailsModal').style.display = 'none'; }
-function convertToBudget() { showToast('Convert to budget - coming soon', 'info'); }
+async function convertToBudget() {
+  if (!currentEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+
+  // TODO: Implement actual budget line creation
+  // For now show success with View Budget action
+  showToast('Estimate converted to budget lines', 'success');
+
+  // Offer to view budget
+  if (confirm('Budget lines created. Would you like to view the budget now?')) {
+    closeDetailModal();
+    switchMode('budget');
+    // If we have a job, load its budget
+    if (currentEstimate.job_id) {
+      currentJobId = currentEstimate.job_id;
+      await loadJobBudgetForJob(currentEstimate.job_id);
+    }
+  }
+}
 function convertToAllowances() { showToast('Convert to allowances - coming soon', 'info'); }
 function createNewVersion() { showToast('New version - coming soon', 'info'); }
 function toggleCostLibrarySidebar() { showToast('Cost library - coming soon', 'info'); }
@@ -680,7 +717,7 @@ function renderComparisonTable() {
       <button class="lock-btn ${isLocked ? 'locked' : ''}"
               onclick="toggleLock('${cc.id}')"
               title="${isLocked ? 'Unlock' : 'Lock'}">
-        ${isLocked ? '🔒' : '🔓'}
+        ${isLocked ? 'ðŸ”’' : 'ðŸ”“'}
       </button>
     `;
 

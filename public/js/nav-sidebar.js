@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Dropdown Navigation Component
  * Compact header with dropdown menus organized by construction workflow
  * Dual-context navigation: Job View vs Company View
@@ -42,8 +42,8 @@
             { id: 'leads', label: 'Leads', href: 'leads.html' },
             { id: 'job-profile', label: 'Job Profile', href: 'job-profile.html' },
             { id: 'bids', label: 'Bids', href: 'bids.html' },
-            { id: 'estimates', label: 'Estimates', href: 'estimates.html' },
-            { id: 'budget-builder', label: 'Budget Builder', href: 'budget-builder.html' },
+            { id: 'estimates-budget', label: 'Estimates \& Budgets', href: 'estimates-budget.html' },
+            
             { id: 'contracts', label: 'Contracts', href: 'contracts.html' },
             { id: 'selections', label: 'Selections', href: 'selections.html' }
           ]
