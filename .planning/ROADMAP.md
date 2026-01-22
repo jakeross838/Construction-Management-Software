@@ -404,7 +404,7 @@ Plans:
 |-------|-------|--------|-----------|
 | 106. Data Model & Architecture | 2 | Complete | 2026-01-22 |
 | 107. Assembly Library & Builder | 3 | Complete | 2026-01-22 |
-| 108. Selections & Allowances | TBD | Not started | - |
+| 108. Selections & Allowances | 3 | In progress (1/3) | - |
 | 109. Proposal Generation | 3 | Planned | - |
 | 110. UI/UX Overhaul | TBD | Not started | - |
 
