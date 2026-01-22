@@ -933,6 +933,253 @@ function deleteLineItem(lineId) {
   showToast('Delete line item - coming in Phase 110-02', 'info');
 }
 
+// ============================================================
+// INLINE EDITING
+// ============================================================
+
+class InlineEditableCell {
+  constructor(element, options = {}) {
+    this.el = element;
+    this.field = element.dataset.field;
+    this.rowId = element.closest('tr')?.dataset.id;
+    this.type = options.type || 'text'; // text, number, currency
+    this.onSave = options.onSave || (() => {});
+    this.originalValue = null;
+    this.init();
+  }
+
+  init() {
+    this.el.classList.add('editable-cell');
+    this.el.setAttribute('tabindex', '0');
+
+    // Click to edit
+    this.el.addEventListener('click', (e) => {
+      if (!this.el.classList.contains('editing')) {
+        this.startEdit();
+      }
+    });
+
+    // Enter on focused cell starts edit
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !this.el.classList.contains('editing')) {
+        e.preventDefault();
+        this.startEdit();
+      }
+    });
+  }
+
+  startEdit() {
+    if (this.el.contentEditable === 'true') return;
+
+    // Store original for cancel
+    this.originalValue = this.el.textContent.trim();
+
+    // Enable editing
+    this.el.contentEditable = true;
+    this.el.classList.add('editing');
+    this.el.focus();
+
+    // Select all text
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(this.el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    // Add keyboard handlers
+    this.el.addEventListener('keydown', this.handleKeydown.bind(this));
+    this.el.addEventListener('blur', this.handleBlur.bind(this), { once: true });
+  }
+
+  handleKeydown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.save();
+      this.moveToNextRow();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this.cancel();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      this.save();
+      this.moveToNext(e.shiftKey);
+    }
+  }
+
+  handleBlur() {
+    // Small delay to allow click on other elements
+    setTimeout(() => {
+      if (this.el.classList.contains('editing')) {
+        this.save();
+      }
+    }, 150);
+  }
+
+  save() {
+    this.el.contentEditable = false;
+    this.el.classList.remove('editing');
+
+    let value = this.el.textContent.trim();
+
+    // Parse based on type
+    if (this.type === 'number') {
+      value = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
+      this.el.textContent = value;
+    } else if (this.type === 'currency') {
+      value = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
+      this.el.textContent = formatCurrency(value);
+    }
+
+    // Only save if changed
+    if (String(value) !== String(this.originalValue)) {
+      this.onSave(this.rowId, this.field, value);
+    }
+  }
+
+  cancel() {
+    this.el.textContent = this.originalValue;
+    this.el.contentEditable = false;
+    this.el.classList.remove('editing');
+  }
+
+  moveToNext(reverse = false) {
+    const cells = [...document.querySelectorAll('.editable-cell')];
+    const currentIndex = cells.indexOf(this.el);
+    const nextIndex = reverse ? currentIndex - 1 : currentIndex + 1;
+
+    if (cells[nextIndex]) {
+      cells[nextIndex].focus();
+      // Trigger edit on next cell
+      setTimeout(() => {
+        const nextCell = cells[nextIndex];
+        if (nextCell._inlineEdit) {
+          nextCell._inlineEdit.startEdit();
+        }
+      }, 50);
+    }
+  }
+
+  moveToNextRow() {
+    const currentRow = this.el.closest('tr');
+    const nextRow = currentRow?.nextElementSibling;
+    if (nextRow) {
+      const sameFieldCell = nextRow.querySelector(`[data-field="${this.field}"]`);
+      if (sameFieldCell) {
+        sameFieldCell.focus();
+        setTimeout(() => {
+          if (sameFieldCell._inlineEdit) {
+            sameFieldCell._inlineEdit.startEdit();
+          }
+        }, 50);
+      }
+    }
+  }
+}
+
+// Initialize inline editing on line items
+function initInlineEditing() {
+  const table = document.getElementById('estimateLinesTable');
+  if (!table) return;
+
+  const editableCells = table.querySelectorAll('[data-editable]');
+  editableCells.forEach(cell => {
+    const type = cell.dataset.type || 'text';
+    const editor = new InlineEditableCell(cell, {
+      type,
+      onSave: handleCellSave
+    });
+    cell._inlineEdit = editor;
+  });
+}
+
+// Handle cell save - debounced API call
+let saveDebounce = {};
+function handleCellSave(rowId, field, value) {
+  // Clear existing debounce for this row
+  if (saveDebounce[rowId]) {
+    clearTimeout(saveDebounce[rowId]);
+  }
+
+  // Collect all pending changes for this row
+  if (!window.pendingRowChanges) window.pendingRowChanges = {};
+  if (!window.pendingRowChanges[rowId]) window.pendingRowChanges[rowId] = {};
+  window.pendingRowChanges[rowId][field] = value;
+
+  // Debounce save
+  saveDebounce[rowId] = setTimeout(async () => {
+    const changes = window.pendingRowChanges[rowId];
+    delete window.pendingRowChanges[rowId];
+
+    try {
+      const response = await fetch(`/api/estimate-lines/${rowId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save');
+      }
+
+      // Recalculate row amount if quantity or unit_cost changed
+      if (changes.quantity !== undefined || changes.unit_cost !== undefined) {
+        recalculateRowAmount(rowId);
+      }
+
+      // Update totals
+      recalculateTotals();
+
+      // Show subtle success indicator
+      showInlineSaveIndicator(rowId, true);
+    } catch (err) {
+      console.error('Save failed:', err);
+      showInlineSaveIndicator(rowId, false);
+      showToast('Failed to save changes', 'error');
+    }
+  }, 500);
+}
+
+function recalculateRowAmount(rowId) {
+  const row = document.querySelector(`tr[data-id="${rowId}"]`);
+  if (!row) return;
+
+  const qty = parseFloat(row.querySelector('[data-field="quantity"]')?.textContent) || 0;
+  const unitCost = parseFloat(row.querySelector('[data-field="unit_cost"]')?.textContent?.replace(/[^0-9.-]/g, '')) || 0;
+  const amount = qty * unitCost;
+
+  const amountCell = row.querySelector('[data-field="amount"]');
+  if (amountCell) {
+    amountCell.textContent = formatCurrency(amount);
+  }
+}
+
+function recalculateTotals() {
+  const rows = document.querySelectorAll('#estimateLinesTable tbody tr[data-id]');
+  let subtotal = 0;
+
+  rows.forEach(row => {
+    const amountText = row.querySelector('[data-field="amount"]')?.textContent || '0';
+    const amount = parseFloat(amountText.replace(/[^0-9.-]/g, '')) || 0;
+    subtotal += amount;
+  });
+
+  const subtotalEl = document.getElementById('linesSubtotal');
+  const totalEl = document.getElementById('linesTotalAmount');
+
+  if (subtotalEl) subtotalEl.textContent = formatCurrency(subtotal);
+  if (totalEl) totalEl.textContent = formatCurrency(subtotal);
+}
+
+function showInlineSaveIndicator(rowId, success) {
+  const row = document.querySelector(`tr[data-id="${rowId}"]`);
+  if (!row) return;
+
+  row.classList.add(success ? 'row-saved' : 'row-error');
+  setTimeout(() => {
+    row.classList.remove('row-saved', 'row-error');
+  }, 1500);
+}
+
 
 
 // ============================================================
