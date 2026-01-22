@@ -338,6 +338,254 @@ router.get('/templates', asyncHandler(async (req, res) => {
   res.json(enrichedTemplates);
 }));
 
+// GET /api/estimates/templates/db - List database templates (new hierarchical system)
+router.get('/templates/db', asyncHandler(async (req, res) => {
+  const { project_type, is_active } = req.query;
+
+  let query = supabase
+    .from('v2_estimate_templates')
+    .select('*')
+    .order('is_default', { ascending: false })
+    .order('name');
+
+  if (project_type) query = query.eq('project_type', project_type);
+  if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
+
+  const { data, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(data || []);
+}));
+
+// GET /api/estimates/templates/db/:id - Get template details with structure
+router.get('/templates/db/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: template, error } = await supabase
+    .from('v2_estimate_templates')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!template) throw new AppError('NOT_FOUND', 'Template not found');
+
+  res.json(template);
+}));
+
+// POST /api/estimates/:id/apply-template - Apply template to estimate
+router.post('/:id/apply-template', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { template_id, applied_by } = req.body;
+
+  if (!template_id) throw new AppError('VALIDATION_ERROR', 'Template ID is required');
+
+  // Verify estimate exists
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('id')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
+
+  // Get template
+  const { data: template } = await supabase
+    .from('v2_estimate_templates')
+    .select('*')
+    .eq('id', template_id)
+    .single();
+
+  if (!template) throw new AppError('NOT_FOUND', 'Template not found');
+
+  // Try using database function first
+  const { error: rpcError } = await supabase.rpc('apply_estimate_template', {
+    p_estimate_id: id,
+    p_template_id: template_id
+  });
+
+  if (rpcError) {
+    // Fallback: manually apply structure from template
+    console.log('RPC not available, applying template structure manually');
+
+    const structure = template.structure || { phases: [] };
+
+    for (let phaseIdx = 0; phaseIdx < (structure.phases || []).length; phaseIdx++) {
+      const phaseData = structure.phases[phaseIdx];
+
+      // Create phase
+      const { data: phase, error: phaseErr } = await supabase
+        .from('v2_estimate_phases')
+        .insert({
+          estimate_id: id,
+          name: phaseData.name,
+          phase_code: phaseData.phase_code,
+          description: phaseData.description,
+          sort_order: phaseIdx + 1
+        })
+        .select()
+        .single();
+
+      if (phaseErr) continue;
+
+      for (let groupIdx = 0; groupIdx < (phaseData.groups || []).length; groupIdx++) {
+        const groupData = phaseData.groups[groupIdx];
+
+        // Create group
+        const { data: group, error: groupErr } = await supabase
+          .from('v2_estimate_groups')
+          .insert({
+            phase_id: phase.id,
+            name: groupData.name,
+            description: groupData.description,
+            sort_order: groupIdx + 1
+          })
+          .select()
+          .single();
+
+        if (groupErr) continue;
+
+        for (let subIdx = 0; subIdx < (groupData.subgroups || []).length; subIdx++) {
+          const subData = groupData.subgroups[subIdx];
+
+          // Create subgroup
+          await supabase
+            .from('v2_estimate_subgroups')
+            .insert({
+              group_id: group.id,
+              name: subData.name,
+              description: subData.description,
+              sort_order: subIdx + 1
+            });
+        }
+      }
+    }
+  }
+
+  await logEstimateActivity(id, 'template_applied', applied_by || 'System', {
+    template_id,
+    template_name: template.name
+  });
+
+  // Return updated estimate with hierarchy
+  const { data: updatedEstimate } = await supabase
+    .from('v2_estimates')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  const { data: phases } = await supabase
+    .from('v2_estimate_phases')
+    .select(`
+      *,
+      groups:v2_estimate_groups(
+        *,
+        subgroups:v2_estimate_subgroups(*)
+      )
+    `)
+    .eq('estimate_id', id)
+    .order('sort_order');
+
+  updatedEstimate.phases = phases || [];
+  res.json(updatedEstimate);
+}));
+
+// POST /api/estimates/:id/save-as-template - Save estimate as template
+router.post('/:id/save-as-template', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, description, project_type, created_by } = req.body;
+
+  if (!name) throw new AppError('VALIDATION_ERROR', 'Template name is required');
+
+  // Get estimate with hierarchy
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('id, title')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
+
+  // Get phases with full hierarchy
+  const { data: phases } = await supabase
+    .from('v2_estimate_phases')
+    .select(`
+      *,
+      groups:v2_estimate_groups(
+        *,
+        subgroups:v2_estimate_subgroups(*)
+      )
+    `)
+    .eq('estimate_id', id)
+    .order('sort_order');
+
+  // Build structure object (without IDs, just structure)
+  const structure = {
+    phases: (phases || []).map(phase => ({
+      name: phase.name,
+      phase_code: phase.phase_code,
+      description: phase.description,
+      groups: (phase.groups || []).map(group => ({
+        name: group.name,
+        description: group.description,
+        subgroups: (group.subgroups || []).map(subgroup => ({
+          name: subgroup.name,
+          description: subgroup.description
+        }))
+      }))
+    }))
+  };
+
+  // Try using database function first
+  let templateId;
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('save_estimate_as_template', {
+    p_estimate_id: id,
+    p_name: name,
+    p_description: description || null,
+    p_created_by: created_by || 'User'
+  });
+
+  if (rpcError) {
+    // Fallback: manually create template
+    console.log('RPC not available, creating template manually');
+
+    const { data: newTemplate, error: insertErr } = await supabase
+      .from('v2_estimate_templates')
+      .insert({
+        name,
+        description: description || null,
+        project_type: project_type || null,
+        structure,
+        is_active: true,
+        is_default: false,
+        created_by: created_by || 'User'
+      })
+      .select()
+      .single();
+
+    if (insertErr) throw new AppError('DATABASE_ERROR', insertErr.message);
+    templateId = newTemplate.id;
+  } else {
+    templateId = rpcResult;
+  }
+
+  // Fetch the created template
+  const { data: template } = await supabase
+    .from('v2_estimate_templates')
+    .select('*')
+    .eq('id', templateId)
+    .single();
+
+  await logEstimateActivity(id, 'saved_as_template', created_by || 'User', {
+    template_id: templateId,
+    template_name: name
+  });
+
+  res.status(201).json(template);
+}));
+
 // ============================================================
 // AI SCOPE ANALYSIS (must be before /:id)
 // ============================================================
