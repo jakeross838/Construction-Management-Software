@@ -274,10 +274,11 @@ Plans:
   5. Markup calculations (overhead, profit, contingency) apply to estimate totals
   6. Version tracking allows estimate history
 **Research**: Complete (106-RESEARCH.md)
+**Status**: Complete (2026-01-22)
 **Plans**: 2 plans
 Plans:
-- [ ] 106-01-PLAN.md - Database schema: sections, assembly templates, line item extensions
-- [ ] 106-02-PLAN.md - Database functions and triggers for calculations
+- [x] 106-01-PLAN.md - Database schema: sections, assembly templates, line item extensions
+- [x] 106-02-PLAN.md - Database functions and triggers for calculations
 
 ### Phase 107: Assembly Library & Estimate Builder
 **Goal**: Build and use assembly templates; create estimates with sections and items
@@ -400,7 +401,7 @@ Plans:
 ### v4.0 Estimating System Rebuild
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| 106. Data Model & Architecture | 2 | Planned | - |
+| 106. Data Model & Architecture | 2 | Complete | 2026-01-22 |
 | 107. Assembly Library & Builder | 3 | Planned | - |
 | 108. Selections & Allowances | TBD | Not started | - |
 | 109. Proposal Generation | 3 | Planned | - |
