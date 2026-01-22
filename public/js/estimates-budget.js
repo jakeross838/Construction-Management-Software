@@ -1281,8 +1281,12 @@ async function saveLineItem() {
   if (!currentEstimate) return;
 
   const lineId = document.getElementById('lineItemId').value;
+  const catalogItemId = document.getElementById('lineCatalogItemId')?.value || null;
+  const subgroupId = window.currentSubgroupId || null;
+
   const data = {
     cost_code_id: document.getElementById('lineCostCode').value || null,
+    catalog_item_id: catalogItemId,
     description: document.getElementById('lineDescription').value,
     quantity: parseFloat(document.getElementById('lineQuantity').value) || 1,
     unit: document.getElementById('lineUnit').value || null,
@@ -1298,10 +1302,21 @@ async function saveLineItem() {
   }
 
   try {
-    const url = lineId
-      ? `/api/estimates/${currentEstimate.id}/lines/${lineId}`
-      : `/api/estimates/${currentEstimate.id}/lines`;
-    const method = lineId ? 'PATCH' : 'POST';
+    let url, method;
+
+    if (lineId) {
+      // Editing existing line item (use hierarchical endpoint)
+      url = `/api/estimates/lines/${lineId}`;
+      method = 'PATCH';
+    } else if (subgroupId) {
+      // Adding new line item to subgroup (hierarchical)
+      url = `/api/estimates/subgroups/${subgroupId}/lines`;
+      method = 'POST';
+    } else {
+      // Legacy: adding to flat estimate (backwards compatibility)
+      url = `/api/estimates/${currentEstimate.id}/lines`;
+      method = 'POST';
+    }
 
     const response = await fetch(url, {
       method,
@@ -1317,11 +1332,18 @@ async function saveLineItem() {
     showToast(lineId ? 'Line item updated' : 'Line item added', 'success');
     closeLineModal();
 
-    // Refresh estimate details
-    await openEstimateDetail(currentEstimate.id);
+    // Clear subgroup context
+    window.currentSubgroupId = null;
 
-    // Switch to lines tab to show the new item
-    switchTab('lines');
+    // Refresh estimate details
+    if (subgroupId || currentEstimate.phases?.length > 0) {
+      // Hierarchical estimate - refresh hierarchy
+      await refreshEstimateHierarchy();
+    } else {
+      // Legacy estimate - full refresh
+      await openEstimateDetail(currentEstimate.id);
+      switchTab('lines');
+    }
   } catch (err) {
     console.error('Error saving line item:', err);
     showToast(err.message, 'error');
