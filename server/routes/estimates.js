@@ -821,6 +821,13 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .eq('estimate_id', id)
     .order('sort_order', { ascending: true });
 
+  // Get sections
+  const { data: sections } = await supabase
+    .from('v2_estimate_sections')
+    .select('*')
+    .eq('estimate_id', id)
+    .order('sort_order', { ascending: true });
+
   // Get activity
   const { data: activity } = await supabase
     .from('v2_estimate_activity')
@@ -849,6 +856,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .limit(1);
 
   estimate.lines = lines || [];
+  estimate.sections = sections || [];
   estimate.activity = activity || [];
   estimate.versions = versions;
   estimate.has_budget = (budgetLines?.length || 0) > 0;
@@ -962,6 +970,130 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// ============================================================
+// SECTION OPERATIONS
+// ============================================================
+
+// Create section
+router.post('/:id/sections', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, sort_order, created_by } = req.body;
+
+  if (!name) throw new AppError('VALIDATION_ERROR', 'Section name is required');
+
+  // Get max sort_order if not provided
+  let finalSortOrder = sort_order;
+  if (finalSortOrder === undefined) {
+    const { data: maxSection } = await supabase
+      .from('v2_estimate_sections')
+      .select('sort_order')
+      .eq('estimate_id', id)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .single();
+    finalSortOrder = (maxSection?.sort_order || 0) + 1;
+  }
+
+  const { data: section, error } = await supabase
+    .from('v2_estimate_sections')
+    .insert({
+      estimate_id: id,
+      name,
+      sort_order: finalSortOrder
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(id, 'section_created', created_by || 'System', { section_name: name });
+
+  res.status(201).json(section);
+}));
+
+// Update section
+router.patch('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
+  const { id, sectionId } = req.params;
+  const { name, sort_order, updated_by } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (sort_order !== undefined) updates.sort_order = sort_order;
+
+  const { data: section, error } = await supabase
+    .from('v2_estimate_sections')
+    .update(updates)
+    .eq('id', sectionId)
+    .eq('estimate_id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!section) throw new AppError('NOT_FOUND', 'Section not found');
+
+  await logEstimateActivity(id, 'section_updated', updated_by || 'System', { section_id: sectionId, changes: updates });
+
+  res.json(section);
+}));
+
+// Delete section (preserves line items by setting their section_id to null)
+router.delete('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
+  const { id, sectionId } = req.params;
+  const { deleted_by } = req.body;
+
+  // Get section name for logging
+  const { data: section } = await supabase
+    .from('v2_estimate_sections')
+    .select('name')
+    .eq('id', sectionId)
+    .eq('estimate_id', id)
+    .single();
+
+  if (!section) throw new AppError('NOT_FOUND', 'Section not found');
+
+  // Move line items to no section
+  await supabase
+    .from('v2_estimate_lines')
+    .update({ section_id: null })
+    .eq('section_id', sectionId);
+
+  // Delete section
+  const { error } = await supabase
+    .from('v2_estimate_sections')
+    .delete()
+    .eq('id', sectionId)
+    .eq('estimate_id', id);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(id, 'section_deleted', deleted_by || 'System', { section_name: section.name });
+
+  res.json({ success: true, message: 'Section deleted' });
+}));
+
+// Reorder sections
+router.post('/:id/sections/reorder', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { section_ids, updated_by } = req.body;
+
+  if (!section_ids || !Array.isArray(section_ids)) {
+    throw new AppError('VALIDATION_ERROR', 'section_ids array is required');
+  }
+
+  // Update each section's sort_order
+  for (let i = 0; i < section_ids.length; i++) {
+    await supabase
+      .from('v2_estimate_sections')
+      .update({ sort_order: i + 1 })
+      .eq('id', section_ids[i])
+      .eq('estimate_id', id);
+  }
+
+  await logEstimateActivity(id, 'sections_reordered', updated_by || 'System', { section_ids });
+
+  res.json({ success: true, message: 'Sections reordered' });
+}));
+
 // LINE ITEM OPERATIONS
 // ============================================================
 
