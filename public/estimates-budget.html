@@ -436,8 +436,16 @@
         </div>
         <nav class="main-nav"></nav>
         <div class="header-actions">
-          <button class="btn btn-secondary" onclick="openFromSelectionsModal()">From Selections</button>
-          <button class="btn btn-primary" onclick="openCreateModal()">+ New Estimate</button>
+          <div class="dropdown">
+            <button class="btn btn-primary dropdown-toggle" id="newEstimateBtn">
+              + New Estimate <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="dropdown-menu" id="newEstimateMenu">
+              <button class="dropdown-item" onclick="openCreateModal()">Blank Estimate</button>
+              <button class="dropdown-item" onclick="showToast('Import from bid coming in Phase 107', 'info')">Import from Bid</button>
+              <button class="dropdown-item" onclick="showToast('From selections coming in Phase 108', 'info')">From Selections</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="header-sub">
@@ -511,18 +519,7 @@
               </div>
             </div>
             <div class="toolbar-right">
-              <div class="view-toggle">
-                <button class="view-btn active" data-view="table" onclick="setView('table')" title="Table view">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14 1H2v4h4V3h4v4h4V3zM2 8v5h4V8H2zm5 0v5h4V8H7zm5 0v5h4V8h-4z"/></svg>
-                </button>
-                <button class="view-btn" data-view="cards" onclick="setView('cards')" title="Card view">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 012.5 1h3A1.5 1.5 0 017 2.5v3A1.5 1.5 0 015.5 7h-3A1.5 1.5 0 011 5.5v-3zm8 0A1.5 1.5 0 0110.5 1h3A1.5 1.5 0 0115 2.5v3A1.5 1.5 0 0113.5 7h-3A1.5 1.5 0 019 5.5v-3zm-8 8A1.5 1.5 0 012.5 9h3A1.5 1.5 0 017 10.5v3A1.5 1.5 0 015.5 15h-3A1.5 1.5 0 011 13.5v-3zm8 0A1.5 1.5 0 0110.5 9h3a1.5 1.5 0 011.5 1.5v3a1.5 1.5 0 01-1.5 1.5h-3A1.5 1.5 0 019 13.5v-3z"/></svg>
-                </button>
-              </div>
-              <button class="btn btn-ghost btn-sm" onclick="openColumnSettings()" title="Column settings">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 13a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0-5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0-5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/></svg>
-              </button>
-              <button class="btn btn-secondary btn-sm" onclick="openImportBidModal()">Import from Bid</button>
+              <!-- Actions moved to primary button dropdown -->
             </div>
           </div>
 
@@ -754,8 +751,6 @@
       <div class="tabs">
         <button class="tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
         <button class="tab" data-tab="lines" onclick="switchTab('lines')">Line Items</button>
-        <button class="tab" data-tab="versions" onclick="switchTab('versions')">Versions</button>
-        <button class="tab" data-tab="activity" onclick="switchTab('activity')">Activity</button>
       </div>
 
       <div class="modal-body">
@@ -796,42 +791,7 @@
                 <!-- Populated by JS based on current status -->
               </div>
 
-              <!-- Markup & Contingency Section -->
-              <div id="markupSection" style="margin-top: 20px;">
-                <h3>Pricing</h3>
-                <div class="detail-row">
-                  <span class="detail-label">Subtotal</span>
-                  <span class="detail-value" id="detailSubtotal">-</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">Markup (<span id="detailMarkupPct">0</span>%)</span>
-                  <span class="detail-value" id="detailMarkupAmt">$0.00</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">Contingency (<span id="detailContingencyPct">0</span>%)</span>
-                  <span class="detail-value" id="detailContingencyAmt">$0.00</span>
-                </div>
-                <button class="btn btn-ghost btn-sm" onclick="openMarkupModal()" style="margin-top: 8px;">Edit Markup</button>
-              </div>
-
-              <!-- Generate Scope Section -->
-              <div id="scopeSection" style="margin-top: 20px;">
-                <h3>Scope of Work</h3>
-                <p class="text-muted">Generate scope documents for bid requests.</p>
-                <button class="btn btn-secondary btn-sm" onclick="openGenerateScopeModal()">Generate Scope</button>
-                <button class="btn btn-ghost btn-sm" onclick="openScopesListModal()">View All</button>
-              </div>
-
-              <!-- Convert to Budget Section (shown for approved estimates) -->
-              <div id="convertSection" style="display: none; margin-top: 20px;">
-                <h3>Convert to Budget</h3>
-                <p class="text-muted">Create budget lines from this approved estimate.</p>
-                <button class="btn btn-primary btn-sm" onclick="convertToBudget()">Convert to Budget</button>
-                <button class="btn btn-secondary btn-sm" onclick="convertToAllowances()">To Allowances</button>
-                <div id="convertedInfo" style="display: none; margin-top: 10px;">
-                  <p class="text-success">Already converted to budget</p>
-                </div>
-              </div>
+              <!-- Removed: Markup, Scope, and Convert sections - not implemented -->
             </div>
           </div>
 
@@ -852,41 +812,16 @@
             <!-- Worksheet Toolbar -->
             <div class="worksheet-toolbar">
               <div class="toolbar-left">
-                <div class="toolbar-group">
-                  <select id="lineGroupBy" class="form-control form-control-sm" onchange="regroupLines()">
-                    <option value="none">No Grouping</option>
-                    <option value="costcode">Group by Cost Code</option>
-                    <option value="custom">Custom Groups</option>
-                  </select>
-                </div>
-                <div class="toolbar-group">
-                  <button class="btn btn-ghost btn-sm" id="toggleSidebarBtn" onclick="toggleCostLibrarySidebar()" title="Cost Library">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 000 2.5v11a.5.5 0 00.707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 00.78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0016 13.5v-11a.5.5 0 00-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/></svg>
-                    Library
-                  </button>
-                  <button class="btn btn-ghost btn-sm" onclick="openColumnSettings()" title="Column Settings">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 1v3H1V1h5zM1 0a1 1 0 00-1 1v3a1 1 0 001 1h5a1 1 0 001-1V1a1 1 0 00-1-1H1zm14 12v3h-5v-3h5zm-5-1a1 1 0 00-1 1v3a1 1 0 001 1h5a1 1 0 001-1v-3a1 1 0 00-1-1h-5zM6 8v7H1V8h5zM1 7a1 1 0 00-1 1v7a1 1 0 001 1h5a1 1 0 001-1V8a1 1 0 00-1-1H1zm14-6v7h-5V1h5zm-5-1a1 1 0 00-1 1v7a1 1 0 001 1h5a1 1 0 001-1V1a1 1 0 00-1-1h-5z"/></svg>
-                    Columns
-                  </button>
-                </div>
+                <!-- Removed: Group dropdown, Library, Columns - not implemented -->
               </div>
               <div class="toolbar-right" id="lineItemsActions">
-                <button class="btn btn-ghost btn-sm" id="createAssemblyBtn" onclick="openCreateAssemblyModal()" style="display:none">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5v3a.5.5 0 01-.5.5h-3a.5.5 0 01-.5-.5v-3zM3.5 8a.5.5 0 00-.5.5v3a.5.5 0 00.5.5h3a.5.5 0 00.5-.5v-3a.5.5 0 00-.5-.5h-3zm6 0a.5.5 0 00-.5.5v3a.5.5 0 00.5.5h3a.5.5 0 00.5-.5v-3a.5.5 0 00-.5-.5h-3z"/></svg>
-                  Group
-                </button>
                 <button class="btn btn-ghost btn-sm" id="addSectionBtn" onclick="openSectionModal()">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v1a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm0 4.5a1 1 0 011-1h10a1 1 0 011 1v1a1 1 0 01-1 1H3a1 1 0 01-1-1v-1zm0 4.5a1 1 0 011-1h10a1 1 0 011 1v1a1 1 0 01-1 1H3a1 1 0 01-1-1v-1z"/></svg>
                   + Section
                 </button>
-                <button class="btn btn-ghost btn-sm" onclick="openAssemblyPickerModal()" title="Add Assembly from Library">                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 0a.5.5 0 01.5.5V1h8V.5a.5.5 0 011 0V1h1a2 2 0 012 2v11a2 2 0 01-2 2H2a2 2 0 01-2-2V3a2 2 0 012-2h1V.5a.5.5 0 01.5-.5zM1 4v10a1 1 0 001 1h12a1 1 0 001-1V4H1z"/></svg>                  Assemblies                </button>
-                <button class="btn btn-ghost btn-sm" onclick="openTemplatesModal()">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3a2.5 2.5 0 015 0v9a1.5 1.5 0 01-3 0V5a.5.5 0 011 0v7a.5.5 0 001 0V3a1.5 1.5 0 10-3 0v9a2.5 2.5 0 005 0V5a.5.5 0 011 0v7a3.5 3.5 0 11-7 0V3z"/></svg>
-                  Templates
-                </button>
-                <button class="btn btn-ghost btn-sm" onclick="openScopeModal()">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.255 5.786a.237.237 0 00.241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 00.25.246h.811a.25.25 0 00.25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286zm1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.94-1.029-.94-.584 0-1.009.388-1.009.94z"/></svg>
-                  AI Scope
+                <button class="btn btn-ghost btn-sm" onclick="openAssemblyPickerModal()" title="Add Assembly from Library">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 0a.5.5 0 01.5.5V1h8V.5a.5.5 0 011 0V1h1a2 2 0 012 2v11a2 2 0 01-2 2H2a2 2 0 01-2-2V3a2 2 0 012-2h1V.5a.5.5 0 01.5-.5zM1 4v10a1 1 0 001 1h12a1 1 0 001-1V4H1z"/></svg>
+                  Assemblies
                 </button>
                 <div class="toolbar-divider"></div>
                 <button class="btn btn-primary btn-sm" onclick="openAddLineModal()">
@@ -896,45 +831,9 @@
               </div>
             </div>
 
-            <!-- Cost Library Sidebar -->
-            <div class="worksheet-with-sidebar">
-              <div class="cost-library-sidebar" id="costLibrarySidebar">
-                <div class="sidebar-header">
-                  <h4>Cost Library</h4>
-                  <button class="btn btn-icon btn-ghost btn-sm" onclick="toggleCostLibrarySidebar()" title="Hide">x</button>
-                </div>
+            <!-- Removed: Cost Library Sidebar - not implemented -->
 
-                <div class="sidebar-search">
-                  <input type="text" id="costLibrarySearch" class="form-control form-control-sm" placeholder="Search cost codes..." oninput="filterCostLibrary()">
-                </div>
-
-                <div class="sidebar-section" id="recentCostCodes">
-                  <div class="sidebar-section-header" onclick="toggleSidebarSection('recentCostCodes')">
-                    <span>Recently Used</span>
-                    <span class="section-toggle">V</span>
-                  </div>
-                  <div class="sidebar-section-content" id="recentCostCodesList">
-                    <p class="sidebar-empty">No recent items</p>
-                  </div>
-                </div>
-
-                <div class="sidebar-section" id="favoriteCostCodes">
-                  <div class="sidebar-section-header" onclick="toggleSidebarSection('favoriteCostCodes')">
-                    <span>Favorites</span>
-                    <span class="section-toggle">V</span>
-                  </div>
-                  <div class="sidebar-section-content" id="favoriteCostCodesList">
-                    <p class="sidebar-empty">No favorites</p>
-                  </div>
-                </div>
-
-                <div class="sidebar-categories" id="costLibraryCategories">
-                  <!-- Populated by JS with category accordions -->
-                </div>
-              </div>
-
-              <!-- Main Worksheet Area -->
-              <div class="worksheet-main">
+            <!-- Main Worksheet Area -->
                 <div class="worksheet-table-wrap" id="linesTableDropZone">
                   <table class="worksheet-table" id="estimateLinesTable">
                     <thead>
@@ -976,34 +875,128 @@
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
           </div>
         </div>
 
-        <!-- Versions Tab -->
-        <div id="tab-versions" class="tab-content">
-          <div class="versions-header">
-            <h3>Version History</h3>
-            <button class="btn btn-primary" id="newVersionBtn" onclick="createNewVersion()">+ New Version</button>
-          </div>
-          <div class="versions-list" id="versionsList">
-            <!-- Populated by JS -->
-          </div>
-        </div>
-
-        <!-- Activity Tab -->
-        <div id="tab-activity" class="tab-content">
-          <div class="activity-timeline" id="activityTimeline">
-            <!-- Populated by JS -->
-          </div>
-        </div>
+        <!-- Removed: Versions and Activity tabs - not implemented -->
       </div>
 
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeDetailModal()">Close</button>
-        <button class="btn btn-secondary" onclick="openDuplicateModal()">Duplicate</button>
-        <button class="btn btn-primary" id="editEstimateBtn" onclick="editCurrentEstimate()">Edit Estimate</button>
+        <div class="dropdown">
+          <button class="btn btn-ghost dropdown-toggle">More Actions <span class="dropdown-caret">▼</span></button>
+          <div class="dropdown-menu dropdown-menu-right">
+            <button class="dropdown-item" onclick="openCopyEstimateModal()">Duplicate</button>
+            <button class="dropdown-item" onclick="showToast('Export coming soon', 'info')">Export PDF</button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item text-danger" onclick="showToast('Delete coming soon', 'info')">Delete</button>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="openGenerateProposalModal()">
+          <span>📄</span> Generate Proposal
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generate Proposal Modal -->
+  <div id="generateProposalModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Generate Proposal</h2>
+        <button class="close-btn" onclick="closeGenerateProposalModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="proposalTitle">Proposal Title</label>
+          <input type="text" id="proposalTitle" class="form-control" placeholder="Enter proposal title...">
+          <small class="form-help">Default: "Proposal for [Estimate Title]"</small>
+        </div>
+
+        <div class="form-group">
+          <label for="detailLevel">Detail Level</label>
+          <select id="detailLevel" class="form-control">
+            <option value="summary">Summary Only (section totals)</option>
+            <option value="line_items">Line Items (detailed breakdown)</option>
+          </select>
+          <small class="form-help">Choose how much detail to show the client</small>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="showAllowances" checked>
+            <span>Highlight allowances with explanatory text</span>
+          </label>
+          <small class="form-help">Helps clients understand placeholder amounts for their selections</small>
+        </div>
+
+        <div class="form-group">
+          <label for="termsText">Terms & Conditions (optional)</label>
+          <textarea id="termsText" class="form-control" rows="4" placeholder="Enter custom terms and conditions..."></textarea>
+        </div>
+
+        <div class="proposal-preview-note">
+          <strong>ℹ️ Note:</strong> After generating the PDF, you'll get a shareable link you can send to the client. They can view and accept the proposal online.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeGenerateProposalModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="generateProposal()">
+          <span id="generateBtnText">Generate PDF & Get Link</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Proposal Share Link Modal -->
+  <div id="proposalShareModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>✅ Proposal Generated!</h2>
+        <button class="close-btn" onclick="closeProposalShareModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="success-message" style="background: var(--bg-card-elevated); padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid var(--accent-green);">
+          <p style="margin-bottom: 16px;">Your proposal has been generated and is ready to share with the client.</p>
+
+          <div class="form-group">
+            <label>Shareable Link</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="shareLink" class="form-control" readonly>
+              <button class="btn btn-secondary" onclick="copyShareLink()" style="white-space: nowrap;">
+                📋 Copy Link
+              </button>
+            </div>
+            <small class="form-help">Send this link to your client. It expires in 30 days.</small>
+          </div>
+
+          <div class="form-group">
+            <label>Direct PDF Link</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="pdfLink" class="form-control" readonly>
+              <button class="btn btn-secondary" onclick="window.open(document.getElementById('pdfLink').value, '_blank')" style="white-space: nowrap;">
+                👁️ View PDF
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-box" style="background: var(--bg-card); padding: 16px; border-radius: 6px; border: 1px solid var(--border);">
+          <h4 style="margin-top: 0;">What happens next?</h4>
+          <ol style="margin: 0; padding-left: 20px;">
+            <li>Send the shareable link to your client via email or text</li>
+            <li>Client views the proposal online (no login required)</li>
+            <li>Client can accept the proposal with their name and email</li>
+            <li>When accepted, the estimate status automatically updates to "Approved"</li>
+            <li>You'll be notified and can proceed to contract</li>
+          </ol>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeProposalShareModal()">Close</button>
+        <button class="btn btn-primary" onclick="copyShareLink(); closeProposalShareModal();">
+          Copy Link & Close
+        </button>
       </div>
     </div>
   </div>

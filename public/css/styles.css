@@ -33603,3 +33603,81 @@ td.empty-state {
   color: var(--accent-green);
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
 }
+
+/* ============================================================
+   OVERFLOW DROPDOWN MENUS (Phase 110-01)
+   ============================================================ */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dropdown-caret {
+  font-size: 0.7em;
+  transition: transform 0.2s;
+}
+
+.dropdown.open .dropdown-caret {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 180px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  padding: 4px 0;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: all 0.15s ease;
+}
+
+.dropdown.open .dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(4px);
+}
+
+.dropdown-menu-right {
+  left: auto;
+  right: 0;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--foreground);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dropdown-item:hover {
+  background: var(--accent);
+}
+
+.dropdown-item.text-danger {
+  color: var(--accent-red);
+}
+
+.dropdown-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}

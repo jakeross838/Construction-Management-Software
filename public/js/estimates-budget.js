@@ -54,7 +54,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Setup event listeners
   setupEventListeners();
-  initializeView();
 
   try {
     await Promise.all([
@@ -82,17 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-function initializeView() {
-  const tableView = document.getElementById('estimateTableView');
-  const cardView = document.getElementById('estimateCardView');
-
-  if (tableView) tableView.style.display = currentView === 'table' ? 'block' : 'none';
-  if (cardView) cardView.style.display = currentView === 'cards' ? 'grid' : 'none';
-
-  document.querySelectorAll('.view-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === currentView);
-  });
-}
+// Removed: View initialization - table view only
 
 function setupEventListeners() {
   // Filter change handlers
@@ -126,6 +115,24 @@ function setupEventListeners() {
         closeAllModals();
       }
     });
+  });
+
+  // Dropdown toggle handler
+  document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('.dropdown-toggle');
+    if (toggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const dropdown = toggle.closest('.dropdown');
+      // Close all other dropdowns
+      document.querySelectorAll('.dropdown.open').forEach(d => {
+        if (d !== dropdown) d.classList.remove('open');
+      });
+      dropdown.classList.toggle('open');
+    } else if (!e.target.closest('.dropdown-menu')) {
+      // Close all dropdowns when clicking outside
+      document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+    }
   });
 }
 
@@ -250,11 +257,8 @@ function clearSearch() {
 }
 
 function renderEstimateList() {
-  if (currentView === 'table') {
-    renderEstimateTable();
-  } else {
-    renderEstimateCards();
-  }
+  // Card view removed - always use table view
+  renderEstimateTable();
 }
 
 function renderEstimateTable() {
@@ -297,6 +301,7 @@ function renderEstimateTable() {
   `).join('');
 }
 
+// Removed: Card view rendering - simplified to table view only
 function renderEstimateCards() {
   const container = document.getElementById('estimateCardView');
   if (!container) return;
@@ -355,22 +360,7 @@ function renderStats(stats) {
   if (statTotalValue) statTotalValue.textContent = formatCurrency(stats.total_value || 0);
 }
 
-function setView(view) {
-  currentView = view;
-  localStorage.setItem('estimatesView', view);
-
-  document.querySelectorAll('.view-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
-  });
-
-  const tableView = document.getElementById('estimateTableView');
-  const cardView = document.getElementById('estimateCardView');
-
-  if (tableView) tableView.style.display = view === 'table' ? 'block' : 'none';
-  if (cardView) cardView.style.display = view === 'cards' ? 'grid' : 'none';
-
-  renderEstimateList();
-}
+// Removed: View switcher - table view only
 
 // ============================================================
 // ESTIMATES MODE - MODALS
@@ -478,30 +468,147 @@ function switchTab(tabName) {
   });
 }
 
-// Placeholder functions for additional estimate features
-function openImportBidModal() { showToast('Import from bid - coming soon', 'info'); }
-function closeImportBidModal() { document.getElementById('importBidModal').style.display = 'none'; }
-function openFromSelectionsModal() { showToast('From selections - coming soon', 'info'); }
-function closeFromSelectionsModal() { document.getElementById('fromSelectionsModal').style.display = 'none'; }
-function openDuplicateModal() { showToast('Duplicate - coming soon', 'info'); }
-function closeDuplicateModal() { document.getElementById('duplicateModal').style.display = 'none'; }
-function openColumnSettings() { showToast('Column settings - coming soon', 'info'); }
-function editCurrentEstimate() { showToast('Edit estimate - coming soon', 'info'); }
-function openAddLineModal() { showToast('Add line item - coming soon', 'info'); }
-function closeLineModal() { document.getElementById('lineItemModal').style.display = 'none'; }
-function openTemplatesModal() { showToast('Templates - coming soon', 'info'); }
-function closeTemplatesModal() { document.getElementById('templatesModal').style.display = 'none'; }
-function openScopeModal() { showToast('AI scope - coming soon', 'info'); }
-function closeScopeModal() { document.getElementById('scopeAnalysisModal').style.display = 'none'; }
-function openCreateAssemblyModal() { showToast('Create assembly - coming soon', 'info'); }
-function closeAssemblyModal() { document.getElementById('assemblyModal').style.display = 'none'; }
-function openGenerateScopeModal() { showToast('Generate scope - coming soon', 'info'); }
-function closeGenerateScopeModal() { document.getElementById('generateScopeModal').style.display = 'none'; }
-function openScopesListModal() { showToast('View scopes - coming soon', 'info'); }
-function closeScopesListModal() { document.getElementById('scopesListModal').style.display = 'none'; }
-function openMarkupModal() { showToast('Edit markup - coming soon', 'info'); }
-function closeMarkupModal() { document.getElementById('markupModal').style.display = 'none'; }
-function closeProjectDetailsModal() { document.getElementById('projectDetailsModal').style.display = 'none'; }
+// Removed placeholder functions - these features are not implemented
+
+// ============================================================
+// PROPOSAL GENERATION
+// ============================================================
+
+function openGenerateProposalModal() {
+  if (!currentEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+
+  // Pre-fill proposal title
+  document.getElementById('proposalTitle').value = `Proposal for ${currentEstimate.title || 'Project'}`;
+
+  // Reset form to defaults
+  document.getElementById('detailLevel').value = 'summary';
+  document.getElementById('showAllowances').checked = true;
+  document.getElementById('termsText').value = '';
+
+  // Show modal
+  const modal = document.getElementById('generateProposalModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+}
+
+function closeGenerateProposalModal() {
+  const modal = document.getElementById('generateProposalModal');
+  modal.classList.remove('show');
+  setTimeout(() => modal.style.display = 'none', 200);
+}
+
+async function generateProposal() {
+  if (!currentEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('generateBtnText');
+  const originalText = btn.textContent;
+  btn.textContent = 'Generating PDF...';
+  document.querySelector('#generateProposalModal .btn-primary').disabled = true;
+
+  try {
+    // Step 1: Create proposal record
+    const proposalData = {
+      estimate_id: currentEstimate.id,
+      title: document.getElementById('proposalTitle').value.trim() || `Proposal for ${currentEstimate.title}`,
+      detail_level: document.getElementById('detailLevel').value,
+      show_allowances: document.getElementById('showAllowances').checked,
+      terms_text: document.getElementById('termsText').value.trim() || null,
+      created_by: window.currentUser?.name || 'User'
+    };
+
+    const createRes = await fetch('/api/proposals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(proposalData)
+    });
+
+    if (!createRes.ok) {
+      const err = await createRes.json();
+      throw new Error(err.error || 'Failed to create proposal');
+    }
+
+    const proposal = await createRes.json();
+    btn.textContent = 'Generating PDF...';
+
+    // Step 2: Generate PDF
+    const generateRes = await fetch(`/api/proposals/${proposal.id}/generate`, {
+      method: 'POST'
+    });
+
+    if (!generateRes.ok) {
+      const err = await generateRes.json();
+      throw new Error(err.error || 'Failed to generate PDF');
+    }
+
+    const generateData = await generateRes.json();
+    btn.textContent = 'Creating share link...';
+
+    // Step 3: Create shareable link
+    const shareRes = await fetch(`/api/proposals/${proposal.id}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expires_in_days: 30 })
+    });
+
+    if (!shareRes.ok) {
+      const err = await shareRes.json();
+      throw new Error(err.error || 'Failed to create share link');
+    }
+
+    const shareData = await shareRes.json();
+
+    // Success! Show share link modal
+    closeGenerateProposalModal();
+    showProposalShareModal(shareData.share_url, generateData.pdf_url);
+
+    showToast('Proposal generated successfully!', 'success');
+
+  } catch (err) {
+    console.error('Error generating proposal:', err);
+    showToast(err.message || 'Failed to generate proposal', 'error');
+  } finally {
+    btn.textContent = originalText;
+    document.querySelector('#generateProposalModal .btn-primary').disabled = false;
+  }
+}
+
+function showProposalShareModal(shareUrl, pdfUrl) {
+  document.getElementById('shareLink').value = shareUrl;
+  document.getElementById('pdfLink').value = pdfUrl;
+
+  const modal = document.getElementById('proposalShareModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+}
+
+function closeProposalShareModal() {
+  const modal = document.getElementById('proposalShareModal');
+  modal.classList.remove('show');
+  setTimeout(() => modal.style.display = 'none', 200);
+}
+
+async function copyShareLink() {
+  const shareLink = document.getElementById('shareLink').value;
+
+  try {
+    await navigator.clipboard.writeText(shareLink);
+    showToast('Link copied to clipboard!', 'success');
+  } catch (err) {
+    // Fallback for older browsers
+    const input = document.getElementById('shareLink');
+    input.select();
+    document.execCommand('copy');
+    showToast('Link copied to clipboard!', 'success');
+  }
+}
+// Removed: Line item, Templates, Scope, Assembly, Markup modal functions - not implemented
+function openAddLineModal() { showToast('Add line item - coming in Phase 110-02', 'info'); }
 async function convertToBudget() {
   if (!currentEstimate) {
     showToast('No estimate selected', 'error');
@@ -523,10 +630,7 @@ async function convertToBudget() {
     }
   }
 }
-function convertToAllowances() { showToast('Convert to allowances - coming soon', 'info'); }
-function createNewVersion() { showToast('New version - coming soon', 'info'); }
-function toggleCostLibrarySidebar() { showToast('Cost library - coming soon', 'info'); }
-function regroupLines() { showToast('Regroup lines - coming soon', 'info'); }
+// Removed: Allowances, Versions, Cost Library, Regroup - not implemented
 
 // ============================================================
 // SECTION MANAGEMENT
@@ -822,11 +926,11 @@ function renderOverviewTab() {
 }
 
 function editLineItem(lineId) {
-  showToast('Edit line item - coming soon', 'info');
+  showToast('Edit line item - coming in Phase 110-02', 'info');
 }
 
 function deleteLineItem(lineId) {
-  showToast('Delete line item - coming soon', 'info');
+  showToast('Delete line item - coming in Phase 110-02', 'info');
 }
 
 
