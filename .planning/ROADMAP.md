@@ -297,12 +297,13 @@ Plans:
   4. Totals calculate correctly (subtotal + markups = grand total)
   5. Estimate saves and loads properly with all hierarchy
   6. Copy from previous estimate works
+**Status**: Complete (2026-01-22)
 **Research**: Complete (107-RESEARCH.md)
 **Plans**: 3 plans
 Plans:
-- [ ] 107-01-PLAN.md - Assembly Templates API + Assembly Library page
-- [ ] 107-02-PLAN.md - Estimate Sections API + Sections UI
-- [ ] 107-03-PLAN.md - Assembly Picker + Copy Estimate
+- [x] 107-01-PLAN.md - Assembly Templates API + Assembly Library page
+- [x] 107-02-PLAN.md - Estimate Sections API + Sections UI
+- [x] 107-03-PLAN.md - Assembly Picker + Copy Estimate
 
 ### Phase 108: Selections, Allowances & Client Approval
 **Goal**: Mark items as allowances, let clients select options, track variances
@@ -402,7 +403,7 @@ Plans:
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
 | 106. Data Model & Architecture | 2 | Complete | 2026-01-22 |
-| 107. Assembly Library & Builder | 3 | Planned | - |
+| 107. Assembly Library & Builder | 3 | Complete | 2026-01-22 |
 | 108. Selections & Allowances | TBD | Not started | - |
 | 109. Proposal Generation | 3 | Planned | - |
 | 110. UI/UX Overhaul | TBD | Not started | - |
