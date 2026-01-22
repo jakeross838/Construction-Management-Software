@@ -12,43 +12,38 @@
 
   const URL_PARAM = 'job'; // URL parameter for job selection (?job=uuid)
 
-  // Company-context pages where job sidebar should NOT appear
+  // Company/Business pages where job sidebar should NOT appear
+  // These are company-wide views, not job-specific
   const COMPANY_CONTEXT_PAGES = [
-    'dashboard.html',
-    'business-dashboard.html',
-    'catalog.html',
-    'vendors.html',
-    'cost-codes.html',
-    'employees.html',
-    'crew-schedule.html',
-    'timesheets.html',
-    'companies.html',
-    'contacts.html',
-    'price-intelligence.html',
-    'expenses.html',
-    'financial-periods.html',
-    'overhead.html',
-    'profitability.html',
-    'wip.html',
-    'pnl.html',
-    'cash-flow.html',
-    'business-planning.html'
+    'dashboard.html',           // Company overview dashboard
+    'business-dashboard.html',  // Business metrics
+    'profitability.html',       // Job profitability (cross-job view)
+    'wip.html',                 // WIP schedule
+    'pnl.html',                 // Company P&L
+    'cash-flow.html',           // Cash flow
+    'business-planning.html',   // Business planning
+    'financial-periods.html',   // Financial periods
+    'overhead.html',            // Overhead allocation
+    'price-intelligence.html',  // Price intelligence
+    'catalog.html',             // Product catalog
+    'companies.html',           // Companies
+    'employees.html',           // Employees
+    'crew-schedule.html',       // Crew scheduling
+    'timesheets.html',          // Timesheets
+    'vendors.html',             // Vendors (can be cross-job)
+    'cost-codes.html',          // Cost codes
+    'contacts.html'             // Contacts
   ];
 
   // Detect page context (job vs company)
   function getPageContext() {
-    // Check data attribute first
+    // Check data attribute first (allows page override)
     const bodyContext = document.body.dataset.pageContext;
     if (bodyContext === 'job' || bodyContext === 'company') {
       return bodyContext;
     }
 
-    // Check if NavSidebar has detection (prefer unified source)
-    if (window.NavSidebar && typeof window.NavSidebar.detectPageContext === 'function') {
-      return window.NavSidebar.detectPageContext();
-    }
-
-    // Fallback to local list
+    // Determine from page filename
     const path = window.location.pathname;
     const filename = path.split('/').pop() || 'index.html';
     return COMPANY_CONTEXT_PAGES.includes(filename) ? 'company' : 'job';
