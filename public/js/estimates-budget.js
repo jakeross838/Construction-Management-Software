@@ -1116,6 +1116,146 @@ function calculateLineAmount() {
   document.getElementById('lineAmount').value = (qty * unitCost).toFixed(2);
 }
 
+// ============================================================
+// CATALOG PICKER FUNCTIONS
+// ============================================================
+
+let catalogSearchDebounce;
+let selectedCatalogItem = null;
+
+/**
+ * Search catalog with debounce
+ */
+function searchCatalog(query) {
+  clearTimeout(catalogSearchDebounce);
+  catalogSearchDebounce = setTimeout(async () => {
+    const subgroupId = window.currentSubgroupId || null;
+    await loadCatalogSuggestions(subgroupId, query);
+  }, 300);
+}
+
+/**
+ * Load catalog suggestions from API
+ */
+async function loadCatalogSuggestions(subgroupId, query = '') {
+  const container = document.getElementById('catalogSuggestions');
+  if (!container) return;
+
+  try {
+    const params = new URLSearchParams();
+    if (subgroupId) params.set('subgroup_id', subgroupId);
+    if (query) params.set('query', query);
+
+    const response = await fetch(`/api/estimates/catalog-suggestions?${params}`);
+    const items = await response.json();
+
+    if (items.length === 0) {
+      container.innerHTML = `
+        <div class="catalog-suggestion" style="justify-content: center; color: var(--text-secondary);">
+          No matching items found
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = items.map(item => `
+      <div class="catalog-suggestion" onclick="selectCatalogItem('${item.id}', ${JSON.stringify(item).replace(/"/g, '&quot;')})">
+        <img class="catalog-suggestion-image"
+             src="${item.image_url || '/images/placeholder-product.png'}"
+             alt="${escapeHtml(item.name)}"
+             onerror="this.src='/images/placeholder-product.png'">
+        <div class="catalog-suggestion-info">
+          <div class="catalog-suggestion-name">${escapeHtml(item.name)}</div>
+          <div class="catalog-suggestion-meta">
+            ${item.category?.name || ''} ${item.brand ? `• ${item.brand}` : ''}
+          </div>
+        </div>
+        <div class="catalog-suggestion-price">${formatCurrency(item.unit_price || 0)}/${item.unit || 'ea'}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Error loading catalog suggestions:', err);
+    container.innerHTML = `
+      <div class="catalog-suggestion" style="color: var(--accent-red);">
+        Error loading suggestions
+      </div>
+    `;
+  }
+}
+
+/**
+ * Select a catalog item and auto-fill form fields
+ */
+function selectCatalogItem(itemId, itemData) {
+  selectedCatalogItem = itemData;
+
+  // Store the ID
+  const catalogIdField = document.getElementById('lineCatalogItemId');
+  if (catalogIdField) catalogIdField.value = itemId;
+
+  // Auto-fill form fields
+  const descField = document.getElementById('lineDescription');
+  const unitCostField = document.getElementById('lineUnitCost');
+  const unitField = document.getElementById('lineUnit');
+  const qtyField = document.getElementById('lineQuantity');
+
+  if (descField) descField.value = itemData.name || '';
+  if (unitCostField) unitCostField.value = itemData.unit_price || 0;
+  if (unitField) unitField.value = itemData.unit || 'EA';
+
+  // If quantity is still 1, keep it; otherwise respect user's entry
+  if (qtyField && (!qtyField.value || qtyField.value === '1')) {
+    qtyField.value = 1;
+  }
+
+  // Calculate amount
+  calculateLineAmount();
+
+  // Hide suggestions, show selected
+  const suggestionsDiv = document.getElementById('catalogSuggestions');
+  const selectedDiv = document.getElementById('selectedCatalogItem');
+
+  if (suggestionsDiv) suggestionsDiv.style.display = 'none';
+  if (selectedDiv) {
+    selectedDiv.style.display = 'flex';
+    selectedDiv.innerHTML = `
+      <img class="catalog-suggestion-image"
+           src="${itemData.image_url || '/images/placeholder-product.png'}"
+           alt="${escapeHtml(itemData.name)}"
+           onerror="this.src='/images/placeholder-product.png'">
+      <div class="catalog-suggestion-info">
+        <div class="catalog-suggestion-name">${escapeHtml(itemData.name)}</div>
+        <div class="catalog-suggestion-meta">
+          ${itemData.category?.name || ''} • ${formatCurrency(itemData.unit_price || 0)}/${itemData.unit || 'ea'}
+        </div>
+      </div>
+      <span class="catalog-badge">From Catalog</span>
+    `;
+  }
+
+  showToast(`Selected: ${itemData.name}`, 'success');
+}
+
+/**
+ * Clear catalog selection
+ */
+function clearCatalogSelection() {
+  selectedCatalogItem = null;
+
+  const catalogIdField = document.getElementById('lineCatalogItemId');
+  const selectedDiv = document.getElementById('selectedCatalogItem');
+  const suggestionsDiv = document.getElementById('catalogSuggestions');
+  const searchField = document.getElementById('catalogSearch');
+
+  if (catalogIdField) catalogIdField.value = '';
+  if (selectedDiv) selectedDiv.style.display = 'none';
+  if (suggestionsDiv) suggestionsDiv.style.display = 'block';
+  if (searchField) searchField.value = '';
+
+  // Reload context-based suggestions
+  loadCatalogSuggestions(window.currentSubgroupId);
+}
+
 function onDescriptionInput() {
   // Could add AI suggestions here based on description text
   // For now, just a placeholder for future enhancement
