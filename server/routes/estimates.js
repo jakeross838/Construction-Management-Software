@@ -587,6 +587,50 @@ router.post('/:id/save-as-template', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// BULK REORDER ENDPOINT
+// ============================================================
+
+// POST /api/estimates/:id/reorder - Bulk reorder phases/groups/subgroups/items
+router.post('/:id/reorder', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { type, items, updated_by } = req.body;
+  // items = [{ id: 'uuid', sort_order: 1 }, ...]
+
+  const tableMap = {
+    phases: 'v2_estimate_phases',
+    groups: 'v2_estimate_groups',
+    subgroups: 'v2_estimate_subgroups',
+    lines: 'v2_estimate_line_items'
+  };
+
+  const table = tableMap[type];
+  if (!table) {
+    throw new AppError('VALIDATION_ERROR', 'Invalid type. Use: phases, groups, subgroups, or lines');
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new AppError('VALIDATION_ERROR', 'Items array is required');
+  }
+
+  // Update each item's sort_order
+  const updatePromises = items.map(item =>
+    supabase
+      .from(table)
+      .update({ sort_order: item.sort_order, updated_at: new Date().toISOString() })
+      .eq('id', item.id)
+  );
+
+  await Promise.all(updatePromises);
+
+  await logEstimateActivity(id, `${type}_reordered`, updated_by || 'System', {
+    type,
+    item_count: items.length
+  });
+
+  res.json({ success: true, updated: items.length });
+}));
+
+// ============================================================
 // AI SCOPE ANALYSIS (must be before /:id)
 // ============================================================
 
