@@ -217,3 +217,127 @@ END;
 $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION expand_assembly_template(UUID, UUID, UUID, DECIMAL) IS 'Expands an assembly template into estimate line items with optional quantity multiplier';
+
+-- ============================================================
+-- 4. TRIGGERS
+-- ============================================================
+
+-- Trigger function for line item changes
+CREATE OR REPLACE FUNCTION trigger_estimate_line_changed_v3()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_estimate_id UUID;
+  v_old_section_id UUID;
+  v_new_section_id UUID;
+BEGIN
+  -- Determine which estimate(s) and section(s) to update
+  IF TG_OP = 'DELETE' THEN
+    v_estimate_id := OLD.estimate_id;
+    v_old_section_id := OLD.section_id;
+  ELSE
+    v_estimate_id := NEW.estimate_id;
+    v_new_section_id := NEW.section_id;
+    IF TG_OP = 'UPDATE' THEN
+      v_old_section_id := OLD.section_id;
+    END IF;
+  END IF;
+
+  -- Update section subtotals
+  IF v_old_section_id IS NOT NULL THEN
+    PERFORM update_section_subtotal(v_old_section_id);
+  END IF;
+  IF v_new_section_id IS NOT NULL AND v_new_section_id IS DISTINCT FROM v_old_section_id THEN
+    PERFORM update_section_subtotal(v_new_section_id);
+  END IF;
+
+  -- Update estimate totals
+  PERFORM recalculate_estimate_totals_v3(v_estimate_id);
+
+  -- Update assembly header if this is a child line
+  IF TG_OP = 'DELETE' AND OLD.parent_line_id IS NOT NULL THEN
+    UPDATE v2_estimate_lines
+    SET amount = (
+      SELECT COALESCE(SUM(amount), 0)
+      FROM v2_estimate_lines
+      WHERE parent_line_id = OLD.parent_line_id
+    )
+    WHERE id = OLD.parent_line_id;
+  ELSIF TG_OP != 'DELETE' AND NEW.parent_line_id IS NOT NULL THEN
+    UPDATE v2_estimate_lines
+    SET amount = (
+      SELECT COALESCE(SUM(amount), 0)
+      FROM v2_estimate_lines
+      WHERE parent_line_id = NEW.parent_line_id
+    )
+    WHERE id = NEW.parent_line_id;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  ELSE
+    RETURN NEW;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Replace existing trigger with new version
+DROP TRIGGER IF EXISTS trigger_estimate_line_changed ON v2_estimate_lines;
+DROP TRIGGER IF EXISTS trigger_estimate_line_changed_v3 ON v2_estimate_lines;
+
+CREATE TRIGGER trigger_estimate_line_changed_v3
+  AFTER INSERT OR UPDATE OR DELETE ON v2_estimate_lines
+  FOR EACH ROW
+  EXECUTE FUNCTION trigger_estimate_line_changed_v3();
+
+-- Trigger for markup percentage changes
+CREATE OR REPLACE FUNCTION trigger_estimate_markup_changed()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Only recalculate if markup percentages changed
+  IF OLD.overhead_percent IS DISTINCT FROM NEW.overhead_percent
+     OR OLD.profit_percent IS DISTINCT FROM NEW.profit_percent
+     OR OLD.contingency_percent IS DISTINCT FROM NEW.contingency_percent
+     OR OLD.markup_percent IS DISTINCT FROM NEW.markup_percent
+  THEN
+    PERFORM recalculate_estimate_totals_v3(NEW.id);
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_estimate_markup_changed ON v2_estimates;
+
+CREATE TRIGGER trigger_estimate_markup_changed
+  AFTER UPDATE OF overhead_percent, profit_percent, contingency_percent, markup_percent ON v2_estimates
+  FOR EACH ROW
+  EXECUTE FUNCTION trigger_estimate_markup_changed();
+
+-- Timestamp trigger for sections
+CREATE OR REPLACE FUNCTION update_section_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_update_section_timestamp ON v2_estimate_sections;
+
+CREATE TRIGGER trigger_update_section_timestamp
+  BEFORE UPDATE ON v2_estimate_sections
+  FOR EACH ROW
+  EXECUTE FUNCTION update_section_timestamp();
+
+-- Timestamp trigger for assembly templates
+DROP TRIGGER IF EXISTS trigger_update_assembly_template_timestamp ON v2_assembly_templates;
+
+CREATE TRIGGER trigger_update_assembly_template_timestamp
+  BEFORE UPDATE ON v2_assembly_templates
+  FOR EACH ROW
+  EXECUTE FUNCTION update_section_timestamp();
+
+-- ============================================================
+-- 5. COMMENTS
+-- ============================================================
+COMMENT ON FUNCTION trigger_estimate_line_changed_v3() IS 'Trigger function that updates section subtotals, estimate totals, and assembly headers on line item changes';
+COMMENT ON FUNCTION trigger_estimate_markup_changed() IS 'Trigger function that recalculates estimate when markup percentages change';
