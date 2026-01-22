@@ -439,79 +439,239 @@ Return ONLY valid JSON in this format:
 }));
 
 // ============================================================
+// EXPAND ASSEMBLY TEMPLATE (must be before /:id)
+// ============================================================
+
+router.post('/:id/expand-assembly', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { template_id, section_id, quantity_multiplier = 1 } = req.body;
+
+  if (!template_id) {
+    throw new AppError('VALIDATION_ERROR', 'template_id is required');
+  }
+
+  // Call the database function that handles expansion
+  const { data, error } = await supabase.rpc('expand_assembly_template', {
+    p_estimate_id: id,
+    p_template_id: template_id,
+    p_section_id: section_id || null,
+    p_quantity_multiplier: quantity_multiplier
+  });
+
+  if (error) {
+    console.error('Assembly expansion error:', error);
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  // data is the header_line_id returned by the function
+  const headerLineId = data;
+
+  // Fetch the created lines to return
+  const { data: lines } = await supabase
+    .from('v2_estimate_lines')
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .or(`id.eq.${headerLineId},parent_line_id.eq.${headerLineId}`)
+    .order('sort_order');
+
+  // Fetch updated estimate totals
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('subtotal, total_amount, overhead_amount, profit_amount, contingency_amount')
+    .eq('id', id)
+    .single();
+
+  res.status(201).json({
+    header_line_id: headerLineId,
+    lines: lines || [],
+    estimate_totals: estimate
+  });
+}));
+
+// ============================================================
 // DUPLICATE ESTIMATE (must be before /:id)
 // ============================================================
+
 
 router.post('/:id/duplicate', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { target_job_id, new_title, created_by } = req.body;
 
-  // Get original estimate
-  const { data: original, error: fetchError } = await supabase
+  // Fetch source estimate with sections and lines
+  const { data: source, error: sourceError } = await supabase
     .from('v2_estimates')
     .select('*')
     .eq('id', id)
     .is('deleted_at', null)
     .single();
 
-  if (fetchError || !original) throw new AppError('NOT_FOUND', 'Estimate not found');
+  if (sourceError || !source) {
+    throw new AppError('NOT_FOUND', 'Source estimate not found');
+  }
 
-  // Get original lines
-  const { data: originalLines } = await supabase
+  const { data: sourceSections } = await supabase
+    .from('v2_estimate_sections')
+    .select('*')
+    .eq('estimate_id', id)
+    .order('sort_order');
+
+  const { data: sourceLines } = await supabase
     .from('v2_estimate_lines')
     .select('*')
     .eq('estimate_id', id)
-    .order('sort_order', { ascending: true });
+    .order('sort_order');
 
-  // Determine target job (same or different)
-  const jobId = target_job_id || original.job_id;
+  // Determine target job
+  const jobId = target_job_id || source.job_id;
+  const isSameJob = jobId === source.job_id;
+
+  // Generate title
+  let title = new_title;
+  if (!title) {
+    if (isSameJob) {
+      // Same job - increment version
+      const { data: existing } = await supabase
+        .from('v2_estimates')
+        .select('title')
+        .eq('job_id', jobId)
+        .ilike('title', `${source.title}%`)
+        .order('created_at', { ascending: false });
+
+      const versionMatch = existing?.[0]?.title?.match(/v(\d+)$/);
+      const nextVersion = versionMatch ? parseInt(versionMatch[1]) + 1 : 2;
+      title = `${source.title.replace(/\s*v\d+$/, '')} v${nextVersion}`;
+    } else {
+      // Different job - copy title
+      title = `${source.title} (copy)`;
+    }
+  }
 
   // Create new estimate
   const { data: newEstimate, error: createError } = await supabase
     .from('v2_estimates')
     .insert({
       job_id: jobId,
-      title: new_title || `${original.title} (Copy)`,
+      title: title,
+      description: source.description,
       status: 'draft',
-      total_amount: original.total_amount,
-      notes: original.notes,
-      created_by: created_by || 'System'
+      overhead_percent: source.overhead_percent,
+      profit_percent: source.profit_percent,
+      contingency_percent: source.contingency_percent,
+      markup_percent: source.markup_percent,
+      created_by: created_by || 'User',
+      version: 1
     })
-    .select(`
-      *,
-      job:v2_jobs(id, name)
-    `)
+    .select()
     .single();
 
-  if (createError) throw new AppError('DATABASE_ERROR', createError.message);
-
-  // Copy lines
-  if (originalLines?.length > 0) {
-    const newLines = originalLines.map(line => ({
-      estimate_id: newEstimate.id,
-      cost_code_id: line.cost_code_id,
-      description: line.description,
-      quantity: line.quantity,
-      unit: line.unit,
-      unit_cost: line.unit_cost,
-      amount: line.amount,
-      notes: line.notes,
-      sort_order: line.sort_order
-    }));
-
-    await supabase.from('v2_estimate_lines').insert(newLines);
+  if (createError) {
+    throw new AppError('DATABASE_ERROR', createError.message);
   }
 
-  await logEstimateActivity(newEstimate.id, 'created', created_by || 'System', {
+  // Map old section IDs to new section IDs
+  const sectionIdMap = {};
+
+  // Copy sections
+  if (sourceSections && sourceSections.length > 0) {
+    for (const section of sourceSections) {
+      const { data: newSection } = await supabase
+        .from('v2_estimate_sections')
+        .insert({
+          estimate_id: newEstimate.id,
+          name: section.name,
+          description: section.description,
+          sort_order: section.sort_order
+        })
+        .select()
+        .single();
+
+      if (newSection) {
+        sectionIdMap[section.id] = newSection.id;
+      }
+    }
+  }
+
+  // Map old line IDs to new line IDs (for parent_line_id references)
+  const lineIdMap = {};
+
+  // Copy lines (parent lines first, then children)
+  if (sourceLines && sourceLines.length > 0) {
+    // First pass: parent lines (parent_line_id is null)
+    const parentLines = sourceLines.filter(l => !l.parent_line_id);
+    for (const line of parentLines) {
+      const { data: newLine } = await supabase
+        .from('v2_estimate_lines')
+        .insert({
+          estimate_id: newEstimate.id,
+          section_id: line.section_id ? sectionIdMap[line.section_id] : null,
+          cost_code_id: line.cost_code_id,
+          description: line.description,
+          quantity: line.quantity,
+          unit: line.unit,
+          unit_cost: line.unit_cost,
+          amount: line.amount,
+          is_assembly: line.is_assembly,
+          template_id: line.template_id,
+          is_allowance: line.is_allowance,
+          allowance_notes: line.allowance_notes,
+          source: line.source,
+          sort_order: line.sort_order
+        })
+        .select()
+        .single();
+
+      if (newLine) {
+        lineIdMap[line.id] = newLine.id;
+      }
+    }
+
+    // Second pass: child lines
+    const childLines = sourceLines.filter(l => l.parent_line_id);
+    for (const line of childLines) {
+      await supabase
+        .from('v2_estimate_lines')
+        .insert({
+          estimate_id: newEstimate.id,
+          section_id: line.section_id ? sectionIdMap[line.section_id] : null,
+          parent_line_id: lineIdMap[line.parent_line_id] || null,
+          cost_code_id: line.cost_code_id,
+          description: line.description,
+          quantity: line.quantity,
+          unit: line.unit,
+          unit_cost: line.unit_cost,
+          amount: line.amount,
+          template_id: line.template_id,
+          is_allowance: line.is_allowance,
+          allowance_notes: line.allowance_notes,
+          source: line.source,
+          sort_order: line.sort_order
+        });
+    }
+  }
+
+  // Trigger will auto-recalculate totals, but let's fetch final state
+  const { data: finalEstimate } = await supabase
+    .from('v2_estimates')
+    .select(\`
+      *,
+      job:v2_jobs(id, name)
+    \`)
+    .eq('id', newEstimate.id)
+    .single();
+
+  await logEstimateActivity(newEstimate.id, 'created', created_by || 'User', {
     duplicated_from: id,
-    original_title: original.title,
-    line_count: originalLines?.length || 0
+    original_title: source.title,
+    sections_copied: Object.keys(sectionIdMap).length,
+    lines_copied: sourceLines?.length || 0
   });
 
   res.status(201).json({
-    success: true,
-    message: 'Estimate duplicated successfully',
-    estimate: newEstimate
+    estimate: finalEstimate,
+    sections_copied: Object.keys(sectionIdMap).length,
+    lines_copied: sourceLines?.length || 0
   });
 }));
 
@@ -688,6 +848,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .eq('source_estimate_id', id)
     .limit(1);
 
+  estimate.sections = sections || [];
   estimate.lines = lines || [];
   estimate.activity = activity || [];
   estimate.versions = versions;
@@ -697,7 +858,186 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// SECTION OPERATIONS
+// ============================================================
+
+// Create section
+router.post('/:id/sections', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, description, created_by } = req.body;
+
+  // Verify estimate exists and is editable
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('status')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
+
+  if (!['draft', 'rejected'].includes(estimate.status)) {
+    throw new AppError('VALIDATION_ERROR', 'Cannot modify sections of a submitted/approved estimate');
+  }
+
+  // Get next sort_order
+  const { data: existing } = await supabase
+    .from('v2_estimate_sections')
+    .select('sort_order')
+    .eq('estimate_id', id)
+    .order('sort_order', { ascending: false })
+    .limit(1);
+
+  const nextOrder = (existing?.[0]?.sort_order || 0) + 1;
+
+  const { data: section, error } = await supabase
+    .from('v2_estimate_sections')
+    .insert({
+      estimate_id: id,
+      name: name || 'New Section',
+      description: description || null,
+      sort_order: nextOrder
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(id, 'section_created', created_by || 'System', {
+    section_id: section.id,
+    name: section.name
+  });
+
+  res.status(201).json(section);
+}));
+
+// Update section
+router.patch('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
+  const { id, sectionId } = req.params;
+  const { name, description, sort_order, updated_by } = req.body;
+
+  // Verify estimate is editable
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('status')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
+
+  if (!['draft', 'rejected'].includes(estimate.status)) {
+    throw new AppError('VALIDATION_ERROR', 'Cannot modify sections of a submitted/approved estimate');
+  }
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (sort_order !== undefined) updates.sort_order = sort_order;
+
+  const { data: section, error } = await supabase
+    .from('v2_estimate_sections')
+    .update(updates)
+    .eq('id', sectionId)
+    .eq('estimate_id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!section) throw new AppError('NOT_FOUND', 'Section not found');
+
+  await logEstimateActivity(id, 'section_updated', updated_by || 'System', {
+    section_id: sectionId,
+    updates
+  });
+
+  res.json(section);
+}));
+
+// Delete section (items become unsectioned)
+router.delete('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
+  const { id, sectionId } = req.params;
+  const { deleted_by } = req.body;
+
+  // Verify estimate is editable
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('status')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
+
+  if (!['draft', 'rejected'].includes(estimate.status)) {
+    throw new AppError('VALIDATION_ERROR', 'Cannot modify sections of a submitted/approved estimate');
+  }
+
+  // First, clear section_id from all lines in this section (keep lines, just unsection them)
+  await supabase
+    .from('v2_estimate_lines')
+    .update({ section_id: null })
+    .eq('section_id', sectionId);
+
+  // Then delete the section
+  const { data: section, error } = await supabase
+    .from('v2_estimate_sections')
+    .delete()
+    .eq('id', sectionId)
+    .eq('estimate_id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(id, 'section_deleted', deleted_by || 'System', {
+    section_id: sectionId,
+    name: section?.name
+  });
+
+  res.json({ success: true, message: 'Section deleted, items preserved' });
+}));
+
+// Reorder sections
+router.post('/:id/sections/reorder', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { section_ids, updated_by } = req.body;
+
+  if (!Array.isArray(section_ids)) {
+    throw new AppError('VALIDATION_ERROR', 'section_ids must be an array');
+  }
+
+  // Verify estimate is editable
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('status')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
+
+  if (!['draft', 'rejected'].includes(estimate.status)) {
+    throw new AppError('VALIDATION_ERROR', 'Cannot modify sections of a submitted/approved estimate');
+  }
+
+  // Update sort_order for each section
+  for (let i = 0; i < section_ids.length; i++) {
+    await supabase
+      .from('v2_estimate_sections')
+      .update({ sort_order: i + 1 })
+      .eq('id', section_ids[i])
+      .eq('estimate_id', id);
+  }
+
+  await logEstimateActivity(id, 'sections_reordered', updated_by || 'System', {});
+
+  res.json({ success: true });
+}));
+
+// ============================================================
 // CREATE ESTIMATE
+// ============================================================
 // ============================================================
 
 router.post('/', asyncHandler(async (req, res) => {
