@@ -1362,3 +1362,445 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
+
+// ============================================================
+// ASSEMBLY PICKER
+// ============================================================
+
+let assemblyTemplates = [];
+let selectedAssemblyTemplate = null;
+let assemblyPickerView = 'grid';
+
+async function openAssemblyPickerModal() {
+  if (!currentEstimate) {
+    showToast('Open an estimate first', 'error');
+    return;
+  }
+
+  // Reset state
+  selectedAssemblyTemplate = null;
+  document.getElementById('addAssemblyBtn').disabled = true;
+  document.getElementById('assemblyPreviewPanel').style.display = 'none';
+  document.getElementById('assemblySearchInput').value = '';
+  document.getElementById('assemblyMultiplier').value = '1';
+
+  // Populate section dropdown
+  populateAssemblySectionDropdown();
+
+  // Load templates
+  await loadAssemblyTemplates();
+
+  // Show modal
+  const modal = document.getElementById('assemblyPickerModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeAssemblyPickerModal() {
+  const modal = document.getElementById('assemblyPickerModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+  selectedAssemblyTemplate = null;
+}
+
+async function loadAssemblyTemplates() {
+  try {
+    const jobId = currentEstimate?.job_id;
+    const params = jobId ? `?job_id=${jobId}` : '';
+    const response = await fetch(`/api/assembly-templates${params}`);
+
+    if (!response.ok) throw new Error('Failed to load assembly templates');
+
+    assemblyTemplates = await response.json();
+    renderAssemblyTemplateGrid();
+    renderAssemblyCategories();
+  } catch (err) {
+    console.error('Error loading assembly templates:', err);
+    showToast('Failed to load assembly templates', 'error');
+    assemblyTemplates = [];
+    renderAssemblyTemplateGrid();
+  }
+}
+
+function renderAssemblyCategories() {
+  const container = document.getElementById('assemblyCategoryList');
+  if (!container) return;
+
+  // Get unique categories
+  const categories = {};
+  assemblyTemplates.forEach(t => {
+    const cat = t.category || 'Other';
+    categories[cat] = (categories[cat] || 0) + 1;
+  });
+
+  // Build HTML
+  let html = `
+    <button class="assembly-category-btn active" data-category="all" onclick="filterByCategory('all')">
+      All Assemblies
+      <span class="category-count">${assemblyTemplates.length}</span>
+    </button>
+  `;
+
+  Object.entries(categories).sort((a, b) => a[0].localeCompare(b[0])).forEach(([cat, count]) => {
+    html += `
+      <button class="assembly-category-btn" data-category="${escapeHtml(cat)}" onclick="filterByCategory('${escapeHtml(cat)}')">
+        ${escapeHtml(cat)}
+        <span class="category-count">${count}</span>
+      </button>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function filterByCategory(category) {
+  // Update active state
+  document.querySelectorAll('.assembly-category-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.category === category);
+  });
+
+  filterAssemblyTemplates();
+}
+
+function filterAssemblyTemplates() {
+  const search = (document.getElementById('assemblySearchInput')?.value || '').toLowerCase();
+  const activeCategory = document.querySelector('.assembly-category-btn.active')?.dataset.category || 'all';
+  const showGlobal = document.getElementById('sourceGlobal')?.checked !== false;
+  const showJob = document.getElementById('sourceJob')?.checked !== false;
+
+  let filtered = assemblyTemplates.filter(t => {
+    // Category filter
+    if (activeCategory !== 'all' && t.category !== activeCategory) return false;
+
+    // Search filter
+    if (search) {
+      const searchFields = [t.name, t.description, t.category].filter(Boolean).join(' ').toLowerCase();
+      if (!searchFields.includes(search)) return false;
+    }
+
+    // Source filter
+    if (!showGlobal && !t.job_id) return false;
+    if (!showJob && t.job_id) return false;
+
+    return true;
+  });
+
+  // Update count
+  document.getElementById('assemblyResultCount').textContent = `${filtered.length} assembl${filtered.length === 1 ? 'y' : 'ies'}`;
+
+  renderAssemblyTemplateGrid(filtered);
+}
+
+function renderAssemblyTemplateGrid(templates = assemblyTemplates) {
+  const container = document.getElementById('assemblyTemplateGrid');
+  const emptyState = document.getElementById('assemblyEmptyState');
+
+  if (!container) return;
+
+  if (templates.length === 0) {
+    container.innerHTML = '';
+    if (emptyState) emptyState.style.display = 'block';
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+
+  if (assemblyPickerView === 'grid') {
+    container.innerHTML = templates.map(t => `
+      <div class="assembly-card ${selectedAssemblyTemplate?.id === t.id ? 'selected' : ''}"
+           data-id="${t.id}"
+           onclick="selectAssemblyTemplate('${t.id}')">
+        <div class="assembly-card-header">
+          <span class="assembly-card-icon">${t.icon || '&#128230;'}</span>
+          <span class="assembly-card-category">${escapeHtml(t.category || 'Other')}</span>
+        </div>
+        <h4 class="assembly-card-name">${escapeHtml(t.name)}</h4>
+        <p class="assembly-card-description">${escapeHtml(t.description || '')}</p>
+        <div class="assembly-card-footer">
+          <span class="assembly-card-count">${t.component_count || 0} items</span>
+          <span class="assembly-card-total">${formatCurrency(t.total_cost)}</span>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    // List view
+    container.innerHTML = `
+      <table class="assembly-list-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Items</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${templates.map(t => `
+            <tr class="${selectedAssemblyTemplate?.id === t.id ? 'selected' : ''}"
+                onclick="selectAssemblyTemplate('${t.id}')">
+              <td><strong>${escapeHtml(t.name)}</strong></td>
+              <td>${escapeHtml(t.category || 'Other')}</td>
+              <td>${t.component_count || 0}</td>
+              <td>${formatCurrency(t.total_cost)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+}
+
+function setAssemblyView(view) {
+  assemblyPickerView = view;
+
+  document.querySelectorAll('#assemblyPickerModal .view-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+
+  filterAssemblyTemplates();
+}
+
+async function selectAssemblyTemplate(templateId) {
+  selectedAssemblyTemplate = assemblyTemplates.find(t => t.id === templateId);
+
+  if (!selectedAssemblyTemplate) return;
+
+  // Update card selection state
+  document.querySelectorAll('.assembly-card, .assembly-list-table tr').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === templateId);
+  });
+
+  // Load full template with components
+  try {
+    const response = await fetch(`/api/assembly-templates/${templateId}`);
+    if (response.ok) {
+      const fullTemplate = await response.json();
+      selectedAssemblyTemplate = fullTemplate;
+      renderAssemblyPreview(fullTemplate);
+    }
+  } catch (err) {
+    console.error('Error loading template details:', err);
+  }
+
+  // Enable add button
+  document.getElementById('addAssemblyBtn').disabled = false;
+}
+
+function renderAssemblyPreview(template) {
+  const panel = document.getElementById('assemblyPreviewPanel');
+  if (!panel) return;
+
+  panel.style.display = 'block';
+
+  document.getElementById('previewAssemblyName').textContent = template.name;
+  document.getElementById('previewAssemblyCategory').textContent = template.category || 'Other';
+  document.getElementById('previewAssemblyTotal').textContent = formatCurrency(template.total_cost);
+  document.getElementById('previewAssemblyDescription').textContent = template.description || 'No description';
+
+  const components = template.components || [];
+  document.getElementById('previewComponentCount').textContent = components.length;
+
+  const list = document.getElementById('previewComponentList');
+  if (components.length === 0) {
+    list.innerHTML = '<p class="text-muted">No components defined</p>';
+  } else {
+    list.innerHTML = components.map(c => `
+      <div class="preview-component-row">
+        <div class="component-info">
+          <span class="component-code">${escapeHtml(c.cost_code?.code || '-')}</span>
+          <span class="component-desc">${escapeHtml(c.description || c.cost_code?.name || 'Item')}</span>
+        </div>
+        <div class="component-amount">${formatCurrency(c.amount || (c.quantity * c.unit_cost))}</div>
+      </div>
+    `).join('');
+  }
+}
+
+function closeAssemblyPreview() {
+  document.getElementById('assemblyPreviewPanel').style.display = 'none';
+  selectedAssemblyTemplate = null;
+  document.getElementById('addAssemblyBtn').disabled = true;
+
+  document.querySelectorAll('.assembly-card, .assembly-list-table tr').forEach(el => {
+    el.classList.remove('selected');
+  });
+}
+
+function populateAssemblySectionDropdown() {
+  const select = document.getElementById('assemblySectionTarget');
+  if (!select || !currentEstimate) return;
+
+  select.innerHTML = '<option value="">No Section (End of List)</option>';
+
+  const sections = currentEstimate.sections || [];
+  sections.forEach(section => {
+    const option = document.createElement('option');
+    option.value = section.id;
+    option.textContent = section.name;
+    select.appendChild(option);
+  });
+}
+
+async function addSelectedAssembly() {
+  if (!selectedAssemblyTemplate || !currentEstimate) {
+    showToast('Please select an assembly template', 'error');
+    return;
+  }
+
+  const multiplier = parseFloat(document.getElementById('assemblyMultiplier')?.value) || 1;
+  const sectionId = document.getElementById('assemblySectionTarget')?.value || null;
+
+  try {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/expand-assembly`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        template_id: selectedAssemblyTemplate.id,
+        section_id: sectionId,
+        quantity_multiplier: multiplier
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to add assembly');
+    }
+
+    const result = await response.json();
+    showToast(`Added ${result.lines?.length || 0} items from assembly`, 'success');
+    closeAssemblyPickerModal();
+
+    // Reload estimate to show new lines
+    await reloadCurrentEstimate();
+  } catch (err) {
+    console.error('Error adding assembly:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// COPY ESTIMATE
+// ============================================================
+
+let copySourceEstimate = null;
+
+function openCopyEstimateModal() {
+  if (!currentEstimate) {
+    showToast('Open an estimate first', 'error');
+    return;
+  }
+
+  copySourceEstimate = currentEstimate;
+
+  // Populate source info
+  document.getElementById('copySourceTitle').textContent = currentEstimate.title;
+  document.getElementById('copySourceLineCount').textContent = currentEstimate.lines?.length || 0;
+  document.getElementById('copySourceTotal').textContent = formatCurrency(currentEstimate.total_amount);
+
+  // Populate job dropdown
+  const jobSelect = document.getElementById('copyTargetJob');
+  jobSelect.innerHTML = '<option value="">Same Job (create new version)</option>';
+  jobs.forEach(job => {
+    if (job.id !== currentEstimate.job_id) {
+      const option = document.createElement('option');
+      option.value = job.id;
+      option.textContent = job.name;
+      jobSelect.appendChild(option);
+    }
+  });
+
+  // Clear title
+  document.getElementById('copyNewTitle').value = '';
+  document.getElementById('copyTitleHint').textContent = `Leave empty for: "${currentEstimate.title} v2"`;
+
+  // Update preview
+  updateCopyPreview();
+
+  // Show modal
+  const modal = document.getElementById('copyEstimateModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeCopyEstimateModal() {
+  const modal = document.getElementById('copyEstimateModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+  copySourceEstimate = null;
+}
+
+function onCopyTargetJobChange() {
+  const targetJobId = document.getElementById('copyTargetJob').value;
+  const hintEl = document.getElementById('copyTargetHint');
+  const titleHintEl = document.getElementById('copyTitleHint');
+
+  if (targetJobId) {
+    hintEl.textContent = 'Creates a copy of this estimate for another job';
+    titleHintEl.textContent = `Leave empty for: "${copySourceEstimate?.title || 'Estimate'} (copy)"`;
+  } else {
+    hintEl.textContent = 'Creates a new version of this estimate';
+    titleHintEl.textContent = `Leave empty for: "${copySourceEstimate?.title || 'Estimate'} v2"`;
+  }
+}
+
+function updateCopyPreview() {
+  if (!copySourceEstimate) return;
+
+  const lines = copySourceEstimate.lines || [];
+  const sections = copySourceEstimate.sections || [];
+  const assemblies = lines.filter(l => l.is_assembly).length;
+
+  document.getElementById('copyPreviewSections').textContent = sections.length;
+  document.getElementById('copyPreviewLines').textContent = lines.length;
+  document.getElementById('copyPreviewAssemblies').textContent = assemblies;
+  document.getElementById('copyPreviewTotal').textContent = formatCurrency(copySourceEstimate.total_amount);
+}
+
+async function executeCopyEstimate() {
+  if (!copySourceEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+
+  const targetJobId = document.getElementById('copyTargetJob').value || null;
+  const newTitle = document.getElementById('copyNewTitle').value.trim() || null;
+
+  try {
+    const response = await fetch(`/api/estimates/${copySourceEstimate.id}/duplicate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target_job_id: targetJobId,
+        new_title: newTitle,
+        created_by: window.currentUser || 'User'
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to duplicate estimate');
+    }
+
+    const result = await response.json();
+    showToast(`Estimate copied (${result.lines_copied || 0} lines, ${result.sections_copied || 0} sections)`, 'success');
+    closeCopyEstimateModal();
+    closeDetailModal();
+
+    // Refresh list and open the new estimate
+    await loadEstimates();
+    await loadStats();
+
+    if (result.estimate?.id) {
+      await openEstimateDetail(result.estimate.id);
+    }
+  } catch (err) {
+    console.error('Error copying estimate:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// Update the placeholder function to use the new modal
+function openDuplicateModal() {
+  openCopyEstimateModal();
+}
+
