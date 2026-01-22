@@ -1,7 +1,7 @@
 /**
  * Dropdown Navigation Component
- * PM-focused navigation with Business/Admin features in separate dropdown
- * Flow: Dashboard → Pre-Construction → Active Projects → Finance → Closeout → Admin → Business
+ * PM-focused navigation for active project management
+ * Flow: Job Profile → Pre-Construction → Active Projects → Finance → Post-Construction → Business
  */
 
 (function() {
@@ -10,28 +10,24 @@
   // Navigation structure - PM workflow focused
   const navGroups = [
     {
-      id: 'dashboard',
-      label: 'Dashboard',
-      href: 'dashboard.html',
+      id: 'job-profile',
+      label: 'Job Profile',
+      href: 'job-profile.html',
       items: [] // Direct link, no dropdown
     },
     {
       id: 'precon',
       label: 'Pre-Construction',
       items: [
-        { id: 'leads', label: 'Leads', href: 'leads.html' },
-        { id: 'job-profile', label: 'Job Profile', href: 'job-profile.html' },
-        { id: 'bids', label: 'Bids', href: 'bids.html' },
-        { id: 'estimates-budget', label: 'Estimates & Budgets', href: 'estimates-budget.html' },
-        { id: 'contracts', label: 'Contracts', href: 'contracts.html' },
-        { id: 'selections', label: 'Selections', href: 'selections.html' }
+        { id: 'estimating', label: 'Estimating', href: 'estimates-budget.html' },
+        { id: 'selections', label: 'Selections', href: 'selections.html' },
+        { id: 'permits', label: 'Permits', href: 'permits.html' }
       ]
     },
     {
       id: 'active',
       label: 'Active Projects',
       items: [
-        { id: 'job-hub', label: 'Job Hub', href: 'job-hub.html' },
         { id: 'schedule', label: 'Schedule', href: 'schedule.html' },
         { id: 'daily-logs', label: 'Daily Logs', href: 'daily-logs.html' },
         { id: 'photos', label: 'Photos', href: 'photos.html' },
@@ -39,11 +35,8 @@
         { id: 'rfis', label: 'RFIs', href: 'rfis.html' },
         { id: 'submittals', label: 'Submittals', href: 'submittals.html' },
         { id: 'inspections', label: 'Inspections', href: 'inspections.html' },
-        { id: 'permits', label: 'Permits', href: 'permits.html' },
-        { id: 'punch-lists', label: 'Punch Lists', href: 'punch-lists.html' },
-        { id: 'correspondence', label: 'Correspondence', href: 'correspondence.html' },
-        { id: 'meetings', label: 'Meetings', href: 'meetings.html' },
-        { id: 'compliance', label: 'Compliance', href: 'compliance.html' }
+        { id: 'tasks', label: 'Tasks', href: 'tasks.html' },
+        { id: 'correspondence', label: 'Correspondence', href: 'correspondence.html' }
       ]
     },
     {
@@ -55,13 +48,12 @@
         { id: 'cos', label: 'Change Orders', href: 'change-orders.html' },
         { id: 'draws', label: 'Draws', href: 'draws.html' },
         { id: 'budget', label: 'Budgets', href: 'budgets.html' },
-        { id: 'expenses', label: 'Expenses', href: 'expenses.html' },
         { id: 'lien', label: 'Lien Releases', href: 'lien-releases.html' }
       ]
     },
     {
-      id: 'closeout',
-      label: 'Closeout',
+      id: 'postcon',
+      label: 'Post-Construction',
       items: [
         { id: 'warranties', label: 'Warranties', href: 'warranties.html' },
         { id: 'closeout-page', label: 'Project Closeout', href: 'closeout.html' },
@@ -69,29 +61,34 @@
       ]
     },
     {
-      id: 'admin',
-      label: 'Admin',
-      items: [
-        { id: 'vendors', label: 'Vendors', href: 'vendors.html' },
-        { id: 'cost-codes', label: 'Cost Codes', href: 'cost-codes.html' },
-        { id: 'contacts', label: 'Contacts', href: 'contacts.html' }
-      ]
-    },
-    {
       id: 'business',
       label: 'Business',
-      icon: 'briefcase', // Will render with icon to differentiate
+      icon: 'briefcase',
       items: [
+        // Overview & Dashboards
+        { id: 'dashboard', label: 'Dashboard', href: 'dashboard.html', section: 'Overview' },
         { id: 'business-dashboard', label: 'Business Dashboard', href: 'business-dashboard.html', section: 'Overview' },
+        // Sales & Pre-Sales
+        { id: 'leads', label: 'Leads', href: 'leads.html', section: 'Sales' },
+        { id: 'bids', label: 'Bids', href: 'bids.html', section: 'Sales' },
+        { id: 'contracts', label: 'Contracts', href: 'contracts.html', section: 'Sales' },
+        // Financial Reports
         { id: 'profitability', label: 'Job Profitability', href: 'profitability.html', section: 'Reports' },
         { id: 'wip', label: 'WIP Schedule', href: 'wip.html', section: 'Reports' },
         { id: 'pnl', label: 'Company P&L', href: 'pnl.html', section: 'Reports' },
         { id: 'cash-flow', label: 'Cash Flow', href: 'cash-flow.html', section: 'Reports' },
+        { id: 'expenses', label: 'Expenses', href: 'expenses.html', section: 'Reports' },
+        // Planning & Settings
         { id: 'planning', label: 'Business Planning', href: 'business-planning.html', section: 'Planning' },
         { id: 'periods', label: 'Financial Periods', href: 'financial-periods.html', section: 'Settings' },
         { id: 'overhead', label: 'Overhead Allocation', href: 'overhead.html', section: 'Settings' },
         { id: 'price-intel', label: 'Price Intelligence', href: 'price-intelligence.html', section: 'Settings' },
+        // Resources & Admin
         { id: 'catalog', label: 'Product Catalog', href: 'catalog.html', section: 'Resources' },
+        { id: 'vendors', label: 'Vendors', href: 'vendors.html', section: 'Resources' },
+        { id: 'cost-codes', label: 'Cost Codes', href: 'cost-codes.html', section: 'Resources' },
+        { id: 'contacts', label: 'Contacts', href: 'contacts.html', section: 'Resources' },
+        // Team
         { id: 'companies', label: 'Companies', href: 'companies.html', section: 'Team' },
         { id: 'employees', label: 'Employees', href: 'employees.html', section: 'Team' },
         { id: 'crew-schedule', label: 'Crew Scheduling', href: 'crew-schedule.html', section: 'Team' },
@@ -106,7 +103,7 @@
     const filename = path.split('/').pop() || 'index.html';
 
     for (const group of navGroups) {
-      // Check if it's a direct link group (like Dashboard)
+      // Check if it's a direct link group
       if (group.href === filename) {
         return { groupId: group.id, itemId: group.id };
       }
@@ -117,7 +114,7 @@
         }
       }
     }
-    return { groupId: 'dashboard', itemId: 'dashboard' };
+    return { groupId: 'job-profile', itemId: 'job-profile' };
   }
 
   // Create the navigation HTML with dropdowns
@@ -128,7 +125,7 @@
       const isActive = group.id === current.groupId;
 
       if (group.href) {
-        // Direct link (like Dashboard)
+        // Direct link (like Job Profile)
         return `<a href="${group.href}" class="nav-dropdown-item ${isActive ? 'active' : ''}">${group.label}</a>`;
       } else if (group.id === 'business') {
         // Business dropdown with sections and icon
