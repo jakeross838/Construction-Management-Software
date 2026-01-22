@@ -87,83 +87,6 @@ router.get('/stats', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
-// CATALOG SUGGESTIONS (must be before /:id)
-// ============================================================
-
-router.get('/catalog-suggestions', asyncHandler(async (req, res) => {
-  const { subgroup_id, query } = req.query;
-
-  // Get subgroup context (name for matching)
-  let contextTerms = [];
-  if (subgroup_id) {
-    const { data: subgroup } = await supabase
-      .from('v2_estimate_subgroups')
-      .select(`
-        name,
-        group:v2_estimate_groups(
-          name,
-          phase:v2_estimate_phases(name, phase_code)
-        )
-      `)
-      .eq('id', subgroup_id)
-      .single();
-
-    if (subgroup) {
-      contextTerms = [
-        subgroup.name,
-        subgroup.group?.name,
-        subgroup.group?.phase?.name
-      ].filter(Boolean);
-    }
-  }
-
-  // Build search query
-  let catalogQuery = supabase
-    .from('v2_selection_catalog')
-    .select(`
-      id,
-      name,
-      description,
-      unit_price,
-      unit,
-      labor_hours,
-      material,
-      brand,
-      image_url,
-      category:v2_selection_categories(id, name)
-    `)
-    .limit(20);
-
-  // Search by query or context
-  const searchTerm = query || contextTerms.join(' ');
-  if (searchTerm) {
-    // Use ilike for name and description search
-    catalogQuery = catalogQuery.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
-  }
-
-  const { data: items, error } = await catalogQuery;
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  // Score and sort by relevance (context matches first)
-  const scored = (items || []).map(item => {
-    let score = 0;
-    const itemText = `${item.name} ${item.description || ''} ${item.category?.name || ''}`.toLowerCase();
-
-    contextTerms.forEach(term => {
-      if (itemText.includes(term.toLowerCase())) score += 10;
-    });
-
-    if (query && itemText.includes(query.toLowerCase())) score += 5;
-
-    return { ...item, relevance: score };
-  });
-
-  scored.sort((a, b) => b.relevance - a.relevance);
-
-  res.json(scored.slice(0, 10));
-}));
-
-// ============================================================
 // HISTORICAL PRICING (must be before /:id)
 // ============================================================
 
@@ -415,298 +338,6 @@ router.get('/templates', asyncHandler(async (req, res) => {
   res.json(enrichedTemplates);
 }));
 
-// GET /api/estimates/templates/db - List database templates (new hierarchical system)
-router.get('/templates/db', asyncHandler(async (req, res) => {
-  const { project_type, is_active } = req.query;
-
-  let query = supabase
-    .from('v2_estimate_templates')
-    .select('*')
-    .order('is_default', { ascending: false })
-    .order('name');
-
-  if (project_type) query = query.eq('project_type', project_type);
-  if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
-
-  const { data, error } = await query;
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  res.json(data || []);
-}));
-
-// GET /api/estimates/templates/db/:id - Get template details with structure
-router.get('/templates/db/:id', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const { data: template, error } = await supabase
-    .from('v2_estimate_templates')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-  if (!template) throw new AppError('NOT_FOUND', 'Template not found');
-
-  res.json(template);
-}));
-
-// POST /api/estimates/:id/apply-template - Apply template to estimate
-router.post('/:id/apply-template', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { template_id, applied_by } = req.body;
-
-  if (!template_id) throw new AppError('VALIDATION_ERROR', 'Template ID is required');
-
-  // Verify estimate exists
-  const { data: estimate } = await supabase
-    .from('v2_estimates')
-    .select('id')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-
-  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
-
-  // Get template
-  const { data: template } = await supabase
-    .from('v2_estimate_templates')
-    .select('*')
-    .eq('id', template_id)
-    .single();
-
-  if (!template) throw new AppError('NOT_FOUND', 'Template not found');
-
-  // Try using database function first
-  const { error: rpcError } = await supabase.rpc('apply_estimate_template', {
-    p_estimate_id: id,
-    p_template_id: template_id
-  });
-
-  if (rpcError) {
-    // Fallback: manually apply structure from template
-    console.log('RPC not available, applying template structure manually');
-
-    const structure = template.structure || { phases: [] };
-
-    for (let phaseIdx = 0; phaseIdx < (structure.phases || []).length; phaseIdx++) {
-      const phaseData = structure.phases[phaseIdx];
-
-      // Create phase
-      const { data: phase, error: phaseErr } = await supabase
-        .from('v2_estimate_phases')
-        .insert({
-          estimate_id: id,
-          name: phaseData.name,
-          phase_code: phaseData.phase_code,
-          description: phaseData.description,
-          sort_order: phaseIdx + 1
-        })
-        .select()
-        .single();
-
-      if (phaseErr) continue;
-
-      for (let groupIdx = 0; groupIdx < (phaseData.groups || []).length; groupIdx++) {
-        const groupData = phaseData.groups[groupIdx];
-
-        // Create group
-        const { data: group, error: groupErr } = await supabase
-          .from('v2_estimate_groups')
-          .insert({
-            phase_id: phase.id,
-            name: groupData.name,
-            description: groupData.description,
-            sort_order: groupIdx + 1
-          })
-          .select()
-          .single();
-
-        if (groupErr) continue;
-
-        for (let subIdx = 0; subIdx < (groupData.subgroups || []).length; subIdx++) {
-          const subData = groupData.subgroups[subIdx];
-
-          // Create subgroup
-          await supabase
-            .from('v2_estimate_subgroups')
-            .insert({
-              group_id: group.id,
-              name: subData.name,
-              description: subData.description,
-              sort_order: subIdx + 1
-            });
-        }
-      }
-    }
-  }
-
-  await logEstimateActivity(id, 'template_applied', applied_by || 'System', {
-    template_id,
-    template_name: template.name
-  });
-
-  // Return updated estimate with hierarchy
-  const { data: updatedEstimate } = await supabase
-    .from('v2_estimates')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  const { data: phases } = await supabase
-    .from('v2_estimate_phases')
-    .select(`
-      *,
-      groups:v2_estimate_groups(
-        *,
-        subgroups:v2_estimate_subgroups(*)
-      )
-    `)
-    .eq('estimate_id', id)
-    .order('sort_order');
-
-  updatedEstimate.phases = phases || [];
-  res.json(updatedEstimate);
-}));
-
-// POST /api/estimates/:id/save-as-template - Save estimate as template
-router.post('/:id/save-as-template', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { name, description, project_type, created_by } = req.body;
-
-  if (!name) throw new AppError('VALIDATION_ERROR', 'Template name is required');
-
-  // Get estimate with hierarchy
-  const { data: estimate } = await supabase
-    .from('v2_estimates')
-    .select('id, title')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-
-  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
-
-  // Get phases with full hierarchy
-  const { data: phases } = await supabase
-    .from('v2_estimate_phases')
-    .select(`
-      *,
-      groups:v2_estimate_groups(
-        *,
-        subgroups:v2_estimate_subgroups(*)
-      )
-    `)
-    .eq('estimate_id', id)
-    .order('sort_order');
-
-  // Build structure object (without IDs, just structure)
-  const structure = {
-    phases: (phases || []).map(phase => ({
-      name: phase.name,
-      phase_code: phase.phase_code,
-      description: phase.description,
-      groups: (phase.groups || []).map(group => ({
-        name: group.name,
-        description: group.description,
-        subgroups: (group.subgroups || []).map(subgroup => ({
-          name: subgroup.name,
-          description: subgroup.description
-        }))
-      }))
-    }))
-  };
-
-  // Try using database function first
-  let templateId;
-  const { data: rpcResult, error: rpcError } = await supabase.rpc('save_estimate_as_template', {
-    p_estimate_id: id,
-    p_name: name,
-    p_description: description || null,
-    p_created_by: created_by || 'User'
-  });
-
-  if (rpcError) {
-    // Fallback: manually create template
-    console.log('RPC not available, creating template manually');
-
-    const { data: newTemplate, error: insertErr } = await supabase
-      .from('v2_estimate_templates')
-      .insert({
-        name,
-        description: description || null,
-        project_type: project_type || null,
-        structure,
-        is_active: true,
-        is_default: false,
-        created_by: created_by || 'User'
-      })
-      .select()
-      .single();
-
-    if (insertErr) throw new AppError('DATABASE_ERROR', insertErr.message);
-    templateId = newTemplate.id;
-  } else {
-    templateId = rpcResult;
-  }
-
-  // Fetch the created template
-  const { data: template } = await supabase
-    .from('v2_estimate_templates')
-    .select('*')
-    .eq('id', templateId)
-    .single();
-
-  await logEstimateActivity(id, 'saved_as_template', created_by || 'User', {
-    template_id: templateId,
-    template_name: name
-  });
-
-  res.status(201).json(template);
-}));
-
-// ============================================================
-// BULK REORDER ENDPOINT
-// ============================================================
-
-// POST /api/estimates/:id/reorder - Bulk reorder phases/groups/subgroups/items
-router.post('/:id/reorder', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { type, items, updated_by } = req.body;
-  // items = [{ id: 'uuid', sort_order: 1 }, ...]
-
-  const tableMap = {
-    phases: 'v2_estimate_phases',
-    groups: 'v2_estimate_groups',
-    subgroups: 'v2_estimate_subgroups',
-    lines: 'v2_estimate_line_items'
-  };
-
-  const table = tableMap[type];
-  if (!table) {
-    throw new AppError('VALIDATION_ERROR', 'Invalid type. Use: phases, groups, subgroups, or lines');
-  }
-
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new AppError('VALIDATION_ERROR', 'Items array is required');
-  }
-
-  // Update each item's sort_order
-  const updatePromises = items.map(item =>
-    supabase
-      .from(table)
-      .update({ sort_order: item.sort_order, updated_at: new Date().toISOString() })
-      .eq('id', item.id)
-  );
-
-  await Promise.all(updatePromises);
-
-  await logEstimateActivity(id, `${type}_reordered`, updated_by || 'System', {
-    type,
-    item_count: items.length
-  });
-
-  res.json({ success: true, updated: items.length });
-}));
-
 // ============================================================
 // AI SCOPE ANALYSIS (must be before /:id)
 // ============================================================
@@ -807,6 +438,59 @@ Return ONLY valid JSON in this format:
   }
 }));
 
+
+// ============================================================
+// EXPAND ASSEMBLY TEMPLATE (must be before /:id)
+// ============================================================
+
+router.post('/:id/expand-assembly', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { template_id, section_id, quantity_multiplier = 1 } = req.body;
+
+  if (!template_id) {
+    throw new AppError('VALIDATION_ERROR', 'template_id is required');
+  }
+
+  // Call the database function that handles expansion
+  const { data, error } = await supabase.rpc('expand_assembly_template', {
+    p_estimate_id: id,
+    p_template_id: template_id,
+    p_section_id: section_id || null,
+    p_quantity_multiplier: quantity_multiplier
+  });
+
+  if (error) {
+    console.error('Assembly expansion error:', error);
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  // data is the header_line_id returned by the function
+  const headerLineId = data;
+
+  // Fetch the created lines to return
+  const { data: lines } = await supabase
+    .from('v2_estimate_lines')
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .or(`id.eq.${headerLineId},parent_line_id.eq.${headerLineId}`)
+    .order('sort_order');
+
+  // Fetch updated estimate totals
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('subtotal, total_amount, overhead_amount, profit_amount, contingency_amount')
+    .eq('id', id)
+    .single();
+
+  res.status(201).json({
+    header_line_id: headerLineId,
+    lines: lines || [],
+    estimate_totals: estimate
+  });
+}));
+
 // ============================================================
 // DUPLICATE ESTIMATE (must be before /:id)
 // ============================================================
@@ -815,72 +499,179 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { target_job_id, new_title, created_by } = req.body;
 
-  // Get original estimate
-  const { data: original, error: fetchError } = await supabase
+  // Fetch source estimate with sections and lines
+  const { data: source, error: sourceError } = await supabase
     .from('v2_estimates')
     .select('*')
     .eq('id', id)
     .is('deleted_at', null)
     .single();
 
-  if (fetchError || !original) throw new AppError('NOT_FOUND', 'Estimate not found');
+  if (sourceError || !source) {
+    throw new AppError('NOT_FOUND', 'Source estimate not found');
+  }
 
-  // Get original lines
-  const { data: originalLines } = await supabase
+  const { data: sourceSections } = await supabase
+    .from('v2_estimate_sections')
+    .select('*')
+    .eq('estimate_id', id)
+    .order('sort_order');
+
+  const { data: sourceLines } = await supabase
     .from('v2_estimate_lines')
     .select('*')
     .eq('estimate_id', id)
-    .order('sort_order', { ascending: true });
+    .order('sort_order');
 
-  // Determine target job (same or different)
-  const jobId = target_job_id || original.job_id;
+  // Determine target job
+  const jobId = target_job_id || source.job_id;
+  const isSameJob = jobId === source.job_id;
+
+  // Generate title
+  let title = new_title;
+  if (!title) {
+    if (isSameJob) {
+      // Same job - increment version
+      const { data: existing } = await supabase
+        .from('v2_estimates')
+        .select('title')
+        .eq('job_id', jobId)
+        .ilike('title', `${source.title}%`)
+        .order('created_at', { ascending: false });
+
+      const versionMatch = existing?.[0]?.title?.match(/v(\d+)$/);
+      const nextVersion = versionMatch ? parseInt(versionMatch[1]) + 1 : 2;
+      title = `${source.title.replace(/\s*v\d+$/, '')} v${nextVersion}`;
+    } else {
+      // Different job - copy title
+      title = `${source.title} (copy)`;
+    }
+  }
 
   // Create new estimate
   const { data: newEstimate, error: createError } = await supabase
     .from('v2_estimates')
     .insert({
       job_id: jobId,
-      title: new_title || `${original.title} (Copy)`,
+      title: title,
+      description: source.description,
       status: 'draft',
-      total_amount: original.total_amount,
-      notes: original.notes,
-      created_by: created_by || 'System'
+      overhead_percent: source.overhead_percent,
+      profit_percent: source.profit_percent,
+      contingency_percent: source.contingency_percent,
+      markup_percent: source.markup_percent,
+      created_by: created_by || 'User',
+      version: 1
     })
+    .select()
+    .single();
+
+  if (createError) {
+    throw new AppError('DATABASE_ERROR', createError.message);
+  }
+
+  // Map old section IDs to new section IDs
+  const sectionIdMap = {};
+
+  // Copy sections
+  if (sourceSections && sourceSections.length > 0) {
+    for (const section of sourceSections) {
+      const { data: newSection } = await supabase
+        .from('v2_estimate_sections')
+        .insert({
+          estimate_id: newEstimate.id,
+          name: section.name,
+          description: section.description,
+          sort_order: section.sort_order
+        })
+        .select()
+        .single();
+
+      if (newSection) {
+        sectionIdMap[section.id] = newSection.id;
+      }
+    }
+  }
+
+  // Map old line IDs to new line IDs (for parent_line_id references)
+  const lineIdMap = {};
+
+  // Copy lines (parent lines first, then children)
+  if (sourceLines && sourceLines.length > 0) {
+    // First pass: parent lines (parent_line_id is null)
+    const parentLines = sourceLines.filter(l => !l.parent_line_id);
+    for (const line of parentLines) {
+      const { data: newLine } = await supabase
+        .from('v2_estimate_lines')
+        .insert({
+          estimate_id: newEstimate.id,
+          section_id: line.section_id ? sectionIdMap[line.section_id] : null,
+          cost_code_id: line.cost_code_id,
+          description: line.description,
+          quantity: line.quantity,
+          unit: line.unit,
+          unit_cost: line.unit_cost,
+          amount: line.amount,
+          is_assembly: line.is_assembly,
+          template_id: line.template_id,
+          is_allowance: line.is_allowance,
+          allowance_notes: line.allowance_notes,
+          source: line.source,
+          sort_order: line.sort_order
+        })
+        .select()
+        .single();
+
+      if (newLine) {
+        lineIdMap[line.id] = newLine.id;
+      }
+    }
+
+    // Second pass: child lines
+    const childLines = sourceLines.filter(l => l.parent_line_id);
+    for (const line of childLines) {
+      await supabase
+        .from('v2_estimate_lines')
+        .insert({
+          estimate_id: newEstimate.id,
+          section_id: line.section_id ? sectionIdMap[line.section_id] : null,
+          parent_line_id: lineIdMap[line.parent_line_id] || null,
+          cost_code_id: line.cost_code_id,
+          description: line.description,
+          quantity: line.quantity,
+          unit: line.unit,
+          unit_cost: line.unit_cost,
+          amount: line.amount,
+          template_id: line.template_id,
+          is_allowance: line.is_allowance,
+          allowance_notes: line.allowance_notes,
+          source: line.source,
+          sort_order: line.sort_order
+        });
+    }
+  }
+
+  // Trigger will auto-recalculate totals, but let's fetch final state
+  const { data: finalEstimate } = await supabase
+    .from('v2_estimates')
     .select(`
       *,
       job:v2_jobs(id, name)
     `)
+    .eq('id', newEstimate.id)
     .single();
 
-  if (createError) throw new AppError('DATABASE_ERROR', createError.message);
-
-  // Copy lines
-  if (originalLines?.length > 0) {
-    const newLines = originalLines.map(line => ({
-      estimate_id: newEstimate.id,
-      cost_code_id: line.cost_code_id,
-      description: line.description,
-      quantity: line.quantity,
-      unit: line.unit,
-      unit_cost: line.unit_cost,
-      amount: line.amount,
-      notes: line.notes,
-      sort_order: line.sort_order
-    }));
-
-    await supabase.from('v2_estimate_lines').insert(newLines);
-  }
-
-  await logEstimateActivity(newEstimate.id, 'created', created_by || 'System', {
+  await logEstimateActivity(newEstimate.id, 'created', created_by || 'User', {
     duplicated_from: id,
-    original_title: original.title,
-    line_count: originalLines?.length || 0
+    original_title: source.title,
+    sections_copied: Object.keys(sectionIdMap).length,
+    lines_copied: sourceLines?.length || 0
   });
 
   res.status(201).json({
-    success: true,
-    message: 'Estimate duplicated successfully',
-    estimate: newEstimate
+    estimate: finalEstimate,
+    sections_copied: Object.keys(sectionIdMap).length,
+    lines_copied: sourceLines?.length || 0
   });
 }));
 
@@ -1020,49 +811,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
   if (error || !estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
 
-  // Get phases with full hierarchy (groups → subgroups → line items)
-  const { data: phases } = await supabase
-    .from('v2_estimate_phases')
-    .select(`
-      *,
-      groups:v2_estimate_groups(
-        *,
-        subgroups:v2_estimate_subgroups(
-          *,
-          line_items:v2_estimate_line_items(
-            *,
-            cost_code:v2_cost_codes(id, code, name),
-            catalog_item:v2_selection_catalog(id, name, unit_price, image_url)
-          )
-        )
-      )
-    `)
-    .eq('estimate_id', id)
-    .order('sort_order');
-
-  // Sort nested arrays by sort_order
-  if (phases) {
-    phases.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    phases.forEach(phase => {
-      if (phase.groups) {
-        phase.groups.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-        phase.groups.forEach(group => {
-          if (group.subgroups) {
-            group.subgroups.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-            group.subgroups.forEach(subgroup => {
-              if (subgroup.line_items) {
-                subgroup.line_items.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-              }
-            });
-          }
-        });
-      }
-    });
-  }
-
-  estimate.phases = phases || [];
-
-  // Get line items with cost codes (legacy flat structure for backwards compatibility)
+  // Get line items with cost codes
   const { data: lines } = await supabase
     .from('v2_estimate_lines')
     .select(`
@@ -1072,14 +821,10 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .eq('estimate_id', id)
     .order('sort_order', { ascending: true });
 
-  // Also get line items from new table if they exist
-  const { data: lineItems } = await supabase
-    .from('v2_estimate_line_items')
-    .select(`
-      *,
-      cost_code:v2_cost_codes(id, code, name, category),
-      catalog_item:v2_selection_catalog(id, name, unit_price, image_url)
-    `)
+  // Get sections
+  const { data: sections } = await supabase
+    .from('v2_estimate_sections')
+    .select('*')
     .eq('estimate_id', id)
     .order('sort_order', { ascending: true });
 
@@ -1111,549 +856,12 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .limit(1);
 
   estimate.lines = lines || [];
-  estimate.line_items = lineItems || [];
+  estimate.sections = sections || [];
   estimate.activity = activity || [];
   estimate.versions = versions;
   estimate.has_budget = (budgetLines?.length || 0) > 0;
 
   res.json(estimate);
-}));
-
-// ============================================================
-// PHASE CRUD ENDPOINTS
-// ============================================================
-
-// POST /api/estimates/:id/phases - Add phase to estimate
-router.post('/:id/phases', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { name, phase_code, description, sort_order, created_by } = req.body;
-
-  if (!name) throw new AppError('VALIDATION_ERROR', 'Phase name is required');
-
-  // Verify estimate exists
-  const { data: estimate } = await supabase
-    .from('v2_estimates')
-    .select('id')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-
-  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
-
-  // Get max sort_order if not provided
-  let order = sort_order;
-  if (order === undefined) {
-    const { data: maxOrder } = await supabase
-      .from('v2_estimate_phases')
-      .select('sort_order')
-      .eq('estimate_id', id)
-      .order('sort_order', { ascending: false })
-      .limit(1)
-      .single();
-    order = (maxOrder?.sort_order || 0) + 1;
-  }
-
-  const { data: phase, error } = await supabase
-    .from('v2_estimate_phases')
-    .insert({
-      estimate_id: id,
-      name,
-      phase_code: phase_code || null,
-      description: description || null,
-      sort_order: order
-    })
-    .select()
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  await logEstimateActivity(id, 'phase_added', created_by || 'System', {
-    phase_id: phase.id,
-    phase_name: name
-  });
-
-  res.status(201).json(phase);
-}));
-
-// PATCH /api/estimates/phases/:phaseId - Update phase
-router.patch('/phases/:phaseId', asyncHandler(async (req, res) => {
-  const { phaseId } = req.params;
-  const { name, phase_code, description, sort_order, is_collapsed, updated_by } = req.body;
-
-  const updates = { updated_at: new Date().toISOString() };
-  if (name !== undefined) updates.name = name;
-  if (phase_code !== undefined) updates.phase_code = phase_code;
-  if (description !== undefined) updates.description = description;
-  if (sort_order !== undefined) updates.sort_order = sort_order;
-  if (is_collapsed !== undefined) updates.is_collapsed = is_collapsed;
-
-  const { data: phase, error } = await supabase
-    .from('v2_estimate_phases')
-    .update(updates)
-    .eq('id', phaseId)
-    .select('*, estimate_id')
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-  if (!phase) throw new AppError('NOT_FOUND', 'Phase not found');
-
-  await logEstimateActivity(phase.estimate_id, 'phase_updated', updated_by || 'System', {
-    phase_id: phaseId,
-    updates
-  });
-
-  res.json(phase);
-}));
-
-// DELETE /api/estimates/phases/:phaseId - Delete phase (cascades to groups/subgroups/lines)
-router.delete('/phases/:phaseId', asyncHandler(async (req, res) => {
-  const { phaseId } = req.params;
-  const { deleted_by } = req.body || {};
-
-  // Get phase info before deletion
-  const { data: phase } = await supabase
-    .from('v2_estimate_phases')
-    .select('estimate_id, name')
-    .eq('id', phaseId)
-    .single();
-
-  if (!phase) throw new AppError('NOT_FOUND', 'Phase not found');
-
-  const { error } = await supabase
-    .from('v2_estimate_phases')
-    .delete()
-    .eq('id', phaseId);
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  await logEstimateActivity(phase.estimate_id, 'phase_deleted', deleted_by || 'System', {
-    phase_id: phaseId,
-    phase_name: phase.name
-  });
-
-  res.json({ success: true, message: 'Phase deleted' });
-}));
-
-// ============================================================
-// GROUP CRUD ENDPOINTS
-// ============================================================
-
-// POST /api/estimates/phases/:phaseId/groups - Add group to phase
-router.post('/phases/:phaseId/groups', asyncHandler(async (req, res) => {
-  const { phaseId } = req.params;
-  const { name, description, sort_order, created_by } = req.body;
-
-  if (!name) throw new AppError('VALIDATION_ERROR', 'Group name is required');
-
-  // Verify phase exists and get estimate_id for activity logging
-  const { data: phase } = await supabase
-    .from('v2_estimate_phases')
-    .select('id, estimate_id')
-    .eq('id', phaseId)
-    .single();
-
-  if (!phase) throw new AppError('NOT_FOUND', 'Phase not found');
-
-  // Get max sort_order if not provided
-  let order = sort_order;
-  if (order === undefined) {
-    const { data: maxOrder } = await supabase
-      .from('v2_estimate_groups')
-      .select('sort_order')
-      .eq('phase_id', phaseId)
-      .order('sort_order', { ascending: false })
-      .limit(1)
-      .single();
-    order = (maxOrder?.sort_order || 0) + 1;
-  }
-
-  const { data: group, error } = await supabase
-    .from('v2_estimate_groups')
-    .insert({
-      phase_id: phaseId,
-      name,
-      description: description || null,
-      sort_order: order
-    })
-    .select()
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  await logEstimateActivity(phase.estimate_id, 'group_added', created_by || 'System', {
-    group_id: group.id,
-    group_name: name,
-    phase_id: phaseId
-  });
-
-  res.status(201).json(group);
-}));
-
-// PATCH /api/estimates/groups/:groupId - Update group
-router.patch('/groups/:groupId', asyncHandler(async (req, res) => {
-  const { groupId } = req.params;
-  const { name, description, sort_order, is_collapsed, updated_by } = req.body;
-
-  const updates = { updated_at: new Date().toISOString() };
-  if (name !== undefined) updates.name = name;
-  if (description !== undefined) updates.description = description;
-  if (sort_order !== undefined) updates.sort_order = sort_order;
-  if (is_collapsed !== undefined) updates.is_collapsed = is_collapsed;
-
-  const { data: group, error } = await supabase
-    .from('v2_estimate_groups')
-    .update(updates)
-    .eq('id', groupId)
-    .select('*, phase:v2_estimate_phases(estimate_id)')
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-  if (!group) throw new AppError('NOT_FOUND', 'Group not found');
-
-  const estimateId = group.phase?.estimate_id;
-  if (estimateId) {
-    await logEstimateActivity(estimateId, 'group_updated', updated_by || 'System', {
-      group_id: groupId,
-      updates
-    });
-  }
-
-  res.json(group);
-}));
-
-// DELETE /api/estimates/groups/:groupId - Delete group (cascades to subgroups/lines)
-router.delete('/groups/:groupId', asyncHandler(async (req, res) => {
-  const { groupId } = req.params;
-  const { deleted_by } = req.body || {};
-
-  // Get group info before deletion
-  const { data: group } = await supabase
-    .from('v2_estimate_groups')
-    .select('name, phase:v2_estimate_phases(estimate_id)')
-    .eq('id', groupId)
-    .single();
-
-  if (!group) throw new AppError('NOT_FOUND', 'Group not found');
-
-  const { error } = await supabase
-    .from('v2_estimate_groups')
-    .delete()
-    .eq('id', groupId);
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  const estimateId = group.phase?.estimate_id;
-  if (estimateId) {
-    await logEstimateActivity(estimateId, 'group_deleted', deleted_by || 'System', {
-      group_id: groupId,
-      group_name: group.name
-    });
-  }
-
-  res.json({ success: true, message: 'Group deleted' });
-}));
-
-// ============================================================
-// SUBGROUP CRUD ENDPOINTS
-// ============================================================
-
-// POST /api/estimates/groups/:groupId/subgroups - Add subgroup to group
-router.post('/groups/:groupId/subgroups', asyncHandler(async (req, res) => {
-  const { groupId } = req.params;
-  const { name, description, sort_order, created_by } = req.body;
-
-  if (!name) throw new AppError('VALIDATION_ERROR', 'Subgroup name is required');
-
-  // Verify group exists and get estimate_id for activity logging
-  const { data: group } = await supabase
-    .from('v2_estimate_groups')
-    .select('id, phase:v2_estimate_phases(estimate_id)')
-    .eq('id', groupId)
-    .single();
-
-  if (!group) throw new AppError('NOT_FOUND', 'Group not found');
-
-  // Get max sort_order if not provided
-  let order = sort_order;
-  if (order === undefined) {
-    const { data: maxOrder } = await supabase
-      .from('v2_estimate_subgroups')
-      .select('sort_order')
-      .eq('group_id', groupId)
-      .order('sort_order', { ascending: false })
-      .limit(1)
-      .single();
-    order = (maxOrder?.sort_order || 0) + 1;
-  }
-
-  const { data: subgroup, error } = await supabase
-    .from('v2_estimate_subgroups')
-    .insert({
-      group_id: groupId,
-      name,
-      description: description || null,
-      sort_order: order
-    })
-    .select()
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  const estimateId = group.phase?.estimate_id;
-  if (estimateId) {
-    await logEstimateActivity(estimateId, 'subgroup_added', created_by || 'System', {
-      subgroup_id: subgroup.id,
-      subgroup_name: name,
-      group_id: groupId
-    });
-  }
-
-  res.status(201).json(subgroup);
-}));
-
-// PATCH /api/estimates/subgroups/:subgroupId - Update subgroup
-router.patch('/subgroups/:subgroupId', asyncHandler(async (req, res) => {
-  const { subgroupId } = req.params;
-  const { name, description, sort_order, is_collapsed, updated_by } = req.body;
-
-  const updates = { updated_at: new Date().toISOString() };
-  if (name !== undefined) updates.name = name;
-  if (description !== undefined) updates.description = description;
-  if (sort_order !== undefined) updates.sort_order = sort_order;
-  if (is_collapsed !== undefined) updates.is_collapsed = is_collapsed;
-
-  const { data: subgroup, error } = await supabase
-    .from('v2_estimate_subgroups')
-    .update(updates)
-    .eq('id', subgroupId)
-    .select('*, group:v2_estimate_groups(phase:v2_estimate_phases(estimate_id))')
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-  if (!subgroup) throw new AppError('NOT_FOUND', 'Subgroup not found');
-
-  const estimateId = subgroup.group?.phase?.estimate_id;
-  if (estimateId) {
-    await logEstimateActivity(estimateId, 'subgroup_updated', updated_by || 'System', {
-      subgroup_id: subgroupId,
-      updates
-    });
-  }
-
-  res.json(subgroup);
-}));
-
-// DELETE /api/estimates/subgroups/:subgroupId - Delete subgroup (cascades to lines)
-router.delete('/subgroups/:subgroupId', asyncHandler(async (req, res) => {
-  const { subgroupId } = req.params;
-  const { deleted_by } = req.body || {};
-
-  // Get subgroup info before deletion
-  const { data: subgroup } = await supabase
-    .from('v2_estimate_subgroups')
-    .select('name, group:v2_estimate_groups(phase:v2_estimate_phases(estimate_id))')
-    .eq('id', subgroupId)
-    .single();
-
-  if (!subgroup) throw new AppError('NOT_FOUND', 'Subgroup not found');
-
-  const { error } = await supabase
-    .from('v2_estimate_subgroups')
-    .delete()
-    .eq('id', subgroupId);
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  const estimateId = subgroup.group?.phase?.estimate_id;
-  if (estimateId) {
-    await logEstimateActivity(estimateId, 'subgroup_deleted', deleted_by || 'System', {
-      subgroup_id: subgroupId,
-      subgroup_name: subgroup.name
-    });
-  }
-
-  res.json({ success: true, message: 'Subgroup deleted' });
-}));
-
-// ============================================================
-// HIERARCHICAL LINE ITEM ENDPOINTS (v2_estimate_line_items)
-// ============================================================
-
-// POST /api/estimates/subgroups/:subgroupId/lines - Add line item to subgroup
-router.post('/subgroups/:subgroupId/lines', asyncHandler(async (req, res) => {
-  const { subgroupId } = req.params;
-  const {
-    description,
-    cost_code_id,
-    catalog_item_id,
-    quantity,
-    unit,
-    unit_cost,
-    amount,
-    notes,
-    created_by
-  } = req.body;
-
-  // Get estimate_id from subgroup hierarchy
-  const { data: subgroup } = await supabase
-    .from('v2_estimate_subgroups')
-    .select('group:v2_estimate_groups(phase:v2_estimate_phases(estimate_id))')
-    .eq('id', subgroupId)
-    .single();
-
-  const estimate_id = subgroup?.group?.phase?.estimate_id;
-  if (!estimate_id) {
-    throw new AppError('NOT_FOUND', 'Subgroup not found');
-  }
-
-  // Get max sort_order
-  const { data: maxOrder } = await supabase
-    .from('v2_estimate_line_items')
-    .select('sort_order')
-    .eq('subgroup_id', subgroupId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .single();
-
-  const sort_order = (maxOrder?.sort_order || 0) + 1;
-
-  // Calculate amount if not provided
-  const qty = parseFloat(quantity) || 1;
-  const cost = parseFloat(unit_cost) || 0;
-  const calculatedAmount = amount !== undefined ? parseFloat(amount) : qty * cost;
-
-  const { data: lineItem, error } = await supabase
-    .from('v2_estimate_line_items')
-    .insert({
-      estimate_id,
-      subgroup_id: subgroupId,
-      description: description || null,
-      cost_code_id: cost_code_id || null,
-      catalog_item_id: catalog_item_id || null,
-      quantity: qty,
-      unit: unit || null,
-      unit_cost: cost,
-      amount: calculatedAmount,
-      notes: notes || null,
-      sort_order,
-      created_by: created_by || 'System'
-    })
-    .select(`
-      *,
-      cost_code:v2_cost_codes(id, code, name),
-      catalog_item:v2_selection_catalog(id, name, unit_price, image_url)
-    `)
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  await logEstimateActivity(estimate_id, 'line_item_added', created_by || 'System', {
-    line_item_id: lineItem.id,
-    description: lineItem.description,
-    amount: lineItem.amount,
-    subgroup_id: subgroupId
-  });
-
-  res.status(201).json(lineItem);
-}));
-
-// PATCH /api/estimates/lines/:lineId - Update line item
-router.patch('/lines/:lineId', asyncHandler(async (req, res) => {
-  const { lineId } = req.params;
-  const {
-    subgroup_id,
-    description,
-    cost_code_id,
-    catalog_item_id,
-    quantity,
-    unit,
-    unit_cost,
-    amount,
-    notes,
-    sort_order,
-    updated_by
-  } = req.body;
-
-  // Get current line item to calculate amount if needed
-  const { data: existing } = await supabase
-    .from('v2_estimate_line_items')
-    .select('estimate_id, quantity, unit_cost')
-    .eq('id', lineId)
-    .single();
-
-  if (!existing) throw new AppError('NOT_FOUND', 'Line item not found');
-
-  // Calculate amount if qty/unit_cost changed but amount not provided
-  let calculatedAmount = amount;
-  if (amount === undefined && (quantity !== undefined || unit_cost !== undefined)) {
-    const newQty = quantity ?? existing.quantity ?? 1;
-    const newUnitCost = unit_cost ?? existing.unit_cost ?? 0;
-    calculatedAmount = newQty * newUnitCost;
-  }
-
-  const updateData = {
-    ...(subgroup_id !== undefined && { subgroup_id }),
-    ...(description !== undefined && { description }),
-    ...(cost_code_id !== undefined && { cost_code_id }),
-    ...(catalog_item_id !== undefined && { catalog_item_id }),
-    ...(quantity !== undefined && { quantity: parseFloat(quantity) || 1 }),
-    ...(unit !== undefined && { unit }),
-    ...(unit_cost !== undefined && { unit_cost: parseFloat(unit_cost) || 0 }),
-    ...(calculatedAmount !== undefined && { amount: calculatedAmount }),
-    ...(notes !== undefined && { notes }),
-    ...(sort_order !== undefined && { sort_order }),
-    updated_at: new Date().toISOString()
-  };
-
-  const { data: lineItem, error } = await supabase
-    .from('v2_estimate_line_items')
-    .update(updateData)
-    .eq('id', lineId)
-    .select(`
-      *,
-      cost_code:v2_cost_codes(id, code, name),
-      catalog_item:v2_selection_catalog(id, name, unit_price, image_url)
-    `)
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  await logEstimateActivity(existing.estimate_id, 'line_item_updated', updated_by || 'System', {
-    line_item_id: lineId,
-    updates: updateData
-  });
-
-  res.json(lineItem);
-}));
-
-// DELETE /api/estimates/lines/:lineId - Delete line item
-router.delete('/lines/:lineId', asyncHandler(async (req, res) => {
-  const { lineId } = req.params;
-  const { deleted_by } = req.body || {};
-
-  // Get line item info before deletion
-  const { data: lineItem } = await supabase
-    .from('v2_estimate_line_items')
-    .select('estimate_id, description, amount')
-    .eq('id', lineId)
-    .single();
-
-  if (!lineItem) throw new AppError('NOT_FOUND', 'Line item not found');
-
-  const { error } = await supabase
-    .from('v2_estimate_line_items')
-    .delete()
-    .eq('id', lineId);
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  await logEstimateActivity(lineItem.estimate_id, 'line_item_deleted', deleted_by || 'System', {
-    line_item_id: lineId,
-    description: lineItem.description,
-    amount: lineItem.amount
-  });
-
-  res.json({ success: true, message: 'Line item deleted' });
 }));
 
 // ============================================================
@@ -1762,6 +970,130 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// ============================================================
+// SECTION OPERATIONS
+// ============================================================
+
+// Create section
+router.post('/:id/sections', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, sort_order, created_by } = req.body;
+
+  if (!name) throw new AppError('VALIDATION_ERROR', 'Section name is required');
+
+  // Get max sort_order if not provided
+  let finalSortOrder = sort_order;
+  if (finalSortOrder === undefined) {
+    const { data: maxSection } = await supabase
+      .from('v2_estimate_sections')
+      .select('sort_order')
+      .eq('estimate_id', id)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .single();
+    finalSortOrder = (maxSection?.sort_order || 0) + 1;
+  }
+
+  const { data: section, error } = await supabase
+    .from('v2_estimate_sections')
+    .insert({
+      estimate_id: id,
+      name,
+      sort_order: finalSortOrder
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(id, 'section_created', created_by || 'System', { section_name: name });
+
+  res.status(201).json(section);
+}));
+
+// Update section
+router.patch('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
+  const { id, sectionId } = req.params;
+  const { name, sort_order, updated_by } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (sort_order !== undefined) updates.sort_order = sort_order;
+
+  const { data: section, error } = await supabase
+    .from('v2_estimate_sections')
+    .update(updates)
+    .eq('id', sectionId)
+    .eq('estimate_id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!section) throw new AppError('NOT_FOUND', 'Section not found');
+
+  await logEstimateActivity(id, 'section_updated', updated_by || 'System', { section_id: sectionId, changes: updates });
+
+  res.json(section);
+}));
+
+// Delete section (preserves line items by setting their section_id to null)
+router.delete('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
+  const { id, sectionId } = req.params;
+  const { deleted_by } = req.body;
+
+  // Get section name for logging
+  const { data: section } = await supabase
+    .from('v2_estimate_sections')
+    .select('name')
+    .eq('id', sectionId)
+    .eq('estimate_id', id)
+    .single();
+
+  if (!section) throw new AppError('NOT_FOUND', 'Section not found');
+
+  // Move line items to no section
+  await supabase
+    .from('v2_estimate_lines')
+    .update({ section_id: null })
+    .eq('section_id', sectionId);
+
+  // Delete section
+  const { error } = await supabase
+    .from('v2_estimate_sections')
+    .delete()
+    .eq('id', sectionId)
+    .eq('estimate_id', id);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(id, 'section_deleted', deleted_by || 'System', { section_name: section.name });
+
+  res.json({ success: true, message: 'Section deleted' });
+}));
+
+// Reorder sections
+router.post('/:id/sections/reorder', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { section_ids, updated_by } = req.body;
+
+  if (!section_ids || !Array.isArray(section_ids)) {
+    throw new AppError('VALIDATION_ERROR', 'section_ids array is required');
+  }
+
+  // Update each section's sort_order
+  for (let i = 0; i < section_ids.length; i++) {
+    await supabase
+      .from('v2_estimate_sections')
+      .update({ sort_order: i + 1 })
+      .eq('id', section_ids[i])
+      .eq('estimate_id', id);
+  }
+
+  await logEstimateActivity(id, 'sections_reordered', updated_by || 'System', { section_ids });
+
+  res.json({ success: true, message: 'Sections reordered' });
+}));
+
 // LINE ITEM OPERATIONS
 // ============================================================
 

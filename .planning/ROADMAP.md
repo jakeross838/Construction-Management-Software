@@ -74,7 +74,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   3. Admin can open/close financial periods with period locking
   4. Expense list displays with filters (period, category, vendor)
 **Research**: Unlikely (established patterns in codebase)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 79: Expense Tracking Enhancements
 **Goal**: Recurring expenses and receipt attachments
@@ -84,7 +88,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   1. Admin can configure recurring expenses (auto-create monthly)
   2. Admin can attach receipt documents to expenses
 **Research**: Unlikely (internal patterns)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 80: Employee & Labor Setup
 **Goal**: Employee management and burden rate configuration
@@ -98,7 +106,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. System prompts quarterly burden rate review
 **Research**: Likely (labor burden calculation patterns)
 **Research topics**: Industry-standard burden rate components, calculation methods
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 81: Digital Timesheets
 **Goal**: Replace paper timesheets with digital entry and approval
@@ -112,7 +124,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. Employee can edit timesheet within submission window
   6. User can view labor hours by job, employee, or period
 **Research**: Unlikely (CRUD patterns)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 82: Overhead Allocation Engine
 **Goal**: Calculate and allocate overhead to jobs using % of Labor Hours
@@ -127,7 +143,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   6. System only allocates from closed periods
 **Research**: Likely (allocation formula implementation)
 **Research topics**: Rolling 12-month average calculations, period-based allocation patterns
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 83: Job Profitability Reports
 **Goal**: Show true all-in job costs with allocated overhead
@@ -141,7 +161,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. User can view gross and net margin per job
   6. User can drill down from summary to cost details
 **Research**: Unlikely (reporting patterns established)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 84: WIP Schedule
 **Goal**: Work-in-Progress schedule with over/under billing detection
@@ -156,7 +180,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   6. System alerts on significant over/under billing
 **Research**: Likely (WIP accounting patterns)
 **Research topics**: % completion accounting methods, billing variance thresholds
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 85: Company P&L Dashboard
 **Goal**: Company-wide profit & loss visibility
@@ -170,7 +198,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. User can view net income and net margin %
   6. User can compare periods (month vs month, YoY)
 **Research**: Unlikely (Chart.js patterns established)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 86: Cash Flow & Forecasting
 **Goal**: AR/AP aging and 13-week cash flow projection
@@ -184,7 +216,11 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   5. System projects cash outflows from payables
 **Research**: Likely (cash flow forecasting patterns)
 **Research topics**: Rolling forecast models, receivables/payables aging calculations
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 87: Business Planning
 **Goal**: Backlog, KPI dashboard, capacity planning, and pipeline
@@ -197,40 +233,158 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
   4. User can view pipeline (leads → bids → signed → in progress)
   5. Admin can configure KPI targets and thresholds
 **Research**: Unlikely (dashboard patterns established)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ### Phase 105: Estimates & Budget Consolidation
 **Goal**: Merge estimates.html and budget-builder.html into unified Estimates & Budgets page
 **Depends on**: None
-**Success Criteria** (what must be TRUE):
-  1. Single unified page replaces both estimates.html and budget-builder.html
-  2. Estimate Mode: Create/edit client-facing estimates with line items, versions, statuses
-  3. Budget Mode: View/manage job budget with source tracking (bid, AI, manual)
-  4. Conversion workflow: Approved estimate converts to job budget
-  5. Source comparison view shows coverage (% from bids vs AI vs manual)
-  6. Navigation updated to remove redundant Budget Builder link
-  7. All existing estimate and budget-builder functionality preserved
-**Research**: Unlikely (consolidation of existing features)
-**Plans**: 3 (Complete)
-**Status**: Complete (2026-01-21)
+**Status**: Complete (2026-01-22)
 
-### Phase 106: Estimating - Hierarchical Structure & Catalog Integration
-**Goal**: Add Phase → Group → Subgroup → Line Item hierarchy with catalog integration
+---
+
+## New Milestone: v4.0 Estimating System Rebuild
+
+**Milestone Goal:** Replace the current basic estimating system with a professional-grade estimating platform featuring assemblies, client selections, allowances, and proposal generation. Simplify the UI/UX throughout.
+
+**Research Sources:**
+- [Buildertrend Estimating](https://buildertrend.com/financial-tools/construction-estimating-software/)
+- [CoConstruct Estimating](https://www.coconstruct.com/features/construction-estimating-software)
+- [Buildxact Assemblies](https://www.buildxact.com/us/features/construction-estimating-software/)
+- [Clear Estimates](https://www.clearestimates.com/)
+
+### Phase 106: Estimating Data Model & Architecture
+**Goal**: New database schema for hierarchical estimates with assemblies, sections, and items
 **Depends on**: Phase 105
+**Requirements**:
+  - EST-01: Estimates have sections (Site Work, Framing, Finishes, etc.)
+  - EST-02: Sections contain line items with cost codes, quantities, units, costs
+  - EST-03: Assemblies are reusable templates that expand into multiple items
+  - EST-04: Items can be marked as allowances (placeholder amounts)
+  - EST-05: Estimates track markup (overhead %, profit %, contingency %)
+  - EST-06: Estimates have versions and status workflow (draft, sent, approved, converted)
 **Success Criteria** (what must be TRUE):
-  1. Database schema for hierarchical estimates (phases, groups, subgroups)
-  2. Default residential template with 11 construction phases
-  3. API endpoints for hierarchy CRUD and template management
-  4. Collapsible accordion UI for phases/groups/subgroups
-  5. Template selector modal for applying templates to estimates
-  6. Catalog suggestions when adding line items
-  7. Auto-fill pricing from catalog selection
-**Research**: Complete
-**Plans**: 4
-**Status**: Complete (2026-01-21)
+  1. Database schema supports estimate → sections → items hierarchy
+  2. Assembly templates table exists with template items
+  3. Items can reference assemblies (template_id) or be manual entries
+  4. Allowance flag distinguishes placeholder vs fixed-price items
+  5. Markup calculations (overhead, profit, contingency) apply to estimate totals
+  6. Version tracking allows estimate history
+**Research**: Complete (106-RESEARCH.md)
+**Status**: Complete (2026-01-22)
+**Plans**: 2 plans
+Plans:
+- [x] 106-01-PLAN.md - Database schema: sections, assembly templates, line item extensions
+- [x] 106-02-PLAN.md - Database functions and triggers for calculations
+
+### Phase 107: Assembly Library & Estimate Builder
+**Goal**: Build and use assembly templates; create estimates with sections and items
+**Depends on**: Phase 106
+**Requirements**:
+  - ASM-01: Admin can create/edit assembly templates (e.g., "Standard Bathroom")
+  - ASM-02: Assembly templates contain line items with default quantities and costs
+  - ASM-03: User can add assembly to estimate - items auto-populate
+  - ASM-04: User can edit assembly-derived items per-job (override defaults)
+  - ASM-05: User can add manual line items outside assemblies
+  - ASM-06: User can organize items into sections with drag-drop reordering
+**Success Criteria** (what must be TRUE):
+  1. Assembly Library page exists to manage templates
+  2. User can create estimate, add sections, add assemblies or manual items
+  3. Adding assembly expands into editable line items
+  4. Totals calculate correctly (subtotal + markups = grand total)
+  5. Estimate saves and loads properly with all hierarchy
+  6. Copy from previous estimate works
+**Status**: Complete (2026-01-22)
+**Research**: Complete (107-RESEARCH.md)
+**Plans**: 3 plans
+Plans:
+- [x] 107-01-PLAN.md - Assembly Templates API + Assembly Library page
+- [x] 107-02-PLAN.md - Estimate Sections API + Sections UI
+- [x] 107-03-PLAN.md - Assembly Picker + Copy Estimate
+
+### Phase 108: Selections, Allowances & Client Approval
+**Goal**: Mark items as allowances, let clients select options, track variances
+**Depends on**: Phase 107
+**Requirements**:
+  - SEL-01: Items can be marked as allowances with placeholder amount
+  - SEL-02: Allowances link to selection categories (lighting, flooring, fixtures)
+  - SEL-03: Client can view allowances and make selections from catalog
+  - SEL-04: Selection replaces allowance with actual cost
+  - SEL-05: Variance tracked (over/under allowance)
+  - SEL-06: Client approval workflow for selections
+  - SEL-07: Selection changes can trigger change order if post-contract
+**Success Criteria** (what must be TRUE):
+  1. User can mark any item as allowance with $ amount
+  2. Client-facing selection view shows allowances needing selection
+  3. Client can pick from catalog or request custom option
+  4. Actual cost replaces allowance when selected
+  5. Over/under allowance clearly visible
+  6. Client can approve selections (digital signature optional)
+  7. Selection audit trail maintained
+**Research**: Likely (client portal patterns, approval workflows)
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
+
+### Phase 109: Proposal Generation
+**Goal**: Generate professional client-facing proposals from estimates
+**Depends on**: Phase 108
+**Requirements**:
+  - PRO-01: One-click generate PDF proposal from estimate
+  - PRO-02: Proposal includes scope descriptions, allowance call-outs
+  - PRO-03: Proposal can show line-item detail or summary only
+  - PRO-04: Proposal includes payment schedule terms
+  - PRO-05: Company branding (logo, contact info) on proposal
+  - PRO-06: Client can view proposal via secure link
+  - PRO-07: Client can accept proposal (triggers estimate → approved)
+**Success Criteria** (what must be TRUE):
+  1. Generate Proposal button creates professional PDF
+  2. Proposal displays estimate data in client-friendly format
+  3. Detail level configurable (line items vs summary)
+  4. Allowances clearly marked with selection process explained
+  5. Shareable link allows client to view without login
+  6. Client acceptance updates estimate status
+**Research**: Complete (109-RESEARCH.md)
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
+
+### Phase 110: Estimating UI/UX Overhaul
+**Goal**: Simplify and modernize the estimating interface, remove clutter
+**Depends on**: Phase 109
+**Requirements**:
+  - UX-01: Clean, minimal interface focused on the task at hand
+  - UX-02: Remove unnecessary buttons and features
+  - UX-03: Intuitive workflow: Create → Build → Review → Send
+  - UX-04: Inline editing (click to edit, no modal for every change)
+  - UX-05: Keyboard shortcuts for power users
+  - UX-06: Mobile-friendly responsive design
+  - UX-07: Consistent with rest of application styling
+**Success Criteria** (what must be TRUE):
+  1. Estimates page is visually clean with clear hierarchy
+  2. No unnecessary buttons or confusing options
+  3. User can complete common tasks in minimal clicks
+  4. Inline editing works for item names, quantities, costs
+  5. Keyboard navigation (Tab, Enter, Escape) works intuitively
+  6. Works on tablet/mobile for field use
+  7. Visual design matches warm light theme
+**Research**: Likely (UX patterns, competitor analysis)
+**Plans**: 3 plans
+Plans:
+- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
+- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
+- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
 
 ## Progress
 
+### v3.1 Business Intelligence & Financial Management
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
 | 78. Financial Foundation | 1 | Complete | 2026-01-20 |
@@ -243,8 +397,16 @@ See [v3.0 Archive](milestones/v3.0-ROADMAP.md) for full phase details.
 | 85. Company P&L | TBD | Not started | - |
 | 86. Cash Flow | TBD | Not started | - |
 | 87. Business Planning | TBD | Not started | - |
-| 105. Estimates & Budget | 3 | Complete | 2026-01-21 |
-| 106. Estimating Hierarchy | 4 | Complete | 2026-01-21 |
+| 105. Estimates Consolidation | 3 | Complete | 2026-01-22 |
+
+### v4.0 Estimating System Rebuild
+| Phase | Plans | Status | Completed |
+|-------|-------|--------|-----------|
+| 106. Data Model & Architecture | 2 | Complete | 2026-01-22 |
+| 107. Assembly Library & Builder | 3 | Complete | 2026-01-22 |
+| 108. Selections & Allowances | TBD | Not started | - |
+| 109. Proposal Generation | 3 | Planned | - |
+| 110. UI/UX Overhaul | TBD | Not started | - |
 
 ---
-*Last updated: 2026-01-21*
+*Last updated: 2026-01-22*

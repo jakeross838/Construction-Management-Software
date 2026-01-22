@@ -691,18 +691,11 @@
 
     async function loadDraws() {
       try {
-        const jobsRes = await fetch('/api/jobs');
-        const jobs = await jobsRes.json();
+        // Use single endpoint that returns all draws with job info
+        const res = await fetch('/api/draws');
+        const draws = await res.json();
 
-        let allDraws = [];
-        for (const job of jobs) {
-          const res = await fetch(`/api/jobs/${job.id}/draws`);
-          const draws = await res.json();
-          draws.forEach(d => d.job = job);
-          allDraws = allDraws.concat(draws);
-        }
-
-        state.draws = allDraws.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        state.draws = draws;
         renderDrawList();
       } catch (err) {
         console.error('Failed to load draws:', err);

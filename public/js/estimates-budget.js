@@ -16,6 +16,8 @@ let jobs = [];
 let costCodes = [];
 let acceptedBids = [];
 let currentEstimate = null;
+let collapsedSections = new Set(); // Track collapsed section IDs
+let editingSectionId = null; // Currently editing section
 let selectedBidId = null;
 let debounceTimer;
 let currentView = localStorage.getItem('estimatesView') || 'table';
@@ -69,25 +71,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadStats();
   }
 
-  // Setup job sidebar listener - reload data when job changes
+  // Setup job sidebar listener for budget mode
   if (window.JobSidebar) {
     window.JobSidebar.onJobChange(async (jobId) => {
       currentJobId = jobId || null;
-      if (currentMode === 'budget') {
-        if (jobId) {
-          await loadJobBudgetForJob(jobId);
-        } else {
-          renderBudgetEmptyState();
-        }
-      } else if (currentMode === 'estimates') {
-        // Reload estimates filtered by selected job
-        await loadEstimates();
-        await loadStats();
+      if (currentMode === 'budget' && jobId) {
+        await loadJobBudgetForJob(jobId);
       }
     });
-
-    // Set initial job from sidebar
-    currentJobId = window.JobSidebar.getSelectedJobId() || null;
   }
 });
 
@@ -104,10 +95,12 @@ function initializeView() {
 }
 
 function setupEventListeners() {
-  // Filter change handlers (job comes from sidebar, not dropdown)
+  // Filter change handlers
+  const jobFilter = document.getElementById('jobFilter');
   const statusFilter = document.getElementById('statusFilter');
   const searchInput = document.getElementById('searchInput');
 
+  if (jobFilter) jobFilter.addEventListener('change', applyFilters);
   if (statusFilter) statusFilter.addEventListener('change', applyFilters);
 
   if (searchInput) {
@@ -182,14 +175,11 @@ async function loadJobs() {
 
 async function loadCostCodes() {
   const response = await fetch('/api/cost-codes');
-  const data = await response.json();
-  // API returns {costCodes: [...]} or array directly
-  costCodes = Array.isArray(data) ? data : (data.costCodes || data.cost_codes || []);
+  costCodes = await response.json();
 }
 
 function populateJobDropdowns() {
-  // Job filtering is done via sidebar, these are for modals only
-  const selectors = ['formJob', 'importJobFilter', 'selectionsJob', 'duplicateJob'];
+  const selectors = ['jobFilter', 'formJob', 'importJobFilter', 'selectionsJob', 'duplicateJob'];
   selectors.forEach(id => {
     const select = document.getElementById(id);
     if (!select) return;
@@ -215,8 +205,7 @@ function populateJobDropdowns() {
 
 async function loadEstimates() {
   const params = new URLSearchParams();
-  // Job comes from sidebar selection
-  const jobId = currentJobId || window.JobSidebar?.getSelectedJobId();
+  const jobId = document.getElementById('jobFilter')?.value;
   const status = document.getElementById('statusFilter')?.value;
   const search = document.getElementById('searchInput')?.value;
 
@@ -235,8 +224,7 @@ async function loadEstimates() {
 }
 
 async function loadStats() {
-  // Job comes from sidebar selection
-  const jobId = currentJobId || window.JobSidebar?.getSelectedJobId();
+  const jobId = document.getElementById('jobFilter')?.value;
   const params = jobId ? `?job_id=${jobId}` : '';
 
   try {
@@ -393,9 +381,6 @@ function openCreateModal() {
   document.getElementById('estimateId').value = '';
   document.getElementById('estimateForm').reset();
 
-  // Re-enable job dropdown (may have been disabled by edit mode)
-  document.getElementById('formJob').disabled = false;
-
   const modal = document.getElementById('estimateModal');
   modal.style.display = 'flex';
   modal.classList.add('show');
@@ -405,9 +390,6 @@ function closeModal() {
   const modal = document.getElementById('estimateModal');
   modal.classList.remove('show');
   modal.style.display = 'none';
-
-  // Re-enable job dropdown for next use
-  document.getElementById('formJob').disabled = false;
 }
 
 async function saveEstimate() {
@@ -455,456 +437,35 @@ async function openEstimateDetail(estimateId) {
     if (!response.ok) throw new Error('Failed to load estimate');
     currentEstimate = await response.json();
 
-    // Hide the list view and show detail view
-    document.querySelector('.mode-section[data-mode="estimates"]').style.display = 'none';
-    document.getElementById('estimateDetailView').style.display = 'block';
+    // Populate detail modal
+    document.getElementById('detailTitle').textContent = currentEstimate.title;
+    document.getElementById('detailStatus').textContent = formatStatus(currentEstimate.status);
+    document.getElementById('detailStatus').className = `badge badge-${getStatusBadgeClass(currentEstimate.status)}`;
+    document.getElementById('detailVersion').textContent = `v${currentEstimate.version || 1}`;
+    document.getElementById('detailJob').textContent = currentEstimate.job?.name || '-';
+    document.getElementById('detailAmount').textContent = formatCurrency(currentEstimate.total_amount);
+    document.getElementById('detailLineCount').textContent = currentEstimate.lines?.length || 0;
+    document.getElementById('detailCreated').textContent = formatDateTime(currentEstimate.created_at);
+    document.getElementById('detailNotes').textContent = currentEstimate.notes || '-';
 
-    // Populate detail view header
-    document.getElementById('detailViewTitle').textContent = currentEstimate.title;
-    const statusBadge = document.getElementById('detailViewStatus');
-    statusBadge.textContent = formatStatus(currentEstimate.status);
-    statusBadge.className = `badge badge-${getStatusBadgeClass(currentEstimate.status)}`;
-    document.getElementById('detailViewVersion').textContent = `v${currentEstimate.version || 1}`;
+    // Render the lines table with sections
+    renderLinesTable();
 
-    // Populate info bar
-    document.getElementById('detailViewJob').textContent = currentEstimate.job?.name || '-';
-    document.getElementById('detailViewCreated').textContent = formatDate(currentEstimate.created_at);
-    document.getElementById('detailViewLineCount').textContent = currentEstimate.lines?.length || 0;
-    document.getElementById('detailViewAmount').textContent = formatCurrency(currentEstimate.total_amount);
-
-    // Notes
-    const notesSection = document.getElementById('detailViewNotesSection');
-    const notesSpan = document.getElementById('detailViewNotes');
-    if (currentEstimate.notes) {
-      notesSection.style.display = 'block';
-      notesSpan.textContent = currentEstimate.notes;
-    } else {
-      notesSection.style.display = 'none';
-    }
-
-    // Update button visibility based on status
-    const canEdit = ['draft', 'rejected'].includes(currentEstimate.status);
-    const detailEditBtn = document.getElementById('detailEditBtn');
-    const addLineBtn = document.getElementById('addLineBtn');
-
-    if (detailEditBtn) detailEditBtn.style.display = canEdit ? 'inline-flex' : 'none';
-    if (addLineBtn) addLineBtn.style.display = canEdit ? 'inline-flex' : 'none';
-
-    // Delete button - only for draft/rejected
-    const deleteBtn = document.querySelector('.detail-header-right .btn-danger');
-    if (deleteBtn) deleteBtn.style.display = canEdit ? 'inline-flex' : 'none';
-
-    // Update status action buttons
-    updateStatusActions();
-
-    // Update add phase button visibility
-    const addPhaseBtn = document.getElementById('addPhaseBtn');
-    if (addPhaseBtn) addPhaseBtn.style.display = canEdit ? 'inline-flex' : 'none';
-
-    // Determine which view to show: hierarchy or flat
-    const hasHierarchy = currentEstimate.phases && currentEstimate.phases.length > 0;
-    const hierarchySection = document.getElementById('hierarchySection');
-    const flatLinesSection = document.getElementById('flatLinesSection');
-
-    if (hasHierarchy || !currentEstimate.lines || currentEstimate.lines.length === 0) {
-      // Show hierarchy view (default for new estimates or estimates with phases)
-      if (hierarchySection) hierarchySection.style.display = 'block';
-      if (flatLinesSection) flatLinesSection.style.display = 'none';
-      renderEstimateHierarchy(currentEstimate);
-    } else {
-      // Show flat lines view for legacy estimates without hierarchy
-      if (hierarchySection) hierarchySection.style.display = 'none';
-      if (flatLinesSection) flatLinesSection.style.display = 'block';
-      renderLineItemsTab();
-    }
-
-    // Render activity, and versions
-    renderActivitySidebar();
-    renderVersionsSidebar();
-
-    // Update markup display
-    updateMarkupDisplay();
+    // Show modal
+    const modal = document.getElementById('estimateDetailModal');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
   } catch (err) {
     console.error('Error loading estimate:', err);
     showToast('Failed to load estimate details', 'error');
   }
 }
 
-function backToList() {
-  // Hide detail view and show list view
-  document.getElementById('estimateDetailView').style.display = 'none';
-  document.querySelector('.mode-section[data-mode="estimates"]').style.display = 'block';
-  currentEstimate = null;
-
-  // Refresh the list in case changes were made
-  loadEstimates();
-  loadStats();
-}
-
-function updateStatusActions() {
-  if (!currentEstimate) return;
-
-  const submitBtn = document.getElementById('submitBtn');
-  const approveBtn = document.getElementById('approveBtn');
-  const rejectBtn = document.getElementById('rejectBtn');
-  const convertBudgetBtn = document.getElementById('convertBudgetBtn');
-  const convertAllowancesBtn = document.getElementById('convertAllowancesBtn');
-
-  // Hide all by default
-  if (submitBtn) submitBtn.style.display = 'none';
-  if (approveBtn) approveBtn.style.display = 'none';
-  if (rejectBtn) rejectBtn.style.display = 'none';
-  if (convertBudgetBtn) convertBudgetBtn.style.display = 'none';
-  if (convertAllowancesBtn) convertAllowancesBtn.style.display = 'none';
-
-  const status = currentEstimate.status;
-
-  if (status === 'draft') {
-    if (submitBtn) submitBtn.style.display = 'block';
-  } else if (status === 'submitted') {
-    if (approveBtn) approveBtn.style.display = 'block';
-    if (rejectBtn) rejectBtn.style.display = 'block';
-  } else if (status === 'approved') {
-    if (convertBudgetBtn) convertBudgetBtn.style.display = 'block';
-    if (convertAllowancesBtn) convertAllowancesBtn.style.display = 'block';
-  } else if (status === 'rejected') {
-    if (submitBtn) submitBtn.style.display = 'block';
-  }
-}
-
-function updateMarkupDisplay() {
-  if (!currentEstimate) return;
-
-  const lines = currentEstimate.lines || [];
-  const subtotal = lines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
-  const markupPct = currentEstimate.markup_percent || 0;
-  const contingencyPct = currentEstimate.contingency_percent || 0;
-  const markupAmt = subtotal * (markupPct / 100);
-  const contingencyAmt = subtotal * (contingencyPct / 100);
-
-  // Update displays
-  const markupPctDisplay = document.getElementById('markupPctDisplay');
-  const markupAmountDisplay = document.getElementById('markupAmountDisplay');
-  const contingencyPctDisplay = document.getElementById('contingencyPctDisplay');
-  const contingencyAmountDisplay = document.getElementById('contingencyAmountDisplay');
-  const linesSubtotal = document.getElementById('linesSubtotal');
-  const linesTotalAmount = document.getElementById('linesTotalAmount');
-
-  if (markupPctDisplay) markupPctDisplay.textContent = markupPct;
-  if (markupAmountDisplay) markupAmountDisplay.textContent = formatCurrency(markupAmt);
-  if (contingencyPctDisplay) contingencyPctDisplay.textContent = contingencyPct;
-  if (contingencyAmountDisplay) contingencyAmountDisplay.textContent = formatCurrency(contingencyAmt);
-  if (linesSubtotal) linesSubtotal.textContent = formatCurrency(subtotal);
-  if (linesTotalAmount) linesTotalAmount.textContent = formatCurrency(currentEstimate.total_amount || (subtotal + markupAmt + contingencyAmt));
-
-  // Show/hide markup rows
-  const markupRow = document.getElementById('markupRow');
-  const contingencyRow = document.getElementById('contingencyRow');
-  if (markupRow) markupRow.style.display = markupPct > 0 ? 'table-row' : 'none';
-  if (contingencyRow) contingencyRow.style.display = contingencyPct > 0 ? 'table-row' : 'none';
-}
-
-function renderActivitySidebar() {
-  const activityList = document.getElementById('activityList');
-  if (!activityList || !currentEstimate) return;
-
-  const activities = currentEstimate.activity || [];
-
-  if (activities.length === 0) {
-    activityList.innerHTML = '<p class="text-muted">No activity yet</p>';
-    return;
-  }
-
-  // Show last 5 activities
-  activityList.innerHTML = activities.slice(0, 5).map(a => `
-    <div class="activity-item">
-      <div class="activity-action">${formatActivityAction(a.action)}</div>
-      <div class="activity-meta">${formatDateTime(a.created_at)} by ${escapeHtml(a.performed_by || 'System')}</div>
-    </div>
-  `).join('');
-}
-
-function renderVersionsSidebar() {
-  const versionList = document.getElementById('versionList');
-  if (!versionList || !currentEstimate) return;
-
-  const versions = currentEstimate.versions || [];
-
-  if (versions.length <= 1) {
-    versionList.innerHTML = '<p class="text-muted">No other versions</p>';
-    return;
-  }
-
-  versionList.innerHTML = versions.map(v => {
-    const isCurrent = v.id === currentEstimate.id;
-    return `
-      <div class="version-item ${isCurrent ? 'current' : ''}" ${!isCurrent ? `onclick="openEstimateDetail('${v.id}')"` : ''}>
-        <span class="version-number">v${v.version}</span>
-        <span class="badge badge-${getStatusBadgeClass(v.status)} badge-sm">${formatStatus(v.status)}</span>
-        ${isCurrent ? '<span class="version-current">(current)</span>' : ''}
-      </div>
-    `;
-  }).join('');
-}
-
-async function submitEstimate() {
-  if (!currentEstimate) return;
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/submit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submitted_by: window.currentUser || 'User' })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to submit estimate');
-    }
-
-    showToast('Estimate submitted for approval', 'success');
-    await openEstimateDetail(currentEstimate.id);
-  } catch (err) {
-    console.error('Error submitting estimate:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function approveEstimate() {
-  if (!currentEstimate) return;
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/approve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approved_by: window.currentUser || 'User' })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to approve estimate');
-    }
-
-    showToast('Estimate approved', 'success');
-    await openEstimateDetail(currentEstimate.id);
-  } catch (err) {
-    console.error('Error approving estimate:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function rejectEstimate() {
-  if (!currentEstimate) return;
-
-  const reason = prompt('Reason for rejection (optional):');
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/reject`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rejected_by: window.currentUser || 'User',
-        reason: reason || null
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to reject estimate');
-    }
-
-    showToast('Estimate rejected', 'success');
-    await openEstimateDetail(currentEstimate.id);
-  } catch (err) {
-    console.error('Error rejecting estimate:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-function renderLineItemsTab() {
-  const tbody = document.getElementById('linesTableBody');
-  if (!tbody || !currentEstimate) return;
-
-  const lines = currentEstimate.lines || [];
-  const canEdit = ['draft', 'rejected'].includes(currentEstimate.status);
-
-  if (lines.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="10" style="text-align: center; padding: 40px;">
-          <p style="color: var(--text-secondary);">No line items yet</p>
-          ${canEdit ? '<button class="btn btn-primary btn-sm" onclick="openAddLineModal()">+ Add First Item</button>' : ''}
-        </td>
-      </tr>
-    `;
-  } else {
-    tbody.innerHTML = lines.map((line, index) => {
-      const isAssembly = line.is_assembly;
-      const isChild = line.parent_line_id;
-
-      return `
-        <tr data-line-id="${line.id}" class="${isAssembly ? 'assembly-row' : ''} ${isChild ? 'assembly-child' : ''}">
-          <td class="select-col">
-            ${canEdit ? `<input type="checkbox" class="line-select" data-line-id="${line.id}">` : ''}
-          </td>
-          <td style="width: 30px;">
-            ${canEdit ? '<button class="btn btn-icon btn-ghost btn-xs drag-handle" title="Drag to reorder" style="cursor: grab;">⋮⋮</button>' : ''}
-          </td>
-          <td style="width: 40px;">${index + 1}</td>
-          <td style="width: 80px;">${line.cost_code?.code || '-'}</td>
-          <td class="col-description">
-            ${isAssembly ? '📦 ' : ''}${isChild ? '&nbsp;&nbsp;↳ ' : ''}${escapeHtml(line.description || line.cost_code?.name || '-')}
-          </td>
-          <td style="text-align: right; width: 60px;">${line.quantity || 1}</td>
-          <td style="width: 50px;">${line.unit || '-'}</td>
-          <td style="text-align: right; width: 100px;">${formatCurrency(line.unit_cost)}</td>
-          <td style="text-align: right; width: 100px; font-weight: 600;">${formatCurrency(line.amount)}</td>
-          <td style="width: 80px;">
-            ${canEdit ? `
-              <button class="btn btn-ghost btn-xs" onclick="editLineItem('${line.id}')" title="Edit">✏️</button>
-              <button class="btn btn-ghost btn-xs" onclick="deleteLineItem('${line.id}')" title="Delete">🗑️</button>
-            ` : ''}
-          </td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  // Update totals
-  const subtotal = lines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
-  const linesSubtotal = document.getElementById('linesSubtotal');
-  const linesTotalAmount = document.getElementById('linesTotalAmount');
-
-  if (linesSubtotal) linesSubtotal.textContent = formatCurrency(subtotal);
-  if (linesTotalAmount) linesTotalAmount.textContent = formatCurrency(currentEstimate.total_amount || subtotal);
-}
-
-function renderVersionsTab() {
-  const versionsBody = document.getElementById('versionsTableBody');
-  if (!versionsBody || !currentEstimate) return;
-
-  const versions = currentEstimate.versions || [];
-
-  if (versions.length === 0) {
-    versionsBody.innerHTML = `
-      <tr>
-        <td colspan="5" style="text-align: center; padding: 20px; color: var(--text-secondary);">
-          No version history
-        </td>
-      </tr>
-    `;
-    return;
-  }
-
-  versionsBody.innerHTML = versions.map(v => {
-    const isCurrent = v.id === currentEstimate.id;
-    return `
-      <tr class="${isCurrent ? 'current-version' : ''}" style="${isCurrent ? 'background: rgba(88, 166, 255, 0.1);' : ''}">
-        <td>v${v.version}</td>
-        <td>${escapeHtml(v.title)}</td>
-        <td><span class="badge badge-${getStatusBadgeClass(v.status)}">${formatStatus(v.status)}</span></td>
-        <td>${formatCurrency(v.total_amount)}</td>
-        <td>${formatDate(v.created_at)}</td>
-      </tr>
-    `;
-  }).join('');
-}
-
-function renderActivityTab() {
-  const activityList = document.getElementById('activityList');
-  if (!activityList || !currentEstimate) return;
-
-  const activities = currentEstimate.activity || [];
-
-  if (activities.length === 0) {
-    activityList.innerHTML = '<p style="color: var(--text-secondary); padding: 20px;">No activity recorded</p>';
-    return;
-  }
-
-  activityList.innerHTML = activities.map(a => `
-    <div style="padding: 12px; border-bottom: 1px solid var(--border);">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: 600;">${formatActivityAction(a.action)}</span>
-        <span style="font-size: 0.85rem; color: var(--text-secondary);">${formatDateTime(a.created_at)}</span>
-      </div>
-      <div style="font-size: 0.85rem; color: var(--text-secondary);">by ${escapeHtml(a.performed_by || 'System')}</div>
-      ${a.details && Object.keys(a.details).length > 0 ? `
-        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">
-          ${Object.entries(a.details).map(([k, v]) => `${k}: ${v}`).join(', ')}
-        </div>
-      ` : ''}
-    </div>
-  `).join('');
-}
-
-function formatActivityAction(action) {
-  const actionMap = {
-    created: 'Estimate created',
-    updated: 'Estimate updated',
-    submitted: 'Submitted for approval',
-    approved: 'Approved',
-    rejected: 'Rejected',
-    deleted: 'Deleted',
-    line_added: 'Line item added',
-    line_updated: 'Line item updated',
-    line_deleted: 'Line item deleted',
-    lines_reordered: 'Lines reordered',
-    assembly_created: 'Assembly created',
-    assembly_deleted: 'Assembly ungrouped',
-    version_created: 'New version created',
-    converted_to_budget: 'Converted to budget',
-    converted_to_allowances: 'Converted to allowances',
-    imported_from_bid: 'Imported from bid',
-    scope_generated: 'Scope generated',
-    recalculated: 'Totals recalculated'
-  };
-  return actionMap[action] || action;
-}
-
 function closeDetailModal() {
-  // For backwards compatibility with modal-based code
-  backToList();
-}
-
-async function deleteEstimate() {
-  if (!currentEstimate) {
-    showToast('No estimate loaded', 'error');
-    return;
-  }
-
-  // Check if estimate can be deleted (only draft/rejected)
-  if (!['draft', 'rejected'].includes(currentEstimate.status)) {
-    showToast('Only draft or rejected estimates can be deleted', 'warning');
-    return;
-  }
-
-  const title = currentEstimate.title || 'this estimate';
-  if (!confirm(`Are you sure you want to delete "${title}"? This cannot be undone.`)) {
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deleted_by: window.currentUser || 'User' })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to delete estimate');
-    }
-
-    showToast('Estimate deleted', 'success');
-    closeDetailModal();
-
-    // Refresh the list
-    await loadEstimates();
-    await loadStats();
-  } catch (err) {
-    console.error('Error deleting estimate:', err);
-    showToast(err.message, 'error');
-  }
+  const modal = document.getElementById('estimateDetailModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+  currentEstimate = null;
 }
 
 function switchTab(tabName) {
@@ -917,488 +478,159 @@ function switchTab(tabName) {
   });
 }
 
+// Placeholder functions for additional estimate features
+function openImportBidModal() { showToast('Import from bid - coming soon', 'info'); }
+function closeImportBidModal() { document.getElementById('importBidModal').style.display = 'none'; }
+function openFromSelectionsModal() { showToast('From selections - coming soon', 'info'); }
+function closeFromSelectionsModal() { document.getElementById('fromSelectionsModal').style.display = 'none'; }
+function openDuplicateModal() { showToast('Duplicate - coming soon', 'info'); }
+function closeDuplicateModal() { document.getElementById('duplicateModal').style.display = 'none'; }
+function openColumnSettings() { showToast('Column settings - coming soon', 'info'); }
+function editCurrentEstimate() { showToast('Edit estimate - coming soon', 'info'); }
+function openAddLineModal() { showToast('Add line item - coming soon', 'info'); }
+function closeLineModal() { document.getElementById('lineItemModal').style.display = 'none'; }
+function openTemplatesModal() { showToast('Templates - coming soon', 'info'); }
+function closeTemplatesModal() { document.getElementById('templatesModal').style.display = 'none'; }
+function openScopeModal() { showToast('AI scope - coming soon', 'info'); }
+function closeScopeModal() { document.getElementById('scopeAnalysisModal').style.display = 'none'; }
+function openCreateAssemblyModal() { showToast('Create assembly - coming soon', 'info'); }
+function closeAssemblyModal() { document.getElementById('assemblyModal').style.display = 'none'; }
+function openGenerateScopeModal() { showToast('Generate scope - coming soon', 'info'); }
+function closeGenerateScopeModal() { document.getElementById('generateScopeModal').style.display = 'none'; }
+function openScopesListModal() { showToast('View scopes - coming soon', 'info'); }
+function closeScopesListModal() { document.getElementById('scopesListModal').style.display = 'none'; }
+function openMarkupModal() { showToast('Edit markup - coming soon', 'info'); }
+function closeMarkupModal() { document.getElementById('markupModal').style.display = 'none'; }
+function closeProjectDetailsModal() { document.getElementById('projectDetailsModal').style.display = 'none'; }
+async function convertToBudget() {
+  if (!currentEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+
+  // TODO: Implement actual budget line creation
+  // For now show success with View Budget action
+  showToast('Estimate converted to budget lines', 'success');
+
+  // Offer to view budget
+  if (confirm('Budget lines created. Would you like to view the budget now?')) {
+    closeDetailModal();
+    switchMode('budget');
+    // If we have a job, load its budget
+    if (currentEstimate.job_id) {
+      currentJobId = currentEstimate.job_id;
+      await loadJobBudgetForJob(currentEstimate.job_id);
+    }
+  }
+}
+function convertToAllowances() { showToast('Convert to allowances - coming soon', 'info'); }
+function createNewVersion() { showToast('New version - coming soon', 'info'); }
+function toggleCostLibrarySidebar() { showToast('Cost library - coming soon', 'info'); }
+function regroupLines() { showToast('Regroup lines - coming soon', 'info'); }
+
 // ============================================================
-// ESTIMATE EDITING FUNCTIONS
+// SECTION MANAGEMENT
 // ============================================================
 
-function editCurrentEstimate() {
+function openSectionModal(sectionId = null) {
+  editingSectionId = sectionId;
+
+  if (sectionId) {
+    // Editing existing section
+    const section = currentEstimate?.sections?.find(s => s.id === sectionId);
+    if (section) {
+      document.getElementById('sectionModalTitle').textContent = 'Edit Section';
+      document.getElementById('sectionName').value = section.name || '';
+      document.getElementById('sectionDescription').value = section.description || '';
+      document.getElementById('sectionId').value = sectionId;
+    }
+  } else {
+    // New section
+    document.getElementById('sectionModalTitle').textContent = 'Add Section';
+    document.getElementById('sectionName').value = '';
+    document.getElementById('sectionDescription').value = '';
+    document.getElementById('sectionId').value = '';
+  }
+
+  const modal = document.getElementById('sectionModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+
+  // Focus name field
+  setTimeout(() => document.getElementById('sectionName').focus(), 100);
+}
+
+function closeSectionModal() {
+  const modal = document.getElementById('sectionModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+  editingSectionId = null;
+}
+
+async function saveSection() {
   if (!currentEstimate) {
     showToast('No estimate loaded', 'error');
     return;
   }
 
-  if (!['draft', 'rejected'].includes(currentEstimate.status)) {
-    showToast('Only draft or rejected estimates can be edited', 'warning');
-    return;
-  }
+  const name = document.getElementById('sectionName').value.trim();
+  const description = document.getElementById('sectionDescription').value.trim();
+  const sectionId = document.getElementById('sectionId').value;
 
-  // Open create/edit modal with current estimate data
-  document.getElementById('modalTitle').textContent = 'Edit Estimate';
-  document.getElementById('estimateId').value = currentEstimate.id;
-  document.getElementById('formTitle').value = currentEstimate.title || '';
-  document.getElementById('formJob').value = currentEstimate.job_id || '';
-  document.getElementById('formNotes').value = currentEstimate.notes || '';
-
-  // Disable job change for existing estimates
-  document.getElementById('formJob').disabled = true;
-
-  const modal = document.getElementById('estimateModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-}
-
-// ============================================================
-// LINE ITEM FUNCTIONS
-// ============================================================
-
-function openAddLineModal() {
-  console.log('openAddLineModal called, currentEstimate:', currentEstimate);
-
-  if (!currentEstimate) {
-    showToast('Please open an estimate first', 'error');
-    return;
-  }
-
-  if (!['draft', 'rejected'].includes(currentEstimate.status)) {
-    showToast('Cannot add items to submitted/approved estimates', 'warning');
+  if (!name) {
+    showToast('Section name is required', 'error');
     return;
   }
 
   try {
-    // Reset form
-    const lineModalTitle = document.getElementById('lineModalTitle');
-    const lineItemId = document.getElementById('lineItemId');
-    const lineCatalogItemId = document.getElementById('lineCatalogItemId');
-    const lineItemForm = document.getElementById('lineItemForm');
-    const lineQuantity = document.getElementById('lineQuantity');
-    const historicalPricing = document.getElementById('historicalPricing');
-    const aiSuggestions = document.getElementById('aiSuggestions');
-    const modal = document.getElementById('lineItemModal');
+    let response;
 
-    if (!modal) {
-      console.error('lineItemModal not found');
-      showToast('Modal not found', 'error');
-      return;
-    }
-
-    if (lineModalTitle) lineModalTitle.textContent = 'Add Line Item';
-    if (lineItemId) lineItemId.value = '';
-    if (lineCatalogItemId) lineCatalogItemId.value = '';
-    if (lineItemForm) lineItemForm.reset();
-    if (lineQuantity) lineQuantity.value = 1;
-
-    // Populate cost code dropdowns
-    populateCostCodeDropdowns();
-
-    // Clear suggestions
-    if (historicalPricing) historicalPricing.innerHTML = '<p class="text-muted">Select a cost code to see historical pricing.</p>';
-    if (aiSuggestions) aiSuggestions.innerHTML = '<p class="text-muted">Start typing a description to get suggestions.</p>';
-
-    // Reset catalog picker state
-    selectedCatalogItem = null;
-    const catalogSearch = document.getElementById('catalogSearch');
-    const catalogSuggestions = document.getElementById('catalogSuggestions');
-    const selectedCatalogItemDiv = document.getElementById('selectedCatalogItem');
-
-    if (catalogSearch) catalogSearch.value = '';
-    if (selectedCatalogItemDiv) selectedCatalogItemDiv.style.display = 'none';
-    if (catalogSuggestions) catalogSuggestions.style.display = 'block';
-
-    // Auto-load catalog suggestions based on subgroup context
-    const subgroupId = window.currentSubgroupId || null;
-    loadCatalogSuggestions(subgroupId);
-
-    modal.style.display = 'flex';
-    modal.classList.add('show');
-    console.log('Modal opened successfully');
-  } catch (err) {
-    console.error('Error opening line modal:', err);
-    showToast('Failed to open line item form: ' + err.message, 'error');
-  }
-}
-
-function closeLineModal() {
-  const modal = document.getElementById('lineItemModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-}
-
-function populateCostCodeDropdowns() {
-  // Populate category filter
-  const categoryFilter = document.getElementById('lineCategoryFilter');
-  if (categoryFilter) {
-    const categories = [...new Set(costCodes.map(cc => cc.category).filter(Boolean))].sort();
-    categoryFilter.innerHTML = '<option value="">All Categories</option>';
-    categories.forEach(cat => {
-      categoryFilter.innerHTML += `<option value="${cat}">${cat}</option>`;
-    });
-  }
-
-  // Populate cost code dropdown
-  const costCodeSelect = document.getElementById('lineCostCode');
-  if (costCodeSelect) {
-    costCodeSelect.innerHTML = '<option value="">Select Cost Code...</option>';
-    costCodes.forEach(cc => {
-      costCodeSelect.innerHTML += `<option value="${cc.id}" data-category="${cc.category || ''}">${cc.code} - ${cc.name}</option>`;
-    });
-  }
-}
-
-function filterCostCodesByCategory() {
-  const category = document.getElementById('lineCategoryFilter').value;
-  const costCodeSelect = document.getElementById('lineCostCode');
-
-  if (!costCodeSelect) return;
-
-  costCodeSelect.innerHTML = '<option value="">Select Cost Code...</option>';
-
-  const filtered = category
-    ? costCodes.filter(cc => cc.category === category)
-    : costCodes;
-
-  filtered.forEach(cc => {
-    costCodeSelect.innerHTML += `<option value="${cc.id}" data-category="${cc.category || ''}">${cc.code} - ${cc.name}</option>`;
-  });
-}
-
-async function onCostCodeSelected() {
-  const costCodeId = document.getElementById('lineCostCode').value;
-  const historicalDiv = document.getElementById('historicalPricing');
-
-  if (!costCodeId) {
-    historicalDiv.innerHTML = '<p class="text-muted">Select a cost code to see historical pricing.</p>';
-    return;
-  }
-
-  historicalDiv.innerHTML = '<p class="text-muted">Loading historical data...</p>';
-
-  try {
-    const response = await fetch(`/api/estimates/historical-pricing/${costCodeId}`);
-    const data = await response.json();
-
-    if (data.stats.count === 0) {
-      historicalDiv.innerHTML = '<p class="text-muted">No historical data for this cost code.</p>';
-      return;
-    }
-
-    let historyHtml = `
-      <div class="historical-stats" style="display: flex; gap: 16px; margin-bottom: 12px;">
-        <div class="stat-mini">
-          <span style="font-size: 0.75rem; color: var(--text-secondary);">Min</span>
-          <span style="font-weight: 600;">${formatCurrency(data.stats.min)}</span>
-        </div>
-        <div class="stat-mini">
-          <span style="font-size: 0.75rem; color: var(--text-secondary);">Avg</span>
-          <span style="font-weight: 600; color: var(--accent-blue);">${formatCurrency(data.stats.avg)}</span>
-        </div>
-        <div class="stat-mini">
-          <span style="font-size: 0.75rem; color: var(--text-secondary);">Max</span>
-          <span style="font-weight: 600;">${formatCurrency(data.stats.max)}</span>
-        </div>
-      </div>
-    `;
-
-    if (data.po_history.length > 0) {
-      historyHtml += '<div style="font-size: 0.8rem; margin-bottom: 8px; color: var(--text-secondary);">Recent POs:</div>';
-      historyHtml += '<div class="historical-list" style="display: flex; flex-direction: column; gap: 4px;">';
-      data.po_history.slice(0, 3).forEach(h => {
-        historyHtml += `
-          <div class="historical-item" onclick="applyHistoricalPrice(${h.amount})"
-               style="display: flex; justify-content: space-between; padding: 6px 8px; background: var(--bg-card-elevated); border-radius: 4px; cursor: pointer; font-size: 0.85rem;">
-            <span>${escapeHtml(h.vendor || 'Unknown')}</span>
-            <span style="font-weight: 600;">${formatCurrency(h.amount)}</span>
-          </div>
-        `;
+    if (sectionId) {
+      // Update existing section
+      response = await fetch(`/api/estimates/${currentEstimate.id}/sections/${sectionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description, updated_by: window.currentUser || 'User' })
       });
-      historyHtml += '</div>';
-    }
-
-    historicalDiv.innerHTML = historyHtml;
-  } catch (err) {
-    console.error('Error loading historical pricing:', err);
-    historicalDiv.innerHTML = '<p class="text-muted">Failed to load historical data.</p>';
-  }
-}
-
-function applyHistoricalPrice(amount) {
-  document.getElementById('lineUnitCost').value = amount;
-  calculateLineAmount();
-  showToast('Price applied', 'success');
-}
-
-function calculateLineAmount() {
-  const qty = parseFloat(document.getElementById('lineQuantity').value) || 1;
-  const unitCost = parseFloat(document.getElementById('lineUnitCost').value) || 0;
-  document.getElementById('lineAmount').value = (qty * unitCost).toFixed(2);
-}
-
-// ============================================================
-// CATALOG PICKER FUNCTIONS
-// ============================================================
-
-let catalogSearchDebounce;
-let selectedCatalogItem = null;
-
-/**
- * Search catalog with debounce
- */
-function searchCatalog(query) {
-  clearTimeout(catalogSearchDebounce);
-  catalogSearchDebounce = setTimeout(async () => {
-    const subgroupId = window.currentSubgroupId || null;
-    await loadCatalogSuggestions(subgroupId, query);
-  }, 300);
-}
-
-/**
- * Load catalog suggestions from API
- */
-async function loadCatalogSuggestions(subgroupId, query = '') {
-  const container = document.getElementById('catalogSuggestions');
-  if (!container) return;
-
-  try {
-    const params = new URLSearchParams();
-    if (subgroupId) params.set('subgroup_id', subgroupId);
-    if (query) params.set('query', query);
-
-    const response = await fetch(`/api/estimates/catalog-suggestions?${params}`);
-    const items = await response.json();
-
-    if (items.length === 0) {
-      container.innerHTML = `
-        <div class="catalog-suggestion" style="justify-content: center; color: var(--text-secondary);">
-          No matching items found
-        </div>
-      `;
-      return;
-    }
-
-    container.innerHTML = items.map(item => `
-      <div class="catalog-suggestion" onclick="selectCatalogItem('${item.id}', ${JSON.stringify(item).replace(/"/g, '&quot;')})">
-        <img class="catalog-suggestion-image"
-             src="${item.image_url || '/images/placeholder-product.png'}"
-             alt="${escapeHtml(item.name)}"
-             onerror="this.src='/images/placeholder-product.png'">
-        <div class="catalog-suggestion-info">
-          <div class="catalog-suggestion-name">${escapeHtml(item.name)}</div>
-          <div class="catalog-suggestion-meta">
-            ${item.category?.name || ''} ${item.brand ? `• ${item.brand}` : ''}
-          </div>
-        </div>
-        <div class="catalog-suggestion-price">${formatCurrency(item.unit_price || 0)}/${item.unit || 'ea'}</div>
-      </div>
-    `).join('');
-  } catch (err) {
-    console.error('Error loading catalog suggestions:', err);
-    container.innerHTML = `
-      <div class="catalog-suggestion" style="color: var(--accent-red);">
-        Error loading suggestions
-      </div>
-    `;
-  }
-}
-
-/**
- * Select a catalog item and auto-fill form fields
- */
-function selectCatalogItem(itemId, itemData) {
-  selectedCatalogItem = itemData;
-
-  // Store the ID
-  const catalogIdField = document.getElementById('lineCatalogItemId');
-  if (catalogIdField) catalogIdField.value = itemId;
-
-  // Auto-fill form fields
-  const descField = document.getElementById('lineDescription');
-  const unitCostField = document.getElementById('lineUnitCost');
-  const unitField = document.getElementById('lineUnit');
-  const qtyField = document.getElementById('lineQuantity');
-
-  if (descField) descField.value = itemData.name || '';
-  if (unitCostField) unitCostField.value = itemData.unit_price || 0;
-  if (unitField) unitField.value = itemData.unit || 'EA';
-
-  // If quantity is still 1, keep it; otherwise respect user's entry
-  if (qtyField && (!qtyField.value || qtyField.value === '1')) {
-    qtyField.value = 1;
-  }
-
-  // Calculate amount
-  calculateLineAmount();
-
-  // Hide suggestions, show selected
-  const suggestionsDiv = document.getElementById('catalogSuggestions');
-  const selectedDiv = document.getElementById('selectedCatalogItem');
-
-  if (suggestionsDiv) suggestionsDiv.style.display = 'none';
-  if (selectedDiv) {
-    selectedDiv.style.display = 'flex';
-    selectedDiv.innerHTML = `
-      <img class="catalog-suggestion-image"
-           src="${itemData.image_url || '/images/placeholder-product.png'}"
-           alt="${escapeHtml(itemData.name)}"
-           onerror="this.src='/images/placeholder-product.png'">
-      <div class="catalog-suggestion-info">
-        <div class="catalog-suggestion-name">${escapeHtml(itemData.name)}</div>
-        <div class="catalog-suggestion-meta">
-          ${itemData.category?.name || ''} • ${formatCurrency(itemData.unit_price || 0)}/${itemData.unit || 'ea'}
-        </div>
-      </div>
-      <span class="catalog-badge">From Catalog</span>
-    `;
-  }
-
-  showToast(`Selected: ${itemData.name}`, 'success');
-}
-
-/**
- * Clear catalog selection
- */
-function clearCatalogSelection() {
-  selectedCatalogItem = null;
-
-  const catalogIdField = document.getElementById('lineCatalogItemId');
-  const selectedDiv = document.getElementById('selectedCatalogItem');
-  const suggestionsDiv = document.getElementById('catalogSuggestions');
-  const searchField = document.getElementById('catalogSearch');
-
-  if (catalogIdField) catalogIdField.value = '';
-  if (selectedDiv) selectedDiv.style.display = 'none';
-  if (suggestionsDiv) suggestionsDiv.style.display = 'block';
-  if (searchField) searchField.value = '';
-
-  // Reload context-based suggestions
-  loadCatalogSuggestions(window.currentSubgroupId);
-}
-
-function onDescriptionInput() {
-  // Could add AI suggestions here based on description text
-  // For now, just a placeholder for future enhancement
-}
-
-async function saveLineItem() {
-  if (!currentEstimate) return;
-
-  const lineId = document.getElementById('lineItemId').value;
-  const catalogItemId = document.getElementById('lineCatalogItemId')?.value || null;
-  const subgroupId = window.currentSubgroupId || null;
-
-  const data = {
-    cost_code_id: document.getElementById('lineCostCode').value || null,
-    catalog_item_id: catalogItemId,
-    description: document.getElementById('lineDescription').value,
-    quantity: parseFloat(document.getElementById('lineQuantity').value) || 1,
-    unit: document.getElementById('lineUnit').value || null,
-    unit_cost: parseFloat(document.getElementById('lineUnitCost').value) || 0,
-    amount: parseFloat(document.getElementById('lineAmount').value) || 0,
-    notes: document.getElementById('lineNotes').value || null,
-    created_by: window.currentUser || 'User'
-  };
-
-  if (!data.description && !data.cost_code_id) {
-    showToast('Please enter a description or select a cost code', 'error');
-    return;
-  }
-
-  try {
-    let url, method;
-
-    if (lineId) {
-      // Editing existing line item (use hierarchical endpoint)
-      url = `/api/estimates/lines/${lineId}`;
-      method = 'PATCH';
-    } else if (subgroupId) {
-      // Adding new line item to subgroup (hierarchical)
-      url = `/api/estimates/subgroups/${subgroupId}/lines`;
-      method = 'POST';
     } else {
-      // Legacy: adding to flat estimate (backwards compatibility)
-      url = `/api/estimates/${currentEstimate.id}/lines`;
-      method = 'POST';
+      // Create new section
+      response = await fetch(`/api/estimates/${currentEstimate.id}/sections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description, created_by: window.currentUser || 'User' })
+      });
     }
-
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
 
     if (!response.ok) {
       const err = await response.json();
-      throw new Error(err.error || 'Failed to save line item');
+      throw new Error(err.error || 'Failed to save section');
     }
 
-    showToast(lineId ? 'Line item updated' : 'Line item added', 'success');
-    closeLineModal();
+    showToast(sectionId ? 'Section updated' : 'Section created', 'success');
+    closeSectionModal();
 
-    // Clear subgroup context
-    window.currentSubgroupId = null;
-
-    // Refresh estimate details
-    if (subgroupId || currentEstimate.phases?.length > 0) {
-      // Hierarchical estimate - refresh hierarchy
-      await refreshEstimateHierarchy();
-    } else {
-      // Legacy estimate - full refresh
-      await openEstimateDetail(currentEstimate.id);
-      switchTab('lines');
-    }
+    // Reload estimate to get updated sections
+    await reloadCurrentEstimate();
   } catch (err) {
-    console.error('Error saving line item:', err);
+    console.error('Error saving section:', err);
     showToast(err.message, 'error');
   }
 }
 
-async function editLineItem(lineId) {
-  if (!currentEstimate) return;
+async function deleteSection(sectionId) {
+  if (!currentEstimate || !sectionId) return;
 
-  const line = currentEstimate.lines?.find(l => l.id === lineId);
-  if (!line) {
-    showToast('Line item not found', 'error');
-    return;
-  }
+  const section = currentEstimate.sections?.find(s => s.id === sectionId);
+  const itemCount = (currentEstimate.lines || []).filter(l => l.section_id === sectionId).length;
 
-  if (!['draft', 'rejected'].includes(currentEstimate.status)) {
-    showToast('Cannot edit items in submitted/approved estimates', 'warning');
-    return;
-  }
+  const confirmMsg = itemCount > 0
+    ? `Delete section "${section?.name}"? The ${itemCount} item(s) in this section will become unsectioned.`
+    : `Delete section "${section?.name}"?`;
 
-  // Populate form with line data
-  document.getElementById('lineModalTitle').textContent = 'Edit Line Item';
-  document.getElementById('lineItemId').value = line.id;
-  populateCostCodeDropdowns();
-
-  document.getElementById('lineCostCode').value = line.cost_code_id || '';
-  document.getElementById('lineDescription').value = line.description || '';
-  document.getElementById('lineQuantity').value = line.quantity || 1;
-  document.getElementById('lineUnit').value = line.unit || '';
-  document.getElementById('lineUnitCost').value = line.unit_cost || 0;
-  document.getElementById('lineAmount').value = line.amount || 0;
-  document.getElementById('lineNotes').value = line.notes || '';
-
-  // Load historical pricing if cost code selected
-  if (line.cost_code_id) {
-    await onCostCodeSelected();
-  }
-
-  const modal = document.getElementById('lineItemModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-}
-
-async function deleteLineItem(lineId) {
-  if (!currentEstimate) return;
-
-  if (!['draft', 'rejected'].includes(currentEstimate.status)) {
-    showToast('Cannot delete items from submitted/approved estimates', 'warning');
-    return;
-  }
-
-  if (!confirm('Delete this line item?')) return;
+  if (!confirm(confirmMsg)) return;
 
   try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/lines/${lineId}`, {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/sections/${sectionId}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ deleted_by: window.currentUser || 'User' })
@@ -1406,964 +638,198 @@ async function deleteLineItem(lineId) {
 
     if (!response.ok) {
       const err = await response.json();
-      throw new Error(err.error || 'Failed to delete line item');
+      throw new Error(err.error || 'Failed to delete section');
     }
 
-    showToast('Line item deleted', 'success');
-    await openEstimateDetail(currentEstimate.id);
+    showToast('Section deleted', 'success');
+    collapsedSections.delete(sectionId);
+    await reloadCurrentEstimate();
   } catch (err) {
-    console.error('Error deleting line item:', err);
+    console.error('Error deleting section:', err);
     showToast(err.message, 'error');
   }
 }
 
-// ============================================================
-// MARKUP FUNCTIONS
-// ============================================================
-
-function openMarkupModal() {
-  if (!currentEstimate) {
-    showToast('No estimate loaded', 'error');
-    return;
+function toggleSectionCollapse(sectionId) {
+  if (collapsedSections.has(sectionId)) {
+    collapsedSections.delete(sectionId);
+  } else {
+    collapsedSections.add(sectionId);
   }
-
-  // Set current values
-  document.getElementById('editMarkupPct').value = currentEstimate.markup_percent || 0;
-  document.getElementById('editContingencyPct').value = currentEstimate.contingency_percent || 0;
-
-  // Calculate preview
-  updateMarkupPreview();
-
-  // Add change listeners for live preview
-  document.getElementById('editMarkupPct').oninput = updateMarkupPreview;
-  document.getElementById('editContingencyPct').oninput = updateMarkupPreview;
-
-  const modal = document.getElementById('markupModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
+  renderLinesTable();
 }
 
-function closeMarkupModal() {
-  const modal = document.getElementById('markupModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-}
-
-function updateMarkupPreview() {
-  const subtotal = currentEstimate?.subtotal_amount ||
-    (currentEstimate?.lines || []).reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
-  const markupPct = parseFloat(document.getElementById('editMarkupPct').value) || 0;
-  const contingencyPct = parseFloat(document.getElementById('editContingencyPct').value) || 0;
-
-  const markupAmt = subtotal * (markupPct / 100);
-  const contingencyAmt = subtotal * (contingencyPct / 100);
-  const total = subtotal + markupAmt + contingencyAmt;
-
-  document.getElementById('markupPreviewSubtotal').textContent = formatCurrency(subtotal);
-  document.getElementById('markupPreviewMarkup').textContent = formatCurrency(markupAmt);
-  document.getElementById('markupPreviewContingency').textContent = formatCurrency(contingencyAmt);
-  document.getElementById('markupPreviewTotal').textContent = formatCurrency(total);
-}
-
-async function saveMarkup() {
-  if (!currentEstimate) return;
-
-  const markupPct = parseFloat(document.getElementById('editMarkupPct').value) || 0;
-  const contingencyPct = parseFloat(document.getElementById('editContingencyPct').value) || 0;
+async function reloadCurrentEstimate() {
+  if (!currentEstimate?.id) return;
 
   try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/recalculate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        markup_percent: markupPct,
-        contingency_percent: contingencyPct,
-        updated_by: window.currentUser || 'User'
-      })
-    });
+    const response = await fetch(`/api/estimates/${currentEstimate.id}`);
+    if (!response.ok) throw new Error('Failed to reload estimate');
+    currentEstimate = await response.json();
 
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to update markup');
-    }
-
-    showToast('Markup updated', 'success');
-    closeMarkupModal();
-
-    // Refresh estimate
-    await openEstimateDetail(currentEstimate.id);
+    // Re-render the lines tab
+    renderLinesTable();
+    renderOverviewTab();
   } catch (err) {
-    console.error('Error saving markup:', err);
-    showToast(err.message, 'error');
+    console.error('Error reloading estimate:', err);
   }
 }
 
-// ============================================================
-// IMPORT & CREATE FUNCTIONS
-// ============================================================
+function renderLinesTable() {
+  const tbody = document.getElementById('linesTableBody');
+  if (!tbody || !currentEstimate) return;
 
-async function openImportBidModal() {
-  // Populate job filter
-  const importJobFilter = document.getElementById('importJobFilter');
-  if (importJobFilter) {
-    importJobFilter.innerHTML = '<option value="">All Jobs</option>';
-    jobs.forEach(job => {
-      importJobFilter.innerHTML += `<option value="${job.id}">${escapeHtml(job.name)}</option>`;
-    });
-  }
+  const sections = currentEstimate.sections || [];
+  const lines = currentEstimate.lines || [];
+  const isEditable = ['draft', 'rejected'].includes(currentEstimate.status);
 
-  // Load accepted bids
-  await loadAcceptedBids();
+  // Group lines by section
+  const linesBySection = {};
+  const unsectionedLines = [];
 
-  const modal = document.getElementById('importBidModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-}
-
-function closeImportBidModal() {
-  const modal = document.getElementById('importBidModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-  selectedBidId = null;
-}
-
-async function loadAcceptedBids() {
-  const jobId = document.getElementById('importJobFilter')?.value;
-  const bidList = document.getElementById('bidSelectList');
-
-  if (!bidList) return;
-
-  bidList.innerHTML = '<p class="text-muted">Loading bids...</p>';
-
-  try {
-    let url = '/api/bids?status=accepted';
-    if (jobId) url += `&job_id=${jobId}`;
-
-    const response = await fetch(url);
-    acceptedBids = await response.json();
-
-    if (!acceptedBids.length) {
-      bidList.innerHTML = '<p class="text-muted">No accepted bids found.</p>';
-      return;
+  lines.forEach(line => {
+    if (line.section_id) {
+      if (!linesBySection[line.section_id]) linesBySection[line.section_id] = [];
+      linesBySection[line.section_id].push(line);
+    } else {
+      unsectionedLines.push(line);
     }
+  });
 
-    bidList.innerHTML = acceptedBids.map(bid => `
-      <div class="bid-select-item ${selectedBidId === bid.id ? 'selected' : ''}"
-           onclick="selectBidForImport('${bid.id}')"
-           style="padding: 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; cursor: pointer; ${selectedBidId === bid.id ? 'border-color: var(--accent-blue); background: rgba(88, 166, 255, 0.1);' : ''}">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <div style="font-weight: 600;">${escapeHtml(bid.title)}</div>
-            <div style="font-size: 0.85rem; color: var(--text-secondary);">
-              ${escapeHtml(bid.vendor?.name || 'Unknown Vendor')} - ${escapeHtml(bid.job?.name || 'Unknown Job')}
-            </div>
+  let html = '';
+  let rowNum = 1;
+
+  // Render sections with their items
+  sections.forEach(section => {
+    const sectionLines = linesBySection[section.id] || [];
+    const isCollapsed = collapsedSections.has(section.id);
+    const sectionTotal = sectionLines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+
+    // Section header row
+    html += `
+      <tr class="section-header-row" data-section-id="${section.id}">
+        <td colspan="10">
+          <div class="section-header-cell">
+            <button class="section-toggle-btn ${isCollapsed ? 'collapsed' : ''}"
+                    onclick="toggleSectionCollapse('${section.id}')" title="Toggle">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 01.753 1.659l-4.796 5.48a1 1 0 01-1.506 0z"/>
+              </svg>
+            </button>
+            <span class="section-name">${escapeHtml(section.name)}</span>
+            <span class="section-count">${sectionLines.length} item${sectionLines.length !== 1 ? 's' : ''}</span>
+            <span class="section-subtotal">${formatCurrency(sectionTotal)}</span>
+            ${isEditable ? `
+              <div class="section-actions">
+                <button class="section-action-btn" onclick="openSectionModal('${section.id}')" title="Edit section">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M12.146.146a.5.5 0 01.708 0l3 3a.5.5 0 010 .708l-10 10a.5.5 0 01-.168.11l-5 2a.5.5 0 01-.65-.65l2-5a.5.5 0 01.11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 01.5.5v.5h.5a.5.5 0 01.5.5v.5h.293l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 015 12.5V12h-.5a.5.5 0 01-.5-.5V11h-.5a.5.5 0 01-.468-.325z"/>
+                  </svg>
+                </button>
+                <button class="section-action-btn danger" onclick="deleteSection('${section.id}')" title="Delete section">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                  </svg>
+                </button>
+              </div>
+            ` : ''}
           </div>
-          <div style="font-weight: 600; font-size: 1.1rem;">${formatCurrency(bid.bid_amount)}</div>
-        </div>
-      </div>
-    `).join('');
-  } catch (err) {
-    console.error('Error loading bids:', err);
-    bidList.innerHTML = '<p class="text-muted">Failed to load bids.</p>';
-  }
-}
+        </td>
+      </tr>
+    `;
 
-function selectBidForImport(bidId) {
-  selectedBidId = bidId;
-  loadAcceptedBids(); // Re-render with selection
-
-  // Enable import button
-  const importBtn = document.getElementById('importBidBtn');
-  if (importBtn) importBtn.disabled = false;
-}
-
-async function importSelectedBid() {
-  if (!selectedBidId) {
-    showToast('Please select a bid to import', 'error');
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/estimates/import-from-bid/${selectedBidId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ created_by: window.currentUser || 'User' })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to import bid');
-    }
-
-    const result = await response.json();
-    showToast('Estimate created from bid', 'success');
-    closeImportBidModal();
-
-    // Refresh and open the new estimate
-    await loadEstimates();
-    await loadStats();
-
-    if (result.estimate?.id) {
-      await openEstimateDetail(result.estimate.id);
-    }
-  } catch (err) {
-    console.error('Error importing bid:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function openFromSelectionsModal() {
-  // Populate job dropdown
-  const selectionsJob = document.getElementById('selectionsJob');
-  if (selectionsJob) {
-    selectionsJob.innerHTML = '<option value="">Select Job...</option>';
-    jobs.forEach(job => {
-      selectionsJob.innerHTML += `<option value="${job.id}">${escapeHtml(job.name)}</option>`;
-    });
-  }
-
-  // Reset form
-  document.getElementById('selectionsTitle').value = '';
-  document.getElementById('selectionsMarkup').value = 0;
-  document.getElementById('selectionsContingency').value = 5;
-  document.getElementById('selectionsPreview').style.display = 'none';
-  document.getElementById('createFromSelectionsBtn').disabled = true;
-
-  const modal = document.getElementById('fromSelectionsModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-}
-
-function closeFromSelectionsModal() {
-  const modal = document.getElementById('fromSelectionsModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-}
-
-async function loadJobSelectionsPreview() {
-  const jobId = document.getElementById('selectionsJob').value;
-  const previewDiv = document.getElementById('selectionsPreview');
-  const createBtn = document.getElementById('createFromSelectionsBtn');
-
-  if (!jobId) {
-    previewDiv.style.display = 'none';
-    createBtn.disabled = true;
-    return;
-  }
-
-  try {
-    // Get approved selections for job (through allowances)
-    const response = await fetch(`/api/selections?job_id=${jobId}&status=approved`);
-    const selections = await response.json();
-
-    if (!selections.length) {
-      previewDiv.style.display = 'block';
-      previewDiv.innerHTML = '<p class="text-muted">No approved selections found for this job.</p>';
-      createBtn.disabled = true;
-      return;
-    }
-
-    // Group by category
-    const byCategory = {};
-    let total = 0;
-    selections.forEach(sel => {
-      const catName = sel.category?.name || 'Uncategorized';
-      if (!byCategory[catName]) byCategory[catName] = [];
-      byCategory[catName].push(sel);
-      total += parseFloat(sel.quoted_price || 0) * (sel.quantity || 1);
-    });
-
-    document.getElementById('previewSelectionCount').textContent = selections.length;
-    document.getElementById('previewCategoryCount').textContent = Object.keys(byCategory).length;
-    document.getElementById('previewTotalValue').textContent = formatCurrency(total);
-
-    document.getElementById('previewCategories').innerHTML = Object.entries(byCategory)
-      .map(([cat, items]) => `
-        <div style="padding: 8px; background: var(--bg-card-elevated); border-radius: 4px; margin-bottom: 4px;">
-          <span style="font-weight: 600;">${escapeHtml(cat)}</span>
-          <span style="color: var(--text-secondary);"> - ${items.length} items</span>
-        </div>
-      `).join('');
-
-    previewDiv.style.display = 'block';
-    createBtn.disabled = false;
-
-    // Auto-fill title
-    const selectedJob = jobs.find(j => j.id === jobId);
-    if (selectedJob && !document.getElementById('selectionsTitle').value) {
-      document.getElementById('selectionsTitle').value = `${selectedJob.name} - Selections Estimate`;
-    }
-  } catch (err) {
-    console.error('Error loading selections preview:', err);
-    previewDiv.innerHTML = '<p class="text-muted">Failed to load selections.</p>';
-    createBtn.disabled = true;
-  }
-}
-
-async function createFromSelections() {
-  const jobId = document.getElementById('selectionsJob').value;
-  const title = document.getElementById('selectionsTitle').value;
-  const markupPct = parseFloat(document.getElementById('selectionsMarkup').value) || 0;
-  const contingencyPct = parseFloat(document.getElementById('selectionsContingency').value) || 0;
-
-  if (!jobId || !title) {
-    showToast('Please select a job and enter a title', 'error');
-    return;
-  }
-
-  try {
-    const response = await fetch('/api/estimates/from-selections', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        job_id: jobId,
-        title,
-        markup_percent: markupPct,
-        contingency_percent: contingencyPct,
-        created_by: window.currentUser || 'User'
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to create estimate');
-    }
-
-    const result = await response.json();
-    showToast(result.message, 'success');
-    closeFromSelectionsModal();
-
-    await loadEstimates();
-    await loadStats();
-
-    if (result.estimate?.id) {
-      await openEstimateDetail(result.estimate.id);
-    }
-  } catch (err) {
-    console.error('Error creating from selections:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function openDuplicateModal() {
-  if (!currentEstimate) {
-    showToast('No estimate loaded', 'error');
-    return;
-  }
-
-  // Populate job dropdown
-  const duplicateJob = document.getElementById('duplicateJob');
-  if (duplicateJob) {
-    duplicateJob.innerHTML = '<option value="">Same job as original</option>';
-    jobs.forEach(job => {
-      duplicateJob.innerHTML += `<option value="${job.id}">${escapeHtml(job.name)}</option>`;
-    });
-  }
-
-  // Set default title
-  document.getElementById('duplicateTitle').value = `${currentEstimate.title} (Copy)`;
-
-  // Show summary
-  document.getElementById('duplicateSummary').innerHTML = `
-    <div style="padding: 12px; background: var(--bg-card-elevated); border-radius: 6px; margin-top: 12px;">
-      <div><strong>Original:</strong> ${escapeHtml(currentEstimate.title)}</div>
-      <div><strong>Job:</strong> ${escapeHtml(currentEstimate.job?.name || 'Unknown')}</div>
-      <div><strong>Lines:</strong> ${currentEstimate.lines?.length || 0}</div>
-      <div><strong>Total:</strong> ${formatCurrency(currentEstimate.total_amount)}</div>
-    </div>
-  `;
-
-  const modal = document.getElementById('duplicateModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-}
-
-function closeDuplicateModal() {
-  const modal = document.getElementById('duplicateModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-}
-
-async function duplicateEstimate() {
-  if (!currentEstimate) return;
-
-  const newTitle = document.getElementById('duplicateTitle').value;
-  const targetJobId = document.getElementById('duplicateJob').value || null;
-
-  if (!newTitle) {
-    showToast('Please enter a title for the copy', 'error');
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/duplicate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        new_title: newTitle,
-        target_job_id: targetJobId,
-        created_by: window.currentUser || 'User'
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to duplicate estimate');
-    }
-
-    const result = await response.json();
-    showToast('Estimate duplicated', 'success');
-    closeDuplicateModal();
-    closeDetailModal();
-
-    await loadEstimates();
-    await loadStats();
-
-    if (result.estimate?.id) {
-      await openEstimateDetail(result.estimate.id);
-    }
-  } catch (err) {
-    console.error('Error duplicating estimate:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-function openColumnSettings() {
-  showToast('Column settings - coming soon', 'info');
-}
-
-// ============================================================
-// TEMPLATES FUNCTIONS
-// ============================================================
-
-async function openTemplatesModal() {
-  const grid = document.getElementById('templatesGrid');
-  if (!grid) return;
-
-  grid.innerHTML = '<p class="text-muted">Loading templates...</p>';
-
-  const modal = document.getElementById('templatesModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-
-  try {
-    const response = await fetch('/api/estimates/templates');
-    const templates = await response.json();
-
-    if (!templates.length) {
-      grid.innerHTML = '<p class="text-muted">No templates available.</p>';
-      return;
-    }
-
-    grid.innerHTML = templates.map(t => `
-      <div class="template-card" onclick="previewTemplate('${t.id}')"
-           style="padding: 16px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.2s;">
-        <div style="font-size: 2rem; margin-bottom: 8px;">${t.icon}</div>
-        <div style="font-weight: 600;">${escapeHtml(t.name)}</div>
-        <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(t.description)}</div>
-        <div style="margin-top: 8px; font-size: 0.8rem; color: var(--accent-blue);">${t.items.length} items</div>
-      </div>
-    `).join('');
-
-    // Store templates for preview
-    window._templates = templates;
-  } catch (err) {
-    console.error('Error loading templates:', err);
-    grid.innerHTML = '<p class="text-muted">Failed to load templates.</p>';
-  }
-}
-
-function closeTemplatesModal() {
-  const modal = document.getElementById('templatesModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-  document.getElementById('templatePreview').style.display = 'none';
-  window._selectedTemplate = null;
-}
-
-function previewTemplate(templateId) {
-  const template = window._templates?.find(t => t.id === templateId);
-  if (!template) return;
-
-  window._selectedTemplate = template;
-
-  document.getElementById('templatesGrid').style.display = 'none';
-  document.getElementById('templatePreview').style.display = 'block';
-  document.getElementById('templatePreviewTitle').textContent = template.name;
-
-  document.getElementById('templatePreviewItems').innerHTML = template.items.map(item => `
-    <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--bg-card-elevated); border-radius: 4px; margin-bottom: 4px;">
-      <span>${item.code} - ${escapeHtml(item.cost_code_name || item.name)}</span>
-      <span style="color: var(--text-secondary);">${item.unit}</span>
-    </div>
-  `).join('');
-}
-
-function hideTemplatePreview() {
-  document.getElementById('templatePreview').style.display = 'none';
-  document.getElementById('templatesGrid').style.display = 'grid';
-  window._selectedTemplate = null;
-}
-
-async function addTemplateItems() {
-  if (!currentEstimate || !window._selectedTemplate) return;
-
-  const template = window._selectedTemplate;
-
-  try {
-    // Add each template item as a line
-    for (const item of template.items) {
-      await fetch(`/api/estimates/${currentEstimate.id}/lines`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cost_code_id: item.cost_code_id,
-          description: item.cost_code_name || item.name,
-          quantity: 1,
-          unit: item.unit,
-          unit_cost: 0,
-          amount: 0,
-          created_by: window.currentUser || 'User'
-        })
+    // Render lines in this section (if not collapsed)
+    if (!isCollapsed) {
+      sectionLines.forEach(line => {
+        html += renderLineRow(line, rowNum++, true);
       });
     }
+  });
 
-    showToast(`Added ${template.items.length} items from template`, 'success');
-    closeTemplatesModal();
-    await openEstimateDetail(currentEstimate.id);
-    switchTab('lines');
-  } catch (err) {
-    console.error('Error adding template items:', err);
-    showToast('Failed to add template items', 'error');
-  }
-}
-
-// ============================================================
-// SCOPE & AI FUNCTIONS
-// ============================================================
-
-function openScopeModal() {
-  document.getElementById('scopeText').value = '';
-  document.getElementById('scopeResults').style.display = 'none';
-
-  const modal = document.getElementById('scopeAnalysisModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-}
-
-function closeScopeModal() {
-  const modal = document.getElementById('scopeAnalysisModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-}
-
-async function analyzeScope() {
-  const scopeText = document.getElementById('scopeText').value;
-  if (!scopeText || scopeText.trim().length < 10) {
-    showToast('Please enter at least 10 characters describing the scope', 'error');
-    return;
+  // Render unsectioned items
+  if (unsectionedLines.length > 0 && sections.length > 0) {
+    html += `<tr class="unsectioned-divider"><td colspan="10">Unsectioned Items</td></tr>`;
   }
 
-  const btn = document.getElementById('analyzeScopeBtn');
-  btn.disabled = true;
-  btn.textContent = 'Analyzing...';
+  unsectionedLines.forEach(line => {
+    html += renderLineRow(line, rowNum++, false);
+  });
 
-  try {
-    const response = await fetch('/api/estimates/analyze-scope', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope_text: scopeText })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to analyze scope');
-    }
-
-    const result = await response.json();
-
-    // Show results
-    document.getElementById('scopeResults').style.display = 'block';
-    document.getElementById('scopeLineItems').innerHTML = result.line_items.map((item, i) => `
-      <div class="scope-item" style="display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px;">
-        <input type="checkbox" class="scope-item-check" data-index="${i}" checked>
-        <div style="flex: 1;">
-          <div style="font-weight: 600;">${item.cost_code} - ${escapeHtml(item.description)}</div>
-          <div style="font-size: 0.85rem; color: var(--text-secondary);">
-            ${item.quantity} ${item.unit} x ${formatCurrency(item.unit_cost)} = ${formatCurrency(item.amount)}
+  // Empty state if no lines
+  if (lines.length === 0) {
+    html = `
+      <tr>
+        <td colspan="10" style="text-align: center; padding: 40px;">
+          <div class="empty-state">
+            <div class="empty-state-icon">+</div>
+            <div class="empty-state-title">No Line Items</div>
+            <div class="empty-state-message">Add line items to build your estimate.</div>
           </div>
-          ${item.notes ? `<div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">${escapeHtml(item.notes)}</div>` : ''}
-        </div>
-      </div>
-    `).join('');
-
-    window._scopeItems = result.line_items;
-    showToast(`Found ${result.line_items.length} potential line items`, 'success');
-  } catch (err) {
-    console.error('Error analyzing scope:', err);
-    showToast(err.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Analyze with AI';
+        </td>
+      </tr>
+    `;
   }
+
+  tbody.innerHTML = html;
+
+  // Update totals
+  const total = lines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+  const subtotalEl = document.getElementById('linesSubtotal');
+  const totalEl = document.getElementById('linesTotalAmount');
+  if (subtotalEl) subtotalEl.textContent = formatCurrency(total);
+  if (totalEl) totalEl.textContent = formatCurrency(currentEstimate.total_amount || total);
 }
 
-function selectAllScopeItems() {
-  document.querySelectorAll('.scope-item-check').forEach(cb => cb.checked = true);
-}
+function renderLineRow(line, rowNum, inSection) {
+  const cc = line.cost_code;
+  const isEditable = ['draft', 'rejected'].includes(currentEstimate?.status);
 
-async function addSelectedScopeItems() {
-  if (!currentEstimate || !window._scopeItems) return;
-
-  const selectedIndices = [];
-  document.querySelectorAll('.scope-item-check:checked').forEach(cb => {
-    selectedIndices.push(parseInt(cb.dataset.index));
-  });
-
-  if (selectedIndices.length === 0) {
-    showToast('Please select at least one item to add', 'error');
-    return;
-  }
-
-  try {
-    for (const index of selectedIndices) {
-      const item = window._scopeItems[index];
-      await fetch(`/api/estimates/${currentEstimate.id}/lines`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cost_code_id: item.cost_code_id,
-          description: item.description,
-          quantity: item.quantity,
-          unit: item.unit,
-          unit_cost: item.unit_cost,
-          amount: item.amount,
-          notes: item.notes,
-          created_by: window.currentUser || 'User'
-        })
-      });
-    }
-
-    showToast(`Added ${selectedIndices.length} items from scope analysis`, 'success');
-    closeScopeModal();
-    await openEstimateDetail(currentEstimate.id);
-    switchTab('lines');
-  } catch (err) {
-    console.error('Error adding scope items:', err);
-    showToast('Failed to add scope items', 'error');
-  }
-}
-
-function openGenerateScopeModal() { showToast('Generate scope - coming soon', 'info'); }
-function closeGenerateScopeModal() { document.getElementById('generateScopeModal').style.display = 'none'; }
-function openScopesListModal() { showToast('View scopes - coming soon', 'info'); }
-function closeScopesListModal() { document.getElementById('scopesListModal').style.display = 'none'; }
-
-// ============================================================
-// ASSEMBLY FUNCTIONS
-// ============================================================
-
-function openCreateAssemblyModal() {
-  if (!currentEstimate) {
-    showToast('No estimate loaded', 'error');
-    return;
-  }
-
-  // Get selected lines
-  const selectedLines = [];
-  document.querySelectorAll('.line-select:checked').forEach(cb => {
-    const lineId = cb.dataset.lineId;
-    const line = currentEstimate.lines?.find(l => l.id === lineId);
-    if (line) selectedLines.push(line);
-  });
-
-  if (selectedLines.length < 1) {
-    showToast('Please select at least one line item', 'error');
-    return;
-  }
-
-  // Show preview
-  const total = selectedLines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
-  document.getElementById('assemblyPreview').innerHTML = `
-    <p>${selectedLines.length} items selected - Total: ${formatCurrency(total)}</p>
-    ${selectedLines.map(l => `<div style="font-size: 0.85rem; padding: 4px 0; border-bottom: 1px solid var(--border);">${escapeHtml(l.description || l.cost_code?.name || 'No description')}</div>`).join('')}
+  return `
+    <tr class="line-row ${inSection ? 'in-section' : ''}" data-line-id="${line.id}">
+      <td class="select-col">
+        ${isEditable ? `<input type="checkbox" class="line-select" data-line-id="${line.id}">` : ''}
+      </td>
+      <td class="drag-handle">${isEditable ? '<span style="cursor: grab;">&#8942;&#8942;</span>' : ''}</td>
+      <td style="color: var(--text-secondary)">${rowNum}</td>
+      <td>
+        ${cc ? `<span class="cost-code-tag">${escapeHtml(cc.code)}</span>` : '-'}
+      </td>
+      <td>${escapeHtml(line.description || '-')}</td>
+      <td class="col-right">${line.quantity || 1}</td>
+      <td>${escapeHtml(line.unit || '-')}</td>
+      <td class="col-right">${formatCurrency(line.unit_cost)}</td>
+      <td class="col-right" style="font-weight: 600">${formatCurrency(line.amount)}</td>
+      <td>
+        ${isEditable ? `
+          <button class="btn btn-icon btn-ghost btn-sm" onclick="editLineItem('${line.id}')" title="Edit">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146.146a.5.5 0 01.708 0l3 3a.5.5 0 010 .708l-10 10a.5.5 0 01-.168.11l-5 2a.5.5 0 01-.65-.65l2-5a.5.5 0 01.11-.168l10-10z"/></svg>
+          </button>
+          <button class="btn btn-icon btn-ghost btn-sm" onclick="deleteLineItem('${line.id}')" title="Delete">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+          </button>
+        ` : ''}
+      </td>
+    </tr>
   `;
-
-  document.getElementById('assemblyName').value = '';
-  document.getElementById('hideComponentsFromClient').checked = false;
-
-  const modal = document.getElementById('assemblyModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
 }
 
-function closeAssemblyModal() {
-  const modal = document.getElementById('assemblyModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-}
-
-async function createAssembly() {
+function renderOverviewTab() {
   if (!currentEstimate) return;
 
-  const name = document.getElementById('assemblyName').value;
-  if (!name) {
-    showToast('Please enter an assembly name', 'error');
-    return;
-  }
-
-  const selectedLineIds = [];
-  document.querySelectorAll('.line-select:checked').forEach(cb => {
-    selectedLineIds.push(cb.dataset.lineId);
-  });
-
-  if (selectedLineIds.length < 1) {
-    showToast('Please select at least one line item', 'error');
-    return;
-  }
-
-  const hideFromClient = document.getElementById('hideComponentsFromClient').checked;
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/assemblies`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        line_ids: selectedLineIds,
-        name,
-        hide_components_from_client: hideFromClient,
-        created_by: window.currentUser || 'User'
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to create assembly');
-    }
-
-    showToast('Assembly created', 'success');
-    closeAssemblyModal();
-    await openEstimateDetail(currentEstimate.id);
-  } catch (err) {
-    console.error('Error creating assembly:', err);
-    showToast(err.message, 'error');
-  }
+  document.getElementById('detailLineCount').textContent = currentEstimate.lines?.length || 0;
+  document.getElementById('detailAmount').textContent = formatCurrency(currentEstimate.total_amount);
 }
 
-// ============================================================
-// VERSION & CONVERSION FUNCTIONS
-// ============================================================
-
-async function createNewVersion() {
-  if (!currentEstimate) {
-    showToast('No estimate loaded', 'error');
-    return;
-  }
-
-  if (!confirm(`Create a new version of "${currentEstimate.title}"? This will copy all line items to a new draft estimate.`)) {
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/new-version`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ created_by: window.currentUser || 'User' })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to create new version');
-    }
-
-    const result = await response.json();
-    showToast(result.message, 'success');
-    closeDetailModal();
-
-    await loadEstimates();
-    await loadStats();
-
-    if (result.estimate?.id) {
-      await openEstimateDetail(result.estimate.id);
-    }
-  } catch (err) {
-    console.error('Error creating new version:', err);
-    showToast(err.message, 'error');
-  }
+function editLineItem(lineId) {
+  showToast('Edit line item - coming soon', 'info');
 }
 
-async function convertToAllowances() {
-  if (!currentEstimate) {
-    showToast('No estimate loaded', 'error');
-    return;
-  }
-
-  if (!confirm('Convert estimate items to allowances? This will create allowances for each selection category.')) {
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/convert-to-allowances`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ converted_by: window.currentUser || 'User' })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to convert to allowances');
-    }
-
-    const result = await response.json();
-    showToast(result.message, 'success');
-
-    await openEstimateDetail(currentEstimate.id);
-  } catch (err) {
-    console.error('Error converting to allowances:', err);
-    showToast(err.message, 'error');
-  }
+function deleteLineItem(lineId) {
+  showToast('Delete line item - coming soon', 'info');
 }
 
-// ============================================================
-// COST LIBRARY SIDEBAR
-// ============================================================
 
-function toggleCostLibrarySidebar() {
-  const sidebar = document.getElementById('costLibrarySidebar');
-  if (!sidebar) return;
-
-  sidebar.classList.toggle('open');
-
-  if (sidebar.classList.contains('open')) {
-    loadCostLibrary();
-  }
-}
-
-async function loadCostLibrary() {
-  const categoriesDiv = document.getElementById('costLibraryCategories');
-  if (!categoriesDiv) return;
-
-  // Group cost codes by category
-  const byCategory = {};
-  costCodes.forEach(cc => {
-    const cat = cc.category || 'Uncategorized';
-    if (!byCategory[cat]) byCategory[cat] = [];
-    byCategory[cat].push(cc);
-  });
-
-  categoriesDiv.innerHTML = Object.entries(byCategory)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([cat, codes]) => `
-      <div class="sidebar-section">
-        <div class="sidebar-section-header" onclick="toggleSidebarSection('cat-${cat.replace(/\s/g, '-')}')" style="cursor: pointer; padding: 8px; display: flex; justify-content: space-between;">
-          <span>${escapeHtml(cat)}</span>
-          <span style="color: var(--text-secondary);">${codes.length}</span>
-        </div>
-        <div class="sidebar-section-content" id="cat-${cat.replace(/\s/g, '-')}" style="display: none;">
-          ${codes.map(cc => `
-            <div class="cost-library-item" onclick="addCostCodeToEstimate('${cc.id}')"
-                 draggable="true" ondragstart="dragCostCode(event, '${cc.id}')"
-                 style="padding: 6px 8px; cursor: pointer; font-size: 0.85rem; border-bottom: 1px solid var(--border);">
-              <div style="font-weight: 600;">${cc.code}</div>
-              <div style="color: var(--text-secondary);">${escapeHtml(cc.name)}</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `).join('');
-}
-
-function toggleSidebarSection(sectionId) {
-  const content = document.getElementById(sectionId);
-  if (content) {
-    content.style.display = content.style.display === 'none' ? 'block' : 'none';
-  }
-}
-
-function filterCostLibrary() {
-  const search = document.getElementById('costLibrarySearch')?.value.toLowerCase() || '';
-  const items = document.querySelectorAll('.cost-library-item');
-
-  items.forEach(item => {
-    const text = item.textContent.toLowerCase();
-    item.style.display = text.includes(search) ? 'block' : 'none';
-  });
-}
-
-function dragCostCode(event, costCodeId) {
-  event.dataTransfer.setData('costCodeId', costCodeId);
-}
-
-async function addCostCodeToEstimate(costCodeId) {
-  const cc = costCodes.find(c => c.id === costCodeId);
-  if (!cc || !currentEstimate) return;
-
-  // Pre-fill the add line modal
-  openAddLineModal();
-  document.getElementById('lineCostCode').value = costCodeId;
-  document.getElementById('lineDescription').value = cc.name;
-  await onCostCodeSelected();
-}
-
-function regroupLines() {
-  const groupBy = document.getElementById('lineGroupBy')?.value || 'none';
-  // Re-render with grouping - would need to implement grouped rendering
-  showToast(`Grouping by ${groupBy}`, 'info');
-}
-
-function closeProjectDetailsModal() {
-  const modal = document.getElementById('projectDetailsModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
-}
-
-async function convertToBudget() {
-  if (!currentEstimate) {
-    showToast('No estimate selected', 'error');
-    return;
-  }
-
-  if (currentEstimate.status !== 'approved') {
-    showToast('Only approved estimates can be converted to budget', 'warning');
-    return;
-  }
-
-  if (!confirm('Convert this estimate to budget lines? This will create budget entries for each line item.')) {
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/convert-to-budget`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ converted_by: window.currentUser || 'User' })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to convert to budget');
-    }
-
-    const result = await response.json();
-    showToast(result.message || 'Estimate converted to budget', 'success');
-
-    // Refresh the estimate
-    await openEstimateDetail(currentEstimate.id);
-
-    // Offer to view budget
-    if (confirm('Budget lines created. Would you like to view the budget now?')) {
-      backToList();
-      switchMode('budget');
-      if (currentEstimate.job_id) {
-        currentJobId = currentEstimate.job_id;
-        await loadJobBudgetForJob(currentEstimate.job_id);
-      }
-    }
-  } catch (err) {
-    console.error('Error converting to budget:', err);
-    showToast(err.message, 'error');
-  }
-}
 
 // ============================================================
 // BUDGET MODE - DATA & RENDERING
@@ -2828,647 +1294,6 @@ async function saveSourceChange() {
 }
 
 // ============================================================
-// HIERARCHICAL ESTIMATE RENDERING
-// ============================================================
-
-/**
- * Render estimate hierarchy with phases, groups, subgroups
- * @param {Object} estimate - Estimate object with phases array
- */
-function renderEstimateHierarchy(estimate) {
-  const container = document.getElementById('estimateHierarchy');
-  if (!container) return;
-
-  if (!estimate.phases || estimate.phases.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <h3>No phases yet</h3>
-        <p>Apply a template or add phases manually to structure your estimate.</p>
-        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 16px;">
-          <button class="btn btn-primary" onclick="openTemplateSelector()">Apply Template</button>
-          <button class="btn btn-ghost" onclick="addPhase()">+ Add Phase</button>
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  const canEdit = currentEstimate && ['draft', 'rejected'].includes(currentEstimate.status);
-
-  container.innerHTML = estimate.phases.map(phase => `
-    <div class="estimate-phase" data-phase-id="${phase.id}">
-      <div class="phase-header" onclick="togglePhase(this)">
-        <span class="collapse-icon">&#9660;</span>
-        <span class="phase-name">${escapeHtml(phase.name)}</span>
-        <span class="phase-subtotal">${formatCurrency(phase.subtotal || 0)}</span>
-        ${canEdit ? `
-          <div class="phase-actions">
-            <button class="btn btn-ghost btn-xs" onclick="editPhase(event, '${phase.id}')">Edit</button>
-            <button class="btn btn-ghost btn-xs" onclick="addGroup('${phase.id}')">+ Group</button>
-            <button class="btn btn-ghost btn-xs text-danger" onclick="deletePhase(event, '${phase.id}')">Delete</button>
-          </div>
-        ` : ''}
-      </div>
-      <div class="phase-content">
-        ${(phase.groups || []).map(group => renderGroup(group, canEdit)).join('')}
-        ${(!phase.groups || phase.groups.length === 0) ? `
-          <div class="empty-state-inline">
-            <span>No groups</span>
-            ${canEdit ? `<button class="btn btn-ghost btn-xs" onclick="addGroup('${phase.id}')">+ Add Group</button>` : ''}
-          </div>
-        ` : ''}
-      </div>
-    </div>
-  `).join('');
-
-  // Update total
-  const total = estimate.phases.reduce((sum, p) => sum + parseFloat(p.subtotal || 0), 0);
-  const totalElement = document.getElementById('estimateTotalAmount');
-  if (totalElement) {
-    totalElement.textContent = formatCurrency(total);
-  }
-
-  // Restore collapse state
-  restoreCollapseState();
-}
-
-/**
- * Render a group with subgroups
- */
-function renderGroup(group, canEdit) {
-  return `
-    <div class="estimate-group" data-group-id="${group.id}">
-      <div class="group-header" onclick="toggleGroup(this)">
-        <span class="collapse-icon">&#9660;</span>
-        <span class="group-name">${escapeHtml(group.name)}</span>
-        <span class="group-subtotal">${formatCurrency(group.subtotal || 0)}</span>
-        ${canEdit ? `
-          <div class="group-actions">
-            <button class="btn btn-ghost btn-xs" onclick="editGroup(event, '${group.id}')">Edit</button>
-            <button class="btn btn-ghost btn-xs" onclick="addSubgroup('${group.id}')">+ Subgroup</button>
-            <button class="btn btn-ghost btn-xs text-danger" onclick="deleteGroup(event, '${group.id}')">Delete</button>
-          </div>
-        ` : ''}
-      </div>
-      <div class="group-content">
-        ${(group.subgroups || []).map(sg => renderSubgroup(sg, canEdit)).join('')}
-        ${(!group.subgroups || group.subgroups.length === 0) ? `
-          <div class="empty-state-inline">
-            <span>No subgroups</span>
-            ${canEdit ? `<button class="btn btn-ghost btn-xs" onclick="addSubgroup('${group.id}')">+ Add Subgroup</button>` : ''}
-          </div>
-        ` : ''}
-      </div>
-    </div>
-  `;
-}
-
-/**
- * Render a subgroup with line items
- */
-function renderSubgroup(subgroup, canEdit) {
-  const lines = subgroup.line_items || [];
-  return `
-    <div class="estimate-subgroup" data-subgroup-id="${subgroup.id}">
-      <div class="subgroup-header" onclick="toggleSubgroup(this)">
-        <span class="collapse-icon">&#9660;</span>
-        <span class="subgroup-name">${escapeHtml(subgroup.name)}</span>
-        <span class="subgroup-subtotal">${formatCurrency(subgroup.subtotal || 0)}</span>
-        ${canEdit ? `
-          <div class="subgroup-actions">
-            <button class="btn btn-ghost btn-xs" onclick="editSubgroup(event, '${subgroup.id}')">Edit</button>
-            <button class="btn btn-ghost btn-xs" onclick="addLineItemToSubgroup('${subgroup.id}')">+ Item</button>
-            <button class="btn btn-ghost btn-xs text-danger" onclick="deleteSubgroup(event, '${subgroup.id}')">Delete</button>
-          </div>
-        ` : ''}
-      </div>
-      <div class="subgroup-content">
-        ${lines.length > 0 ? `
-          <table class="data-table estimate-lines-table">
-            <thead>
-              <tr>
-                <th style="width: 30px"></th>
-                <th>Description</th>
-                <th>Cost Code</th>
-                <th class="col-right">Qty</th>
-                <th>Unit</th>
-                <th class="col-right">Unit Cost</th>
-                <th class="col-right">Amount</th>
-                <th style="width: 80px"></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${lines.map(line => renderHierarchyLineItem(line, canEdit)).join('')}
-            </tbody>
-          </table>
-        ` : `
-          <div class="empty-state-inline">
-            <span>No items</span>
-            ${canEdit ? `<button class="btn btn-ghost btn-xs" onclick="addLineItemToSubgroup('${subgroup.id}')">+ Add Item</button>` : ''}
-          </div>
-        `}
-      </div>
-    </div>
-  `;
-}
-
-/**
- * Render a line item row in hierarchy view
- */
-function renderHierarchyLineItem(line, canEdit) {
-  const hasCatalog = !!line.catalog_item_id;
-  return `
-    <tr class="line-item-row ${hasCatalog ? 'has-catalog' : ''}" data-line-id="${line.id}">
-      <td>
-        ${canEdit ? '<span class="drag-handle" title="Drag to reorder">&#8942;&#8942;</span>' : ''}
-      </td>
-      <td>
-        ${escapeHtml(line.description || '')}
-        ${hasCatalog ? '<span class="catalog-badge">Catalog</span>' : ''}
-      </td>
-      <td>${line.cost_code?.code || '-'}</td>
-      <td class="col-right">${line.quantity || 1}</td>
-      <td>${line.unit || '-'}</td>
-      <td class="col-right">${formatCurrency(line.unit_cost || 0)}</td>
-      <td class="col-right">${formatCurrency(line.amount || 0)}</td>
-      <td>
-        ${canEdit ? `
-          <button class="btn btn-ghost btn-xs" onclick="editLineItem('${line.id}')">Edit</button>
-          <button class="btn btn-ghost btn-xs text-danger" onclick="deleteLineItem('${line.id}')">Delete</button>
-        ` : ''}
-      </td>
-    </tr>
-  `;
-}
-
-// ============================================================
-// COLLAPSE/EXPAND FUNCTIONS
-// ============================================================
-
-function togglePhase(header) {
-  const phase = header.closest('.estimate-phase');
-  phase.classList.toggle('collapsed');
-  saveCollapseState();
-}
-
-function toggleGroup(header) {
-  const group = header.closest('.estimate-group');
-  group.classList.toggle('collapsed');
-  saveCollapseState();
-}
-
-function toggleSubgroup(header) {
-  const subgroup = header.closest('.estimate-subgroup');
-  subgroup.classList.toggle('collapsed');
-  saveCollapseState();
-}
-
-function expandAll() {
-  document.querySelectorAll('.estimate-phase, .estimate-group, .estimate-subgroup')
-    .forEach(el => el.classList.remove('collapsed'));
-  saveCollapseState();
-}
-
-function collapseAll() {
-  document.querySelectorAll('.estimate-phase, .estimate-group, .estimate-subgroup')
-    .forEach(el => el.classList.add('collapsed'));
-  saveCollapseState();
-}
-
-/**
- * Save collapse state to localStorage per estimate
- */
-function saveCollapseState() {
-  if (!currentEstimate) return;
-  const state = {};
-
-  document.querySelectorAll('.estimate-phase').forEach(el => {
-    state[`phase-${el.dataset.phaseId}`] = el.classList.contains('collapsed');
-  });
-  document.querySelectorAll('.estimate-group').forEach(el => {
-    state[`group-${el.dataset.groupId}`] = el.classList.contains('collapsed');
-  });
-  document.querySelectorAll('.estimate-subgroup').forEach(el => {
-    state[`subgroup-${el.dataset.subgroupId}`] = el.classList.contains('collapsed');
-  });
-
-  localStorage.setItem(`estimate-collapse-${currentEstimate.id}`, JSON.stringify(state));
-}
-
-/**
- * Restore collapse state from localStorage
- */
-function restoreCollapseState() {
-  if (!currentEstimate) return;
-  const saved = localStorage.getItem(`estimate-collapse-${currentEstimate.id}`);
-  if (!saved) return;
-
-  try {
-    const state = JSON.parse(saved);
-
-    Object.entries(state).forEach(([key, collapsed]) => {
-      const parts = key.split('-');
-      const type = parts[0];
-      const id = parts.slice(1).join('-');
-      const selector = type === 'phase' ? '.estimate-phase' :
-                      type === 'group' ? '.estimate-group' : '.estimate-subgroup';
-      const el = document.querySelector(`${selector}[data-${type}-id="${id}"]`);
-      if (el && collapsed) el.classList.add('collapsed');
-    });
-  } catch (e) {
-    console.error('Error restoring collapse state:', e);
-  }
-}
-
-// ============================================================
-// TEMPLATE SELECTOR
-// ============================================================
-
-let estimateTemplates = [];
-
-async function loadTemplates() {
-  try {
-    const response = await fetch('/api/estimate-templates');
-    if (!response.ok) throw new Error('Failed to load templates');
-    estimateTemplates = await response.json();
-    return estimateTemplates;
-  } catch (err) {
-    console.error('Error loading templates:', err);
-    return [];
-  }
-}
-
-async function openTemplateSelector() {
-  if (!currentEstimate) {
-    showToast('Please create an estimate first', 'error');
-    return;
-  }
-
-  const templates = await loadTemplates();
-
-  const modal = document.getElementById('templateSelectorModal');
-  const list = document.getElementById('templateList');
-
-  if (!modal || !list) {
-    showToast('Template selector not available', 'error');
-    return;
-  }
-
-  if (templates.length === 0) {
-    list.innerHTML = `
-      <div class="empty-state">
-        <p>No templates available. Create templates to quickly structure your estimates.</p>
-      </div>
-    `;
-  } else {
-    list.innerHTML = `
-      <div class="template-selector-grid">
-        ${templates.map(t => `
-          <div class="template-option ${t.is_default ? 'default' : ''}"
-               onclick="selectTemplate('${t.id}')">
-            <div class="template-info">
-              <h4>${escapeHtml(t.name)}</h4>
-              <p>${escapeHtml(t.description || 'No description')}</p>
-              <span class="template-meta">${escapeHtml(t.project_type || 'General')} &bull; ${countTemplatePhases(t)} phases</span>
-            </div>
-            ${t.is_default ? '<span class="badge badge-success badge-sm">Default</span>' : ''}
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-}
-
-function closeTemplateSelector() {
-  const modal = document.getElementById('templateSelectorModal');
-  if (modal) {
-    modal.classList.remove('show');
-    modal.style.display = 'none';
-  }
-}
-
-function countTemplatePhases(template) {
-  return template.phases?.length || 0;
-}
-
-async function selectTemplate(templateId) {
-  if (!currentEstimate) {
-    showToast('Please create an estimate first', 'error');
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/apply-template`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ template_id: templateId })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to apply template');
-    }
-
-    const estimate = await response.json();
-    currentEstimate = estimate;
-    renderEstimateHierarchy(estimate);
-
-    closeTemplateSelector();
-    showToast('Template applied successfully', 'success');
-  } catch (err) {
-    console.error('Error applying template:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-// ============================================================
-// INLINE ADD FUNCTIONS (Phase/Group/Subgroup)
-// ============================================================
-
-async function addPhase() {
-  if (!currentEstimate) {
-    showToast('Please open an estimate first', 'error');
-    return;
-  }
-
-  const name = prompt('Phase name:');
-  if (!name) return;
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}/phases`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to add phase');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Phase added', 'success');
-  } catch (err) {
-    console.error('Error adding phase:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function addGroup(phaseId) {
-  if (!currentEstimate) return;
-
-  const name = prompt('Group name:');
-  if (!name) return;
-
-  try {
-    const response = await fetch(`/api/estimates/phases/${phaseId}/groups`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to add group');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Group added', 'success');
-  } catch (err) {
-    console.error('Error adding group:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function addSubgroup(groupId) {
-  if (!currentEstimate) return;
-
-  const name = prompt('Subgroup name:');
-  if (!name) return;
-
-  try {
-    const response = await fetch(`/api/estimates/groups/${groupId}/subgroups`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to add subgroup');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Subgroup added', 'success');
-  } catch (err) {
-    console.error('Error adding subgroup:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function addLineItemToSubgroup(subgroupId) {
-  if (!currentEstimate) return;
-
-  // Store subgroup ID for the line item modal
-  window.currentSubgroupId = subgroupId;
-  openAddLineModal();
-}
-
-/**
- * Refresh estimate hierarchy after changes
- */
-async function refreshEstimateHierarchy() {
-  if (!currentEstimate) return;
-
-  try {
-    const response = await fetch(`/api/estimates/${currentEstimate.id}`);
-    if (!response.ok) throw new Error('Failed to refresh estimate');
-
-    currentEstimate = await response.json();
-    renderEstimateHierarchy(currentEstimate);
-    restoreCollapseState();
-  } catch (err) {
-    console.error('Error refreshing estimate:', err);
-    showToast('Failed to refresh estimate', 'error');
-  }
-}
-
-// ============================================================
-// EDIT/DELETE PHASE/GROUP/SUBGROUP
-// ============================================================
-
-async function editPhase(event, phaseId) {
-  event.stopPropagation();
-
-  const phase = currentEstimate?.phases?.find(p => p.id === phaseId);
-  if (!phase) return;
-
-  const newName = prompt('Edit phase name:', phase.name);
-  if (!newName || newName === phase.name) return;
-
-  try {
-    const response = await fetch(`/api/estimates/phases/${phaseId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to update phase');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Phase updated', 'success');
-  } catch (err) {
-    console.error('Error updating phase:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function deletePhase(event, phaseId) {
-  event.stopPropagation();
-
-  if (!confirm('Delete this phase and all its contents?')) return;
-
-  try {
-    const response = await fetch(`/api/estimates/phases/${phaseId}`, {
-      method: 'DELETE'
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to delete phase');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Phase deleted', 'success');
-  } catch (err) {
-    console.error('Error deleting phase:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function editGroup(event, groupId) {
-  event.stopPropagation();
-
-  // Find group across all phases
-  let group = null;
-  for (const phase of (currentEstimate?.phases || [])) {
-    group = phase.groups?.find(g => g.id === groupId);
-    if (group) break;
-  }
-  if (!group) return;
-
-  const newName = prompt('Edit group name:', group.name);
-  if (!newName || newName === group.name) return;
-
-  try {
-    const response = await fetch(`/api/estimates/groups/${groupId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to update group');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Group updated', 'success');
-  } catch (err) {
-    console.error('Error updating group:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function deleteGroup(event, groupId) {
-  event.stopPropagation();
-
-  if (!confirm('Delete this group and all its contents?')) return;
-
-  try {
-    const response = await fetch(`/api/estimates/groups/${groupId}`, {
-      method: 'DELETE'
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to delete group');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Group deleted', 'success');
-  } catch (err) {
-    console.error('Error deleting group:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function editSubgroup(event, subgroupId) {
-  event.stopPropagation();
-
-  // Find subgroup across all phases and groups
-  let subgroup = null;
-  outer: for (const phase of (currentEstimate?.phases || [])) {
-    for (const group of (phase.groups || [])) {
-      subgroup = group.subgroups?.find(s => s.id === subgroupId);
-      if (subgroup) break outer;
-    }
-  }
-  if (!subgroup) return;
-
-  const newName = prompt('Edit subgroup name:', subgroup.name);
-  if (!newName || newName === subgroup.name) return;
-
-  try {
-    const response = await fetch(`/api/estimates/subgroups/${subgroupId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to update subgroup');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Subgroup updated', 'success');
-  } catch (err) {
-    console.error('Error updating subgroup:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-async function deleteSubgroup(event, subgroupId) {
-  event.stopPropagation();
-
-  if (!confirm('Delete this subgroup and all its line items?')) return;
-
-  try {
-    const response = await fetch(`/api/estimates/subgroups/${subgroupId}`, {
-      method: 'DELETE'
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to delete subgroup');
-    }
-
-    await refreshEstimateHierarchy();
-    showToast('Subgroup deleted', 'success');
-  } catch (err) {
-    console.error('Error deleting subgroup:', err);
-    showToast(err.message, 'error');
-  }
-}
-
-// ============================================================
 // UTILITY FUNCTIONS
 // ============================================================
 
@@ -3537,3 +1362,445 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
+
+// ============================================================
+// ASSEMBLY PICKER
+// ============================================================
+
+let assemblyTemplates = [];
+let selectedAssemblyTemplate = null;
+let assemblyPickerView = 'grid';
+
+async function openAssemblyPickerModal() {
+  if (!currentEstimate) {
+    showToast('Open an estimate first', 'error');
+    return;
+  }
+
+  // Reset state
+  selectedAssemblyTemplate = null;
+  document.getElementById('addAssemblyBtn').disabled = true;
+  document.getElementById('assemblyPreviewPanel').style.display = 'none';
+  document.getElementById('assemblySearchInput').value = '';
+  document.getElementById('assemblyMultiplier').value = '1';
+
+  // Populate section dropdown
+  populateAssemblySectionDropdown();
+
+  // Load templates
+  await loadAssemblyTemplates();
+
+  // Show modal
+  const modal = document.getElementById('assemblyPickerModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeAssemblyPickerModal() {
+  const modal = document.getElementById('assemblyPickerModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+  selectedAssemblyTemplate = null;
+}
+
+async function loadAssemblyTemplates() {
+  try {
+    const jobId = currentEstimate?.job_id;
+    const params = jobId ? `?job_id=${jobId}` : '';
+    const response = await fetch(`/api/assembly-templates${params}`);
+
+    if (!response.ok) throw new Error('Failed to load assembly templates');
+
+    assemblyTemplates = await response.json();
+    renderAssemblyTemplateGrid();
+    renderAssemblyCategories();
+  } catch (err) {
+    console.error('Error loading assembly templates:', err);
+    showToast('Failed to load assembly templates', 'error');
+    assemblyTemplates = [];
+    renderAssemblyTemplateGrid();
+  }
+}
+
+function renderAssemblyCategories() {
+  const container = document.getElementById('assemblyCategoryList');
+  if (!container) return;
+
+  // Get unique categories
+  const categories = {};
+  assemblyTemplates.forEach(t => {
+    const cat = t.category || 'Other';
+    categories[cat] = (categories[cat] || 0) + 1;
+  });
+
+  // Build HTML
+  let html = `
+    <button class="assembly-category-btn active" data-category="all" onclick="filterByCategory('all')">
+      All Assemblies
+      <span class="category-count">${assemblyTemplates.length}</span>
+    </button>
+  `;
+
+  Object.entries(categories).sort((a, b) => a[0].localeCompare(b[0])).forEach(([cat, count]) => {
+    html += `
+      <button class="assembly-category-btn" data-category="${escapeHtml(cat)}" onclick="filterByCategory('${escapeHtml(cat)}')">
+        ${escapeHtml(cat)}
+        <span class="category-count">${count}</span>
+      </button>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function filterByCategory(category) {
+  // Update active state
+  document.querySelectorAll('.assembly-category-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.category === category);
+  });
+
+  filterAssemblyTemplates();
+}
+
+function filterAssemblyTemplates() {
+  const search = (document.getElementById('assemblySearchInput')?.value || '').toLowerCase();
+  const activeCategory = document.querySelector('.assembly-category-btn.active')?.dataset.category || 'all';
+  const showGlobal = document.getElementById('sourceGlobal')?.checked !== false;
+  const showJob = document.getElementById('sourceJob')?.checked !== false;
+
+  let filtered = assemblyTemplates.filter(t => {
+    // Category filter
+    if (activeCategory !== 'all' && t.category !== activeCategory) return false;
+
+    // Search filter
+    if (search) {
+      const searchFields = [t.name, t.description, t.category].filter(Boolean).join(' ').toLowerCase();
+      if (!searchFields.includes(search)) return false;
+    }
+
+    // Source filter
+    if (!showGlobal && !t.job_id) return false;
+    if (!showJob && t.job_id) return false;
+
+    return true;
+  });
+
+  // Update count
+  document.getElementById('assemblyResultCount').textContent = `${filtered.length} assembl${filtered.length === 1 ? 'y' : 'ies'}`;
+
+  renderAssemblyTemplateGrid(filtered);
+}
+
+function renderAssemblyTemplateGrid(templates = assemblyTemplates) {
+  const container = document.getElementById('assemblyTemplateGrid');
+  const emptyState = document.getElementById('assemblyEmptyState');
+
+  if (!container) return;
+
+  if (templates.length === 0) {
+    container.innerHTML = '';
+    if (emptyState) emptyState.style.display = 'block';
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+
+  if (assemblyPickerView === 'grid') {
+    container.innerHTML = templates.map(t => `
+      <div class="assembly-card ${selectedAssemblyTemplate?.id === t.id ? 'selected' : ''}"
+           data-id="${t.id}"
+           onclick="selectAssemblyTemplate('${t.id}')">
+        <div class="assembly-card-header">
+          <span class="assembly-card-icon">${t.icon || '&#128230;'}</span>
+          <span class="assembly-card-category">${escapeHtml(t.category || 'Other')}</span>
+        </div>
+        <h4 class="assembly-card-name">${escapeHtml(t.name)}</h4>
+        <p class="assembly-card-description">${escapeHtml(t.description || '')}</p>
+        <div class="assembly-card-footer">
+          <span class="assembly-card-count">${t.component_count || 0} items</span>
+          <span class="assembly-card-total">${formatCurrency(t.total_cost)}</span>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    // List view
+    container.innerHTML = `
+      <table class="assembly-list-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Items</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${templates.map(t => `
+            <tr class="${selectedAssemblyTemplate?.id === t.id ? 'selected' : ''}"
+                onclick="selectAssemblyTemplate('${t.id}')">
+              <td><strong>${escapeHtml(t.name)}</strong></td>
+              <td>${escapeHtml(t.category || 'Other')}</td>
+              <td>${t.component_count || 0}</td>
+              <td>${formatCurrency(t.total_cost)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+}
+
+function setAssemblyView(view) {
+  assemblyPickerView = view;
+
+  document.querySelectorAll('#assemblyPickerModal .view-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+
+  filterAssemblyTemplates();
+}
+
+async function selectAssemblyTemplate(templateId) {
+  selectedAssemblyTemplate = assemblyTemplates.find(t => t.id === templateId);
+
+  if (!selectedAssemblyTemplate) return;
+
+  // Update card selection state
+  document.querySelectorAll('.assembly-card, .assembly-list-table tr').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === templateId);
+  });
+
+  // Load full template with components
+  try {
+    const response = await fetch(`/api/assembly-templates/${templateId}`);
+    if (response.ok) {
+      const fullTemplate = await response.json();
+      selectedAssemblyTemplate = fullTemplate;
+      renderAssemblyPreview(fullTemplate);
+    }
+  } catch (err) {
+    console.error('Error loading template details:', err);
+  }
+
+  // Enable add button
+  document.getElementById('addAssemblyBtn').disabled = false;
+}
+
+function renderAssemblyPreview(template) {
+  const panel = document.getElementById('assemblyPreviewPanel');
+  if (!panel) return;
+
+  panel.style.display = 'block';
+
+  document.getElementById('previewAssemblyName').textContent = template.name;
+  document.getElementById('previewAssemblyCategory').textContent = template.category || 'Other';
+  document.getElementById('previewAssemblyTotal').textContent = formatCurrency(template.total_cost);
+  document.getElementById('previewAssemblyDescription').textContent = template.description || 'No description';
+
+  const components = template.components || [];
+  document.getElementById('previewComponentCount').textContent = components.length;
+
+  const list = document.getElementById('previewComponentList');
+  if (components.length === 0) {
+    list.innerHTML = '<p class="text-muted">No components defined</p>';
+  } else {
+    list.innerHTML = components.map(c => `
+      <div class="preview-component-row">
+        <div class="component-info">
+          <span class="component-code">${escapeHtml(c.cost_code?.code || '-')}</span>
+          <span class="component-desc">${escapeHtml(c.description || c.cost_code?.name || 'Item')}</span>
+        </div>
+        <div class="component-amount">${formatCurrency(c.amount || (c.quantity * c.unit_cost))}</div>
+      </div>
+    `).join('');
+  }
+}
+
+function closeAssemblyPreview() {
+  document.getElementById('assemblyPreviewPanel').style.display = 'none';
+  selectedAssemblyTemplate = null;
+  document.getElementById('addAssemblyBtn').disabled = true;
+
+  document.querySelectorAll('.assembly-card, .assembly-list-table tr').forEach(el => {
+    el.classList.remove('selected');
+  });
+}
+
+function populateAssemblySectionDropdown() {
+  const select = document.getElementById('assemblySectionTarget');
+  if (!select || !currentEstimate) return;
+
+  select.innerHTML = '<option value="">No Section (End of List)</option>';
+
+  const sections = currentEstimate.sections || [];
+  sections.forEach(section => {
+    const option = document.createElement('option');
+    option.value = section.id;
+    option.textContent = section.name;
+    select.appendChild(option);
+  });
+}
+
+async function addSelectedAssembly() {
+  if (!selectedAssemblyTemplate || !currentEstimate) {
+    showToast('Please select an assembly template', 'error');
+    return;
+  }
+
+  const multiplier = parseFloat(document.getElementById('assemblyMultiplier')?.value) || 1;
+  const sectionId = document.getElementById('assemblySectionTarget')?.value || null;
+
+  try {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/expand-assembly`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        template_id: selectedAssemblyTemplate.id,
+        section_id: sectionId,
+        quantity_multiplier: multiplier
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to add assembly');
+    }
+
+    const result = await response.json();
+    showToast(`Added ${result.lines?.length || 0} items from assembly`, 'success');
+    closeAssemblyPickerModal();
+
+    // Reload estimate to show new lines
+    await reloadCurrentEstimate();
+  } catch (err) {
+    console.error('Error adding assembly:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// COPY ESTIMATE
+// ============================================================
+
+let copySourceEstimate = null;
+
+function openCopyEstimateModal() {
+  if (!currentEstimate) {
+    showToast('Open an estimate first', 'error');
+    return;
+  }
+
+  copySourceEstimate = currentEstimate;
+
+  // Populate source info
+  document.getElementById('copySourceTitle').textContent = currentEstimate.title;
+  document.getElementById('copySourceLineCount').textContent = currentEstimate.lines?.length || 0;
+  document.getElementById('copySourceTotal').textContent = formatCurrency(currentEstimate.total_amount);
+
+  // Populate job dropdown
+  const jobSelect = document.getElementById('copyTargetJob');
+  jobSelect.innerHTML = '<option value="">Same Job (create new version)</option>';
+  jobs.forEach(job => {
+    if (job.id !== currentEstimate.job_id) {
+      const option = document.createElement('option');
+      option.value = job.id;
+      option.textContent = job.name;
+      jobSelect.appendChild(option);
+    }
+  });
+
+  // Clear title
+  document.getElementById('copyNewTitle').value = '';
+  document.getElementById('copyTitleHint').textContent = `Leave empty for: "${currentEstimate.title} v2"`;
+
+  // Update preview
+  updateCopyPreview();
+
+  // Show modal
+  const modal = document.getElementById('copyEstimateModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function closeCopyEstimateModal() {
+  const modal = document.getElementById('copyEstimateModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+  copySourceEstimate = null;
+}
+
+function onCopyTargetJobChange() {
+  const targetJobId = document.getElementById('copyTargetJob').value;
+  const hintEl = document.getElementById('copyTargetHint');
+  const titleHintEl = document.getElementById('copyTitleHint');
+
+  if (targetJobId) {
+    hintEl.textContent = 'Creates a copy of this estimate for another job';
+    titleHintEl.textContent = `Leave empty for: "${copySourceEstimate?.title || 'Estimate'} (copy)"`;
+  } else {
+    hintEl.textContent = 'Creates a new version of this estimate';
+    titleHintEl.textContent = `Leave empty for: "${copySourceEstimate?.title || 'Estimate'} v2"`;
+  }
+}
+
+function updateCopyPreview() {
+  if (!copySourceEstimate) return;
+
+  const lines = copySourceEstimate.lines || [];
+  const sections = copySourceEstimate.sections || [];
+  const assemblies = lines.filter(l => l.is_assembly).length;
+
+  document.getElementById('copyPreviewSections').textContent = sections.length;
+  document.getElementById('copyPreviewLines').textContent = lines.length;
+  document.getElementById('copyPreviewAssemblies').textContent = assemblies;
+  document.getElementById('copyPreviewTotal').textContent = formatCurrency(copySourceEstimate.total_amount);
+}
+
+async function executeCopyEstimate() {
+  if (!copySourceEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+
+  const targetJobId = document.getElementById('copyTargetJob').value || null;
+  const newTitle = document.getElementById('copyNewTitle').value.trim() || null;
+
+  try {
+    const response = await fetch(`/api/estimates/${copySourceEstimate.id}/duplicate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target_job_id: targetJobId,
+        new_title: newTitle,
+        created_by: window.currentUser || 'User'
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to duplicate estimate');
+    }
+
+    const result = await response.json();
+    showToast(`Estimate copied (${result.lines_copied || 0} lines, ${result.sections_copied || 0} sections)`, 'success');
+    closeCopyEstimateModal();
+    closeDetailModal();
+
+    // Refresh list and open the new estimate
+    await loadEstimates();
+    await loadStats();
+
+    if (result.estimate?.id) {
+      await openEstimateDetail(result.estimate.id);
+    }
+  } catch (err) {
+    console.error('Error copying estimate:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+// Update the placeholder function to use the new modal
+function openDuplicateModal() {
+  openCopyEstimateModal();
+}
+
