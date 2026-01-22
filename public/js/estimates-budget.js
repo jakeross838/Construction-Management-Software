@@ -16,6 +16,8 @@ let jobs = [];
 let costCodes = [];
 let acceptedBids = [];
 let currentEstimate = null;
+let collapsedSections = new Set(); // Track collapsed section IDs
+let editingSectionId = null; // Currently editing section
 let selectedBidId = null;
 let debounceTimer;
 let currentView = localStorage.getItem('estimatesView') || 'table';
@@ -446,6 +448,9 @@ async function openEstimateDetail(estimateId) {
     document.getElementById('detailCreated').textContent = formatDateTime(currentEstimate.created_at);
     document.getElementById('detailNotes').textContent = currentEstimate.notes || '-';
 
+    // Render the lines table with sections
+    renderLinesTable();
+
     // Show modal
     const modal = document.getElementById('estimateDetailModal');
     modal.style.display = 'flex';
@@ -522,6 +527,309 @@ function convertToAllowances() { showToast('Convert to allowances - coming soon'
 function createNewVersion() { showToast('New version - coming soon', 'info'); }
 function toggleCostLibrarySidebar() { showToast('Cost library - coming soon', 'info'); }
 function regroupLines() { showToast('Regroup lines - coming soon', 'info'); }
+
+// ============================================================
+// SECTION MANAGEMENT
+// ============================================================
+
+function openSectionModal(sectionId = null) {
+  editingSectionId = sectionId;
+
+  if (sectionId) {
+    // Editing existing section
+    const section = currentEstimate?.sections?.find(s => s.id === sectionId);
+    if (section) {
+      document.getElementById('sectionModalTitle').textContent = 'Edit Section';
+      document.getElementById('sectionName').value = section.name || '';
+      document.getElementById('sectionDescription').value = section.description || '';
+      document.getElementById('sectionId').value = sectionId;
+    }
+  } else {
+    // New section
+    document.getElementById('sectionModalTitle').textContent = 'Add Section';
+    document.getElementById('sectionName').value = '';
+    document.getElementById('sectionDescription').value = '';
+    document.getElementById('sectionId').value = '';
+  }
+
+  const modal = document.getElementById('sectionModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+
+  // Focus name field
+  setTimeout(() => document.getElementById('sectionName').focus(), 100);
+}
+
+function closeSectionModal() {
+  const modal = document.getElementById('sectionModal');
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+  editingSectionId = null;
+}
+
+async function saveSection() {
+  if (!currentEstimate) {
+    showToast('No estimate loaded', 'error');
+    return;
+  }
+
+  const name = document.getElementById('sectionName').value.trim();
+  const description = document.getElementById('sectionDescription').value.trim();
+  const sectionId = document.getElementById('sectionId').value;
+
+  if (!name) {
+    showToast('Section name is required', 'error');
+    return;
+  }
+
+  try {
+    let response;
+
+    if (sectionId) {
+      // Update existing section
+      response = await fetch(`/api/estimates/${currentEstimate.id}/sections/${sectionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description, updated_by: window.currentUser || 'User' })
+      });
+    } else {
+      // Create new section
+      response = await fetch(`/api/estimates/${currentEstimate.id}/sections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description, created_by: window.currentUser || 'User' })
+      });
+    }
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to save section');
+    }
+
+    showToast(sectionId ? 'Section updated' : 'Section created', 'success');
+    closeSectionModal();
+
+    // Reload estimate to get updated sections
+    await reloadCurrentEstimate();
+  } catch (err) {
+    console.error('Error saving section:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+async function deleteSection(sectionId) {
+  if (!currentEstimate || !sectionId) return;
+
+  const section = currentEstimate.sections?.find(s => s.id === sectionId);
+  const itemCount = (currentEstimate.lines || []).filter(l => l.section_id === sectionId).length;
+
+  const confirmMsg = itemCount > 0
+    ? `Delete section "${section?.name}"? The ${itemCount} item(s) in this section will become unsectioned.`
+    : `Delete section "${section?.name}"?`;
+
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/sections/${sectionId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleted_by: window.currentUser || 'User' })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to delete section');
+    }
+
+    showToast('Section deleted', 'success');
+    collapsedSections.delete(sectionId);
+    await reloadCurrentEstimate();
+  } catch (err) {
+    console.error('Error deleting section:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+function toggleSectionCollapse(sectionId) {
+  if (collapsedSections.has(sectionId)) {
+    collapsedSections.delete(sectionId);
+  } else {
+    collapsedSections.add(sectionId);
+  }
+  renderLinesTable();
+}
+
+async function reloadCurrentEstimate() {
+  if (!currentEstimate?.id) return;
+
+  try {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}`);
+    if (!response.ok) throw new Error('Failed to reload estimate');
+    currentEstimate = await response.json();
+
+    // Re-render the lines tab
+    renderLinesTable();
+    renderOverviewTab();
+  } catch (err) {
+    console.error('Error reloading estimate:', err);
+  }
+}
+
+function renderLinesTable() {
+  const tbody = document.getElementById('linesTableBody');
+  if (!tbody || !currentEstimate) return;
+
+  const sections = currentEstimate.sections || [];
+  const lines = currentEstimate.lines || [];
+  const isEditable = ['draft', 'rejected'].includes(currentEstimate.status);
+
+  // Group lines by section
+  const linesBySection = {};
+  const unsectionedLines = [];
+
+  lines.forEach(line => {
+    if (line.section_id) {
+      if (!linesBySection[line.section_id]) linesBySection[line.section_id] = [];
+      linesBySection[line.section_id].push(line);
+    } else {
+      unsectionedLines.push(line);
+    }
+  });
+
+  let html = '';
+  let rowNum = 1;
+
+  // Render sections with their items
+  sections.forEach(section => {
+    const sectionLines = linesBySection[section.id] || [];
+    const isCollapsed = collapsedSections.has(section.id);
+    const sectionTotal = sectionLines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+
+    // Section header row
+    html += `
+      <tr class="section-header-row" data-section-id="${section.id}">
+        <td colspan="10">
+          <div class="section-header-cell">
+            <button class="section-toggle-btn ${isCollapsed ? 'collapsed' : ''}"
+                    onclick="toggleSectionCollapse('${section.id}')" title="Toggle">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 01.753 1.659l-4.796 5.48a1 1 0 01-1.506 0z"/>
+              </svg>
+            </button>
+            <span class="section-name">${escapeHtml(section.name)}</span>
+            <span class="section-count">${sectionLines.length} item${sectionLines.length !== 1 ? 's' : ''}</span>
+            <span class="section-subtotal">${formatCurrency(sectionTotal)}</span>
+            ${isEditable ? `
+              <div class="section-actions">
+                <button class="section-action-btn" onclick="openSectionModal('${section.id}')" title="Edit section">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M12.146.146a.5.5 0 01.708 0l3 3a.5.5 0 010 .708l-10 10a.5.5 0 01-.168.11l-5 2a.5.5 0 01-.65-.65l2-5a.5.5 0 01.11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 01.5.5v.5h.5a.5.5 0 01.5.5v.5h.293l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 015 12.5V12h-.5a.5.5 0 01-.5-.5V11h-.5a.5.5 0 01-.468-.325z"/>
+                  </svg>
+                </button>
+                <button class="section-action-btn danger" onclick="deleteSection('${section.id}')" title="Delete section">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                  </svg>
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+
+    // Render lines in this section (if not collapsed)
+    if (!isCollapsed) {
+      sectionLines.forEach(line => {
+        html += renderLineRow(line, rowNum++, true);
+      });
+    }
+  });
+
+  // Render unsectioned items
+  if (unsectionedLines.length > 0 && sections.length > 0) {
+    html += `<tr class="unsectioned-divider"><td colspan="10">Unsectioned Items</td></tr>`;
+  }
+
+  unsectionedLines.forEach(line => {
+    html += renderLineRow(line, rowNum++, false);
+  });
+
+  // Empty state if no lines
+  if (lines.length === 0) {
+    html = `
+      <tr>
+        <td colspan="10" style="text-align: center; padding: 40px;">
+          <div class="empty-state">
+            <div class="empty-state-icon">+</div>
+            <div class="empty-state-title">No Line Items</div>
+            <div class="empty-state-message">Add line items to build your estimate.</div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  tbody.innerHTML = html;
+
+  // Update totals
+  const total = lines.reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+  const subtotalEl = document.getElementById('linesSubtotal');
+  const totalEl = document.getElementById('linesTotalAmount');
+  if (subtotalEl) subtotalEl.textContent = formatCurrency(total);
+  if (totalEl) totalEl.textContent = formatCurrency(currentEstimate.total_amount || total);
+}
+
+function renderLineRow(line, rowNum, inSection) {
+  const cc = line.cost_code;
+  const isEditable = ['draft', 'rejected'].includes(currentEstimate?.status);
+
+  return `
+    <tr class="line-row ${inSection ? 'in-section' : ''}" data-line-id="${line.id}">
+      <td class="select-col">
+        ${isEditable ? `<input type="checkbox" class="line-select" data-line-id="${line.id}">` : ''}
+      </td>
+      <td class="drag-handle">${isEditable ? '<span style="cursor: grab;">&#8942;&#8942;</span>' : ''}</td>
+      <td style="color: var(--text-secondary)">${rowNum}</td>
+      <td>
+        ${cc ? `<span class="cost-code-tag">${escapeHtml(cc.code)}</span>` : '-'}
+      </td>
+      <td>${escapeHtml(line.description || '-')}</td>
+      <td class="col-right">${line.quantity || 1}</td>
+      <td>${escapeHtml(line.unit || '-')}</td>
+      <td class="col-right">${formatCurrency(line.unit_cost)}</td>
+      <td class="col-right" style="font-weight: 600">${formatCurrency(line.amount)}</td>
+      <td>
+        ${isEditable ? `
+          <button class="btn btn-icon btn-ghost btn-sm" onclick="editLineItem('${line.id}')" title="Edit">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146.146a.5.5 0 01.708 0l3 3a.5.5 0 010 .708l-10 10a.5.5 0 01-.168.11l-5 2a.5.5 0 01-.65-.65l2-5a.5.5 0 01.11-.168l10-10z"/></svg>
+          </button>
+          <button class="btn btn-icon btn-ghost btn-sm" onclick="deleteLineItem('${line.id}')" title="Delete">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+          </button>
+        ` : ''}
+      </td>
+    </tr>
+  `;
+}
+
+function renderOverviewTab() {
+  if (!currentEstimate) return;
+
+  document.getElementById('detailLineCount').textContent = currentEstimate.lines?.length || 0;
+  document.getElementById('detailAmount').textContent = formatCurrency(currentEstimate.total_amount);
+}
+
+function editLineItem(lineId) {
+  showToast('Edit line item - coming soon', 'info');
+}
+
+function deleteLineItem(lineId) {
+  showToast('Delete line item - coming soon', 'info');
+}
+
+
 
 // ============================================================
 // BUDGET MODE - DATA & RENDERING
