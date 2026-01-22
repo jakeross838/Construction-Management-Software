@@ -77,3 +77,90 @@ COMMENT ON COLUMN v2_estimate_lines.section_id IS 'Section this line item belong
 COMMENT ON COLUMN v2_estimate_lines.is_allowance IS 'True if this is a placeholder amount for client selection';
 COMMENT ON COLUMN v2_estimate_lines.allowance_notes IS 'Notes about the allowance (e.g., "Client to select flooring")';
 COMMENT ON COLUMN v2_estimate_lines.template_id IS 'Source assembly template if this line was created from a template';
+
+-- ============================================================
+-- 4. SEPARATE MARKUP TRACKING (EST-05)
+-- ============================================================
+-- Add separate overhead and profit columns
+ALTER TABLE v2_estimates
+  ADD COLUMN IF NOT EXISTS overhead_percent DECIMAL(5,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS overhead_amount DECIMAL(14,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS profit_percent DECIMAL(5,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS profit_amount DECIMAL(14,2) DEFAULT 0;
+
+COMMENT ON COLUMN v2_estimates.overhead_percent IS 'Overhead markup percentage (company overhead allocation)';
+COMMENT ON COLUMN v2_estimates.overhead_amount IS 'Calculated: subtotal * overhead_percent / 100';
+COMMENT ON COLUMN v2_estimates.profit_percent IS 'Profit margin percentage';
+COMMENT ON COLUMN v2_estimates.profit_amount IS 'Calculated: (subtotal + overhead_amount) * profit_percent / 100';
+-- Note: contingency_percent and contingency_amount already exist
+-- Calculation order: subtotal -> +overhead -> +profit -> +contingency = grand_total
+
+-- ============================================================
+-- 5. STATUS WORKFLOW UPDATE (EST-06)
+-- ============================================================
+-- The existing constraint allows: draft, submitted, approved, rejected, converted
+-- We need to add 'sent' for client delivery workflow
+-- First drop the existing constraint, then recreate with new values
+
+-- Note: PostgreSQL requires dropping and recreating CHECK constraints
+-- The existing constraint name may vary, so we use a safe approach
+DO $$
+BEGIN
+  -- Try to drop existing constraint (may not exist or have different name)
+  ALTER TABLE v2_estimates DROP CONSTRAINT IF EXISTS v2_estimates_status_check;
+EXCEPTION WHEN OTHERS THEN
+  -- Constraint may have auto-generated name, continue
+  NULL;
+END $$;
+
+-- Add new constraint with all statuses including 'sent'
+ALTER TABLE v2_estimates
+  ADD CONSTRAINT v2_estimates_status_check
+  CHECK (status IN ('draft', 'sent', 'submitted', 'approved', 'rejected', 'converted'));
+
+COMMENT ON COLUMN v2_estimates.status IS 'Workflow: draft -> sent -> approved -> converted (or rejected back to draft)';
+
+-- ============================================================
+-- 6. ESTIMATE VERSION HISTORY (EST-06)
+-- ============================================================
+-- Stores snapshots of estimates for version tracking
+-- Each snapshot captures the full state at a point in time
+
+-- Add version column to estimates if not exists
+ALTER TABLE v2_estimates
+  ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+
+CREATE TABLE IF NOT EXISTS v2_estimate_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  estimate_id UUID NOT NULL REFERENCES v2_estimates(id) ON DELETE CASCADE,
+  version_number INTEGER NOT NULL,
+
+  -- Snapshot of estimate state at this version
+  snapshot_data JSONB NOT NULL,  -- Full estimate + lines + sections as JSON
+
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by TEXT,
+  change_summary TEXT,  -- "Initial version", "Updated pricing", "Client revision 2", etc.
+
+  -- Computed totals at snapshot time (for quick comparison without parsing JSON)
+  subtotal DECIMAL(14,2),
+  total_amount DECIMAL(14,2),
+  line_count INTEGER,
+
+  UNIQUE(estimate_id, version_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_estimate_versions_estimate ON v2_estimate_versions(estimate_id);
+CREATE INDEX IF NOT EXISTS idx_estimate_versions_created ON v2_estimate_versions(created_at DESC);
+
+COMMENT ON TABLE v2_estimate_versions IS 'Version history snapshots for estimates - allows retrieving/comparing previous versions';
+COMMENT ON COLUMN v2_estimate_versions.snapshot_data IS 'JSONB snapshot containing estimate header, all sections, and all line items at this version';
+COMMENT ON COLUMN v2_estimate_versions.change_summary IS 'Human-readable description of what changed in this version';
+
+-- ============================================================
+-- 7. ADDITIONAL INDEXES
+-- ============================================================
+CREATE INDEX IF NOT EXISTS idx_estimates_overhead ON v2_estimates(overhead_percent) WHERE overhead_percent > 0;
+CREATE INDEX IF NOT EXISTS idx_estimates_profit ON v2_estimates(profit_percent) WHERE profit_percent > 0;
+CREATE INDEX IF NOT EXISTS idx_estimates_version ON v2_estimates(version);
