@@ -20,6 +20,12 @@ let currentCatalogCategory = null;
 let currentCatalogProduct = null;
 let currentView = 'allowances';
 
+// Client approval state
+let currentSelectionForApproval = null;
+let selectedSelectionIds = [];
+let isPostContract = false;
+let currentOverageAmount = 0;
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -1990,5 +1996,249 @@ async function removeKnowledge(knowledgeId) {
   } catch (err) {
     console.error('Remove knowledge error:', err);
     showToast('Failed to remove', 'error');
+  }
+}
+
+// ============================================================
+// CLIENT APPROVAL FUNCTIONS
+// ============================================================
+
+/**
+ * Show client approval section for a selection
+ * @param {Object} selection - Selection object
+ * @param {Object} allowance - Allowance object with budgeted_amount
+ */
+async function showClientApprovalSection(selection, allowance) {
+  currentSelectionForApproval = selection;
+
+  const section = document.getElementById('clientApprovalSection');
+  if (!section) return;
+
+  // Show the section
+  section.style.display = 'block';
+
+  // Update variance display
+  const budget = parseFloat(allowance?.budgeted_amount) || 0;
+  const selected = parseFloat(selection?.final_price) || 0;
+  const variance = selected - budget;
+
+  document.getElementById('approvalBudget').textContent = formatCurrency(budget);
+  document.getElementById('approvalSelected').textContent = formatCurrency(selected);
+  document.getElementById('approvalVariance').textContent = formatCurrency(Math.abs(variance));
+
+  // Style variance
+  const varianceRow = document.getElementById('varianceRow');
+  varianceRow.classList.remove('over', 'under', 'on-budget');
+  if (variance > 0) {
+    varianceRow.classList.add('over');
+    document.getElementById('approvalVariance').textContent = '+' + formatCurrency(variance);
+  } else if (variance < 0) {
+    varianceRow.classList.add('under');
+    document.getElementById('approvalVariance').textContent = '-' + formatCurrency(Math.abs(variance));
+  } else {
+    varianceRow.classList.add('on-budget');
+    document.getElementById('approvalVariance').textContent = 'On Budget';
+  }
+
+  // Check if already approved
+  if (selection.client_approved_at) {
+    showApprovalConfirmed(selection);
+    return;
+  }
+
+  // Check post-contract status
+  try {
+    const res = await fetch(`/api/selections/items/${selection.id}/check-post-contract`);
+    const postContractData = await res.json();
+
+    isPostContract = postContractData.is_post_contract;
+    currentOverageAmount = postContractData.overage_amount;
+
+    // Show/hide post-contract warning
+    const warning = document.getElementById('postContractWarning');
+    if (postContractData.needs_change_order) {
+      warning.style.display = 'flex';
+    } else {
+      warning.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Error checking post-contract status:', err);
+    document.getElementById('postContractWarning').style.display = 'none';
+  }
+
+  // Show approval checkbox and actions
+  document.getElementById('approvalCheckboxContainer').style.display = 'block';
+  document.getElementById('approvalActions').style.display = 'flex';
+  document.getElementById('approvalConfirmed').style.display = 'none';
+
+  // Reset checkbox
+  document.getElementById('approvalCheckbox').checked = false;
+  document.getElementById('approvalNotes').value = '';
+  document.getElementById('approveBtn').disabled = true;
+}
+
+/**
+ * Show approval confirmed state
+ * @param {Object} selection - Approved selection object
+ */
+function showApprovalConfirmed(selection) {
+  document.getElementById('approvalCheckboxContainer').style.display = 'none';
+  document.getElementById('approvalActions').style.display = 'none';
+  document.getElementById('approvalConfirmed').style.display = 'flex';
+
+  const timestamp = new Date(selection.client_approved_at).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  document.getElementById('approvalTimestamp').textContent = `on ${timestamp}`;
+  document.getElementById('approvalBy').textContent = selection.client_approved_by
+    ? `by ${selection.client_approved_by}`
+    : '';
+}
+
+/**
+ * Toggle approve button based on checkbox state
+ */
+function toggleApprovalButton() {
+  const checkbox = document.getElementById('approvalCheckbox');
+  const btn = document.getElementById('approveBtn');
+  btn.disabled = !checkbox.checked;
+}
+
+/**
+ * Approve the current selection
+ */
+async function approveCurrentSelection() {
+  if (!currentSelectionForApproval) return;
+
+  const notes = document.getElementById('approvalNotes').value;
+  const approvedBy = window.currentUser || 'Client';
+
+  try {
+    // If post-contract with overage, create CO first
+    if (isPostContract && currentOverageAmount > 0) {
+      const confirmCO = confirm(
+        `This selection exceeds the allowance by ${formatCurrency(currentOverageAmount)}.\n\n` +
+        `A change order will be created for this amount.\n\n` +
+        `Continue with approval?`
+      );
+      if (!confirmCO) return;
+
+      // Create change order
+      try {
+        await fetch(`/api/selections/items/${currentSelectionForApproval.id}/create-co`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            markup_percent: 0,
+            description: `Allowance overage for ${currentSelectionForApproval.name}`,
+            created_by: approvedBy
+          })
+        });
+        showToast('Change order created for overage', 'success');
+      } catch (coErr) {
+        console.error('Error creating CO:', coErr);
+        showToast('Could not create change order', 'error');
+        return;
+      }
+    }
+
+    // Approve the selection
+    const res = await fetch(`/api/selections/items/${currentSelectionForApproval.id}/client-approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approved_by: approvedBy,
+        notes: notes || null
+      })
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Failed to approve');
+    }
+
+    const data = await res.json();
+
+    showToast('Selection approved', 'success');
+    showApprovalConfirmed(data);
+
+    // Refresh the selections list
+    await loadAllowances();
+
+  } catch (err) {
+    console.error('Approval error:', err);
+    showToast(err.message || 'Failed to approve selection', 'error');
+  }
+}
+
+/**
+ * Update bulk selection state when checkboxes change
+ */
+function updateBulkSelection() {
+  const checkboxes = document.querySelectorAll('.selection-checkbox:checked');
+  selectedSelectionIds = Array.from(checkboxes).map(cb => cb.dataset.selectionId);
+
+  const bar = document.getElementById('bulkApprovalBar');
+  const count = document.getElementById('selectedCount');
+
+  if (selectedSelectionIds.length > 0) {
+    bar.style.display = 'flex';
+    count.textContent = `${selectedSelectionIds.length} selection${selectedSelectionIds.length > 1 ? 's' : ''} selected`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+/**
+ * Clear all bulk selections
+ */
+function clearAllSelections() {
+  document.querySelectorAll('.selection-checkbox:checked').forEach(cb => {
+    cb.checked = false;
+  });
+  selectedSelectionIds = [];
+  document.getElementById('bulkApprovalBar').style.display = 'none';
+}
+
+/**
+ * Bulk approve selected selections
+ */
+async function bulkApproveSelections() {
+  if (selectedSelectionIds.length === 0) return;
+
+  const approvedBy = window.currentUser || 'Client';
+
+  const confirmMsg = `Approve ${selectedSelectionIds.length} selection${selectedSelectionIds.length > 1 ? 's' : ''}?`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await fetch('/api/selections/items/bulk-approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        selection_ids: selectedSelectionIds,
+        approved_by: approvedBy
+      })
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Bulk approval failed');
+    }
+
+    const data = await res.json();
+
+    showToast(`${data.approved_count} selection(s) approved`, 'success');
+    clearAllSelections();
+    await loadAllowances();
+
+  } catch (err) {
+    console.error('Bulk approval error:', err);
+    showToast(err.message || 'Bulk approval failed', 'error');
   }
 }

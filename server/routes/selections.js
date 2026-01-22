@@ -18,6 +18,37 @@ const upload = multer({
 const asyncHandler = fn => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
+/**
+ * Filter selection response for client role
+ * Removes internal_notes and other admin-only fields
+ * @param {Object} selection - Selection object
+ * @param {string} role - User role (client, pm, admin)
+ * @returns {Object} Filtered selection
+ */
+function filterSelectionForRole(selection, role = 'admin') {
+  if (!selection) return selection;
+
+  // Client role: hide internal notes and admin-only fields
+  if (role === 'client') {
+    const { internal_notes, ...clientSafe } = selection;
+    return clientSafe;
+  }
+
+  // PM and Admin see everything
+  return selection;
+}
+
+/**
+ * Filter array of selections for role
+ * @param {Array} selections - Array of selection objects
+ * @param {string} role - User role
+ * @returns {Array} Filtered selections
+ */
+function filterSelectionsForRole(selections, role = 'admin') {
+  if (!Array.isArray(selections)) return selections;
+  return selections.map(s => filterSelectionForRole(s, role));
+}
+
 // ============================================================
 // SELECTION CATEGORIES
 // ============================================================
@@ -1401,10 +1432,10 @@ router.delete('/catalog/:id', asyncHandler(async (req, res) => {
 /**
  * GET /api/selections/items
  * List selections with optional filters
- * Query params: allowance_id, status
+ * Query params: allowance_id, status, role
  */
 router.get('/items', asyncHandler(async (req, res) => {
-  const { allowance_id, status } = req.query;
+  const { allowance_id, status, role } = req.query;
 
   let query = supabase
     .from('v2_selections')
@@ -1421,15 +1452,20 @@ router.get('/items', asyncHandler(async (req, res) => {
 
   const { data, error } = await query;
   if (error) throw error;
-  res.json(data);
+
+  // Filter for client role
+  const filteredData = filterSelectionsForRole(data, role);
+  res.json(filteredData);
 }));
 
 /**
  * GET /api/selections/items/:id
  * Get a single selection with history
+ * Query params: role
  */
 router.get('/items/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const { role } = req.query;
 
   // Get selection
   const { data: selection, error: selectionError } = await supabase
@@ -1457,10 +1493,11 @@ router.get('/items/:id', asyncHandler(async (req, res) => {
 
   if (historyError) throw historyError;
 
-  res.json({
+  // Filter for client role
+  res.json(filterSelectionForRole({
     ...selection,
     status_history: history || []
-  });
+  }, role));
 }));
 
 /**
@@ -1659,6 +1696,144 @@ router.post('/items/:id/status', asyncHandler(async (req, res) => {
   });
 
   res.json(data);
+}));
+
+// ============================================================
+// CLIENT APPROVAL
+// ============================================================
+
+/**
+ * POST /api/selections/items/:id/client-approve
+ * Client approves their selection
+ * Records approval timestamp, method, IP, and optional notes
+ */
+router.post('/items/:id/client-approve', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { approved_by, notes, ip_address } = req.body;
+
+  if (!approved_by) {
+    return res.status(400).json({ error: 'approved_by is required' });
+  }
+
+  // Get current selection
+  const { data: current, error: fetchError } = await supabase
+    .from('v2_selections')
+    .select('status, client_approved_at, allowance_id')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError) throw fetchError;
+  if (!current) {
+    return res.status(404).json({ error: 'Selection not found' });
+  }
+
+  if (current.client_approved_at) {
+    return res.status(400).json({
+      error: 'Selection already approved by client',
+      approved_at: current.client_approved_at
+    });
+  }
+
+  // Update selection with client approval
+  const { data, error } = await supabase
+    .from('v2_selections')
+    .update({
+      status: 'approved',
+      client_approved_at: new Date().toISOString(),
+      client_approved_by: approved_by,
+      client_approval_ip: ip_address || null,
+      client_approval_method: 'checkbox',
+      client_approval_notes: notes || null
+    })
+    .eq('id', id)
+    .select(`
+      *,
+      allowance:v2_allowances(id, name, job_id, budgeted_amount)
+    `)
+    .single();
+
+  if (error) throw error;
+
+  // Record in status history
+  await supabase.from('v2_selection_status_history').insert({
+    selection_id: id,
+    from_status: current.status,
+    to_status: 'approved',
+    changed_by: approved_by,
+    notes: 'Client approved selection'
+  });
+
+  res.json(data);
+}));
+
+/**
+ * POST /api/selections/items/bulk-approve
+ * Client approves multiple selections at once
+ * Body: { selection_ids: UUID[], approved_by: string, ip_address?: string }
+ */
+router.post('/items/bulk-approve', asyncHandler(async (req, res) => {
+  const { selection_ids, approved_by, ip_address } = req.body;
+
+  if (!Array.isArray(selection_ids) || selection_ids.length === 0) {
+    return res.status(400).json({ error: 'selection_ids array is required' });
+  }
+
+  if (!approved_by) {
+    return res.status(400).json({ error: 'approved_by is required' });
+  }
+
+  // Verify all selections exist and aren't already approved
+  const { data: existing, error: fetchError } = await supabase
+    .from('v2_selections')
+    .select('id, status, client_approved_at')
+    .in('id', selection_ids)
+    .is('deleted_at', null);
+
+  if (fetchError) throw fetchError;
+
+  const alreadyApproved = existing.filter(s => s.client_approved_at);
+  if (alreadyApproved.length > 0) {
+    return res.status(400).json({
+      error: `${alreadyApproved.length} selection(s) already approved`,
+      already_approved_ids: alreadyApproved.map(s => s.id)
+    });
+  }
+
+  const now = new Date().toISOString();
+
+  // Bulk update
+  const { data, error } = await supabase
+    .from('v2_selections')
+    .update({
+      status: 'approved',
+      client_approved_at: now,
+      client_approved_by: approved_by,
+      client_approval_ip: ip_address || null,
+      client_approval_method: 'checkbox',
+      client_approval_notes: 'Bulk approved'
+    })
+    .in('id', selection_ids)
+    .select();
+
+  if (error) throw error;
+
+  // Record status history for each
+  const historyRecords = existing.map(s => ({
+    selection_id: s.id,
+    from_status: s.status,
+    to_status: 'approved',
+    changed_by: approved_by,
+    notes: 'Client bulk approved selections'
+  }));
+
+  await supabase.from('v2_selection_status_history').insert(historyRecords);
+
+  res.json({
+    success: true,
+    approved_count: data.length,
+    selections: data
+  });
 }));
 
 /**
@@ -2614,4 +2789,135 @@ router.get('/catalog/brands', asyncHandler(async (req, res) => {
 
   res.json(brands);
 }));
+
+// ============================================================
+// ESTIMATE INTEGRATION
+// ============================================================
+
+/**
+ * POST /api/selections/convert-estimate-allowances
+ * Convert allowance line items from an estimate to job allowances
+ * Called when estimate is approved/converted to budget
+ * Body: { estimate_id: UUID }
+ */
+router.post('/convert-estimate-allowances', asyncHandler(async (req, res) => {
+  const { estimate_id } = req.body;
+
+  if (!estimate_id) {
+    return res.status(400).json({ error: 'estimate_id is required' });
+  }
+
+  // Verify estimate exists and has a job
+  const { data: estimate, error: estError } = await supabase
+    .from('v2_estimates')
+    .select('id, job_id, status')
+    .eq('id', estimate_id)
+    .single();
+
+  if (estError || !estimate) {
+    return res.status(404).json({ error: 'Estimate not found' });
+  }
+
+  if (!estimate.job_id) {
+    return res.status(400).json({ error: 'Estimate has no associated job' });
+  }
+
+  // Call the database function to convert allowances
+  const { data, error } = await supabase.rpc('convert_estimate_allowances', {
+    p_estimate_id: estimate_id
+  });
+
+  if (error) {
+    console.error('Convert allowances error:', error);
+    // Check if it's the "already converted" notice
+    if (error.message && error.message.includes('already converted')) {
+      return res.json({
+        success: true,
+        created_count: 0,
+        message: 'Allowances already converted for this estimate'
+      });
+    }
+    throw error;
+  }
+
+  res.json({
+    success: true,
+    created_count: data,
+    message: `Created ${data} allowance(s) from estimate`
+  });
+}));
+
+/**
+ * GET /api/selections/allowances/job/:jobId/variance-summary
+ * Get variance summary for job allowances
+ */
+router.get('/allowances/job/:jobId/variance-summary', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  const { data, error } = await supabase.rpc('get_allowance_variance_summary', {
+    p_job_id: jobId
+  });
+
+  if (error) throw error;
+
+  // Function returns single row
+  res.json(data && data[0] ? data[0] : {
+    total_budgeted: 0,
+    total_selected: 0,
+    total_variance: 0,
+    over_budget_count: 0,
+    under_budget_count: 0,
+    on_budget_count: 0,
+    pending_selection_count: 0
+  });
+}));
+
+/**
+ * GET /api/selections/items/:id/check-post-contract
+ * Check if selection is post-contract and needs CO for overage
+ * Returns: { is_post_contract: boolean, has_overage: boolean, overage_amount: number }
+ */
+router.get('/items/:id/check-post-contract', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get selection with allowance and job info
+  const { data: selection, error: selError } = await supabase
+    .from('v2_selections')
+    .select(`
+      final_price,
+      allowance:v2_allowances(
+        id,
+        budgeted_amount,
+        job:v2_jobs(id, status)
+      )
+    `)
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (selError || !selection) {
+    return res.status(404).json({ error: 'Selection not found' });
+  }
+
+  const jobStatus = selection.allowance?.job?.status;
+  const budget = parseFloat(selection.allowance?.budgeted_amount) || 0;
+  const selected = parseFloat(selection.final_price) || 0;
+  const overage = selected - budget;
+
+  // Post-contract = job is in construction or later phase
+  // Statuses that indicate post-contract: 'construction', 'in_progress', 'active', 'closed', 'complete'
+  const postContractStatuses = ['construction', 'in_progress', 'active', 'closed', 'complete'];
+  const isPostContract = postContractStatuses.includes(jobStatus?.toLowerCase());
+
+  res.json({
+    is_post_contract: isPostContract,
+    job_status: jobStatus,
+    has_overage: overage > 0,
+    overage_amount: overage > 0 ? overage : 0,
+    budget_amount: budget,
+    selected_amount: selected,
+    needs_change_order: isPostContract && overage > 0
+  });
+}));
+
 module.exports = router;
