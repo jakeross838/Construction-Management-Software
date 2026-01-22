@@ -1,0 +1,388 @@
+-- Migration 117: Estimate Hierarchical Structure Schema (Phase 106-01)
+-- Adds Phase -> Group -> Subgroup hierarchy for estimates with templates
+
+-- ============================================================
+-- 1. ESTIMATE PHASES (matches construction schedule phases)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS v2_estimate_phases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  estimate_id UUID NOT NULL REFERENCES v2_estimates(id) ON DELETE CASCADE,
+
+  -- Identity
+  name TEXT NOT NULL,                    -- "Framing", "MEP Rough", etc.
+  phase_code TEXT,                       -- "framing", "mep-rough" (matches schedule)
+  description TEXT,
+
+  -- Ordering
+  sort_order INTEGER NOT NULL DEFAULT 0,
+
+  -- Totals (calculated)
+  subtotal DECIMAL(12,2) DEFAULT 0,
+
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(estimate_id, sort_order)
+);
+
+-- ============================================================
+-- 2. ESTIMATE GROUPS (within phases)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS v2_estimate_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phase_id UUID NOT NULL REFERENCES v2_estimate_phases(id) ON DELETE CASCADE,
+
+  -- Identity
+  name TEXT NOT NULL,                    -- "Wall Framing", "Plumbing Rough"
+  description TEXT,
+
+  -- Ordering
+  sort_order INTEGER NOT NULL DEFAULT 0,
+
+  -- Totals (calculated)
+  subtotal DECIMAL(12,2) DEFAULT 0,
+
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(phase_id, sort_order)
+);
+
+-- ============================================================
+-- 3. ESTIMATE SUBGROUPS (within groups)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS v2_estimate_subgroups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id UUID NOT NULL REFERENCES v2_estimate_groups(id) ON DELETE CASCADE,
+
+  -- Identity
+  name TEXT NOT NULL,                    -- "Exterior Walls", "Kitchen Cabinets"
+  description TEXT,
+
+  -- Ordering
+  sort_order INTEGER NOT NULL DEFAULT 0,
+
+  -- Totals (calculated)
+  subtotal DECIMAL(12,2) DEFAULT 0,
+
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(group_id, sort_order)
+);
+
+-- ============================================================
+-- 4. UPDATE LINE ITEMS TO REFERENCE SUBGROUP
+-- ============================================================
+ALTER TABLE v2_estimate_line_items
+ADD COLUMN IF NOT EXISTS subgroup_id UUID REFERENCES v2_estimate_subgroups(id) ON DELETE SET NULL;
+
+-- ============================================================
+-- 5. INDEXES FOR PERFORMANCE
+-- ============================================================
+CREATE INDEX IF NOT EXISTS idx_estimate_phases_estimate ON v2_estimate_phases(estimate_id);
+CREATE INDEX IF NOT EXISTS idx_estimate_groups_phase ON v2_estimate_groups(phase_id);
+CREATE INDEX IF NOT EXISTS idx_estimate_subgroups_group ON v2_estimate_subgroups(group_id);
+CREATE INDEX IF NOT EXISTS idx_estimate_line_items_subgroup ON v2_estimate_line_items(subgroup_id);
+
+-- ============================================================
+-- 6. ESTIMATE TEMPLATES
+-- ============================================================
+CREATE TABLE IF NOT EXISTS v2_estimate_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Identity
+  name TEXT NOT NULL,                    -- "Standard Residential"
+  description TEXT,
+  project_type TEXT DEFAULT 'residential', -- residential, commercial, renovation
+
+  -- Template Data (JSONB for flexibility)
+  phases JSONB NOT NULL DEFAULT '[]',    -- Array of phase definitions
+
+  -- Metadata
+  is_default BOOLEAN DEFAULT FALSE,
+  is_active BOOLEAN DEFAULT TRUE,
+  source_estimate_id UUID REFERENCES v2_estimates(id), -- If created from existing
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- 7. SEED DEFAULT RESIDENTIAL TEMPLATE
+-- ============================================================
+INSERT INTO v2_estimate_templates (name, description, project_type, is_default, phases) VALUES
+('Standard Residential', 'Standard phases for residential construction', 'residential', true, '
+[
+  {"name": "Pre-Construction", "phase_code": "preconstruction", "groups": [
+    {"name": "Permits & Fees", "subgroups": ["Building Permit", "Impact Fees", "Utility Connections"]},
+    {"name": "Site Preparation", "subgroups": ["Clearing", "Grading", "Survey"]}
+  ]},
+  {"name": "Foundation", "phase_code": "foundation", "groups": [
+    {"name": "Excavation", "subgroups": ["Footings", "Grade Beams"]},
+    {"name": "Concrete", "subgroups": ["Slab", "Stem Walls", "Piers"]}
+  ]},
+  {"name": "Framing", "phase_code": "framing", "groups": [
+    {"name": "Floor Framing", "subgroups": ["Joists", "Subfloor", "Beams"]},
+    {"name": "Wall Framing", "subgroups": ["Exterior Walls", "Interior Walls", "Headers"]},
+    {"name": "Roof Framing", "subgroups": ["Trusses", "Rafters", "Sheathing"]}
+  ]},
+  {"name": "Dry-In", "phase_code": "dryin", "groups": [
+    {"name": "Roofing", "subgroups": ["Underlayment", "Shingles/Metal", "Flashing"]},
+    {"name": "Exterior Openings", "subgroups": ["Windows", "Exterior Doors", "Garage Doors"]}
+  ]},
+  {"name": "MEP Rough", "phase_code": "mep-rough", "groups": [
+    {"name": "Plumbing Rough", "subgroups": ["Supply", "Drain/Waste/Vent", "Gas"]},
+    {"name": "Electrical Rough", "subgroups": ["Panel", "Circuits", "Low Voltage"]},
+    {"name": "HVAC Rough", "subgroups": ["Ductwork", "Equipment", "Vents"]}
+  ]},
+  {"name": "Insulation", "phase_code": "insulation", "groups": [
+    {"name": "Insulation", "subgroups": ["Walls", "Attic", "Spray Foam"]}
+  ]},
+  {"name": "Drywall", "phase_code": "drywall", "groups": [
+    {"name": "Drywall", "subgroups": ["Hang", "Tape & Mud", "Texture"]}
+  ]},
+  {"name": "Interior Trim", "phase_code": "interior-trim", "groups": [
+    {"name": "Doors & Trim", "subgroups": ["Interior Doors", "Casing", "Base", "Crown"]},
+    {"name": "Cabinets", "subgroups": ["Kitchen Cabinets", "Bath Vanities", "Built-ins"]},
+    {"name": "Countertops", "subgroups": ["Kitchen", "Bathroom", "Laundry"]}
+  ]},
+  {"name": "Finishes", "phase_code": "finishes", "groups": [
+    {"name": "Paint", "subgroups": ["Interior Paint", "Exterior Paint", "Stain"]},
+    {"name": "Flooring", "subgroups": ["Hardwood", "Tile", "Carpet", "LVP"]},
+    {"name": "Tile", "subgroups": ["Showers", "Backsplash", "Floors"]}
+  ]},
+  {"name": "MEP Trim", "phase_code": "mep-trim", "groups": [
+    {"name": "Plumbing Fixtures", "subgroups": ["Faucets", "Toilets", "Sinks", "Showers"]},
+    {"name": "Electrical Fixtures", "subgroups": ["Lighting", "Switches/Outlets", "Fans"]},
+    {"name": "HVAC Trim", "subgroups": ["Registers", "Thermostats"]}
+  ]},
+  {"name": "Final", "phase_code": "closeout", "groups": [
+    {"name": "Cleanup", "subgroups": ["Final Clean", "Punch List"]},
+    {"name": "Landscaping", "subgroups": ["Sod", "Irrigation", "Hardscape"]},
+    {"name": "Closeout", "subgroups": ["Final Inspections", "Warranty"]}
+  ]}
+]
+'::jsonb)
+ON CONFLICT DO NOTHING;
+
+-- ============================================================
+-- 8. FUNCTION: APPLY ESTIMATE TEMPLATE
+-- ============================================================
+CREATE OR REPLACE FUNCTION apply_estimate_template(
+  p_estimate_id UUID,
+  p_template_id UUID
+) RETURNS VOID AS $$
+DECLARE
+  v_phases JSONB;
+  v_phase JSONB;
+  v_group JSONB;
+  v_subgroup TEXT;
+  v_phase_id UUID;
+  v_group_id UUID;
+  v_phase_order INTEGER := 0;
+  v_group_order INTEGER;
+  v_subgroup_order INTEGER;
+BEGIN
+  -- Get template phases
+  SELECT phases INTO v_phases FROM v2_estimate_templates WHERE id = p_template_id;
+
+  IF v_phases IS NULL THEN
+    RAISE EXCEPTION 'Template not found: %', p_template_id;
+  END IF;
+
+  -- Clear existing structure (if any)
+  DELETE FROM v2_estimate_phases WHERE estimate_id = p_estimate_id;
+
+  -- Create phases
+  FOR v_phase IN SELECT * FROM jsonb_array_elements(v_phases) LOOP
+    v_phase_order := v_phase_order + 1;
+
+    INSERT INTO v2_estimate_phases (estimate_id, name, phase_code, sort_order)
+    VALUES (
+      p_estimate_id,
+      v_phase->>'name',
+      v_phase->>'phase_code',
+      v_phase_order
+    )
+    RETURNING id INTO v_phase_id;
+
+    -- Create groups within phase
+    v_group_order := 0;
+    FOR v_group IN SELECT * FROM jsonb_array_elements(v_phase->'groups') LOOP
+      v_group_order := v_group_order + 1;
+
+      INSERT INTO v2_estimate_groups (phase_id, name, sort_order)
+      VALUES (v_phase_id, v_group->>'name', v_group_order)
+      RETURNING id INTO v_group_id;
+
+      -- Create subgroups within group
+      v_subgroup_order := 0;
+      FOR v_subgroup IN SELECT * FROM jsonb_array_elements_text(v_group->'subgroups') LOOP
+        v_subgroup_order := v_subgroup_order + 1;
+
+        INSERT INTO v2_estimate_subgroups (group_id, name, sort_order)
+        VALUES (v_group_id, v_subgroup, v_subgroup_order);
+      END LOOP;
+    END LOOP;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- 9. FUNCTION: SAVE ESTIMATE AS TEMPLATE
+-- ============================================================
+CREATE OR REPLACE FUNCTION save_estimate_as_template(
+  p_estimate_id UUID,
+  p_name TEXT,
+  p_description TEXT DEFAULT NULL,
+  p_created_by TEXT DEFAULT 'User'
+) RETURNS UUID AS $$
+DECLARE
+  v_template_id UUID;
+  v_phases JSONB := '[]'::jsonb;
+  v_phase RECORD;
+  v_group RECORD;
+  v_subgroup RECORD;
+  v_phase_json JSONB;
+  v_groups_json JSONB;
+  v_subgroups_json JSONB;
+BEGIN
+  -- Build phases JSON from estimate structure
+  FOR v_phase IN
+    SELECT * FROM v2_estimate_phases
+    WHERE estimate_id = p_estimate_id
+    ORDER BY sort_order
+  LOOP
+    v_groups_json := '[]'::jsonb;
+
+    FOR v_group IN
+      SELECT * FROM v2_estimate_groups
+      WHERE phase_id = v_phase.id
+      ORDER BY sort_order
+    LOOP
+      v_subgroups_json := '[]'::jsonb;
+
+      FOR v_subgroup IN
+        SELECT * FROM v2_estimate_subgroups
+        WHERE group_id = v_group.id
+        ORDER BY sort_order
+      LOOP
+        v_subgroups_json := v_subgroups_json || to_jsonb(v_subgroup.name);
+      END LOOP;
+
+      v_groups_json := v_groups_json || jsonb_build_object(
+        'name', v_group.name,
+        'subgroups', v_subgroups_json
+      );
+    END LOOP;
+
+    v_phase_json := jsonb_build_object(
+      'name', v_phase.name,
+      'phase_code', v_phase.phase_code,
+      'groups', v_groups_json
+    );
+
+    v_phases := v_phases || v_phase_json;
+  END LOOP;
+
+  -- Create template
+  INSERT INTO v2_estimate_templates (name, description, source_estimate_id, phases, created_by)
+  VALUES (p_name, p_description, p_estimate_id, v_phases, p_created_by)
+  RETURNING id INTO v_template_id;
+
+  RETURN v_template_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- 10. CASCADING SUBTOTAL TRIGGERS
+-- ============================================================
+
+-- Recalculate subgroup subtotal when line items change
+CREATE OR REPLACE FUNCTION recalc_subgroup_subtotal() RETURNS TRIGGER AS $$
+DECLARE
+  v_subgroup_id UUID;
+BEGIN
+  v_subgroup_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.subgroup_id ELSE NEW.subgroup_id END;
+
+  -- Only update if subgroup_id is set
+  IF v_subgroup_id IS NOT NULL THEN
+    UPDATE v2_estimate_subgroups
+    SET subtotal = COALESCE((
+      SELECT SUM(line_total) FROM v2_estimate_line_items WHERE subgroup_id = v_subgroup_id
+    ), 0),
+    updated_at = NOW()
+    WHERE id = v_subgroup_id;
+  END IF;
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_recalc_subgroup_subtotal ON v2_estimate_line_items;
+CREATE TRIGGER trg_recalc_subgroup_subtotal
+AFTER INSERT OR UPDATE OR DELETE ON v2_estimate_line_items
+FOR EACH ROW
+EXECUTE FUNCTION recalc_subgroup_subtotal();
+
+-- Recalculate group subtotal when subgroup changes
+CREATE OR REPLACE FUNCTION recalc_group_subtotal() RETURNS TRIGGER AS $$
+DECLARE
+  v_group_id UUID;
+BEGIN
+  v_group_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.group_id ELSE NEW.group_id END;
+
+  UPDATE v2_estimate_groups
+  SET subtotal = COALESCE((
+    SELECT SUM(subtotal) FROM v2_estimate_subgroups WHERE group_id = v_group_id
+  ), 0),
+  updated_at = NOW()
+  WHERE id = v_group_id;
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_recalc_group_subtotal ON v2_estimate_subgroups;
+CREATE TRIGGER trg_recalc_group_subtotal
+AFTER INSERT OR UPDATE OR DELETE ON v2_estimate_subgroups
+FOR EACH ROW
+EXECUTE FUNCTION recalc_group_subtotal();
+
+-- Recalculate phase subtotal when group changes
+CREATE OR REPLACE FUNCTION recalc_phase_subtotal() RETURNS TRIGGER AS $$
+DECLARE
+  v_phase_id UUID;
+BEGIN
+  v_phase_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.phase_id ELSE NEW.phase_id END;
+
+  UPDATE v2_estimate_phases
+  SET subtotal = COALESCE((
+    SELECT SUM(subtotal) FROM v2_estimate_groups WHERE phase_id = v_phase_id
+  ), 0),
+  updated_at = NOW()
+  WHERE id = v_phase_id;
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_recalc_phase_subtotal ON v2_estimate_groups;
+CREATE TRIGGER trg_recalc_phase_subtotal
+AFTER INSERT OR UPDATE OR DELETE ON v2_estimate_groups
+FOR EACH ROW
+EXECUTE FUNCTION recalc_phase_subtotal();
+
+-- ============================================================
+-- 11. COMMENTS
+-- ============================================================
+COMMENT ON TABLE v2_estimate_phases IS 'Construction phases within an estimate (matches schedule phases)';
+COMMENT ON TABLE v2_estimate_groups IS 'Groups within estimate phases (e.g., Wall Framing, Plumbing Rough)';
+COMMENT ON TABLE v2_estimate_subgroups IS 'Subgroups within estimate groups (e.g., Exterior Walls, Kitchen Cabinets)';
+COMMENT ON TABLE v2_estimate_templates IS 'Reusable phase/group/subgroup structures for estimates';
+COMMENT ON FUNCTION apply_estimate_template(UUID, UUID) IS 'Creates phases/groups/subgroups in estimate from template';
+COMMENT ON FUNCTION save_estimate_as_template(UUID, TEXT, TEXT, TEXT) IS 'Saves estimate structure as a reusable template';
