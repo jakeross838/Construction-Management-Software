@@ -8,8 +8,7 @@
   <style>
     .reports-container {
       padding: 1.5rem;
-      max-width: 1600px;
-      margin: 0 auto;
+      max-width: 1400px;
     }
 
     .reports-header {
@@ -193,7 +192,11 @@
     </div>
   </header>
 
-  <main class="reports-container">
+  <div class="app-layout">
+    <!-- Job Sidebar -->
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <main class="main-content reports-container">
     <div class="reports-header">
       <h1>Reports</h1>
       <p>Project management reports and analytics</p>
@@ -379,29 +382,56 @@
         </div>
       </div>
     </div>
-  </main>
+    </main>
+  </div>
 
   <script src="js/nav-sidebar.js"></script>
+  <script src="js/sidebar.js"></script>
   <script src="js/toasts.js"></script>
   <script>
+    let selectedJobId = null;
+
+    // Listen for job selection changes
+    window.addEventListener('jobSelected', (e) => {
+      selectedJobId = e.detail.jobId;
+      const jobName = e.detail.jobName;
+
+      // Update header to show selected job
+      const header = document.querySelector('.reports-header p');
+      if (selectedJobId && jobName) {
+        header.textContent = `Reports for ${jobName}`;
+      } else {
+        header.textContent = 'Select a job to generate reports';
+      }
+
+      // Reload stats for selected job
+      loadQuickStats();
+    });
+
     // Load quick stats
     async function loadQuickStats() {
       try {
+        const jobFilter = selectedJobId ? `?job_id=${selectedJobId}` : '';
+
         // Fetch stats from various endpoints
         const [jobsRes, invoicesRes] = await Promise.all([
           fetch('/api/jobs').catch(() => ({ ok: false })),
-          fetch('/api/invoices?status=needs_approval').catch(() => ({ ok: false }))
+          fetch(`/api/invoices${jobFilter}&status=needs_approval`).catch(() => ({ ok: false }))
         ]);
 
         if (jobsRes.ok) {
           const jobs = await jobsRes.json();
-          const activeJobs = jobs.filter(j => j.status === 'active').length;
-          document.getElementById('statActiveJobs').textContent = activeJobs;
+          if (selectedJobId) {
+            document.getElementById('statActiveJobs').textContent = '1';
+          } else {
+            const activeJobs = jobs.filter(j => j.status === 'active').length;
+            document.getElementById('statActiveJobs').textContent = activeJobs;
+          }
         }
 
         if (invoicesRes.ok) {
           const invoices = await invoicesRes.json();
-          document.getElementById('statOpenInvoices').textContent = invoices.length;
+          document.getElementById('statOpenInvoices').textContent = invoices.length || '0';
         }
 
         // Placeholder for other stats
@@ -412,7 +442,22 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', loadQuickStats);
+    // Update report card links to include job filter
+    function updateReportLinks() {
+      if (!selectedJobId) return;
+
+      document.querySelectorAll('.report-card').forEach(card => {
+        const href = card.getAttribute('href');
+        if (href && !href.includes('job=')) {
+          const separator = href.includes('?') ? '&' : '?';
+          card.setAttribute('href', `${href}${separator}job=${selectedJobId}`);
+        }
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadQuickStats();
+    });
   </script>
 </body>
 </html>
