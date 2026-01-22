@@ -985,6 +985,128 @@ router.delete('/groups/:groupId', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// SUBGROUP CRUD ENDPOINTS
+// ============================================================
+
+// POST /api/estimates/groups/:groupId/subgroups - Add subgroup to group
+router.post('/groups/:groupId/subgroups', asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  const { name, description, sort_order, created_by } = req.body;
+
+  if (!name) throw new AppError('VALIDATION_ERROR', 'Subgroup name is required');
+
+  // Verify group exists and get estimate_id for activity logging
+  const { data: group } = await supabase
+    .from('v2_estimate_groups')
+    .select('id, phase:v2_estimate_phases(estimate_id)')
+    .eq('id', groupId)
+    .single();
+
+  if (!group) throw new AppError('NOT_FOUND', 'Group not found');
+
+  // Get max sort_order if not provided
+  let order = sort_order;
+  if (order === undefined) {
+    const { data: maxOrder } = await supabase
+      .from('v2_estimate_subgroups')
+      .select('sort_order')
+      .eq('group_id', groupId)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .single();
+    order = (maxOrder?.sort_order || 0) + 1;
+  }
+
+  const { data: subgroup, error } = await supabase
+    .from('v2_estimate_subgroups')
+    .insert({
+      group_id: groupId,
+      name,
+      description: description || null,
+      sort_order: order
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  const estimateId = group.phase?.estimate_id;
+  if (estimateId) {
+    await logEstimateActivity(estimateId, 'subgroup_added', created_by || 'System', {
+      subgroup_id: subgroup.id,
+      subgroup_name: name,
+      group_id: groupId
+    });
+  }
+
+  res.status(201).json(subgroup);
+}));
+
+// PATCH /api/estimates/subgroups/:subgroupId - Update subgroup
+router.patch('/subgroups/:subgroupId', asyncHandler(async (req, res) => {
+  const { subgroupId } = req.params;
+  const { name, description, sort_order, is_collapsed, updated_by } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (sort_order !== undefined) updates.sort_order = sort_order;
+  if (is_collapsed !== undefined) updates.is_collapsed = is_collapsed;
+
+  const { data: subgroup, error } = await supabase
+    .from('v2_estimate_subgroups')
+    .update(updates)
+    .eq('id', subgroupId)
+    .select('*, group:v2_estimate_groups(phase:v2_estimate_phases(estimate_id))')
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!subgroup) throw new AppError('NOT_FOUND', 'Subgroup not found');
+
+  const estimateId = subgroup.group?.phase?.estimate_id;
+  if (estimateId) {
+    await logEstimateActivity(estimateId, 'subgroup_updated', updated_by || 'System', {
+      subgroup_id: subgroupId,
+      updates
+    });
+  }
+
+  res.json(subgroup);
+}));
+
+// DELETE /api/estimates/subgroups/:subgroupId - Delete subgroup (cascades to lines)
+router.delete('/subgroups/:subgroupId', asyncHandler(async (req, res) => {
+  const { subgroupId } = req.params;
+  const { deleted_by } = req.body || {};
+
+  // Get subgroup info before deletion
+  const { data: subgroup } = await supabase
+    .from('v2_estimate_subgroups')
+    .select('name, group:v2_estimate_groups(phase:v2_estimate_phases(estimate_id))')
+    .eq('id', subgroupId)
+    .single();
+
+  if (!subgroup) throw new AppError('NOT_FOUND', 'Subgroup not found');
+
+  const { error } = await supabase
+    .from('v2_estimate_subgroups')
+    .delete()
+    .eq('id', subgroupId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  const estimateId = subgroup.group?.phase?.estimate_id;
+  if (estimateId) {
+    await logEstimateActivity(estimateId, 'subgroup_deleted', deleted_by || 'System', {
+      subgroup_id: subgroupId,
+      subgroup_name: subgroup.name
+    });
+  }
+
+  res.json({ success: true, message: 'Subgroup deleted' });
+}));
+
+// ============================================================
 // CREATE ESTIMATE
 // ============================================================
 
