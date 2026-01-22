@@ -52,12 +52,6 @@
       ]
     },
     {
-      id: 'reports',
-      label: 'Reports',
-      href: 'reports.html',
-      items: [] // Direct link, no dropdown
-    },
-    {
       id: 'postcon',
       label: 'Post-Construction',
       items: [
@@ -74,13 +68,17 @@
         // Overview & Dashboards
         { id: 'dashboard', label: 'Dashboard', href: 'dashboard.html', section: 'Overview' },
         { id: 'business-dashboard', label: 'Business Dashboard', href: 'business-dashboard.html', section: 'Overview' },
+        // Analytics & Reports
+        { id: 'reports', label: 'Reports Hub', href: 'reports.html', section: 'Analytics' },
+        { id: 'profitability', label: 'Job Profitability', href: 'profitability.html', section: 'Analytics' },
+        { id: 'wip', label: 'WIP Schedule', href: 'wip.html', section: 'Analytics' },
+        { id: 'pnl', label: 'Company P&L', href: 'pnl.html', section: 'Analytics' },
+        { id: 'cash-flow', label: 'Cash Flow', href: 'cash-flow.html', section: 'Analytics' },
+        { id: 'expenses', label: 'Expenses', href: 'expenses.html', section: 'Analytics' },
         // Sales & Pre-Sales
         { id: 'leads', label: 'Leads', href: 'leads.html', section: 'Sales' },
         { id: 'bids', label: 'Bids', href: 'bids.html', section: 'Sales' },
         { id: 'contracts', label: 'Contracts', href: 'contracts.html', section: 'Sales' },
-        // Financial Reports (company-level)
-        { id: 'pnl', label: 'Company P&L', href: 'pnl.html', section: 'Reports' },
-        { id: 'expenses', label: 'Expenses', href: 'expenses.html', section: 'Reports' },
         // Planning & Settings
         { id: 'planning', label: 'Business Planning', href: 'business-planning.html', section: 'Planning' },
         { id: 'periods', label: 'Financial Periods', href: 'financial-periods.html', section: 'Settings' },

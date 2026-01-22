@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reports - Ross Built CMS</title>
+  <title>Reports Hub - Ross Built CMS</title>
   <link rel="stylesheet" href="css/styles.css">
   <style>
-    .reports-container {
-      padding: 1.5rem;
+    .reports-page {
+      padding: 1.5rem 2rem;
       max-width: 1400px;
+      margin: 0 auto;
     }
 
     .reports-header {
@@ -25,14 +26,31 @@
       color: var(--muted-foreground);
     }
 
-    /* Kanban-style grid */
-    .reports-grid {
+    /* Filter bar */
+    .reports-filters {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .reports-filters select,
+    .reports-filters input {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--card);
+      color: var(--foreground);
+      font-size: 0.875rem;
+    }
+
+    /* Report categories grid */
+    .report-categories {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
       gap: 1.5rem;
     }
 
-    /* Category section */
     .report-category {
       background: var(--card);
       border: 1px solid var(--border);
@@ -42,136 +60,155 @@
 
     .category-header {
       padding: 1rem 1.25rem;
-      border-bottom: 1px solid var(--border);
       background: var(--accent);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
     }
 
     .category-header h2 {
-      font-size: 0.875rem;
+      font-size: 1rem;
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--foreground);
       margin: 0;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
     }
 
-    .category-header .category-icon {
-      width: 18px;
-      height: 18px;
+    .category-icon {
+      width: 20px;
+      height: 20px;
       opacity: 0.7;
     }
 
     .category-body {
-      padding: 0.75rem;
+      padding: 1rem;
     }
 
-    /* Report card */
-    .report-card {
-      display: block;
-      padding: 1rem;
+    /* Report item */
+    .report-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.875rem 1rem;
       background: var(--background);
       border: 1px solid var(--border);
       border-radius: 8px;
       margin-bottom: 0.5rem;
-      text-decoration: none;
-      color: var(--foreground);
+      cursor: pointer;
       transition: all 0.15s ease;
     }
 
-    .report-card:last-child {
+    .report-item:last-child {
       margin-bottom: 0;
     }
 
-    .report-card:hover {
+    .report-item:hover {
       border-color: var(--primary);
       background: var(--accent);
-      transform: translateY(-1px);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
 
-    .report-card-title {
+    .report-info {
+      flex: 1;
+    }
+
+    .report-name {
       font-weight: 500;
       font-size: 0.9375rem;
-      margin-bottom: 0.25rem;
+      margin-bottom: 0.125rem;
     }
 
-    .report-card-desc {
+    .report-desc {
       font-size: 0.8125rem;
       color: var(--muted-foreground);
-      line-height: 1.4;
     }
 
-    .report-card-meta {
+    .report-actions {
       display: flex;
-      align-items: center;
-      gap: 1rem;
-      margin-top: 0.75rem;
+      gap: 0.5rem;
+    }
+
+    .report-btn {
+      padding: 0.375rem 0.75rem;
       font-size: 0.75rem;
-      color: var(--muted-foreground);
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--foreground);
+      cursor: pointer;
+      transition: all 0.1s ease;
     }
 
-    .report-card-meta span {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
+    .report-btn:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
     }
 
-    .report-card-meta svg {
-      width: 14px;
-      height: 14px;
+    .report-btn.primary {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
     }
 
-    /* Quick stats row */
-    .quick-stats {
+    /* Quick metrics */
+    .quick-metrics {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 1rem;
       margin-bottom: 2rem;
     }
 
-    .quick-stat {
+    .metric-card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 1.25rem;
+      padding: 1rem 1.25rem;
     }
 
-    .quick-stat-label {
+    .metric-label {
       font-size: 0.75rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--muted-foreground);
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.375rem;
     }
 
-    .quick-stat-value {
+    .metric-value {
       font-size: 1.5rem;
       font-weight: 600;
     }
 
-    .quick-stat-change {
+    .metric-change {
       font-size: 0.75rem;
       margin-top: 0.25rem;
     }
 
-    .quick-stat-change.positive {
-      color: var(--success);
+    .metric-change.positive { color: var(--success); }
+    .metric-change.negative { color: var(--destructive); }
+
+    /* Data sources badge */
+    .data-sources {
+      display: flex;
+      gap: 0.375rem;
+      margin-top: 0.5rem;
     }
 
-    .quick-stat-change.negative {
-      color: var(--destructive);
+    .data-badge {
+      font-size: 0.625rem;
+      padding: 0.125rem 0.375rem;
+      background: var(--accent);
+      border-radius: 3px;
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
     }
 
     @media (max-width: 768px) {
-      .reports-grid {
+      .report-categories {
         grid-template-columns: 1fr;
       }
 
-      .quick-stats {
-        grid-template-columns: 1fr 1fr;
+      .reports-filters {
+        flex-direction: column;
       }
     }
   </style>
@@ -192,271 +229,518 @@
     </div>
   </header>
 
-  <div class="app-layout">
-    <!-- Job Sidebar -->
-    <aside class="sidebar" id="sidebar"></aside>
-
-    <main class="main-content reports-container">
+  <main class="reports-page">
     <div class="reports-header">
-      <h1>Reports</h1>
-      <p>Project management reports and analytics</p>
+      <h1>Reports & Analytics</h1>
+      <p>Cross-data insights and business intelligence</p>
     </div>
 
-    <!-- Quick Stats -->
-    <div class="quick-stats" id="quickStats">
-      <div class="quick-stat">
-        <div class="quick-stat-label">Active Jobs</div>
-        <div class="quick-stat-value" id="statActiveJobs">-</div>
+    <!-- Filters -->
+    <div class="reports-filters">
+      <select id="jobFilter">
+        <option value="">All Jobs</option>
+      </select>
+      <select id="periodFilter">
+        <option value="mtd">Month to Date</option>
+        <option value="qtd">Quarter to Date</option>
+        <option value="ytd">Year to Date</option>
+        <option value="last30">Last 30 Days</option>
+        <option value="last90">Last 90 Days</option>
+        <option value="custom">Custom Range</option>
+      </select>
+      <input type="date" id="startDate" style="display: none;">
+      <input type="date" id="endDate" style="display: none;">
+      <button class="btn btn-primary" onclick="refreshReports()">Generate Reports</button>
+    </div>
+
+    <!-- Quick Metrics -->
+    <div class="quick-metrics">
+      <div class="metric-card">
+        <div class="metric-label">Total Revenue</div>
+        <div class="metric-value" id="metricRevenue">$0</div>
+        <div class="metric-change positive">+12% vs last period</div>
       </div>
-      <div class="quick-stat">
-        <div class="quick-stat-label">Open Invoices</div>
-        <div class="quick-stat-value" id="statOpenInvoices">-</div>
+      <div class="metric-card">
+        <div class="metric-label">Labor Hours</div>
+        <div class="metric-value" id="metricLaborHours">0</div>
+        <div class="metric-change">This period</div>
       </div>
-      <div class="quick-stat">
-        <div class="quick-stat-label">Pending Selections</div>
-        <div class="quick-stat-value" id="statPendingSelections">-</div>
+      <div class="metric-card">
+        <div class="metric-label">Revenue/Labor Hour</div>
+        <div class="metric-value" id="metricRevenuePerHour">$0</div>
+        <div class="metric-change positive">Key efficiency metric</div>
       </div>
-      <div class="quick-stat">
-        <div class="quick-stat-label">Open RFIs</div>
-        <div class="quick-stat-value" id="statOpenRFIs">-</div>
+      <div class="metric-card">
+        <div class="metric-label">Avg Margin</div>
+        <div class="metric-value" id="metricMargin">0%</div>
+        <div class="metric-change">Across all jobs</div>
       </div>
     </div>
 
-    <!-- Reports Grid -->
-    <div class="reports-grid">
-      <!-- Pre-Construction Reports -->
+    <!-- Report Categories -->
+    <div class="report-categories">
+
+      <!-- Labor & Productivity -->
       <div class="report-category">
         <div class="category-header">
-          <h2>
-            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-            </svg>
-            Pre-Construction
-          </h2>
+          <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          <h2>Labor & Productivity</h2>
         </div>
         <div class="category-body">
-          <a href="selections.html" class="report-card">
-            <div class="report-card-title">Selections Report</div>
-            <div class="report-card-desc">Track selection status, approvals, and pending items by job</div>
-          </a>
-          <a href="permits.html" class="report-card">
-            <div class="report-card-title">Permits Status</div>
-            <div class="report-card-desc">Permit applications, approvals, and expiration tracking</div>
-          </a>
+          <div class="report-item" onclick="runReport('revenue-per-worker')">
+            <div class="report-info">
+              <div class="report-name">Revenue per Worker</div>
+              <div class="report-desc">Daily/weekly revenue generated per crew member</div>
+              <div class="data-sources">
+                <span class="data-badge">Daily Logs</span>
+                <span class="data-badge">Invoices</span>
+                <span class="data-badge">Draws</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('labor-cost-analysis')">
+            <div class="report-info">
+              <div class="report-name">Labor Cost Analysis</div>
+              <div class="report-desc">Cost per hour by trade, crew efficiency trends</div>
+              <div class="data-sources">
+                <span class="data-badge">Daily Logs</span>
+                <span class="data-badge">Timesheets</span>
+                <span class="data-badge">Budget</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('crew-utilization')">
+            <div class="report-info">
+              <div class="report-name">Crew Utilization</div>
+              <div class="report-desc">Days worked, overtime, weather delays impact</div>
+              <div class="data-sources">
+                <span class="data-badge">Daily Logs</span>
+                <span class="data-badge">Schedule</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Project Activity Reports -->
+      <!-- Financial Performance -->
       <div class="report-category">
         <div class="category-header">
-          <h2>
-            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-            Project Activity
-          </h2>
+          <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="1" x2="12" y2="23"></line>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+          <h2>Financial Performance</h2>
         </div>
         <div class="category-body">
-          <a href="daily-logs.html" class="report-card">
-            <div class="report-card-title">Daily Logs Summary</div>
-            <div class="report-card-desc">Crew activity, weather conditions, and daily progress</div>
-          </a>
-          <a href="schedule.html" class="report-card">
-            <div class="report-card-title">Schedule Status</div>
-            <div class="report-card-desc">Task completion, delays, and milestone tracking</div>
-          </a>
-          <a href="tasks.html" class="report-card">
-            <div class="report-card-title">Tasks Overview</div>
-            <div class="report-card-desc">Open tasks, assignments, and completion rates</div>
-          </a>
+          <div class="report-item" onclick="runReport('job-profitability')">
+            <div class="report-info">
+              <div class="report-name">Job Profitability Detail</div>
+              <div class="report-desc">Revenue, costs, margin breakdown by job</div>
+              <div class="data-sources">
+                <span class="data-badge">Invoices</span>
+                <span class="data-badge">POs</span>
+                <span class="data-badge">Budget</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('budget-variance')">
+            <div class="report-info">
+              <div class="report-name">Budget vs Actual</div>
+              <div class="report-desc">Variance analysis by cost code and phase</div>
+              <div class="data-sources">
+                <span class="data-badge">Budget</span>
+                <span class="data-badge">Invoices</span>
+                <span class="data-badge">POs</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('cost-per-sqft')">
+            <div class="report-info">
+              <div class="report-name">Cost per Square Foot</div>
+              <div class="report-desc">Unit cost analysis by job type and size</div>
+              <div class="data-sources">
+                <span class="data-badge">Jobs</span>
+                <span class="data-badge">Invoices</span>
+                <span class="data-badge">Budget</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Documents & Communication -->
+      <!-- Vendor Analysis -->
       <div class="report-category">
         <div class="category-header">
-          <h2>
-            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-            </svg>
-            Documents & Communication
-          </h2>
+          <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <line x1="19" y1="8" x2="19" y2="14"></line>
+            <line x1="22" y1="11" x2="16" y2="11"></line>
+          </svg>
+          <h2>Vendor Analysis</h2>
         </div>
         <div class="category-body">
-          <a href="rfis.html" class="report-card">
-            <div class="report-card-title">RFI Status</div>
-            <div class="report-card-desc">Open RFIs, response times, and resolution tracking</div>
-          </a>
-          <a href="submittals.html" class="report-card">
-            <div class="report-card-title">Submittals Status</div>
-            <div class="report-card-desc">Submittal approvals, rejections, and pending reviews</div>
-          </a>
-          <a href="documents.html" class="report-card">
-            <div class="report-card-title">Documents</div>
-            <div class="report-card-desc">Document library and version tracking</div>
-          </a>
+          <div class="report-item" onclick="runReport('vendor-spending')">
+            <div class="report-info">
+              <div class="report-name">Vendor Spending Summary</div>
+              <div class="report-desc">Total spend, PO count, avg invoice by vendor</div>
+              <div class="data-sources">
+                <span class="data-badge">Invoices</span>
+                <span class="data-badge">POs</span>
+                <span class="data-badge">Vendors</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('vendor-performance')">
+            <div class="report-info">
+              <div class="report-name">Vendor Performance</div>
+              <div class="report-desc">On-time delivery, quality issues, pricing trends</div>
+              <div class="data-sources">
+                <span class="data-badge">POs</span>
+                <span class="data-badge">Inspections</span>
+                <span class="data-badge">RFIs</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('invoice-aging')">
+            <div class="report-info">
+              <div class="report-name">Invoice Aging</div>
+              <div class="report-desc">Outstanding invoices by age bucket</div>
+              <div class="data-sources">
+                <span class="data-badge">Invoices</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Financial Reports -->
+      <!-- Project Progress -->
       <div class="report-category">
         <div class="category-header">
-          <h2>
-            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="1" x2="12" y2="23"></line>
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-            </svg>
-            Financial
-          </h2>
+          <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          <h2>Project Progress</h2>
         </div>
         <div class="category-body">
-          <a href="budgets.html" class="report-card">
-            <div class="report-card-title">Budget Report</div>
-            <div class="report-card-desc">Budget vs actual, variances, and cost tracking</div>
-          </a>
-          <a href="index.html" class="report-card">
-            <div class="report-card-title">Invoice Summary</div>
-            <div class="report-card-desc">Invoice status, aging, and approval pipeline</div>
-          </a>
-          <a href="draws.html" class="report-card">
-            <div class="report-card-title">Draws Report</div>
-            <div class="report-card-desc">Draw status, funded amounts, and billing progress</div>
-          </a>
-          <a href="pos.html" class="report-card">
-            <div class="report-card-title">Purchase Orders</div>
-            <div class="report-card-desc">PO status, commitments, and vendor spending</div>
-          </a>
+          <div class="report-item" onclick="runReport('schedule-performance')">
+            <div class="report-info">
+              <div class="report-name">Schedule Performance</div>
+              <div class="report-desc">Tasks on time vs delayed, critical path status</div>
+              <div class="data-sources">
+                <span class="data-badge">Schedule</span>
+                <span class="data-badge">Daily Logs</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('rfi-submittal-status')">
+            <div class="report-info">
+              <div class="report-name">RFI & Submittal Status</div>
+              <div class="report-desc">Open items, response times, blocking issues</div>
+              <div class="data-sources">
+                <span class="data-badge">RFIs</span>
+                <span class="data-badge">Submittals</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('weather-impact')">
+            <div class="report-info">
+              <div class="report-name">Weather Impact Analysis</div>
+              <div class="report-desc">Lost days, productivity correlation with weather</div>
+              <div class="data-sources">
+                <span class="data-badge">Daily Logs</span>
+                <span class="data-badge">Schedule</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Vendors & Resources -->
+      <!-- Selections & Allowances -->
       <div class="report-category">
         <div class="category-header">
-          <h2>
-            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
-            Vendors & Resources
-          </h2>
+          <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          <h2>Selections & Allowances</h2>
         </div>
         <div class="category-body">
-          <a href="vendors.html" class="report-card">
-            <div class="report-card-title">Vendor Report</div>
-            <div class="report-card-desc">Vendor activity, spending, and performance</div>
-          </a>
-          <a href="lien-releases.html" class="report-card">
-            <div class="report-card-title">Lien Releases</div>
-            <div class="report-card-desc">Lien release status and compliance tracking</div>
-          </a>
+          <div class="report-item" onclick="runReport('allowance-tracking')">
+            <div class="report-info">
+              <div class="report-name">Allowance vs Actual</div>
+              <div class="report-desc">Selection allowances spent vs budgeted</div>
+              <div class="data-sources">
+                <span class="data-badge">Selections</span>
+                <span class="data-badge">Budget</span>
+                <span class="data-badge">Invoices</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('selection-status')">
+            <div class="report-info">
+              <div class="report-name">Selection Status</div>
+              <div class="report-desc">Pending, approved, ordered selections by category</div>
+              <div class="data-sources">
+                <span class="data-badge">Selections</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- Quality & Compliance -->
       <div class="report-category">
         <div class="category-header">
-          <h2>
-            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-              <polyline points="22 4 12 14.01 9 11.01"></polyline>
-            </svg>
-            Quality & Inspections
-          </h2>
+          <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <h2>Quality & Compliance</h2>
         </div>
         <div class="category-body">
-          <a href="inspections.html" class="report-card">
-            <div class="report-card-title">Inspections Report</div>
-            <div class="report-card-desc">Inspection results, deficiencies, and follow-ups</div>
-          </a>
-          <a href="tasks.html?filter=punch" class="report-card">
-            <div class="report-card-title">Punch List Status</div>
-            <div class="report-card-desc">Punch list items, completion rates, and assignments</div>
-          </a>
+          <div class="report-item" onclick="runReport('inspection-summary')">
+            <div class="report-info">
+              <div class="report-name">Inspection Summary</div>
+              <div class="report-desc">Pass/fail rates, deficiencies, re-inspection needs</div>
+              <div class="data-sources">
+                <span class="data-badge">Inspections</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('punch-list-status')">
+            <div class="report-info">
+              <div class="report-name">Punch List Analysis</div>
+              <div class="report-desc">Items by trade, completion rates, aging</div>
+              <div class="data-sources">
+                <span class="data-badge">Tasks</span>
+                <span class="data-badge">Vendors</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
+          <div class="report-item" onclick="runReport('lien-release-status')">
+            <div class="report-info">
+              <div class="report-name">Lien Release Status</div>
+              <div class="report-desc">Outstanding releases, compliance tracking</div>
+              <div class="data-sources">
+                <span class="data-badge">Lien Releases</span>
+                <span class="data-badge">Draws</span>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="report-btn primary">Run</button>
+              <button class="report-btn">Export</button>
+            </div>
+          </div>
         </div>
       </div>
+
     </div>
-    </main>
+  </main>
+
+  <!-- Report Modal -->
+  <div id="reportModal" class="modal modal-fullscreen-dark" style="display: none;">
+    <div class="modal-content modal-xl">
+      <div class="modal-header">
+        <h2 id="reportTitle">Report</h2>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="exportReport('pdf')">Export PDF</button>
+          <button class="btn btn-secondary" onclick="exportReport('excel')">Export Excel</button>
+          <button class="modal-close" onclick="closeReportModal()">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body" id="reportContent">
+        <div class="loading-cell">Generating report...</div>
+      </div>
+    </div>
   </div>
 
   <script src="js/nav-sidebar.js"></script>
-  <script src="js/sidebar.js"></script>
   <script src="js/toasts.js"></script>
   <script>
-    let selectedJobId = null;
-
-    // Listen for job selection changes
-    window.addEventListener('jobSelected', (e) => {
-      selectedJobId = e.detail.jobId;
-      const jobName = e.detail.jobName;
-
-      // Update header to show selected job
-      const header = document.querySelector('.reports-header p');
-      if (selectedJobId && jobName) {
-        header.textContent = `Reports for ${jobName}`;
-      } else {
-        header.textContent = 'Select a job to generate reports';
+    // Load jobs for filter
+    async function loadJobs() {
+      try {
+        const res = await fetch('/api/jobs');
+        if (res.ok) {
+          const jobs = await res.json();
+          const select = document.getElementById('jobFilter');
+          jobs.forEach(job => {
+            const option = document.createElement('option');
+            option.value = job.id;
+            option.textContent = job.name;
+            select.appendChild(option);
+          });
+        }
+      } catch (err) {
+        console.error('Error loading jobs:', err);
       }
+    }
 
-      // Reload stats for selected job
-      loadQuickStats();
+    // Period filter change
+    document.getElementById('periodFilter').addEventListener('change', (e) => {
+      const isCustom = e.target.value === 'custom';
+      document.getElementById('startDate').style.display = isCustom ? 'inline-block' : 'none';
+      document.getElementById('endDate').style.display = isCustom ? 'inline-block' : 'none';
     });
 
-    // Load quick stats
-    async function loadQuickStats() {
+    // Run a report
+    async function runReport(reportId) {
+      const modal = document.getElementById('reportModal');
+      const title = document.getElementById('reportTitle');
+      const content = document.getElementById('reportContent');
+
+      // Get report name from clicked item
+      const reportNames = {
+        'revenue-per-worker': 'Revenue per Worker Report',
+        'labor-cost-analysis': 'Labor Cost Analysis',
+        'crew-utilization': 'Crew Utilization Report',
+        'job-profitability': 'Job Profitability Detail',
+        'budget-variance': 'Budget vs Actual Analysis',
+        'cost-per-sqft': 'Cost per Square Foot Report',
+        'vendor-spending': 'Vendor Spending Summary',
+        'vendor-performance': 'Vendor Performance Report',
+        'invoice-aging': 'Invoice Aging Report',
+        'schedule-performance': 'Schedule Performance Report',
+        'rfi-submittal-status': 'RFI & Submittal Status',
+        'weather-impact': 'Weather Impact Analysis',
+        'allowance-tracking': 'Allowance vs Actual',
+        'selection-status': 'Selection Status Report',
+        'inspection-summary': 'Inspection Summary',
+        'punch-list-status': 'Punch List Analysis',
+        'lien-release-status': 'Lien Release Status'
+      };
+
+      title.textContent = reportNames[reportId] || 'Report';
+      content.innerHTML = '<div class="loading-cell">Generating report...</div>';
+
+      modal.style.display = 'flex';
+      modal.classList.add('show');
+
+      // Fetch report data
       try {
-        const jobFilter = selectedJobId ? `?job_id=${selectedJobId}` : '';
+        const jobId = document.getElementById('jobFilter').value;
+        const period = document.getElementById('periodFilter').value;
 
-        // Fetch stats from various endpoints
-        const [jobsRes, invoicesRes] = await Promise.all([
-          fetch('/api/jobs').catch(() => ({ ok: false })),
-          fetch(`/api/invoices${jobFilter}&status=needs_approval`).catch(() => ({ ok: false }))
-        ]);
-
-        if (jobsRes.ok) {
-          const jobs = await jobsRes.json();
-          if (selectedJobId) {
-            document.getElementById('statActiveJobs').textContent = '1';
-          } else {
-            const activeJobs = jobs.filter(j => j.status === 'active').length;
-            document.getElementById('statActiveJobs').textContent = activeJobs;
-          }
-        }
-
-        if (invoicesRes.ok) {
-          const invoices = await invoicesRes.json();
-          document.getElementById('statOpenInvoices').textContent = invoices.length || '0';
-        }
-
-        // Placeholder for other stats
-        document.getElementById('statPendingSelections').textContent = '-';
-        document.getElementById('statOpenRFIs').textContent = '-';
+        // TODO: Call actual report API endpoints
+        // For now, show placeholder
+        setTimeout(() => {
+          content.innerHTML = `
+            <div style="padding: 2rem; text-align: center; color: var(--muted-foreground);">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="margin-bottom: 1rem; opacity: 0.5;">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              <h3 style="margin-bottom: 0.5rem;">Report: ${reportNames[reportId]}</h3>
+              <p>Report generation coming soon.</p>
+              <p style="margin-top: 1rem; font-size: 0.875rem;">
+                Job Filter: ${jobId || 'All Jobs'}<br>
+                Period: ${period}
+              </p>
+            </div>
+          `;
+        }, 500);
       } catch (err) {
-        console.error('Error loading stats:', err);
+        content.innerHTML = `<div class="error-state">Error generating report: ${err.message}</div>`;
       }
     }
 
-    // Update report card links to include job filter
-    function updateReportLinks() {
-      if (!selectedJobId) return;
-
-      document.querySelectorAll('.report-card').forEach(card => {
-        const href = card.getAttribute('href');
-        if (href && !href.includes('job=')) {
-          const separator = href.includes('?') ? '&' : '?';
-          card.setAttribute('href', `${href}${separator}job=${selectedJobId}`);
-        }
-      });
+    function closeReportModal() {
+      const modal = document.getElementById('reportModal');
+      modal.classList.remove('show');
+      modal.style.display = 'none';
     }
 
+    function exportReport(format) {
+      showToast(`Exporting to ${format.toUpperCase()}...`, 'info');
+    }
+
+    function refreshReports() {
+      showToast('Refreshing report data...', 'info');
+      // TODO: Refresh metrics
+    }
+
+    // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-      loadQuickStats();
+      loadJobs();
+    });
+
+    // Close modal on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeReportModal();
     });
   </script>
 </body>
