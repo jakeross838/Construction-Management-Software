@@ -1107,6 +1107,187 @@ router.delete('/subgroups/:subgroupId', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// HIERARCHICAL LINE ITEM ENDPOINTS (v2_estimate_line_items)
+// ============================================================
+
+// POST /api/estimates/subgroups/:subgroupId/lines - Add line item to subgroup
+router.post('/subgroups/:subgroupId/lines', asyncHandler(async (req, res) => {
+  const { subgroupId } = req.params;
+  const {
+    description,
+    cost_code_id,
+    catalog_item_id,
+    quantity,
+    unit,
+    unit_cost,
+    amount,
+    notes,
+    created_by
+  } = req.body;
+
+  // Get estimate_id from subgroup hierarchy
+  const { data: subgroup } = await supabase
+    .from('v2_estimate_subgroups')
+    .select('group:v2_estimate_groups(phase:v2_estimate_phases(estimate_id))')
+    .eq('id', subgroupId)
+    .single();
+
+  const estimate_id = subgroup?.group?.phase?.estimate_id;
+  if (!estimate_id) {
+    throw new AppError('NOT_FOUND', 'Subgroup not found');
+  }
+
+  // Get max sort_order
+  const { data: maxOrder } = await supabase
+    .from('v2_estimate_line_items')
+    .select('sort_order')
+    .eq('subgroup_id', subgroupId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .single();
+
+  const sort_order = (maxOrder?.sort_order || 0) + 1;
+
+  // Calculate amount if not provided
+  const qty = parseFloat(quantity) || 1;
+  const cost = parseFloat(unit_cost) || 0;
+  const calculatedAmount = amount !== undefined ? parseFloat(amount) : qty * cost;
+
+  const { data: lineItem, error } = await supabase
+    .from('v2_estimate_line_items')
+    .insert({
+      estimate_id,
+      subgroup_id: subgroupId,
+      description: description || null,
+      cost_code_id: cost_code_id || null,
+      catalog_item_id: catalog_item_id || null,
+      quantity: qty,
+      unit: unit || null,
+      unit_cost: cost,
+      amount: calculatedAmount,
+      notes: notes || null,
+      sort_order,
+      created_by: created_by || 'System'
+    })
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name),
+      catalog_item:v2_selection_catalog(id, name, unit_price, image_url)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(estimate_id, 'line_item_added', created_by || 'System', {
+    line_item_id: lineItem.id,
+    description: lineItem.description,
+    amount: lineItem.amount,
+    subgroup_id: subgroupId
+  });
+
+  res.status(201).json(lineItem);
+}));
+
+// PATCH /api/estimates/lines/:lineId - Update line item
+router.patch('/lines/:lineId', asyncHandler(async (req, res) => {
+  const { lineId } = req.params;
+  const {
+    subgroup_id,
+    description,
+    cost_code_id,
+    catalog_item_id,
+    quantity,
+    unit,
+    unit_cost,
+    amount,
+    notes,
+    sort_order,
+    updated_by
+  } = req.body;
+
+  // Get current line item to calculate amount if needed
+  const { data: existing } = await supabase
+    .from('v2_estimate_line_items')
+    .select('estimate_id, quantity, unit_cost')
+    .eq('id', lineId)
+    .single();
+
+  if (!existing) throw new AppError('NOT_FOUND', 'Line item not found');
+
+  // Calculate amount if qty/unit_cost changed but amount not provided
+  let calculatedAmount = amount;
+  if (amount === undefined && (quantity !== undefined || unit_cost !== undefined)) {
+    const newQty = quantity ?? existing.quantity ?? 1;
+    const newUnitCost = unit_cost ?? existing.unit_cost ?? 0;
+    calculatedAmount = newQty * newUnitCost;
+  }
+
+  const updateData = {
+    ...(subgroup_id !== undefined && { subgroup_id }),
+    ...(description !== undefined && { description }),
+    ...(cost_code_id !== undefined && { cost_code_id }),
+    ...(catalog_item_id !== undefined && { catalog_item_id }),
+    ...(quantity !== undefined && { quantity: parseFloat(quantity) || 1 }),
+    ...(unit !== undefined && { unit }),
+    ...(unit_cost !== undefined && { unit_cost: parseFloat(unit_cost) || 0 }),
+    ...(calculatedAmount !== undefined && { amount: calculatedAmount }),
+    ...(notes !== undefined && { notes }),
+    ...(sort_order !== undefined && { sort_order }),
+    updated_at: new Date().toISOString()
+  };
+
+  const { data: lineItem, error } = await supabase
+    .from('v2_estimate_line_items')
+    .update(updateData)
+    .eq('id', lineId)
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name),
+      catalog_item:v2_selection_catalog(id, name, unit_price, image_url)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(existing.estimate_id, 'line_item_updated', updated_by || 'System', {
+    line_item_id: lineId,
+    updates: updateData
+  });
+
+  res.json(lineItem);
+}));
+
+// DELETE /api/estimates/lines/:lineId - Delete line item
+router.delete('/lines/:lineId', asyncHandler(async (req, res) => {
+  const { lineId } = req.params;
+  const { deleted_by } = req.body || {};
+
+  // Get line item info before deletion
+  const { data: lineItem } = await supabase
+    .from('v2_estimate_line_items')
+    .select('estimate_id, description, amount')
+    .eq('id', lineId)
+    .single();
+
+  if (!lineItem) throw new AppError('NOT_FOUND', 'Line item not found');
+
+  const { error } = await supabase
+    .from('v2_estimate_line_items')
+    .delete()
+    .eq('id', lineId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(lineItem.estimate_id, 'line_item_deleted', deleted_by || 'System', {
+    line_item_id: lineId,
+    description: lineItem.description,
+    amount: lineItem.amount
+  });
+
+  res.json({ success: true, message: 'Line item deleted' });
+}));
+
+// ============================================================
 // CREATE ESTIMATE
 // ============================================================
 
