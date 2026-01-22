@@ -438,6 +438,7 @@ Return ONLY valid JSON in this format:
   }
 }));
 
+
 // ============================================================
 // EXPAND ASSEMBLY TEMPLATE (must be before /:id)
 // ============================================================
@@ -493,7 +494,6 @@ router.post('/:id/expand-assembly', asyncHandler(async (req, res) => {
 // ============================================================
 // DUPLICATE ESTIMATE (must be before /:id)
 // ============================================================
-
 
 router.post('/:id/duplicate', asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -654,10 +654,10 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
   // Trigger will auto-recalculate totals, but let's fetch final state
   const { data: finalEstimate } = await supabase
     .from('v2_estimates')
-    .select(\`
+    .select(`
       *,
       job:v2_jobs(id, name)
-    \`)
+    `)
     .eq('id', newEstimate.id)
     .single();
 
@@ -848,7 +848,6 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .eq('source_estimate_id', id)
     .limit(1);
 
-  estimate.sections = sections || [];
   estimate.lines = lines || [];
   estimate.activity = activity || [];
   estimate.versions = versions;
@@ -858,186 +857,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
-// SECTION OPERATIONS
-// ============================================================
-
-// Create section
-router.post('/:id/sections', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { name, description, created_by } = req.body;
-
-  // Verify estimate exists and is editable
-  const { data: estimate } = await supabase
-    .from('v2_estimates')
-    .select('status')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-
-  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
-
-  if (!['draft', 'rejected'].includes(estimate.status)) {
-    throw new AppError('VALIDATION_ERROR', 'Cannot modify sections of a submitted/approved estimate');
-  }
-
-  // Get next sort_order
-  const { data: existing } = await supabase
-    .from('v2_estimate_sections')
-    .select('sort_order')
-    .eq('estimate_id', id)
-    .order('sort_order', { ascending: false })
-    .limit(1);
-
-  const nextOrder = (existing?.[0]?.sort_order || 0) + 1;
-
-  const { data: section, error } = await supabase
-    .from('v2_estimate_sections')
-    .insert({
-      estimate_id: id,
-      name: name || 'New Section',
-      description: description || null,
-      sort_order: nextOrder
-    })
-    .select()
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  await logEstimateActivity(id, 'section_created', created_by || 'System', {
-    section_id: section.id,
-    name: section.name
-  });
-
-  res.status(201).json(section);
-}));
-
-// Update section
-router.patch('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
-  const { id, sectionId } = req.params;
-  const { name, description, sort_order, updated_by } = req.body;
-
-  // Verify estimate is editable
-  const { data: estimate } = await supabase
-    .from('v2_estimates')
-    .select('status')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-
-  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
-
-  if (!['draft', 'rejected'].includes(estimate.status)) {
-    throw new AppError('VALIDATION_ERROR', 'Cannot modify sections of a submitted/approved estimate');
-  }
-
-  const updates = { updated_at: new Date().toISOString() };
-  if (name !== undefined) updates.name = name;
-  if (description !== undefined) updates.description = description;
-  if (sort_order !== undefined) updates.sort_order = sort_order;
-
-  const { data: section, error } = await supabase
-    .from('v2_estimate_sections')
-    .update(updates)
-    .eq('id', sectionId)
-    .eq('estimate_id', id)
-    .select()
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-  if (!section) throw new AppError('NOT_FOUND', 'Section not found');
-
-  await logEstimateActivity(id, 'section_updated', updated_by || 'System', {
-    section_id: sectionId,
-    updates
-  });
-
-  res.json(section);
-}));
-
-// Delete section (items become unsectioned)
-router.delete('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
-  const { id, sectionId } = req.params;
-  const { deleted_by } = req.body;
-
-  // Verify estimate is editable
-  const { data: estimate } = await supabase
-    .from('v2_estimates')
-    .select('status')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-
-  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
-
-  if (!['draft', 'rejected'].includes(estimate.status)) {
-    throw new AppError('VALIDATION_ERROR', 'Cannot modify sections of a submitted/approved estimate');
-  }
-
-  // First, clear section_id from all lines in this section (keep lines, just unsection them)
-  await supabase
-    .from('v2_estimate_lines')
-    .update({ section_id: null })
-    .eq('section_id', sectionId);
-
-  // Then delete the section
-  const { data: section, error } = await supabase
-    .from('v2_estimate_sections')
-    .delete()
-    .eq('id', sectionId)
-    .eq('estimate_id', id)
-    .select()
-    .single();
-
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  await logEstimateActivity(id, 'section_deleted', deleted_by || 'System', {
-    section_id: sectionId,
-    name: section?.name
-  });
-
-  res.json({ success: true, message: 'Section deleted, items preserved' });
-}));
-
-// Reorder sections
-router.post('/:id/sections/reorder', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { section_ids, updated_by } = req.body;
-
-  if (!Array.isArray(section_ids)) {
-    throw new AppError('VALIDATION_ERROR', 'section_ids must be an array');
-  }
-
-  // Verify estimate is editable
-  const { data: estimate } = await supabase
-    .from('v2_estimates')
-    .select('status')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-
-  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
-
-  if (!['draft', 'rejected'].includes(estimate.status)) {
-    throw new AppError('VALIDATION_ERROR', 'Cannot modify sections of a submitted/approved estimate');
-  }
-
-  // Update sort_order for each section
-  for (let i = 0; i < section_ids.length; i++) {
-    await supabase
-      .from('v2_estimate_sections')
-      .update({ sort_order: i + 1 })
-      .eq('id', section_ids[i])
-      .eq('estimate_id', id);
-  }
-
-  await logEstimateActivity(id, 'sections_reordered', updated_by || 'System', {});
-
-  res.json({ success: true });
-}));
-
-// ============================================================
 // CREATE ESTIMATE
-// ============================================================
 // ============================================================
 
 router.post('/', asyncHandler(async (req, res) => {
