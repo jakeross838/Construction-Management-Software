@@ -1418,6 +1418,7 @@
           <div class="line-item-form">
             <form id="lineItemForm">
               <input type="hidden" id="lineItemId">
+              <input type="hidden" id="lineCatalogItemId">
 
               <!-- Cost Code Selection with Category Filter -->
               <div class="form-row">
@@ -1432,6 +1433,24 @@
                   <select id="lineCostCode" class="form-control" onchange="onCostCodeSelected()">
                     <option value="">Select Cost Code...</option>
                   </select>
+                </div>
+              </div>
+
+              <!-- Catalog Picker (Optional) -->
+              <div class="form-group">
+                <label>From Catalog (Optional)</label>
+                <div class="catalog-picker">
+                  <div class="catalog-search">
+                    <input type="text" id="catalogSearch" class="form-control" placeholder="Search catalog..."
+                           oninput="searchCatalog(this.value)">
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="clearCatalogSelection()">Clear</button>
+                  </div>
+                  <div id="catalogSuggestions" class="catalog-suggestions">
+                    <!-- Suggestions rendered here -->
+                  </div>
+                  <div id="selectedCatalogItem" class="selected-catalog-item" style="display: none;">
+                    <!-- Selected item shown here -->
+                  </div>
                 </div>
               </div>
 
