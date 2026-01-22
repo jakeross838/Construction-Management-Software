@@ -52,6 +52,16 @@
       ]
     },
     {
+      id: 'reports',
+      label: 'Reports',
+      items: [
+        { id: 'profitability', label: 'Job Profitability', href: 'profitability.html' },
+        { id: 'wip', label: 'WIP Schedule', href: 'wip.html' },
+        { id: 'budget-report', label: 'Budget vs Actual', href: 'budgets.html' },
+        { id: 'cash-flow', label: 'Cash Flow', href: 'cash-flow.html' }
+      ]
+    },
+    {
       id: 'postcon',
       label: 'Post-Construction',
       items: [
@@ -72,11 +82,8 @@
         { id: 'leads', label: 'Leads', href: 'leads.html', section: 'Sales' },
         { id: 'bids', label: 'Bids', href: 'bids.html', section: 'Sales' },
         { id: 'contracts', label: 'Contracts', href: 'contracts.html', section: 'Sales' },
-        // Financial Reports
-        { id: 'profitability', label: 'Job Profitability', href: 'profitability.html', section: 'Reports' },
-        { id: 'wip', label: 'WIP Schedule', href: 'wip.html', section: 'Reports' },
+        // Financial Reports (company-level)
         { id: 'pnl', label: 'Company P&L', href: 'pnl.html', section: 'Reports' },
-        { id: 'cash-flow', label: 'Cash Flow', href: 'cash-flow.html', section: 'Reports' },
         { id: 'expenses', label: 'Expenses', href: 'expenses.html', section: 'Reports' },
         // Planning & Settings
         { id: 'planning', label: 'Business Planning', href: 'business-planning.html', section: 'Planning' },
