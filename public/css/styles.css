@@ -27800,6 +27800,97 @@ td.empty-state {
   font-size: 0.875rem;
 }
 
+/* Catalog Picker in Line Item Modal */
+.catalog-picker {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.catalog-search {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.catalog-search input {
+  flex: 1;
+}
+
+.catalog-suggestions {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.catalog-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+
+.catalog-suggestion:hover {
+  background: var(--bg-card-elevated);
+}
+
+.catalog-suggestion:last-child {
+  border-bottom: none;
+}
+
+.catalog-suggestion-image {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-card-elevated);
+}
+
+.catalog-suggestion-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.catalog-suggestion-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalog-suggestion-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.catalog-suggestion-price {
+  font-weight: 600;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  color: var(--accent-green);
+}
+
+.selected-catalog-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(88, 166, 255, 0.1);
+  border-top: 1px solid var(--border);
+}
+
+.selected-catalog-item .catalog-badge {
+  background: var(--accent-blue);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 /* CO Modal Summary */
 .co-summary {
   background: var(--bg-hover);
