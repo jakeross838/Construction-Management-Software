@@ -1667,6 +1667,845 @@ router.get('/category-spend/excel', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// SCHEDULE PERFORMANCE REPORT
+// GET /api/reports/schedule-performance
+// Combines: Schedule Tasks + Daily Logs
+// ============================================================
+
+router.get('/schedule-performance', asyncHandler(async (req, res) => {
+  const { jobId, startDate, endDate } = req.query;
+
+  // Get job info if filtered
+  let jobName = null;
+  if (jobId) {
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('name')
+      .eq('id', jobId)
+      .single();
+    jobName = job?.name || null;
+  }
+
+  // Build schedule query
+  let scheduleQuery = supabase
+    .from('v2_schedules')
+    .select(`
+      id,
+      job_id,
+      name,
+      status,
+      start_date,
+      target_end_date,
+      actual_end_date,
+      on_schedule,
+      critical_path_days,
+      job:v2_jobs(id, name)
+    `);
+
+  if (jobId) {
+    scheduleQuery = scheduleQuery.eq('job_id', jobId);
+  }
+
+  const { data: schedules, error: schedError } = await scheduleQuery;
+
+  if (schedError) {
+    throw new AppError('DATABASE_ERROR', schedError.message);
+  }
+
+  // Get all schedule IDs
+  const scheduleIds = (schedules || []).map(s => s.id);
+
+  // Get tasks for all schedules
+  let tasksQuery = supabase
+    .from('v2_schedule_tasks')
+    .select('*')
+    .in('schedule_id', scheduleIds.length > 0 ? scheduleIds : ['00000000-0000-0000-0000-000000000000']);
+
+  const { data: allTasks, error: tasksError } = await tasksQuery;
+
+  if (tasksError) {
+    throw new AppError('DATABASE_ERROR', tasksError.message);
+  }
+
+  // Get daily logs for context on delays/weather
+  let logsQuery = supabase
+    .from('v2_daily_logs')
+    .select(`
+      id,
+      job_id,
+      log_date,
+      weather_conditions,
+      delays_issues,
+      status
+    `)
+    .is('deleted_at', null);
+
+  if (jobId) {
+    logsQuery = logsQuery.eq('job_id', jobId);
+  }
+  if (startDate) {
+    logsQuery = logsQuery.gte('log_date', startDate);
+  }
+  if (endDate) {
+    logsQuery = logsQuery.lte('log_date', endDate);
+  }
+
+  const { data: dailyLogs, error: logsError } = await logsQuery;
+
+  if (logsError) {
+    throw new AppError('DATABASE_ERROR', logsError.message);
+  }
+
+  // Calculate task statistics
+  const taskStats = {
+    total: (allTasks || []).length,
+    notStarted: 0,
+    inProgress: 0,
+    complete: 0,
+    blocked: 0,
+    onTime: 0,
+    delayed: 0,
+    critical: 0,
+    criticalDelayed: 0
+  };
+
+  const today = new Date().toISOString().split('T')[0];
+  const taskDetails = [];
+
+  for (const task of allTasks || []) {
+    // Count by status
+    switch (task.status) {
+      case 'not_started': taskStats.notStarted++; break;
+      case 'in_progress': taskStats.inProgress++; break;
+      case 'complete': taskStats.complete++; break;
+      case 'blocked': taskStats.blocked++; break;
+    }
+
+    // Count critical path tasks
+    if (task.is_critical) {
+      taskStats.critical++;
+    }
+
+    // Check if delayed
+    const isDelayed = task.planned_end && task.status !== 'complete' && task.planned_end < today;
+    if (isDelayed) {
+      taskStats.delayed++;
+      if (task.is_critical) {
+        taskStats.criticalDelayed++;
+      }
+    } else if (task.status === 'complete' || (task.planned_end && task.planned_end >= today)) {
+      taskStats.onTime++;
+    }
+
+    // Add to details
+    taskDetails.push({
+      id: task.id,
+      name: task.name,
+      phase: task.phase,
+      status: task.status,
+      percentComplete: task.percent_complete || 0,
+      plannedStart: task.planned_start,
+      plannedEnd: task.planned_end,
+      actualStart: task.actual_start,
+      actualEnd: task.actual_end,
+      isCritical: task.is_critical || false,
+      isDelayed,
+      daysDelayed: isDelayed ? Math.ceil((new Date(today) - new Date(task.planned_end)) / (1000 * 60 * 60 * 24)) : 0
+    });
+  }
+
+  // Analyze daily logs for weather/delay patterns
+  const weatherImpact = {
+    totalLogs: (dailyLogs || []).length,
+    daysWithDelays: 0,
+    weatherBreakdown: {}
+  };
+
+  for (const log of dailyLogs || []) {
+    if (log.delays_issues) {
+      weatherImpact.daysWithDelays++;
+    }
+    if (log.weather_conditions) {
+      weatherImpact.weatherBreakdown[log.weather_conditions] =
+        (weatherImpact.weatherBreakdown[log.weather_conditions] || 0) + 1;
+    }
+  }
+
+  // Calculate overall metrics
+  const completionRate = taskStats.total > 0
+    ? Math.round((taskStats.complete / taskStats.total) * 100)
+    : 0;
+  const onTimeRate = (taskStats.complete + taskStats.inProgress + taskStats.notStarted) > 0
+    ? Math.round((taskStats.onTime / (taskStats.complete + taskStats.inProgress + taskStats.notStarted - taskStats.blocked)) * 100)
+    : 0;
+
+  // Sort tasks by delay status and planned end
+  taskDetails.sort((a, b) => {
+    if (a.isDelayed && !b.isDelayed) return -1;
+    if (!a.isDelayed && b.isDelayed) return 1;
+    if (a.isCritical && !b.isCritical) return -1;
+    if (!a.isCritical && b.isCritical) return 1;
+    return (a.plannedEnd || '').localeCompare(b.plannedEnd || '');
+  });
+
+  res.json({
+    period: { start: startDate || null, end: endDate || null },
+    filters: { jobId: jobId || null, jobName },
+    summary: {
+      totalTasks: taskStats.total,
+      completionRate,
+      onTimeRate,
+      criticalTasks: taskStats.critical,
+      criticalDelayed: taskStats.criticalDelayed,
+      tasksDelayed: taskStats.delayed,
+      daysWithDelays: weatherImpact.daysWithDelays
+    },
+    taskBreakdown: {
+      notStarted: taskStats.notStarted,
+      inProgress: taskStats.inProgress,
+      complete: taskStats.complete,
+      blocked: taskStats.blocked
+    },
+    weatherImpact,
+    tasks: taskDetails.slice(0, 50) // Limit to first 50 for performance
+  });
+}));
+
+// ============================================================
+// REVENUE PER WORKER REPORT
+// GET /api/reports/revenue-per-worker
+// Combines: Daily Logs (crew) + Invoices + Draws
+// ============================================================
+
+router.get('/revenue-per-worker', asyncHandler(async (req, res) => {
+  const { jobId, startDate, endDate } = req.query;
+
+  // Get job info if filtered
+  let jobName = null;
+  if (jobId) {
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('name')
+      .eq('id', jobId)
+      .single();
+    jobName = job?.name || null;
+  }
+
+  // Get daily logs with crew entries
+  let logsQuery = supabase
+    .from('v2_daily_logs')
+    .select(`
+      id,
+      job_id,
+      log_date,
+      status,
+      crew:v2_daily_log_crew(
+        id,
+        worker_count,
+        hours_worked,
+        trade,
+        vendor_id,
+        vendor:v2_vendors(name)
+      ),
+      job:v2_jobs(name)
+    `)
+    .is('deleted_at', null);
+
+  if (jobId) {
+    logsQuery = logsQuery.eq('job_id', jobId);
+  }
+  if (startDate) {
+    logsQuery = logsQuery.gte('log_date', startDate);
+  }
+  if (endDate) {
+    logsQuery = logsQuery.lte('log_date', endDate);
+  }
+
+  const { data: dailyLogs, error: logsError } = await logsQuery;
+
+  if (logsError) {
+    throw new AppError('DATABASE_ERROR', logsError.message);
+  }
+
+  // Get funded draws (revenue) for the same period
+  let drawsQuery = supabase
+    .from('v2_draws')
+    .select(`
+      id,
+      job_id,
+      total_amount,
+      funded_amount,
+      funded_at,
+      status,
+      job:v2_jobs(name)
+    `)
+    .eq('status', 'funded');
+
+  if (jobId) {
+    drawsQuery = drawsQuery.eq('job_id', jobId);
+  }
+  if (startDate) {
+    drawsQuery = drawsQuery.gte('funded_at', startDate);
+  }
+  if (endDate) {
+    drawsQuery = drawsQuery.lte('funded_at', endDate);
+  }
+
+  const { data: draws, error: drawsError } = await drawsQuery;
+
+  if (drawsError) {
+    throw new AppError('DATABASE_ERROR', drawsError.message);
+  }
+
+  // Calculate total labor metrics
+  let totalWorkerDays = 0;
+  let totalLaborHours = 0;
+  const tradeBreakdown = new Map();
+  const jobBreakdown = new Map();
+
+  for (const log of dailyLogs || []) {
+    const jobKey = log.job_id;
+    const jobLabel = log.job?.name || 'Unknown';
+
+    if (!jobBreakdown.has(jobKey)) {
+      jobBreakdown.set(jobKey, {
+        jobId: jobKey,
+        jobName: jobLabel,
+        workerDays: 0,
+        laborHours: 0,
+        revenue: 0
+      });
+    }
+
+    for (const crew of log.crew || []) {
+      const workers = crew.worker_count || 1;
+      const hours = parseFloat(crew.hours_worked) || 8;
+      const trade = crew.trade || 'General';
+
+      totalWorkerDays += workers;
+      totalLaborHours += workers * hours;
+
+      // Track by job
+      jobBreakdown.get(jobKey).workerDays += workers;
+      jobBreakdown.get(jobKey).laborHours += workers * hours;
+
+      // Track by trade
+      if (!tradeBreakdown.has(trade)) {
+        tradeBreakdown.set(trade, { trade, workerDays: 0, laborHours: 0 });
+      }
+      tradeBreakdown.get(trade).workerDays += workers;
+      tradeBreakdown.get(trade).laborHours += workers * hours;
+    }
+  }
+
+  // Calculate total revenue from funded draws
+  let totalRevenue = 0;
+  for (const draw of draws || []) {
+    const amount = parseFloat(draw.funded_amount) || parseFloat(draw.total_amount) || 0;
+    totalRevenue += amount;
+
+    // Add to job breakdown
+    const jobKey = draw.job_id;
+    if (jobBreakdown.has(jobKey)) {
+      jobBreakdown.get(jobKey).revenue += amount;
+    } else {
+      jobBreakdown.set(jobKey, {
+        jobId: jobKey,
+        jobName: draw.job?.name || 'Unknown',
+        workerDays: 0,
+        laborHours: 0,
+        revenue: amount
+      });
+    }
+  }
+
+  // Calculate efficiency metrics
+  const revenuePerWorkerDay = totalWorkerDays > 0
+    ? Math.round(totalRevenue / totalWorkerDays)
+    : 0;
+  const revenuePerLaborHour = totalLaborHours > 0
+    ? Math.round(totalRevenue / totalLaborHours)
+    : 0;
+  const avgHoursPerDay = totalWorkerDays > 0
+    ? Math.round((totalLaborHours / totalWorkerDays) * 10) / 10
+    : 0;
+
+  // Convert maps to arrays and sort
+  const jobs = Array.from(jobBreakdown.values()).map(j => ({
+    ...j,
+    revenuePerWorkerDay: j.workerDays > 0 ? Math.round(j.revenue / j.workerDays) : 0,
+    revenuePerHour: j.laborHours > 0 ? Math.round(j.revenue / j.laborHours) : 0
+  })).sort((a, b) => b.revenue - a.revenue);
+
+  const trades = Array.from(tradeBreakdown.values())
+    .sort((a, b) => b.workerDays - a.workerDays);
+
+  res.json({
+    period: { start: startDate || null, end: endDate || null },
+    filters: { jobId: jobId || null, jobName },
+    summary: {
+      totalRevenue,
+      totalWorkerDays,
+      totalLaborHours,
+      revenuePerWorkerDay,
+      revenuePerLaborHour,
+      avgHoursPerDay,
+      daysTracked: (dailyLogs || []).length,
+      drawsIncluded: (draws || []).length
+    },
+    byJob: jobs,
+    byTrade: trades
+  });
+}));
+
+// ============================================================
+// LABOR COST ANALYSIS REPORT
+// GET /api/reports/labor-cost-analysis
+// Combines: Daily Logs + Timesheets + Budget
+// ============================================================
+
+router.get('/labor-cost-analysis', asyncHandler(async (req, res) => {
+  const { jobId, startDate, endDate } = req.query;
+
+  // Get job info if filtered
+  let jobName = null;
+  if (jobId) {
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('name')
+      .eq('id', jobId)
+      .single();
+    jobName = job?.name || null;
+  }
+
+  // Get daily logs with crew data
+  let logsQuery = supabase
+    .from('v2_daily_logs')
+    .select(`
+      id,
+      job_id,
+      log_date,
+      crew:v2_daily_log_crew(
+        id,
+        worker_count,
+        hours_worked,
+        trade,
+        vendor_id,
+        po_id
+      ),
+      job:v2_jobs(name)
+    `)
+    .is('deleted_at', null);
+
+  if (jobId) {
+    logsQuery = logsQuery.eq('job_id', jobId);
+  }
+  if (startDate) {
+    logsQuery = logsQuery.gte('log_date', startDate);
+  }
+  if (endDate) {
+    logsQuery = logsQuery.lte('log_date', endDate);
+  }
+
+  const { data: dailyLogs, error: logsError } = await logsQuery;
+
+  if (logsError) {
+    throw new AppError('DATABASE_ERROR', logsError.message);
+  }
+
+  // Get timesheets if they exist
+  let timesheetsQuery = supabase
+    .from('v2_timesheets')
+    .select(`
+      id,
+      job_id,
+      employee_id,
+      work_date,
+      hours_regular,
+      hours_overtime,
+      hourly_rate,
+      total_pay,
+      employee:v2_employees(name, trade)
+    `);
+
+  if (jobId) {
+    timesheetsQuery = timesheetsQuery.eq('job_id', jobId);
+  }
+  if (startDate) {
+    timesheetsQuery = timesheetsQuery.gte('work_date', startDate);
+  }
+  if (endDate) {
+    timesheetsQuery = timesheetsQuery.lte('work_date', endDate);
+  }
+
+  const { data: timesheets, error: tsError } = await timesheetsQuery;
+  // Don't throw on timesheet error - table might not exist
+  const timesheetData = tsError ? [] : (timesheets || []);
+
+  // Get budget for labor cost codes (06xxx for rough carpentry, etc.)
+  let budgetQuery = supabase
+    .from('v2_budget_lines')
+    .select(`
+      id,
+      budgeted_amount,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `);
+
+  if (jobId) {
+    budgetQuery = budgetQuery.eq('job_id', jobId);
+  }
+
+  const { data: budgetLines, error: budgetError } = await budgetQuery;
+
+  if (budgetError) {
+    throw new AppError('DATABASE_ERROR', budgetError.message);
+  }
+
+  // Calculate labor metrics from daily logs
+  const tradeStats = new Map();
+  let totalHours = 0;
+  let totalWorkerDays = 0;
+
+  for (const log of dailyLogs || []) {
+    for (const crew of log.crew || []) {
+      const trade = crew.trade || 'General Labor';
+      const workers = crew.worker_count || 1;
+      const hours = parseFloat(crew.hours_worked) || 8;
+
+      totalWorkerDays += workers;
+      totalHours += workers * hours;
+
+      if (!tradeStats.has(trade)) {
+        tradeStats.set(trade, {
+          trade,
+          workerDays: 0,
+          totalHours: 0,
+          laborCost: 0
+        });
+      }
+
+      tradeStats.get(trade).workerDays += workers;
+      tradeStats.get(trade).totalHours += workers * hours;
+    }
+  }
+
+  // Add timesheet costs if available
+  let totalLaborCost = 0;
+  for (const ts of timesheetData) {
+    const cost = parseFloat(ts.total_pay) || 0;
+    totalLaborCost += cost;
+
+    const trade = ts.employee?.trade || 'General Labor';
+    if (tradeStats.has(trade)) {
+      tradeStats.get(trade).laborCost += cost;
+    }
+  }
+
+  // Calculate labor budget from relevant cost codes
+  let laborBudget = 0;
+  for (const bl of budgetLines || []) {
+    const code = bl.cost_code?.code || '';
+    // Include labor-intensive categories: rough carpentry, finish carpentry, etc.
+    if (code.startsWith('06') || code.startsWith('09') || code.startsWith('01')) {
+      laborBudget += parseFloat(bl.budgeted_amount) || 0;
+    }
+  }
+
+  // Calculate averages
+  const avgHourlyRate = totalHours > 0 && totalLaborCost > 0
+    ? Math.round((totalLaborCost / totalHours) * 100) / 100
+    : 0;
+  const avgDailyCost = totalWorkerDays > 0 && totalLaborCost > 0
+    ? Math.round(totalLaborCost / totalWorkerDays)
+    : 0;
+  const budgetVariance = laborBudget - totalLaborCost;
+
+  // Convert trade stats to sorted array
+  const trades = Array.from(tradeStats.values()).map(t => ({
+    ...t,
+    avgHoursPerDay: t.workerDays > 0 ? Math.round((t.totalHours / t.workerDays) * 10) / 10 : 0,
+    costPerHour: t.totalHours > 0 && t.laborCost > 0 ? Math.round((t.laborCost / t.totalHours) * 100) / 100 : 0
+  })).sort((a, b) => b.totalHours - a.totalHours);
+
+  res.json({
+    period: { start: startDate || null, end: endDate || null },
+    filters: { jobId: jobId || null, jobName },
+    summary: {
+      totalLaborHours: totalHours,
+      totalWorkerDays,
+      totalLaborCost,
+      laborBudget,
+      budgetVariance,
+      avgHourlyRate,
+      avgDailyCost,
+      daysTracked: (dailyLogs || []).length,
+      hasTimesheetData: timesheetData.length > 0
+    },
+    byTrade: trades
+  });
+}));
+
+// ============================================================
+// INVOICE AGING REPORT
+// GET /api/reports/invoice-aging
+// ============================================================
+
+router.get('/invoice-aging', asyncHandler(async (req, res) => {
+  const { jobId } = req.query;
+
+  // Get job info if filtered
+  let jobName = null;
+  if (jobId) {
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('name')
+      .eq('id', jobId)
+      .single();
+    jobName = job?.name || null;
+  }
+
+  // Get unpaid invoices
+  let query = supabase
+    .from('v2_invoices')
+    .select(`
+      id,
+      invoice_number,
+      invoice_date,
+      due_date,
+      amount,
+      status,
+      vendor:v2_vendors(id, name),
+      job:v2_jobs(id, name)
+    `)
+    .is('deleted_at', null)
+    .in('status', ['approved', 'in_draw', 'needs_approval']);
+
+  if (jobId) {
+    query = query.eq('job_id', jobId);
+  }
+
+  const { data: invoices, error } = await query;
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  const today = new Date();
+  const aging = {
+    current: { count: 0, amount: 0, invoices: [] },
+    days1to30: { count: 0, amount: 0, invoices: [] },
+    days31to60: { count: 0, amount: 0, invoices: [] },
+    days61to90: { count: 0, amount: 0, invoices: [] },
+    over90: { count: 0, amount: 0, invoices: [] }
+  };
+
+  let totalOutstanding = 0;
+
+  for (const inv of invoices || []) {
+    const amount = parseFloat(inv.amount) || 0;
+    const dueDate = inv.due_date ? new Date(inv.due_date) : new Date(inv.invoice_date);
+    const daysPastDue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
+
+    totalOutstanding += amount;
+
+    const invoiceInfo = {
+      id: inv.id,
+      invoiceNumber: inv.invoice_number,
+      vendor: inv.vendor?.name || 'Unknown',
+      job: inv.job?.name || 'Unknown',
+      amount,
+      invoiceDate: inv.invoice_date,
+      dueDate: inv.due_date,
+      daysPastDue: Math.max(0, daysPastDue),
+      status: inv.status
+    };
+
+    if (daysPastDue <= 0) {
+      aging.current.count++;
+      aging.current.amount += amount;
+      aging.current.invoices.push(invoiceInfo);
+    } else if (daysPastDue <= 30) {
+      aging.days1to30.count++;
+      aging.days1to30.amount += amount;
+      aging.days1to30.invoices.push(invoiceInfo);
+    } else if (daysPastDue <= 60) {
+      aging.days31to60.count++;
+      aging.days31to60.amount += amount;
+      aging.days31to60.invoices.push(invoiceInfo);
+    } else if (daysPastDue <= 90) {
+      aging.days61to90.count++;
+      aging.days61to90.amount += amount;
+      aging.days61to90.invoices.push(invoiceInfo);
+    } else {
+      aging.over90.count++;
+      aging.over90.amount += amount;
+      aging.over90.invoices.push(invoiceInfo);
+    }
+  }
+
+  // Sort invoices within each bucket by days past due
+  Object.values(aging).forEach(bucket => {
+    bucket.invoices.sort((a, b) => b.daysPastDue - a.daysPastDue);
+    bucket.invoices = bucket.invoices.slice(0, 20); // Limit to 20 per bucket
+  });
+
+  res.json({
+    filters: { jobId: jobId || null, jobName },
+    summary: {
+      totalOutstanding,
+      totalInvoices: (invoices || []).length,
+      pastDueAmount: aging.days1to30.amount + aging.days31to60.amount + aging.days61to90.amount + aging.over90.amount,
+      pastDueCount: aging.days1to30.count + aging.days31to60.count + aging.days61to90.count + aging.over90.count
+    },
+    aging
+  });
+}));
+
+// ============================================================
+// BUDGET VS ACTUAL VARIANCE REPORT
+// GET /api/reports/budget-variance
+// ============================================================
+
+router.get('/budget-variance', asyncHandler(async (req, res) => {
+  const { jobId } = req.query;
+
+  if (!jobId) {
+    throw new AppError('VALIDATION_ERROR', 'Job ID is required for budget variance report');
+  }
+
+  // Get job info
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id, name, contract_amount')
+    .eq('id', jobId)
+    .single();
+
+  if (jobError || !job) {
+    throw new AppError('JOB_NOT_FOUND', 'Job not found');
+  }
+
+  // Get budget lines
+  const { data: budgetLines, error: budgetError } = await supabase
+    .from('v2_budget_lines')
+    .select(`
+      id,
+      budgeted_amount,
+      committed_amount,
+      billed_amount,
+      paid_amount,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .eq('job_id', jobId);
+
+  if (budgetError) {
+    throw new AppError('DATABASE_ERROR', budgetError.message);
+  }
+
+  // Get actual costs from invoice allocations
+  const { data: allocations, error: allocError } = await supabase
+    .from('v2_invoice_allocations')
+    .select(`
+      id,
+      amount,
+      cost_code_id,
+      invoice:v2_invoices!inner(id, status)
+    `)
+    .eq('job_id', jobId)
+    .in('invoice.status', ['approved', 'in_draw', 'paid']);
+
+  if (allocError) {
+    throw new AppError('DATABASE_ERROR', allocError.message);
+  }
+
+  // Build variance by cost code
+  const costCodeMap = new Map();
+
+  for (const bl of budgetLines || []) {
+    if (bl.cost_code) {
+      costCodeMap.set(bl.cost_code.id, {
+        costCodeId: bl.cost_code.id,
+        costCode: bl.cost_code.code,
+        name: bl.cost_code.name,
+        category: bl.cost_code.category,
+        budget: parseFloat(bl.budgeted_amount) || 0,
+        committed: parseFloat(bl.committed_amount) || 0,
+        actual: 0
+      });
+    }
+  }
+
+  // Add actual costs
+  for (const alloc of allocations || []) {
+    const existing = costCodeMap.get(alloc.cost_code_id);
+    if (existing) {
+      existing.actual += parseFloat(alloc.amount) || 0;
+    }
+  }
+
+  // Calculate variances
+  const lines = [];
+  let totalBudget = 0;
+  let totalCommitted = 0;
+  let totalActual = 0;
+  let overBudgetCount = 0;
+  let underBudgetCount = 0;
+
+  for (const [, item] of costCodeMap) {
+    const variance = item.budget - item.actual;
+    const variancePercent = item.budget > 0
+      ? Math.round((variance / item.budget) * 100)
+      : 0;
+    const percentUsed = item.budget > 0
+      ? Math.round((item.actual / item.budget) * 100)
+      : 0;
+
+    let status;
+    if (item.actual > item.budget) {
+      status = 'over';
+      overBudgetCount++;
+    } else if (item.budget > 0 && item.actual > item.budget * 0.9) {
+      status = 'warning';
+    } else {
+      status = 'under';
+      underBudgetCount++;
+    }
+
+    lines.push({
+      ...item,
+      variance,
+      variancePercent,
+      percentUsed,
+      status
+    });
+
+    totalBudget += item.budget;
+    totalCommitted += item.committed;
+    totalActual += item.actual;
+  }
+
+  // Sort by variance (most over budget first)
+  lines.sort((a, b) => a.variance - b.variance);
+
+  const totalVariance = totalBudget - totalActual;
+  const overallPercentUsed = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : 0;
+
+  res.json({
+    job: { id: job.id, name: job.name, contractAmount: parseFloat(job.contract_amount) || 0 },
+    summary: {
+      totalBudget,
+      totalCommitted,
+      totalActual,
+      totalVariance,
+      overallPercentUsed,
+      costCodesOverBudget: overBudgetCount,
+      costCodesUnderBudget: underBudgetCount,
+      totalCostCodes: lines.length
+    },
+    lines
+  });
+}));
+
+// ============================================================
 // HELPER FUNCTIONS
 // ============================================================
 
