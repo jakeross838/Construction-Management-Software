@@ -751,6 +751,121 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// PHASE CRUD ENDPOINTS
+// ============================================================
+
+// POST /api/estimates/:id/phases - Add phase to estimate
+router.post('/:id/phases', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, phase_code, description, sort_order, created_by } = req.body;
+
+  if (!name) throw new AppError('VALIDATION_ERROR', 'Phase name is required');
+
+  // Verify estimate exists
+  const { data: estimate } = await supabase
+    .from('v2_estimates')
+    .select('id')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
+
+  // Get max sort_order if not provided
+  let order = sort_order;
+  if (order === undefined) {
+    const { data: maxOrder } = await supabase
+      .from('v2_estimate_phases')
+      .select('sort_order')
+      .eq('estimate_id', id)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .single();
+    order = (maxOrder?.sort_order || 0) + 1;
+  }
+
+  const { data: phase, error } = await supabase
+    .from('v2_estimate_phases')
+    .insert({
+      estimate_id: id,
+      name,
+      phase_code: phase_code || null,
+      description: description || null,
+      sort_order: order
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(id, 'phase_added', created_by || 'System', {
+    phase_id: phase.id,
+    phase_name: name
+  });
+
+  res.status(201).json(phase);
+}));
+
+// PATCH /api/estimates/phases/:phaseId - Update phase
+router.patch('/phases/:phaseId', asyncHandler(async (req, res) => {
+  const { phaseId } = req.params;
+  const { name, phase_code, description, sort_order, is_collapsed, updated_by } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (phase_code !== undefined) updates.phase_code = phase_code;
+  if (description !== undefined) updates.description = description;
+  if (sort_order !== undefined) updates.sort_order = sort_order;
+  if (is_collapsed !== undefined) updates.is_collapsed = is_collapsed;
+
+  const { data: phase, error } = await supabase
+    .from('v2_estimate_phases')
+    .update(updates)
+    .eq('id', phaseId)
+    .select('*, estimate_id')
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!phase) throw new AppError('NOT_FOUND', 'Phase not found');
+
+  await logEstimateActivity(phase.estimate_id, 'phase_updated', updated_by || 'System', {
+    phase_id: phaseId,
+    updates
+  });
+
+  res.json(phase);
+}));
+
+// DELETE /api/estimates/phases/:phaseId - Delete phase (cascades to groups/subgroups/lines)
+router.delete('/phases/:phaseId', asyncHandler(async (req, res) => {
+  const { phaseId } = req.params;
+  const { deleted_by } = req.body || {};
+
+  // Get phase info before deletion
+  const { data: phase } = await supabase
+    .from('v2_estimate_phases')
+    .select('estimate_id, name')
+    .eq('id', phaseId)
+    .single();
+
+  if (!phase) throw new AppError('NOT_FOUND', 'Phase not found');
+
+  const { error } = await supabase
+    .from('v2_estimate_phases')
+    .delete()
+    .eq('id', phaseId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logEstimateActivity(phase.estimate_id, 'phase_deleted', deleted_by || 'System', {
+    phase_id: phaseId,
+    phase_name: phase.name
+  });
+
+  res.json({ success: true, message: 'Phase deleted' });
+}));
+
+// ============================================================
 // CREATE ESTIMATE
 // ============================================================
 
