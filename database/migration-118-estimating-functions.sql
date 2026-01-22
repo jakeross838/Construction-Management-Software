@@ -341,3 +341,152 @@ CREATE TRIGGER trigger_update_assembly_template_timestamp
 -- ============================================================
 COMMENT ON FUNCTION trigger_estimate_line_changed_v3() IS 'Trigger function that updates section subtotals, estimate totals, and assembly headers on line item changes';
 COMMENT ON FUNCTION trigger_estimate_markup_changed() IS 'Trigger function that recalculates estimate when markup percentages change';
+
+-- ============================================================
+-- 6. ESTIMATE VERSION TRACKING (EST-06)
+-- ============================================================
+-- Creates a version snapshot of an estimate, capturing full state
+
+CREATE OR REPLACE FUNCTION create_estimate_version(
+  p_estimate_id UUID,
+  p_created_by TEXT DEFAULT NULL,
+  p_change_summary TEXT DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+  v_version_id UUID;
+  v_new_version INTEGER;
+  v_estimate RECORD;
+  v_snapshot JSONB;
+BEGIN
+  -- Get current estimate
+  SELECT * INTO v_estimate FROM v2_estimates WHERE id = p_estimate_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Estimate not found: %', p_estimate_id;
+  END IF;
+
+  -- Increment version on estimate
+  v_new_version := COALESCE(v_estimate.version, 0) + 1;
+
+  UPDATE v2_estimates
+  SET version = v_new_version, updated_at = NOW()
+  WHERE id = p_estimate_id;
+
+  -- Build snapshot JSON containing estimate header, sections, and line items
+  SELECT jsonb_build_object(
+    'estimate', (
+      SELECT row_to_json(e.*)
+      FROM v2_estimates e
+      WHERE e.id = p_estimate_id
+    ),
+    'sections', (
+      SELECT COALESCE(jsonb_agg(row_to_json(s.*) ORDER BY s.sort_order), '[]'::jsonb)
+      FROM v2_estimate_sections s
+      WHERE s.estimate_id = p_estimate_id
+    ),
+    'lines', (
+      SELECT COALESCE(jsonb_agg(row_to_json(l.*) ORDER BY l.sort_order), '[]'::jsonb)
+      FROM v2_estimate_lines l
+      WHERE l.estimate_id = p_estimate_id
+    )
+  ) INTO v_snapshot;
+
+  -- Insert version record
+  INSERT INTO v2_estimate_versions (
+    estimate_id,
+    version_number,
+    snapshot_data,
+    created_by,
+    change_summary,
+    subtotal,
+    total_amount,
+    line_count
+  )
+  VALUES (
+    p_estimate_id,
+    v_new_version,
+    v_snapshot,
+    COALESCE(p_created_by, 'system'),
+    COALESCE(p_change_summary, 'Version ' || v_new_version),
+    v_estimate.subtotal,
+    v_estimate.total_amount,
+    (SELECT COUNT(*) FROM v2_estimate_lines WHERE estimate_id = p_estimate_id AND parent_line_id IS NULL)
+  )
+  RETURNING id INTO v_version_id;
+
+  RETURN v_version_id;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION create_estimate_version(UUID, TEXT, TEXT) IS 'Creates a version snapshot of an estimate for history tracking';
+
+-- ============================================================
+-- 7. HELPER: GET ESTIMATE VERSION
+-- ============================================================
+-- Retrieves a specific version snapshot
+
+CREATE OR REPLACE FUNCTION get_estimate_version(
+  p_estimate_id UUID,
+  p_version_number INTEGER DEFAULT NULL  -- NULL = latest version
+)
+RETURNS TABLE (
+  version_id UUID,
+  version_number INTEGER,
+  snapshot_data JSONB,
+  created_at TIMESTAMPTZ,
+  created_by TEXT,
+  change_summary TEXT,
+  subtotal DECIMAL(14,2),
+  total_amount DECIMAL(14,2),
+  line_count INTEGER
+) AS $$
+BEGIN
+  IF p_version_number IS NULL THEN
+    -- Return latest version
+    RETURN QUERY
+    SELECT v.id, v.version_number, v.snapshot_data, v.created_at, v.created_by,
+           v.change_summary, v.subtotal, v.total_amount, v.line_count
+    FROM v2_estimate_versions v
+    WHERE v.estimate_id = p_estimate_id
+    ORDER BY v.version_number DESC
+    LIMIT 1;
+  ELSE
+    -- Return specific version
+    RETURN QUERY
+    SELECT v.id, v.version_number, v.snapshot_data, v.created_at, v.created_by,
+           v.change_summary, v.subtotal, v.total_amount, v.line_count
+    FROM v2_estimate_versions v
+    WHERE v.estimate_id = p_estimate_id AND v.version_number = p_version_number;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_estimate_version(UUID, INTEGER) IS 'Retrieves estimate version snapshot by version number (NULL for latest)';
+
+-- ============================================================
+-- 8. HELPER: LIST ESTIMATE VERSIONS
+-- ============================================================
+-- Lists all versions for an estimate (for version history UI)
+
+CREATE OR REPLACE FUNCTION list_estimate_versions(p_estimate_id UUID)
+RETURNS TABLE (
+  version_number INTEGER,
+  created_at TIMESTAMPTZ,
+  created_by TEXT,
+  change_summary TEXT,
+  subtotal DECIMAL(14,2),
+  total_amount DECIMAL(14,2),
+  line_count INTEGER
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT v.version_number, v.created_at, v.created_by, v.change_summary,
+         v.subtotal, v.total_amount, v.line_count
+  FROM v2_estimate_versions v
+  WHERE v.estimate_id = p_estimate_id
+  ORDER BY v.version_number DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION list_estimate_versions(UUID) IS 'Lists all version snapshots for an estimate in descending order';
