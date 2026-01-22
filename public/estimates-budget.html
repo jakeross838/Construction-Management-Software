@@ -318,6 +318,316 @@
       font-size: 0.85rem;
       color: var(--text-secondary);
     }
+
+    /* ============================================ */
+    /* ESTIMATE DETAIL VIEW (Full Page) */
+    /* ============================================ */
+    .estimate-detail-view {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: calc(100vh - 60px);
+    }
+
+    .detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .detail-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .detail-header-center {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+      justify-content: center;
+    }
+
+    .detail-header-center h1 {
+      font-size: 1.5rem;
+      margin: 0;
+    }
+
+    .detail-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .version-badge {
+      background: var(--bg-card-elevated);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .detail-content {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 24px;
+      flex: 1;
+    }
+
+    @media (max-width: 1024px) {
+      .detail-content {
+        grid-template-columns: 1fr;
+      }
+      .detail-sidebar {
+        order: -1;
+      }
+    }
+
+    .detail-main {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .detail-info-bar {
+      display: flex;
+      gap: 24px;
+      padding: 16px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      flex-wrap: wrap;
+    }
+
+    .info-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .info-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .info-value {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .info-item-highlight .info-value {
+      font-size: 1.25rem;
+      color: var(--accent-green);
+    }
+
+    .detail-notes {
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    .detail-notes strong {
+      color: var(--text-primary);
+    }
+
+    .line-items-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-card-elevated);
+    }
+
+    .section-header h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .section-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .lines-table-container {
+      overflow-x: auto;
+    }
+
+    .lines-table-container table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .lines-table-container th,
+    .lines-table-container td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .lines-table-container th {
+      background: var(--bg-card);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .lines-table-container tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .lines-table-container tfoot tr {
+      background: var(--bg-card-elevated);
+    }
+
+    .totals-row td {
+      padding: 12px;
+      font-weight: 500;
+    }
+
+    .grand-total td {
+      border-top: 2px solid var(--border);
+      background: var(--bg-card);
+    }
+
+    /* Sidebar */
+    .detail-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .sidebar-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .sidebar-card h4 {
+      margin: 0 0 12px 0;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      letter-spacing: 0.5px;
+    }
+
+    .status-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn-block {
+      width: 100%;
+    }
+
+    .activity-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .activity-item {
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .activity-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .activity-action {
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .activity-meta {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .version-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .version-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      background: var(--bg-card-elevated);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .version-item:hover:not(.current) {
+      background: rgba(88, 166, 255, 0.1);
+    }
+
+    .version-item.current {
+      background: rgba(88, 166, 255, 0.15);
+      cursor: default;
+    }
+
+    .version-number {
+      font-weight: 600;
+    }
+
+    .version-current {
+      font-size: 0.75rem;
+      color: var(--accent-blue);
+      margin-left: auto;
+    }
+
+    /* Utility classes */
+    .text-muted {
+      color: var(--text-secondary);
+    }
+
+    .badge-sm {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+    }
+
+    .btn-success {
+      background: var(--accent-green);
+      color: white;
+      border: none;
+    }
+
+    .btn-success:hover {
+      background: #36a847;
+    }
   </style>
 </head>
 <body data-page-context="job" data-page-id="estimates-budget" data-page-group="precon" data-role-min="pm">
@@ -386,9 +696,6 @@
           <div class="data-toolbar">
             <div class="toolbar-left">
               <div class="filter-group">
-                <select id="jobFilter" class="form-control form-control-sm">
-                  <option value="">All Jobs</option>
-                </select>
                 <select id="statusFilter" class="form-control form-control-sm">
                   <option value="">All Status</option>
                   <option value="draft">Draft</option>
@@ -449,6 +756,205 @@
             <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
             <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
             <div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>
+          </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- ESTIMATE DETAIL VIEW (Full Page) -->
+        <!-- ============================================================ -->
+        <div id="estimateDetailView" class="estimate-detail-view" style="display: none;">
+          <!-- Detail Header -->
+          <div class="detail-header">
+            <div class="detail-header-left">
+              <button class="btn btn-ghost" onclick="backToList()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+                Back to Estimates
+              </button>
+            </div>
+            <div class="detail-header-center">
+              <h1 id="detailViewTitle">Estimate Details</h1>
+              <span class="badge" id="detailViewStatus">Draft</span>
+              <span class="version-badge" id="detailViewVersion">v1</span>
+            </div>
+            <div class="detail-header-right">
+              <button class="btn btn-danger" onclick="deleteEstimate()">Delete</button>
+              <button class="btn btn-secondary" onclick="openDuplicateModal()">Duplicate</button>
+              <button class="btn btn-secondary" onclick="createNewVersion()">New Version</button>
+              <button class="btn btn-primary" id="detailEditBtn" onclick="editCurrentEstimate()">Edit Details</button>
+            </div>
+          </div>
+
+          <!-- Detail Content -->
+          <div class="detail-content">
+            <!-- Left Column: Estimate Info & Line Items -->
+            <div class="detail-main">
+              <!-- Info Bar -->
+              <div class="detail-info-bar">
+                <div class="info-item">
+                  <span class="info-label">Job</span>
+                  <span class="info-value" id="detailViewJob">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Created</span>
+                  <span class="info-value" id="detailViewCreated">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Lines</span>
+                  <span class="info-value" id="detailViewLineCount">0</span>
+                </div>
+                <div class="info-item info-item-highlight">
+                  <span class="info-label">Total</span>
+                  <span class="info-value" id="detailViewAmount">$0.00</span>
+                </div>
+              </div>
+
+              <!-- Notes -->
+              <div class="detail-notes" id="detailViewNotesSection">
+                <strong>Notes:</strong> <span id="detailViewNotes">-</span>
+              </div>
+
+              <!-- Hierarchy Section (Phase/Group/Subgroup) -->
+              <div class="line-items-section" id="hierarchySection">
+                <div class="section-header">
+                  <h3>Estimate Structure</h3>
+                  <div class="section-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="expandAll()" title="Expand all">Expand All</button>
+                    <button class="btn btn-ghost btn-sm" onclick="collapseAll()" title="Collapse all">Collapse All</button>
+                    <button class="btn btn-ghost btn-sm" onclick="openTemplateSelector()" title="Apply template">
+                      Apply Template
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="addPhase()" id="addPhaseBtn">
+                      + Add Phase
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Hierarchy Container -->
+                <div id="estimateHierarchy" class="estimate-hierarchy" style="padding: 16px;">
+                  <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                    Loading estimate structure...
+                  </div>
+                </div>
+
+                <!-- Totals Summary -->
+                <div style="padding: 16px; border-top: 1px solid var(--border); background: var(--bg-card-elevated);">
+                  <div style="display: flex; justify-content: flex-end; gap: 24px; align-items: center;">
+                    <span style="font-size: 1rem; color: var(--text-secondary);">Estimate Total:</span>
+                    <span id="estimateTotalAmount" style="font-size: 1.25rem; font-weight: 700; color: var(--accent-green);">$0.00</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Flat Line Items Section (for backward compatibility / non-hierarchy estimates) -->
+              <div class="line-items-section" id="flatLinesSection" style="display: none;">
+                <div class="section-header">
+                  <h3>Line Items</h3>
+                  <div class="section-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="openTemplatesModal()" title="Add from template">
+                      Templates
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="openScopeModal()" title="AI scope analysis">
+                      AI Scope
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="openAddLineModal()" id="addLineBtn">
+                      + Add Item
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Lines Table -->
+                <div class="lines-table-container">
+                  <table class="data-table" id="linesTable">
+                    <thead>
+                      <tr>
+                        <th style="width: 30px;"></th>
+                        <th style="width: 30px;"></th>
+                        <th style="width: 40px;">#</th>
+                        <th style="width: 80px;">Code</th>
+                        <th>Description</th>
+                        <th style="width: 70px; text-align: right;">Qty</th>
+                        <th style="width: 50px;">Unit</th>
+                        <th style="width: 100px; text-align: right;">Unit Cost</th>
+                        <th style="width: 110px; text-align: right;">Amount</th>
+                        <th style="width: 80px;">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="linesTableBody">
+                      <tr>
+                        <td colspan="10" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                          Loading line items...
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr class="totals-row">
+                        <td colspan="8" style="text-align: right; font-weight: 600;">Subtotal:</td>
+                        <td style="text-align: right; font-weight: 600;" id="linesSubtotal">$0.00</td>
+                        <td></td>
+                      </tr>
+                      <tr class="totals-row" id="markupRow">
+                        <td colspan="8" style="text-align: right;">
+                          Markup (<span id="markupPctDisplay">0</span>%):
+                          <button class="btn btn-ghost btn-xs" onclick="openMarkupModal()">Edit</button>
+                        </td>
+                        <td style="text-align: right;" id="markupAmountDisplay">$0.00</td>
+                        <td></td>
+                      </tr>
+                      <tr class="totals-row" id="contingencyRow">
+                        <td colspan="8" style="text-align: right;">
+                          Contingency (<span id="contingencyPctDisplay">0</span>%):
+                        </td>
+                        <td style="text-align: right;" id="contingencyAmountDisplay">$0.00</td>
+                        <td></td>
+                      </tr>
+                      <tr class="totals-row grand-total">
+                        <td colspan="8" style="text-align: right; font-weight: 700; font-size: 1.1rem;">Grand Total:</td>
+                        <td style="text-align: right; font-weight: 700; font-size: 1.1rem;" id="linesTotalAmount">$0.00</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column: Actions & History -->
+            <div class="detail-sidebar">
+              <!-- Status Actions -->
+              <div class="sidebar-card">
+                <h4>Status Actions</h4>
+                <div class="status-actions" id="statusActions">
+                  <button class="btn btn-primary btn-block" onclick="submitEstimate()" id="submitBtn">Submit for Approval</button>
+                  <button class="btn btn-success btn-block" onclick="approveEstimate()" id="approveBtn" style="display: none;">Approve</button>
+                  <button class="btn btn-danger btn-block" onclick="rejectEstimate()" id="rejectBtn" style="display: none;">Reject</button>
+                </div>
+              </div>
+
+              <!-- Convert Actions -->
+              <div class="sidebar-card">
+                <h4>Convert</h4>
+                <button class="btn btn-secondary btn-block" onclick="convertToBudget()" id="convertBudgetBtn">Convert to Budget</button>
+                <button class="btn btn-secondary btn-block" onclick="convertToAllowances()" id="convertAllowancesBtn">Convert to Allowances</button>
+              </div>
+
+              <!-- Activity Log -->
+              <div class="sidebar-card">
+                <h4>Activity</h4>
+                <div class="activity-list" id="activityList">
+                  <p class="text-muted">No activity yet</p>
+                </div>
+              </div>
+
+              <!-- Version History -->
+              <div class="sidebar-card">
+                <h4>Versions</h4>
+                <div class="version-list" id="versionList">
+                  <p class="text-muted">No versions</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -634,7 +1140,8 @@
   </div>
 
   <!-- Estimate Detail Modal (Fullscreen with Tabs) -->
-  <div id="estimateDetailModal" class="modal modal-fullscreen-dark">
+  <!-- OLD MODAL - DEPRECATED, using full-page view instead -->
+  <div id="estimateDetailModal" class="modal modal-fullscreen-dark" style="display:none !important">
     <div class="modal-content">
       <div class="modal-header">
         <div class="modal-header-left">
@@ -686,7 +1193,7 @@
 
             <div class="detail-section">
               <h3>Actions</h3>
-              <div class="status-actions" id="statusActions">
+              <div class="status-actions" id="modal-statusActions">
                 <!-- Populated by JS based on current status -->
               </div>
 
@@ -840,7 +1347,7 @@
                         <th style="width:60px"></th>
                       </tr>
                     </thead>
-                    <tbody id="linesTableBody">
+                    <tbody id="modal-linesTableBody">
                       <!-- Populated by JS -->
                     </tbody>
                   </table>
@@ -857,11 +1364,11 @@
                   <div class="worksheet-totals">
                     <div class="total-row">
                       <span class="total-label">Subtotal</span>
-                      <span class="total-value" id="linesSubtotal">$0.00</span>
+                      <span class="total-value" id="modal-linesSubtotal">$0.00</span>
                     </div>
                     <div class="total-row total-row-grand">
                       <span class="total-label">Total</span>
-                      <span class="total-value" id="linesTotalAmount">$0.00</span>
+                      <span class="total-value" id="modal-linesTotalAmount">$0.00</span>
                     </div>
                   </div>
                 </div>
@@ -891,6 +1398,7 @@
 
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeDetailModal()">Close</button>
+        <button class="btn btn-danger" onclick="deleteEstimate()">Delete</button>
         <button class="btn btn-secondary" onclick="openDuplicateModal()">Duplicate</button>
         <button class="btn btn-primary" id="editEstimateBtn" onclick="editCurrentEstimate()">Edit Estimate</button>
       </div>
@@ -1412,6 +1920,27 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeScopesListModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Template Selector Modal -->
+  <div id="templateSelectorModal" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2>Apply Estimate Template</h2>
+        <button class="close-btn" onclick="closeTemplateSelector()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">Select a template to structure your estimate with predefined phases, groups, and subgroups.</p>
+        <div id="templateList">
+          <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+            Loading templates...
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeTemplateSelector()">Cancel</button>
       </div>
     </div>
   </div>

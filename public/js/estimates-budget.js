@@ -497,8 +497,28 @@ async function openEstimateDetail(estimateId) {
     // Update status action buttons
     updateStatusActions();
 
-    // Render line items, activity, and versions
-    renderLineItemsTab();
+    // Update add phase button visibility
+    const addPhaseBtn = document.getElementById('addPhaseBtn');
+    if (addPhaseBtn) addPhaseBtn.style.display = canEdit ? 'inline-flex' : 'none';
+
+    // Determine which view to show: hierarchy or flat
+    const hasHierarchy = currentEstimate.phases && currentEstimate.phases.length > 0;
+    const hierarchySection = document.getElementById('hierarchySection');
+    const flatLinesSection = document.getElementById('flatLinesSection');
+
+    if (hasHierarchy || !currentEstimate.lines || currentEstimate.lines.length === 0) {
+      // Show hierarchy view (default for new estimates or estimates with phases)
+      if (hierarchySection) hierarchySection.style.display = 'block';
+      if (flatLinesSection) flatLinesSection.style.display = 'none';
+      renderEstimateHierarchy(currentEstimate);
+    } else {
+      // Show flat lines view for legacy estimates without hierarchy
+      if (hierarchySection) hierarchySection.style.display = 'none';
+      if (flatLinesSection) flatLinesSection.style.display = 'block';
+      renderLineItemsTab();
+    }
+
+    // Render activity, and versions
     renderActivitySidebar();
     renderVersionsSidebar();
 
