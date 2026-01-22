@@ -5,21 +5,24 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** Phase 108 Selections & Allowances - Plan 01 COMPLETE
+**Current focus:** Phase 108 Selections & Allowances - COMPLETE
 
 ## Current Position
 
 Phase: 108 (Selections & Allowances)
-Plan: 01 of 3
-Status: In progress
-Last activity: 2026-01-22 - Completed 108-01-PLAN.md (Estimate-to-Selections Bridge)
+Plan: 3 of 3
+Status: COMPLETE
+Last activity: 2026-01-22 - Completed all Phase 108 plans
 
-Progress: [###-------] 33% (Plan 1/3 complete for this phase)
+Progress: [##########] 100% (Phase 108 complete)
 
 ## Performance Metrics
 
-**Phase 108 (Selections & Allowances - IN PROGRESS):**
-- Plan 108-01: Estimate-to-Selections Bridge (completed, 5 min)
+**Phase 108 (Selections & Allowances - COMPLETE):**
+- Plan 108-01: Estimate-to-Selections Bridge schema (completed, 5 min)
+- Plan 108-02: API routes for client approval (completed, 10 min)
+- Plan 108-03: Client-facing selection approval UI (completed, 15 min)
+- **Total Duration:** ~30 min
 
 **Phase 107 (Assembly Library - COMPLETE):**
 - Plan 107-01: Assembly Library admin page (completed, 8 min)
@@ -135,15 +138,17 @@ Key decisions for v3.1:
 - Assembly children excluded from totals (parent_line_id IS NULL filter)
 - Triggers cascade: line change -> section subtotal -> estimate totals -> assembly header
 
-**Phase 108 Selections & Allowances Decisions (IN PROGRESS):**
+**Phase 108 Selections & Allowances Decisions (COMPLETE):**
 - estimate_line_id uses ON DELETE SET NULL - allowance persists if estimate line deleted
 - Client approval tracked separately from admin approval (5 new columns)
 - convert_estimate_allowances() is idempotent - safe to call multiple times
 - Category matching uses fuzzy match on cost code name with fallback to 'Other'
+- Role-based filtering: client role cannot see internal_notes
+- Post-contract detection: jobs in construction/in_progress/active/closed/complete trigger CO prompt
 
 ### Pending Todos
 
-None - Phase 108 Plan 01 complete.
+None - Phase 108 complete.
 
 ### Blockers/Concerns
 
@@ -152,18 +157,18 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed 108-01-PLAN.md (Estimate-to-Selections Bridge)
+Stopped at: Completed Phase 108 (all 3 plans)
 Resume file: None
 
 ## Next Actions
 
-Phase 108 Plan 01 complete. Ready for:
-- 108-02: API routes for client approval and allowance conversion
-- 108-03: Client-facing selection view with approval UI
+Phase 108 complete. Ready for:
+- Phase 109: Proposal Generation (3 plans)
+- Phase 110: UI/UX Overhaul (4 plans)
 
 ## Milestone History
 
-- **Phase 108 Selections & Allowances** (in progress 2026-01-22): Estimate-to-selections bridge schema
+- **Phase 108 Selections & Allowances** (completed 2026-01-22): Estimate-to-selections bridge, client approval API, approval UI
 
 - **Phase 107 Assembly Library** (completed 2026-01-22): Assembly templates, Section management, Assembly picker workflow
 
