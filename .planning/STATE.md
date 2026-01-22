@@ -5,18 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** Phase 108 Selections & Allowances - COMPLETE
+**Current focus:** Phase 110 UI/UX Overhaul - IN PROGRESS
 
 ## Current Position
 
-Phase: 108 (Selections & Allowances)
-Plan: 3 of 3
-Status: COMPLETE
-Last activity: 2026-01-22 - Completed all Phase 108 plans
+Phase: 110 (UI/UX Overhaul)
+Plan: 1 of 4
+Status: IN PROGRESS
+Last activity: 2026-01-22 - Completed Phase 110-01 UI cleanup
 
-Progress: [##########] 100% (Phase 108 complete)
+Progress: [##--------] 25% (1 of 4 plans complete)
 
 ## Performance Metrics
+
+**Phase 110 (UI/UX Overhaul - IN PROGRESS):**
+- Plan 110-01: Interface cleanup and dropdown menus (completed, 35 min)
+- Plan 110-02: Line item CRUD (pending)
+- Plan 110-03: Assembly picker enhancements (pending)
+- Plan 110-04: Workflow polish (pending)
+- **Total Duration so far:** ~35 min
+- **Output:** Reduced button clutter from 103 to 85 onclick handlers, dropdown menu pattern established
+
+**Phase 109 (Proposal Generation - COMPLETE):**
+- Plan 109-01: Database schema for proposals (completed, 5 min)
+- Plan 109-02: PDF generator + API routes (completed, 12 min)
+- Plan 109-03: Client-facing view + acceptance (completed, 10 min)
+- Staff UI: Estimate page integration (completed, 8 min)
+- **Total Duration:** ~35 min
+- **Output:** Professional PDF proposals, secure sharing, client acceptance workflow
 
 **Phase 108 (Selections & Allowances - COMPLETE):**
 - Plan 108-01: Estimate-to-Selections Bridge schema (completed, 5 min)
@@ -138,6 +154,13 @@ Key decisions for v3.1:
 - Assembly children excluded from totals (parent_line_id IS NULL filter)
 - Triggers cascade: line change -> section subtotal -> estimate totals -> assembly header
 
+**Phase 110 UI/UX Overhaul Decisions (IN PROGRESS):**
+- Removed card view entirely - table view provides better information density for construction data
+- Dropdown menu pattern established using .dropdown, .dropdown-toggle, .dropdown-menu classes
+- Progressive disclosure: secondary actions moved to overflow menus
+- Preserved proposal generation feature (fully implemented in Phase 109)
+- Future feature toasts reference specific phases (107, 108, 110-02) instead of generic "coming soon"
+
 **Phase 108 Selections & Allowances Decisions (COMPLETE):**
 - estimate_line_id uses ON DELETE SET NULL - allowance persists if estimate line deleted
 - Client approval tracked separately from admin approval (5 new columns)
@@ -148,7 +171,7 @@ Key decisions for v3.1:
 
 ### Pending Todos
 
-None - Phase 108 complete.
+None.
 
 ### Blockers/Concerns
 
@@ -157,16 +180,21 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed Phase 108 (all 3 plans)
+Stopped at: Completed Phase 110-01 (UI cleanup)
 Resume file: None
 
 ## Next Actions
 
-Phase 108 complete. Ready for:
-- Phase 109: Proposal Generation (3 plans)
-- Phase 110: UI/UX Overhaul (4 plans)
+Phase 110-01 complete. Ready for:
+- Phase 110-02: Line Item CRUD
+- Phase 110-03: Assembly Picker Enhancements
+- Phase 110-04: Workflow Polish
 
 ## Milestone History
+
+- **Phase 110-01 UI/UX Cleanup** (completed 2026-01-22): Removed interface clutter, added dropdown menus, simplified modal tabs
+
+- **Phase 109 Proposal Generation** (completed 2026-01-22): PDF proposals, secure sharing, client acceptance workflow
 
 - **Phase 108 Selections & Allowances** (completed 2026-01-22): Estimate-to-selections bridge, client approval API, approval UI
 
