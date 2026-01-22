@@ -10,15 +10,15 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 106 (Estimating - Hierarchical Structure & Catalog Integration)
-Plan: 1 of 04 (106-01 Complete)
+Plan: 2 of 04 (106-01, 106-02 Complete)
 Status: IN PROGRESS
-Last activity: 2026-01-21 - Completed 106-01 hierarchical schema
+Last activity: 2026-01-21 - Completed 106-02 hierarchical API endpoints
 
-Progress: [##        ] 25% (Phase 106, Plan 1 of 4 complete)
+Progress: [#####     ] 50% (Phase 106, Plan 2 of 4 complete)
 
 **Phase 106 Plan Summary:**
 - 106-01: Schema - Phase/Group/Subgroup tables, templates, triggers (COMPLETE)
-- 106-02: API - Hierarchical CRUD endpoints, template management
+- 106-02: API - Hierarchical CRUD endpoints, template management (COMPLETE)
 - 106-03: UI - Collapsible hierarchy rendering, template selector
 - 106-04: Catalog - Suggestions, auto-fill, catalog linking
 
@@ -128,12 +128,12 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-21
-Stopped at: Completed Phase 106-01 (hierarchical estimate schema)
+Stopped at: Completed Phase 106-02 (hierarchical API endpoints)
 Resume file: None
 
 ## Next Actions
 
-Continue with 106-02: Hierarchical API Endpoints.
+Continue with 106-03: Collapsible Hierarchy UI.
 
 ## Milestone History
 
