@@ -54,14 +54,8 @@
     {
       id: 'reports',
       label: 'Reports',
-      items: [
-        { id: 'report-selections', label: 'Selections', href: 'selections.html?view=report' },
-        { id: 'report-daily-logs', label: 'Daily Logs', href: 'daily-logs.html?view=report' },
-        { id: 'report-vendors', label: 'Vendors', href: 'vendors.html?view=report' },
-        { id: 'report-budget', label: 'Budget', href: 'budgets.html?view=report' },
-        { id: 'report-invoices', label: 'Invoices', href: 'index.html?view=report' },
-        { id: 'report-draws', label: 'Draws', href: 'draws.html?view=report' }
-      ]
+      href: 'reports.html',
+      items: [] // Direct link, no dropdown
     },
     {
       id: 'postcon',

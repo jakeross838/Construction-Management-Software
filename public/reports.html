@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports - Ross Built CMS</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .reports-container {
+      padding: 1.5rem;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .reports-header {
+      margin-bottom: 2rem;
+    }
+
+    .reports-header h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .reports-header p {
+      color: var(--muted-foreground);
+    }
+
+    /* Kanban-style grid */
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* Category section */
+    .report-category {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .category-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--accent);
+    }
+
+    .category-header h2 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--foreground);
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .category-header .category-icon {
+      width: 18px;
+      height: 18px;
+      opacity: 0.7;
+    }
+
+    .category-body {
+      padding: 0.75rem;
+    }
+
+    /* Report card */
+    .report-card {
+      display: block;
+      padding: 1rem;
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      text-decoration: none;
+      color: var(--foreground);
+      transition: all 0.15s ease;
+    }
+
+    .report-card:last-child {
+      margin-bottom: 0;
+    }
+
+    .report-card:hover {
+      border-color: var(--primary);
+      background: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .report-card-title {
+      font-weight: 500;
+      font-size: 0.9375rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .report-card-desc {
+      font-size: 0.8125rem;
+      color: var(--muted-foreground);
+      line-height: 1.4;
+    }
+
+    .report-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--muted-foreground);
+    }
+
+    .report-card-meta span {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .report-card-meta svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Quick stats row */
+    .quick-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .quick-stat {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+
+    .quick-stat-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted-foreground);
+      margin-bottom: 0.5rem;
+    }
+
+    .quick-stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .quick-stat-change {
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+    }
+
+    .quick-stat-change.positive {
+      color: var(--success);
+    }
+
+    .quick-stat-change.negative {
+      color: var(--destructive);
+    }
+
+    @media (max-width: 768px) {
+      .reports-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .quick-stats {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-top">
+      <a href="job-profile.html" class="header-brand">Ross Built</a>
+      <nav class="main-nav"></nav>
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-icon" title="Notifications">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="reports-container">
+    <div class="reports-header">
+      <h1>Reports</h1>
+      <p>Project management reports and analytics</p>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="quick-stats" id="quickStats">
+      <div class="quick-stat">
+        <div class="quick-stat-label">Active Jobs</div>
+        <div class="quick-stat-value" id="statActiveJobs">-</div>
+      </div>
+      <div class="quick-stat">
+        <div class="quick-stat-label">Open Invoices</div>
+        <div class="quick-stat-value" id="statOpenInvoices">-</div>
+      </div>
+      <div class="quick-stat">
+        <div class="quick-stat-label">Pending Selections</div>
+        <div class="quick-stat-value" id="statPendingSelections">-</div>
+      </div>
+      <div class="quick-stat">
+        <div class="quick-stat-label">Open RFIs</div>
+        <div class="quick-stat-value" id="statOpenRFIs">-</div>
+      </div>
+    </div>
+
+    <!-- Reports Grid -->
+    <div class="reports-grid">
+      <!-- Pre-Construction Reports -->
+      <div class="report-category">
+        <div class="category-header">
+          <h2>
+            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+            Pre-Construction
+          </h2>
+        </div>
+        <div class="category-body">
+          <a href="selections.html" class="report-card">
+            <div class="report-card-title">Selections Report</div>
+            <div class="report-card-desc">Track selection status, approvals, and pending items by job</div>
+          </a>
+          <a href="permits.html" class="report-card">
+            <div class="report-card-title">Permits Status</div>
+            <div class="report-card-desc">Permit applications, approvals, and expiration tracking</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Project Activity Reports -->
+      <div class="report-category">
+        <div class="category-header">
+          <h2>
+            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            Project Activity
+          </h2>
+        </div>
+        <div class="category-body">
+          <a href="daily-logs.html" class="report-card">
+            <div class="report-card-title">Daily Logs Summary</div>
+            <div class="report-card-desc">Crew activity, weather conditions, and daily progress</div>
+          </a>
+          <a href="schedule.html" class="report-card">
+            <div class="report-card-title">Schedule Status</div>
+            <div class="report-card-desc">Task completion, delays, and milestone tracking</div>
+          </a>
+          <a href="tasks.html" class="report-card">
+            <div class="report-card-title">Tasks Overview</div>
+            <div class="report-card-desc">Open tasks, assignments, and completion rates</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Documents & Communication -->
+      <div class="report-category">
+        <div class="category-header">
+          <h2>
+            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            Documents & Communication
+          </h2>
+        </div>
+        <div class="category-body">
+          <a href="rfis.html" class="report-card">
+            <div class="report-card-title">RFI Status</div>
+            <div class="report-card-desc">Open RFIs, response times, and resolution tracking</div>
+          </a>
+          <a href="submittals.html" class="report-card">
+            <div class="report-card-title">Submittals Status</div>
+            <div class="report-card-desc">Submittal approvals, rejections, and pending reviews</div>
+          </a>
+          <a href="documents.html" class="report-card">
+            <div class="report-card-title">Documents</div>
+            <div class="report-card-desc">Document library and version tracking</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Financial Reports -->
+      <div class="report-category">
+        <div class="category-header">
+          <h2>
+            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"></line>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+            </svg>
+            Financial
+          </h2>
+        </div>
+        <div class="category-body">
+          <a href="budgets.html" class="report-card">
+            <div class="report-card-title">Budget Report</div>
+            <div class="report-card-desc">Budget vs actual, variances, and cost tracking</div>
+          </a>
+          <a href="index.html" class="report-card">
+            <div class="report-card-title">Invoice Summary</div>
+            <div class="report-card-desc">Invoice status, aging, and approval pipeline</div>
+          </a>
+          <a href="draws.html" class="report-card">
+            <div class="report-card-title">Draws Report</div>
+            <div class="report-card-desc">Draw status, funded amounts, and billing progress</div>
+          </a>
+          <a href="pos.html" class="report-card">
+            <div class="report-card-title">Purchase Orders</div>
+            <div class="report-card-desc">PO status, commitments, and vendor spending</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Vendors & Resources -->
+      <div class="report-category">
+        <div class="category-header">
+          <h2>
+            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            Vendors & Resources
+          </h2>
+        </div>
+        <div class="category-body">
+          <a href="vendors.html" class="report-card">
+            <div class="report-card-title">Vendor Report</div>
+            <div class="report-card-desc">Vendor activity, spending, and performance</div>
+          </a>
+          <a href="lien-releases.html" class="report-card">
+            <div class="report-card-title">Lien Releases</div>
+            <div class="report-card-desc">Lien release status and compliance tracking</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Quality & Compliance -->
+      <div class="report-category">
+        <div class="category-header">
+          <h2>
+            <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+            Quality & Inspections
+          </h2>
+        </div>
+        <div class="category-body">
+          <a href="inspections.html" class="report-card">
+            <div class="report-card-title">Inspections Report</div>
+            <div class="report-card-desc">Inspection results, deficiencies, and follow-ups</div>
+          </a>
+          <a href="tasks.html?filter=punch" class="report-card">
+            <div class="report-card-title">Punch List Status</div>
+            <div class="report-card-desc">Punch list items, completion rates, and assignments</div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/nav-sidebar.js"></script>
+  <script src="js/toasts.js"></script>
+  <script>
+    // Load quick stats
+    async function loadQuickStats() {
+      try {
+        // Fetch stats from various endpoints
+        const [jobsRes, invoicesRes] = await Promise.all([
+          fetch('/api/jobs').catch(() => ({ ok: false })),
+          fetch('/api/invoices?status=needs_approval').catch(() => ({ ok: false }))
+        ]);
+
+        if (jobsRes.ok) {
+          const jobs = await jobsRes.json();
+          const activeJobs = jobs.filter(j => j.status === 'active').length;
+          document.getElementById('statActiveJobs').textContent = activeJobs;
+        }
+
+        if (invoicesRes.ok) {
+          const invoices = await invoicesRes.json();
+          document.getElementById('statOpenInvoices').textContent = invoices.length;
+        }
+
+        // Placeholder for other stats
+        document.getElementById('statPendingSelections').textContent = '-';
+        document.getElementById('statOpenRFIs').textContent = '-';
+      } catch (err) {
+        console.error('Error loading stats:', err);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadQuickStats);
+  </script>
+</body>
+</html>
