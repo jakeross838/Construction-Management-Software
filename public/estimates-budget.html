@@ -223,6 +223,23 @@
       color: var(--accent-green);
     }
 
+    /* Single page layout - Overview + Line Items */
+    .estimate-overview-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .estimate-lines-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0;
+      overflow: hidden;
+    }
+
     /* Confidence indicator */
     .confidence-bar {
       width: 60px;
@@ -584,16 +601,9 @@
               </div>
             </div>
 
-            <!-- Tabs (from modal) -->
-            <div class="tabs">
-              <button class="tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
-              <button class="tab" data-tab="lines" onclick="switchTab('lines')">Line Items</button>
-            </div>
-
-            <!-- Tab content (from modal body) -->
-            <div class="estimate-tab-content">
-              <!-- Overview Tab -->
-              <div id="tab-overview" class="tab-content active">
+            <!-- Overview Section -->
+            <div class="estimate-overview-section">
+              <div id="tab-overview">
                 <div class="detail-grid">
                   <div class="detail-section">
                     <h3>Estimate Information</h3>
@@ -641,9 +651,11 @@
                   <p id="detailSourceBid" class="detail-text">-</p>
                 </div>
               </div>
+            </div>
 
-              <!-- Line Items Tab -->
-              <div id="tab-lines" class="tab-content">
+            <!-- Line Items Section -->
+            <div class="estimate-lines-section">
+              <div id="tab-lines">
                 <div class="worksheet-container">
                   <!-- Worksheet Toolbar -->
                   <div class="worksheet-toolbar">
