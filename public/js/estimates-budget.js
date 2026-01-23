@@ -219,6 +219,10 @@ function populateJobDropdowns() {
 // ============================================================
 
 function openCreateModal() {
+  console.log('[openCreateModal] Opening create estimate modal');
+  console.log('[openCreateModal] Current job ID:', currentJobId);
+  console.log('[openCreateModal] Available jobs:', jobs.length);
+
   document.getElementById('modalTitle').textContent = 'New Estimate';
   document.getElementById('estimateId').value = '';
   document.getElementById('estimateForm').reset();
@@ -236,6 +240,7 @@ function openCreateModal() {
       opt.textContent = currentJob.name;
       opt.selected = true;
       jobSelect.appendChild(opt);
+      console.log('[openCreateModal] Pre-selected job:', currentJob.name);
     }
   }
 
@@ -249,9 +254,12 @@ function openCreateModal() {
     }
   });
 
+  console.log('[openCreateModal] Job dropdown populated with', jobSelect.options.length, 'options');
+
   const modal = document.getElementById('estimateModal');
   modal.style.display = 'flex';
   modal.classList.add('show');
+  console.log('[openCreateModal] Modal shown');
 
   // Focus title field
   setTimeout(() => document.getElementById('formTitle').focus(), 100);
