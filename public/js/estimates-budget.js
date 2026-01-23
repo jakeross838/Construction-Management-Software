@@ -30,6 +30,160 @@ let currentJobId = null;
 let comparisonData = null;
 let aiEstimate = null;
 
+// SearchablePicker instances
+let groupPhasePicker;
+let subgroupGroupPicker;
+let lineSubgroupPicker;
+let lineCostCodePicker;
+
+// ============================================================
+// SEARCHABLE PICKER COMPONENT
+// ============================================================
+
+class SearchablePicker {
+  constructor(containerId, options = {}) {
+    this.container = document.getElementById(containerId);
+    this.options = options;
+    this.items = [];
+    this.selectedValue = null;
+    this.isOpen = false;
+
+    this.init();
+  }
+
+  init() {
+    const html = `
+      <div class="search-picker">
+        <input type="text"
+               class="search-picker-input"
+               placeholder="${this.options.placeholder || 'Search...'}"
+               autocomplete="off">
+        <button class="search-picker-clear" style="display: none;">&times;</button>
+        <div class="search-picker-dropdown" style="display: none;"></div>
+        <input type="hidden" class="search-picker-value">
+      </div>
+    `;
+
+    this.container.innerHTML = html;
+
+    this.input = this.container.querySelector('.search-picker-input');
+    this.clearBtn = this.container.querySelector('.search-picker-clear');
+    this.dropdown = this.container.querySelector('.search-picker-dropdown');
+    this.hiddenInput = this.container.querySelector('.search-picker-value');
+
+    this.attachEvents();
+  }
+
+  attachEvents() {
+    this.input.addEventListener('focus', () => this.open());
+    this.input.addEventListener('input', (e) => this.filter(e.target.value));
+    this.clearBtn.addEventListener('click', () => this.clear());
+
+    document.addEventListener('click', (e) => {
+      if (!this.container.contains(e.target)) {
+        this.close();
+      }
+    });
+  }
+
+  setItems(items) {
+    this.items = items;
+    this.render();
+  }
+
+  render(filteredItems = this.items) {
+    if (filteredItems.length === 0) {
+      this.dropdown.innerHTML = '<div class="search-picker-empty">No results</div>';
+      return;
+    }
+
+    const html = filteredItems.map(item => {
+      const isSelected = item.value === this.selectedValue;
+      return `
+        <div class="search-picker-item ${isSelected ? 'selected' : ''}"
+             data-value="${item.value}">
+          ${this.formatItem(item)}
+        </div>
+      `;
+    }).join('');
+
+    this.dropdown.innerHTML = html;
+
+    // Attach click handlers
+    this.dropdown.querySelectorAll('.search-picker-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const value = el.dataset.value;
+        const item = this.items.find(i => i.value === value);
+        this.select(item);
+      });
+    });
+  }
+
+  formatItem(item) {
+    if (item.code) {
+      // For cost codes: "06100 - Rough Carpentry"
+      return `
+        <span class="picker-code">${item.code}</span>
+        <span class="picker-name">${item.label}</span>
+      `;
+    }
+    return item.label;
+  }
+
+  filter(query) {
+    const filtered = this.items.filter(item => {
+      const searchText = `${item.label} ${item.code || ''}`.toLowerCase();
+      return searchText.includes(query.toLowerCase());
+    });
+    this.render(filtered);
+  }
+
+  open() {
+    this.isOpen = true;
+    this.dropdown.style.display = 'block';
+    this.render();
+  }
+
+  close() {
+    this.isOpen = false;
+    this.dropdown.style.display = 'none';
+  }
+
+  select(item) {
+    this.selectedValue = item.value;
+    this.input.value = item.label;
+    this.hiddenInput.value = item.value;
+    this.clearBtn.style.display = 'block';
+    this.close();
+
+    if (this.options.onChange) {
+      this.options.onChange(item.value, item);
+    }
+  }
+
+  clear() {
+    this.selectedValue = null;
+    this.input.value = '';
+    this.hiddenInput.value = '';
+    this.clearBtn.style.display = 'none';
+
+    if (this.options.onChange) {
+      this.options.onChange(null);
+    }
+  }
+
+  getValue() {
+    return this.selectedValue;
+  }
+
+  setValue(value) {
+    const item = this.items.find(i => i.value === value);
+    if (item) {
+      this.select(item);
+    }
+  }
+}
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -274,19 +428,23 @@ function openCreateModal() {
 
   console.log('[openCreateModal] Job dropdown populated with', jobSelect.options.length, 'options');
 
-  const modal = document.getElementById('estimateModal');
-  modal.style.display = 'flex';
-  modal.classList.add('show');
-  console.log('[openCreateModal] Modal shown');
+  const backdrop = document.getElementById('estimateModalBackdrop');
+  backdrop.style.display = 'flex';
+  setTimeout(() => {
+    backdrop.querySelector('.modal').classList.add('show');
+    console.log('[openCreateModal] Modal shown');
+  }, 10);
 
   // Focus title field
   setTimeout(() => document.getElementById('formTitle').focus(), 100);
 }
 
 function closeModal() {
-  const modal = document.getElementById('estimateModal');
-  modal.classList.remove('show');
-  modal.style.display = 'none';
+  const backdrop = document.getElementById('estimateModalBackdrop');
+  backdrop.querySelector('.modal').classList.remove('show');
+  setTimeout(() => {
+    backdrop.style.display = 'none';
+  }, 200);
 }
 
 async function saveEstimate() {
@@ -704,42 +862,39 @@ function openAddLineModal(lineId = null, sectionId = null) {
   document.getElementById('lineNotes').value = '';
   document.getElementById('lineItemId').value = lineId || '';
 
-  // Populate cost codes dropdown
-  const costCodeSelect = document.getElementById('lineCostCode');
-  costCodeSelect.innerHTML = '<option value="">Select cost code...</option>';
-  console.log('[openAddLineModal] Populating cost codes, count:', costCodes?.length || 0);
-  (costCodes || []).forEach(cc => {
-    const opt = document.createElement('option');
-    opt.value = cc.id;
-    opt.textContent = `${cc.code} - ${cc.name}`;
-    costCodeSelect.appendChild(opt);
-  });
+  // Initialize cost code picker
+  if (!lineCostCodePicker) {
+    lineCostCodePicker = new SearchablePicker('lineCostCodePicker', {
+      placeholder: 'Search cost codes...'
+    });
+  }
+  const costCodeItems = (costCodes || []).map(cc => ({
+    value: cc.id,
+    label: cc.name,
+    code: cc.code
+  }));
+  lineCostCodePicker.setItems(costCodeItems);
+  console.log('[openAddLineModal] Populated cost codes, count:', costCodeItems.length);
 
-  // Populate sections dropdown
-  const sectionSelect = document.getElementById('lineSection');
-  sectionSelect.innerHTML = '<option value="">No section</option>';
-  console.log('[openAddLineModal] Populating sections, count:', currentEstimate.sections?.length || 0);
-  (currentEstimate.sections || []).forEach(section => {
-    const opt = document.createElement('option');
-    opt.value = section.id;
-    opt.textContent = section.name;
-    if (sectionId && section.id === sectionId) opt.selected = true;
-    sectionSelect.appendChild(opt);
-  });
-
-  // Populate subgroups dropdown (Phase 112-04)
-  const subgroupSelect = document.getElementById('lineSubgroup');
-  subgroupSelect.innerHTML = '<option value="">Select Subgroup...</option>';
+  // Initialize subgroup picker
+  if (!lineSubgroupPicker) {
+    lineSubgroupPicker = new SearchablePicker('lineSubgroupPicker', {
+      placeholder: 'Search subgroups...'
+    });
+  }
+  const subgroups = [];
   (currentEstimate.phases || []).forEach(phase => {
     (phase.groups || []).forEach(group => {
       (group.subgroups || []).forEach(subgroup => {
-        const opt = document.createElement('option');
-        opt.value = subgroup.id;
-        opt.textContent = `${phase.name} > ${group.name} > ${subgroup.name}`;
-        subgroupSelect.appendChild(opt);
+        subgroups.push({
+          value: subgroup.id,
+          label: `${phase.name} > ${group.name} > ${subgroup.name}`
+        });
       });
     });
   });
+  lineSubgroupPicker.setItems(subgroups);
+  console.log('[openAddLineModal] Populated subgroups, count:', subgroups.length);
 
   // Auto-calculate amount on input changes
   const qtyInput = document.getElementById('lineQuantity');
@@ -769,10 +924,10 @@ function openAddLineModal(lineId = null, sectionId = null) {
 
   // Show modal
   document.getElementById('lineItemModalTitle').textContent = lineId ? 'Edit Line Item' : 'Add Line Item';
-  const modal = document.getElementById('lineItemModal');
-  modal.style.display = 'flex';
+  const backdrop = document.getElementById('lineItemModalBackdrop');
+  backdrop.style.display = 'flex';
   setTimeout(() => {
-    modal.classList.add('show');
+    backdrop.querySelector('.modal').classList.add('show');
     console.log('[openAddLineModal] Modal shown');
   }, 10);
 
@@ -781,9 +936,9 @@ function openAddLineModal(lineId = null, sectionId = null) {
 }
 
 function closeLineItemModal() {
-  const modal = document.getElementById('lineItemModal');
-  modal.classList.remove('show');
-  setTimeout(() => modal.style.display = 'none', 200);
+  const backdrop = document.getElementById('lineItemModalBackdrop');
+  backdrop.querySelector('.modal').classList.remove('show');
+  setTimeout(() => backdrop.style.display = 'none', 200);
 }
 
 async function saveLineItem() {
@@ -800,13 +955,12 @@ async function saveLineItem() {
   const unit = document.getElementById('lineUnit').value.trim();
   const unitCost = parseFloat(document.getElementById('lineUnitCost').value) || 0;
   const amount = parseFloat(document.getElementById('lineAmount').value) || 0;
-  const costCodeId = document.getElementById('lineCostCode').value || null;
-  const sectionId = document.getElementById('lineSection').value || null;
-  const subgroupId = document.getElementById('lineSubgroup').value || null;
+  const costCodeId = lineCostCodePicker.getValue() || null;
+  const subgroupId = lineSubgroupPicker.getValue() || null;
   const notes = document.getElementById('lineNotes').value.trim();
   const lineItemId = document.getElementById('lineItemId').value;
 
-  console.log('[saveLineItem] Form values:', { description, quantity, unit, unitCost, amount, costCodeId, sectionId, subgroupId, lineItemId });
+  console.log('[saveLineItem] Form values:', { description, quantity, unit, unitCost, amount, costCodeId, subgroupId, lineItemId });
 
   if (!description) {
     showToast('Description is required', 'error');
@@ -823,7 +977,6 @@ async function saveLineItem() {
       unit_cost: unitCost,
       amount,
       cost_code_id: costCodeId,
-      section_id: sectionId,
       subgroup_id: subgroupId,
       notes: notes || null,
       created_by: window.currentUser || 'User'
@@ -3111,15 +3264,19 @@ function openPhaseModal() {
   document.getElementById('phaseCode').value = '';
   document.getElementById('phaseDescription').value = '';
 
-  const modal = document.getElementById('phaseModal');
-  modal.style.display = 'flex';
-  setTimeout(() => modal.classList.add('show'), 10);
+  const backdrop = document.getElementById('phaseModalBackdrop');
+  backdrop.style.display = 'flex';
+  setTimeout(() => {
+    backdrop.querySelector('.modal').classList.add('show');
+  }, 10);
 }
 
 function closePhaseModal() {
-  const modal = document.getElementById('phaseModal');
-  modal.classList.remove('show');
-  setTimeout(() => modal.style.display = 'none', 200);
+  const backdrop = document.getElementById('phaseModalBackdrop');
+  backdrop.querySelector('.modal').classList.remove('show');
+  setTimeout(() => {
+    backdrop.style.display = 'none';
+  }, 200);
 }
 
 async function savePhase() {
@@ -3157,32 +3314,40 @@ function openGroupModal() {
     return;
   }
 
-  // Populate phases dropdown
-  const select = document.getElementById('groupPhase');
-  select.innerHTML = '<option value="">Select Phase...</option>';
-  (currentEstimate.phases || []).forEach(phase => {
-    const opt = document.createElement('option');
-    opt.value = phase.id;
-    opt.textContent = phase.name;
-    select.appendChild(opt);
-  });
+  // Initialize picker if not already
+  if (!groupPhasePicker) {
+    groupPhasePicker = new SearchablePicker('groupPhasePicker', {
+      placeholder: 'Search phases...'
+    });
+  }
+
+  // Populate phases
+  const phases = (currentEstimate.phases || []).map(p => ({
+    value: p.id,
+    label: p.name
+  }));
+  groupPhasePicker.setItems(phases);
 
   document.getElementById('groupName').value = '';
   document.getElementById('groupDescription').value = '';
 
-  const modal = document.getElementById('groupModal');
-  modal.style.display = 'flex';
-  setTimeout(() => modal.classList.add('show'), 10);
+  const backdrop = document.getElementById('groupModalBackdrop');
+  backdrop.style.display = 'flex';
+  setTimeout(() => {
+    backdrop.querySelector('.modal').classList.add('show');
+  }, 10);
 }
 
 function closeGroupModal() {
-  const modal = document.getElementById('groupModal');
-  modal.classList.remove('show');
-  setTimeout(() => modal.style.display = 'none', 200);
+  const backdrop = document.getElementById('groupModalBackdrop');
+  backdrop.querySelector('.modal').classList.remove('show');
+  setTimeout(() => {
+    backdrop.style.display = 'none';
+  }, 200);
 }
 
 async function saveGroup() {
-  const phaseId = document.getElementById('groupPhase').value;
+  const phaseId = groupPhasePicker.getValue();
   const name = document.getElementById('groupName').value.trim();
 
   if (!phaseId || !name) {
@@ -3217,34 +3382,45 @@ function openSubgroupModal() {
     return;
   }
 
-  // Populate groups dropdown
-  const select = document.getElementById('subgroupGroup');
-  select.innerHTML = '<option value="">Select Group...</option>';
+  // Initialize picker if not already
+  if (!subgroupGroupPicker) {
+    subgroupGroupPicker = new SearchablePicker('subgroupGroupPicker', {
+      placeholder: 'Search groups...'
+    });
+  }
+
+  // Populate groups
+  const groups = [];
   (currentEstimate.phases || []).forEach(phase => {
     (phase.groups || []).forEach(group => {
-      const opt = document.createElement('option');
-      opt.value = group.id;
-      opt.textContent = `${phase.name} > ${group.name}`;
-      select.appendChild(opt);
+      groups.push({
+        value: group.id,
+        label: `${phase.name} > ${group.name}`
+      });
     });
   });
+  subgroupGroupPicker.setItems(groups);
 
   document.getElementById('subgroupName').value = '';
   document.getElementById('subgroupDescription').value = '';
 
-  const modal = document.getElementById('subgroupModal');
-  modal.style.display = 'flex';
-  setTimeout(() => modal.classList.add('show'), 10);
+  const backdrop = document.getElementById('subgroupModalBackdrop');
+  backdrop.style.display = 'flex';
+  setTimeout(() => {
+    backdrop.querySelector('.modal').classList.add('show');
+  }, 10);
 }
 
 function closeSubgroupModal() {
-  const modal = document.getElementById('subgroupModal');
-  modal.classList.remove('show');
-  setTimeout(() => modal.style.display = 'none', 200);
+  const backdrop = document.getElementById('subgroupModalBackdrop');
+  backdrop.querySelector('.modal').classList.remove('show');
+  setTimeout(() => {
+    backdrop.style.display = 'none';
+  }, 200);
 }
 
 async function saveSubgroup() {
-  const groupId = document.getElementById('subgroupGroup').value;
+  const groupId = subgroupGroupPicker.getValue();
   const name = document.getElementById('subgroupName').value.trim();
 
   if (!groupId || !name) {

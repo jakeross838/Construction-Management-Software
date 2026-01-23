@@ -111,7 +111,7 @@
     }
     .coverage-segment.bids { background: var(--accent-green); }
     .coverage-segment.estimates { background: var(--accent-blue); }
-    .coverage-segment.ai { background: #8b5cf6; }
+    .coverage-segment.ai { background: var(--info); }
     .coverage-segment.manual { background: var(--accent-orange); }
 
     .coverage-legend {
@@ -132,7 +132,7 @@
     }
     .coverage-legend-dot.bids { background: var(--accent-green); }
     .coverage-legend-dot.estimates { background: var(--accent-blue); }
-    .coverage-legend-dot.ai { background: #8b5cf6; }
+    .coverage-legend-dot.ai { background: var(--info); }
     .coverage-legend-dot.manual { background: var(--accent-orange); }
 
     /* Action buttons */
@@ -184,7 +184,7 @@
     }
     .source-badge.bid { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); }
     .source-badge.estimate { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); }
-    .source-badge.ai { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
+    .source-badge.ai { background: rgba(59, 130, 246, 0.2); color: var(--info); }
     .source-badge.manual { background: rgba(210, 153, 34, 0.2); color: var(--accent-orange); }
     .source-badge.none { background: rgba(139, 148, 158, 0.2); color: var(--text-secondary); }
 
@@ -440,6 +440,98 @@
       font-size: 0.8rem;
       padding: 8px;
       border-top: 1px dashed var(--border);
+    }
+
+    /* =========================
+       SEARCHABLE PICKER COMPONENT
+       ========================= */
+    .search-picker {
+      position: relative;
+      width: 100%;
+    }
+
+    .search-picker-input {
+      width: 100%;
+      padding: 0.5rem 2.5rem 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      background: var(--card);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .search-picker-input:hover {
+      border-color: var(--border-light);
+    }
+
+    .search-picker-input:focus {
+      outline: none;
+      border-color: var(--ring);
+      box-shadow: 0 0 0 2px rgba(247, 247, 247, 0.1);
+    }
+
+    .search-picker-clear {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 0.25rem;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+    }
+
+    .search-picker-clear:hover {
+      color: var(--foreground);
+    }
+
+    .search-picker-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      margin-top: 0.25rem;
+      max-height: 300px;
+      overflow-y: auto;
+      background: var(--card-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+    }
+
+    .search-picker-item {
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      transition: background 0.1s ease;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .search-picker-item:hover,
+    .search-picker-item.selected {
+      background: var(--card);
+    }
+
+    .picker-code {
+      font-family: monospace;
+      min-width: 60px;
+      color: var(--foreground);
+    }
+
+    .picker-name {
+      color: var(--text-secondary);
+    }
+
+    .search-picker-empty {
+      padding: 1rem;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
     }
 
     /* Estimate page header (Buildertrend-style) */
@@ -915,31 +1007,31 @@
   <!-- ============================================================ -->
 
   <!-- Create/Edit Estimate Modal -->
-  <div id="estimateModal" class="modal">
-    <div class="modal-content modal-md">
+  <div class="modal-backdrop" id="estimateModalBackdrop" style="display: none;">
+    <div class="modal modal-md">
       <div class="modal-header">
-        <h2 id="modalTitle">New Estimate</h2>
-        <button class="close-btn" onclick="closeModal()">&times;</button>
+        <h2 class="modal-title" id="modalTitle">New Estimate</h2>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
       <div class="modal-body">
         <form id="estimateForm">
           <input type="hidden" id="estimateId">
 
           <div class="form-group">
-            <label for="formTitle">Title *</label>
-            <input type="text" id="formTitle" class="form-control" placeholder="e.g., Initial Construction Estimate" required>
+            <label class="form-label" for="formTitle">Title <span class="required">*</span></label>
+            <input type="text" id="formTitle" class="form-input" placeholder="e.g., Initial Construction Estimate" required>
           </div>
 
           <div class="form-group">
-            <label for="formJob">Job *</label>
-            <select id="formJob" class="form-control" required>
+            <label class="form-label" for="formJob">Job <span class="required">*</span></label>
+            <select id="formJob" class="form-input" required>
               <option value="">Select Job...</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label for="formNotes">Notes</label>
-            <textarea id="formNotes" class="form-control" rows="3" placeholder="Internal notes about this estimate"></textarea>
+            <label class="form-label" for="formNotes">Notes</label>
+            <textarea id="formNotes" class="form-input" rows="3" placeholder="Internal notes about this estimate"></textarea>
           </div>
         </form>
       </div>
@@ -2003,62 +2095,51 @@
   </div>
 
   <!-- Add Line Item Modal -->
-  <div id="lineItemModal" class="modal">
-    <div class="modal-content modal-md">
+  <div class="modal-backdrop" id="lineItemModalBackdrop" style="display: none;">
+    <div class="modal modal-md">
       <div class="modal-header">
-        <h2 id="lineItemModalTitle">Add Line Item</h2>
-        <button class="close-btn" onclick="closeLineItemModal()">&times;</button>
+        <h2 class="modal-title" id="lineItemModalTitle">Add Line Item</h2>
+        <button class="modal-close" onclick="closeLineItemModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label for="lineDescription">Description *</label>
-          <input type="text" id="lineDescription" class="form-control" placeholder="e.g., 2x6 Framing Lumber">
+          <label class="form-label" for="lineDescription">Description <span class="required">*</span></label>
+          <input type="text" id="lineDescription" class="form-input" placeholder="e.g., 2x6 Framing Lumber">
         </div>
 
         <div class="form-row">
           <div class="form-group">
-            <label for="lineQuantity">Quantity</label>
-            <input type="number" id="lineQuantity" class="form-control" value="1" step="0.01">
+            <label class="form-label" for="lineQuantity">Quantity</label>
+            <input type="number" id="lineQuantity" class="form-input" value="1" step="0.01">
           </div>
           <div class="form-group">
-            <label for="lineUnit">Unit</label>
-            <input type="text" id="lineUnit" class="form-control" placeholder="ea, lf, sf" value="ea">
+            <label class="form-label" for="lineUnit">Unit</label>
+            <input type="text" id="lineUnit" class="form-input" placeholder="ea, lf, sf" value="ea">
           </div>
           <div class="form-group">
-            <label for="lineUnitCost">Unit Cost</label>
-            <input type="number" id="lineUnitCost" class="form-control" value="0" step="0.01">
+            <label class="form-label" for="lineUnitCost">Unit Cost</label>
+            <input type="number" id="lineUnitCost" class="form-input" value="0" step="0.01">
           </div>
         </div>
 
         <div class="form-group">
-          <label for="lineAmount">Total Amount</label>
-          <input type="number" id="lineAmount" class="form-control" value="0" step="0.01" readonly style="background: var(--bg-card-elevated);">
+          <label class="form-label" for="lineAmount">Total Amount</label>
+          <input type="number" id="lineAmount" class="form-input" value="0" step="0.01" readonly style="background: var(--bg-card-elevated);">
         </div>
 
         <div class="form-group">
-          <label for="lineCostCode">Cost Code (optional)</label>
-          <select id="lineCostCode" class="form-control">
-            <option value="">Select cost code...</option>
-          </select>
+          <label class="form-label">Cost Code (optional)</label>
+          <div id="lineCostCodePicker"></div>
         </div>
 
         <div class="form-group">
-          <label for="lineSection">Section (optional)</label>
-          <select id="lineSection" class="form-control">
-            <option value="">No section</option>
-          </select>
+          <label class="form-label">Subgroup <span class="required">*</span></label>
+          <div id="lineSubgroupPicker"></div>
         </div>
 
         <div class="form-group">
-          <label for="lineSubgroup">Subgroup *</label>
-          <select id="lineSubgroup" class="form-control">
-            <option value="">Select Subgroup...</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="lineNotes">Notes (optional)</label>
-          <textarea id="lineNotes" class="form-control" rows="2" placeholder="Additional notes..."></textarea>
+          <label class="form-label" for="lineNotes">Notes (optional)</label>
+          <textarea id="lineNotes" class="form-input" rows="2" placeholder="Additional notes..."></textarea>
         </div>
 
         <input type="hidden" id="lineItemId">
@@ -2106,24 +2187,24 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- Phase Modal -->
-  <div id="phaseModal" class="modal">
-    <div class="modal-content">
+  <div class="modal-backdrop" id="phaseModalBackdrop" style="display: none;">
+    <div class="modal modal-md">
       <div class="modal-header">
-        <h2>Add Phase</h2>
-        <button class="close-btn" onclick="closePhaseModal()">&times;</button>
+        <h2 class="modal-title">Add Phase</h2>
+        <button class="modal-close" onclick="closePhaseModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Phase Name *</label>
-          <input type="text" id="phaseName" class="form-control" placeholder="e.g., Site Work, Foundation, Framing">
+          <label class="form-label">Phase Name <span class="required">*</span></label>
+          <input type="text" id="phaseName" class="form-input" placeholder="e.g., Site Work, Foundation, Framing">
         </div>
         <div class="form-group">
-          <label>Phase Code</label>
-          <input type="text" id="phaseCode" class="form-control" placeholder="e.g., 01, 02, 03">
+          <label class="form-label">Phase Code</label>
+          <input type="text" id="phaseCode" class="form-input" placeholder="e.g., 01, 02, 03">
         </div>
         <div class="form-group">
-          <label>Description</label>
-          <textarea id="phaseDescription" class="form-control" rows="2"></textarea>
+          <label class="form-label">Description</label>
+          <textarea id="phaseDescription" class="form-input" rows="3"></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -2134,26 +2215,24 @@
   </div>
 
   <!-- Group Modal -->
-  <div id="groupModal" class="modal">
-    <div class="modal-content">
+  <div class="modal-backdrop" id="groupModalBackdrop" style="display: none;">
+    <div class="modal modal-md">
       <div class="modal-header">
-        <h2>Add Group</h2>
-        <button class="close-btn" onclick="closeGroupModal()">&times;</button>
+        <h2 class="modal-title">Add Group</h2>
+        <button class="modal-close" onclick="closeGroupModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Phase *</label>
-          <select id="groupPhase" class="form-control">
-            <option value="">Select Phase...</option>
-          </select>
+          <label class="form-label">Phase <span class="required">*</span></label>
+          <div id="groupPhasePicker"></div>
         </div>
         <div class="form-group">
-          <label>Group Name *</label>
-          <input type="text" id="groupName" class="form-control" placeholder="e.g., MEPs, Rough Carpentry">
+          <label class="form-label">Group Name <span class="required">*</span></label>
+          <input type="text" id="groupName" class="form-input" placeholder="e.g., MEPs, Rough Carpentry">
         </div>
         <div class="form-group">
-          <label>Description</label>
-          <textarea id="groupDescription" class="form-control" rows="2"></textarea>
+          <label class="form-label">Description</label>
+          <textarea id="groupDescription" class="form-input" rows="3"></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -2164,26 +2243,24 @@
   </div>
 
   <!-- Subgroup Modal -->
-  <div id="subgroupModal" class="modal">
-    <div class="modal-content">
+  <div class="modal-backdrop" id="subgroupModalBackdrop" style="display: none;">
+    <div class="modal modal-md">
       <div class="modal-header">
-        <h2>Add Subgroup</h2>
-        <button class="close-btn" onclick="closeSubgroupModal()">&times;</button>
+        <h2 class="modal-title">Add Subgroup</h2>
+        <button class="modal-close" onclick="closeSubgroupModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Group *</label>
-          <select id="subgroupGroup" class="form-control">
-            <option value="">Select Group...</option>
-          </select>
+          <label class="form-label">Group <span class="required">*</span></label>
+          <div id="subgroupGroupPicker"></div>
         </div>
         <div class="form-group">
-          <label>Subgroup Name *</label>
-          <input type="text" id="subgroupName" class="form-control" placeholder="e.g., Electrical, Plumbing, HVAC">
+          <label class="form-label">Subgroup Name <span class="required">*</span></label>
+          <input type="text" id="subgroupName" class="form-input" placeholder="e.g., Electrical, Plumbing, HVAC">
         </div>
         <div class="form-group">
-          <label>Description</label>
-          <textarea id="subgroupDescription" class="form-control" rows="2"></textarea>
+          <label class="form-label">Description</label>
+          <textarea id="subgroupDescription" class="form-input" rows="3"></textarea>
         </div>
       </div>
       <div class="modal-footer">
