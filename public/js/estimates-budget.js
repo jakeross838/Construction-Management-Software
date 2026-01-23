@@ -496,13 +496,23 @@ function closeDetailModal() {
 }
 
 function switchTab(tabName) {
+  console.log('[switchTab] Switching to tab:', tabName);
+
+  // Deactivate all tabs
   document.querySelectorAll('.tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.tab === tabName);
+    const isActive = tab.dataset.tab === tabName;
+    tab.classList.toggle('active', isActive);
+    console.log('[switchTab] Tab button', tab.dataset.tab, 'active:', isActive);
   });
 
+  // Deactivate all tab content
   document.querySelectorAll('.tab-content').forEach(content => {
-    content.classList.toggle('active', content.id === `tab-${tabName}`);
+    const isActive = content.id === `tab-${tabName}`;
+    content.classList.toggle('active', isActive);
+    console.log('[switchTab] Tab content', content.id, 'active:', isActive);
   });
+
+  console.log('[switchTab] Tab switch complete');
 }
 
 // Removed placeholder functions - these features are not implemented
