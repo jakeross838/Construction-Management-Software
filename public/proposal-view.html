@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal | Ross Built Custom Homes</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* Header */
+    .header {
+      background: #4A6672;
+      color: white;
+      padding: 20px 0;
+      margin-bottom: 30px;
+    }
+
+    .header .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 500;
+    }
+
+    .proposal-number {
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
+
+    /* Loading state */
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #ddd;
+      border-top-color: #4A6672;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Error state */
+    .error-container {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .error-icon {
+      font-size: 4rem;
+      color: #dc3545;
+      margin-bottom: 20px;
+    }
+
+    .error-message {
+      font-size: 1.2rem;
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    .error-detail {
+      color: #666;
+    }
+
+    /* PDF viewer */
+    .pdf-container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+      overflow: hidden;
+    }
+
+    .pdf-embed {
+      width: 100%;
+      height: 700px;
+      border: none;
+    }
+
+    /* Project info */
+    .project-info {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .project-info h2 {
+      font-size: 1.1rem;
+      color: #4A6672;
+      margin-bottom: 15px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+
+    .info-item label {
+      font-size: 0.85rem;
+      color: #666;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .info-item span {
+      font-weight: 500;
+    }
+
+    /* Acceptance form */
+    .acceptance-card {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .acceptance-card h2 {
+      font-size: 1.3rem;
+      margin-bottom: 10px;
+    }
+
+    .acceptance-card p {
+      color: #666;
+      margin-bottom: 25px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #4A6672;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 25px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      margin-top: 2px;
+      cursor: pointer;
+    }
+
+    .checkbox-group label {
+      cursor: pointer;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 14px 30px;
+      font-size: 1rem;
+      font-weight: 500;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #4A6672;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #3a5662;
+    }
+
+    .btn-primary:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+
+    .btn-decline {
+      background: transparent;
+      color: #666;
+      margin-left: 15px;
+    }
+
+    .btn-decline:hover {
+      color: #333;
+    }
+
+    .button-group {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    /* Already accepted state */
+    .accepted-message {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .accepted-message h3 {
+      margin-bottom: 10px;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 30px 20px;
+      color: #999;
+      font-size: 0.85rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .pdf-embed {
+        height: 500px;
+      }
+
+      .header .container {
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <h1>Ross Built Custom Homes</h1>
+      <span class="proposal-number" id="proposalNumber"></span>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Loading state -->
+    <div id="loadingState" class="loading">
+      <div class="spinner"></div>
+      <p>Loading proposal...</p>
+    </div>
+
+    <!-- Error state -->
+    <div id="errorState" class="error-container" style="display: none;">
+      <div class="error-icon">!</div>
+      <p class="error-message" id="errorMessage">Unable to load proposal</p>
+      <p class="error-detail" id="errorDetail"></p>
+    </div>
+
+    <!-- Main content -->
+    <div id="mainContent" style="display: none;">
+      <!-- Project info -->
+      <div class="project-info">
+        <h2>Project Details</h2>
+        <div class="info-grid">
+          <div class="info-item">
+            <label>Project</label>
+            <span id="projectName">-</span>
+          </div>
+          <div class="info-item">
+            <label>Address</label>
+            <span id="projectAddress">-</span>
+          </div>
+          <div class="info-item">
+            <label>Total</label>
+            <span id="projectTotal">-</span>
+          </div>
+          <div class="info-item">
+            <label>Expires</label>
+            <span id="expiresAt">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PDF viewer -->
+      <div class="pdf-container">
+        <iframe id="pdfViewer" class="pdf-embed" title="Proposal PDF"></iframe>
+      </div>
+
+      <!-- Acceptance form (hidden if already accepted) -->
+      <div id="acceptanceForm" class="acceptance-card">
+        <h2>Accept Proposal</h2>
+        <p>By accepting this proposal, you agree to the scope of work, pricing, and terms outlined in the document above.</p>
+
+        <form id="acceptForm">
+          <div class="form-group">
+            <label for="clientName">Your Full Name *</label>
+            <input type="text" id="clientName" name="name" required placeholder="Enter your full name">
+          </div>
+
+          <div class="form-group">
+            <label for="clientEmail">Your Email *</label>
+            <input type="email" id="clientEmail" name="email" required placeholder="Enter your email address">
+          </div>
+
+          <div class="form-group">
+            <label for="notes">Notes (optional)</label>
+            <textarea id="notes" name="notes" rows="3" placeholder="Any questions or comments..."></textarea>
+          </div>
+
+          <div class="checkbox-group">
+            <input type="checkbox" id="agreeTerms" required>
+            <label for="agreeTerms">I have reviewed and agree to the proposal, including all terms, pricing, and scope of work as described.</label>
+          </div>
+
+          <div class="button-group">
+            <button type="submit" class="btn btn-primary" id="acceptBtn">Accept Proposal</button>
+            <button type="button" class="btn btn-decline" id="declineBtn">I have questions</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Already accepted message -->
+      <div id="acceptedMessage" class="accepted-message" style="display: none;">
+        <h3>Proposal Accepted</h3>
+        <p>This proposal was accepted on <span id="acceptedDate">-</span> by <span id="acceptedBy">-</span>.</p>
+        <p>Thank you! We will be in touch shortly.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>&copy; 2026 Ross Built Custom Homes. All rights reserved.</p>
+  </footer>
+
+  <script src="/js/proposal-view.js"></script>
+</body>
+</html>

@@ -19,20 +19,30 @@
     { id: 'route', label: 'Determining Routes', icon: '⤳' }
   ];
 
-  // Create and inject the floating action button
+  // Create and inject the AI upload button into header
   function createFAB() {
-    const fab = document.createElement('button');
-    fab.className = 'ai-upload-fab';
-    fab.id = 'aiUploadFab';
-    fab.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 5v14M5 12h14"/>
-        <circle cx="12" cy="12" r="10"/>
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost btn-sm ai-upload-btn';
+    btn.id = 'aiUploadFab';
+    btn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
       </svg>
-      <span class="fab-text">AI Upload</span>
+      <span>AI Upload</span>
     `;
-    fab.onclick = openAIUploadModal;
-    document.body.appendChild(fab);
+    btn.onclick = openAIUploadModal;
+
+    // Insert into header-actions at the beginning
+    const headerActions = document.querySelector('.header-actions');
+    if (headerActions) {
+      headerActions.insertBefore(btn, headerActions.firstChild);
+    } else {
+      // Fallback: append to body as fixed button if no header found
+      btn.style.cssText = 'position:fixed;top:10px;right:10px;z-index:1000;';
+      document.body.appendChild(btn);
+    }
   }
 
   // Create and inject the upload modal

@@ -1916,5 +1916,24 @@ router.get('/:id/punch-lists', asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
+// ============================================================
+// VERBAL PURCHASE ORDERS (VPOs)
+// ============================================================
+
+// Get VPOs for a PO
+router.get('/:id/vpos', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_verbal_purchase_orders')
+    .select('*')
+    .eq('po_id', id)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(data || []);
+}));
+
 module.exports = router;
 

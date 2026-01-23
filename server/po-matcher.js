@@ -16,7 +16,7 @@ const { supabase } = require('../config');
 const MATCH_THRESHOLDS = {
   AUTO_MATCH: 0.95,    // High confidence, auto-assign
   REVIEW_QUEUE: 0.80,  // Good match but needs review
-  INVESTIGATE: 0.60    // Possible match, needs human verification
+  INVESTIGATE: 0.55    // Possible match, needs human verification (lowered from 0.60 to catch date edge cases)
 };
 
 // Signal weights (must sum to 1.0)
@@ -417,6 +417,18 @@ async function findMatchingPO(invoiceData, jobId, vendorId) {
 
   // Sort by score descending
   scoredPOs.sort((a, b) => b.score - a.score);
+
+  // Special case: If only one open PO for this vendor and vendor matches perfectly,
+  // auto-link it (with review flag) since there's high confidence it's the right PO
+  if (scoredPOs.length === 1 && scoredPOs[0].breakdown.vendor >= 0.95) {
+    const singlePO = scoredPOs[0];
+    // If score is reasonable (>= 0.50) and vendor match is perfect,
+    // boost to REVIEW_QUEUE threshold to auto-link with review flag
+    if (singlePO.score >= 0.50 && singlePO.score < MATCH_THRESHOLDS.REVIEW_QUEUE) {
+      singlePO.score = MATCH_THRESHOLDS.REVIEW_QUEUE; // Boost to auto-link threshold
+      singlePO.explanation += ' (auto-linked: single open PO with perfect vendor match)';
+    }
+  }
 
   // Build candidates list (top 5 above INVESTIGATE threshold)
   result.candidates = scoredPOs

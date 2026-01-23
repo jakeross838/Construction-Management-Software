@@ -465,6 +465,60 @@
           </button>
         </div>
 
+        <!-- Workflow Stepper (only visible in estimates mode when viewing an estimate) -->
+        <div class="workflow-stepper" id="workflowStepper" style="display: none;">
+          <div class="step completed" data-step="create" onclick="setWorkflowStep('create')">
+            <span class="step-number">
+              <span class="step-check">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M13.485 1.431a1.473 1.473 0 012.104 2.062l-7.84 9.801a1.473 1.473 0 01-2.12.04L.431 8.138a1.473 1.473 0 012.084-2.083l4.111 4.112 6.82-8.69a.486.486 0 01.04-.046z"/>
+                </svg>
+              </span>
+              <span class="step-num">1</span>
+            </span>
+            <span class="step-label">Create</span>
+          </div>
+          <div class="step-connector completed"></div>
+
+          <div class="step current" data-step="build" onclick="setWorkflowStep('build')">
+            <span class="step-number">
+              <span class="step-check">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M13.485 1.431a1.473 1.473 0 012.104 2.062l-7.84 9.801a1.473 1.473 0 01-2.12.04L.431 8.138a1.473 1.473 0 012.084-2.083l4.111 4.112 6.82-8.69a.486.486 0 01.04-.046z"/>
+                </svg>
+              </span>
+              <span class="step-num">2</span>
+            </span>
+            <span class="step-label">Build</span>
+          </div>
+          <div class="step-connector"></div>
+
+          <div class="step" data-step="review" onclick="setWorkflowStep('review')">
+            <span class="step-number">
+              <span class="step-check">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M13.485 1.431a1.473 1.473 0 012.104 2.062l-7.84 9.801a1.473 1.473 0 01-2.12.04L.431 8.138a1.473 1.473 0 012.084-2.083l4.111 4.112 6.82-8.69a.486.486 0 01.04-.046z"/>
+                </svg>
+              </span>
+              <span class="step-num">3</span>
+            </span>
+            <span class="step-label">Review</span>
+          </div>
+          <div class="step-connector"></div>
+
+          <div class="step" data-step="send" onclick="setWorkflowStep('send')">
+            <span class="step-number">
+              <span class="step-check">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M13.485 1.431a1.473 1.473 0 012.104 2.062l-7.84 9.801a1.473 1.473 0 01-2.12.04L.431 8.138a1.473 1.473 0 012.084-2.083l4.111 4.112 6.82-8.69a.486.486 0 01.04-.046z"/>
+                </svg>
+              </span>
+              <span class="step-num">4</span>
+            </span>
+            <span class="step-label">Send</span>
+          </div>
+        </div>
+
         <!-- ============================================================ -->
         <!-- ESTIMATES MODE SECTION -->
         <!-- ============================================================ -->
@@ -856,6 +910,11 @@
                   </table>
                 </div>
 
+                <!-- Mobile Card View (visible < 640px) -->
+                <div class="line-items-cards" id="lineItemsCards">
+                  <!-- Populated by JS with same data as table -->
+                </div>
+
                 <!-- Worksheet Footer with Totals -->
                 <div class="worksheet-footer">
                   <div class="worksheet-legend">
@@ -863,6 +922,9 @@
                     <span class="legend-item">EA = Each</span>
                     <span class="legend-item">SF = Sq Ft</span>
                     <span class="legend-item">LF = Linear Ft</span>
+                    <span class="shortcut-hint" onclick="toggleShortcutHelp()" style="margin-left: auto;">
+                      <kbd>?</kbd> Shortcuts
+                    </span>
                   </div>
                   <div class="worksheet-totals">
                     <div class="total-row">
@@ -882,6 +944,10 @@
       </div>
 
       <div class="modal-footer">
+        <span class="shortcut-hint" onclick="toggleShortcutHelp()">
+          <kbd>?</kbd> Keyboard shortcuts
+        </span>
+        <div class="footer-spacer"></div>
         <button class="btn btn-secondary" onclick="closeDetailModal()">Close</button>
         <div class="dropdown">
           <button class="btn btn-ghost dropdown-toggle">More Actions <span class="dropdown-caret">▼</span></button>

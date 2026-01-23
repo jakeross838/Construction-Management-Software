@@ -79,6 +79,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
+
+  // Initialize keyboard shortcuts
+  initKeyboardShortcuts();
 });
 
 // Removed: View initialization - table view only
@@ -441,6 +444,11 @@ async function openEstimateDetail(estimateId) {
     // Render the lines table with sections
     renderLinesTable();
 
+    // Initialize workflow stepper
+    currentWorkflowStep = determineWorkflowStep(currentEstimate);
+    updateStepperVisibility();
+    updateStepperUI();
+
     // Show modal
     const modal = document.getElementById('estimateDetailModal');
     modal.style.display = 'flex';
@@ -456,6 +464,7 @@ function closeDetailModal() {
   modal.classList.remove('show');
   modal.style.display = 'none';
   currentEstimate = null;
+  updateStepperVisibility(); // Hide stepper
 }
 
 function switchTab(tabName) {
@@ -886,6 +895,75 @@ function renderLinesTable() {
   const totalEl = document.getElementById('linesTotalAmount');
   if (subtotalEl) subtotalEl.textContent = formatCurrency(total);
   if (totalEl) totalEl.textContent = formatCurrency(currentEstimate.total_amount || total);
+
+  // Also render card view for mobile
+  renderLineItemCards();
+}
+
+function renderLineItemCards() {
+  const container = document.getElementById('lineItemsCards');
+  if (!container || !currentEstimate) return;
+
+  const lines = currentEstimate.lines || [];
+  const isEditable = ['draft', 'rejected'].includes(currentEstimate.status);
+
+  if (!lines || lines.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state-card">
+        <p>No line items yet</p>
+        <button class="btn btn-primary" onclick="openAddLineModal()">+ Add First Item</button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = lines.map((line, index) => `
+    <div class="line-item-card" data-id="${line.id}">
+      <div class="line-card-header">
+        <span class="line-card-number">#${index + 1}</span>
+        <span class="line-card-code">${escapeHtml(line.cost_code?.code || '-')}</span>
+        ${isEditable ? `
+          <button class="btn btn-icon btn-ghost" onclick="deleteLineItem('${line.id}')" title="Delete">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+              <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+            </svg>
+          </button>
+        ` : ''}
+      </div>
+      <div class="line-card-description"
+           ${isEditable ? 'data-editable data-field="description" data-type="text"' : ''}
+           data-id="${line.id}">
+        ${escapeHtml(line.description || 'No description')}
+      </div>
+      <div class="line-card-details">
+        <div class="line-card-field">
+          <span class="field-label">Qty</span>
+          <span class="field-value"
+                ${isEditable ? 'data-editable data-field="quantity" data-type="number"' : ''}
+                data-id="${line.id}">
+            ${line.quantity || 1}
+          </span>
+          <span class="field-unit">${escapeHtml(line.unit || 'LS')}</span>
+        </div>
+        <div class="line-card-field">
+          <span class="field-label">Unit Cost</span>
+          <span class="field-value"
+                ${isEditable ? 'data-editable data-field="unit_cost" data-type="currency"' : ''}
+                data-id="${line.id}">
+            ${formatCurrency(line.unit_cost || 0)}
+          </span>
+        </div>
+        <div class="line-card-field line-card-amount">
+          <span class="field-label">Amount</span>
+          <span class="field-value">${formatCurrency(line.amount || 0)}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // Re-initialize inline editing on card fields
+  initInlineEditing();
 }
 
 function renderLineRow(line, rowNum, inSection) {
@@ -936,6 +1014,203 @@ function renderOverviewTab() {
 
   document.getElementById('detailLineCount').textContent = currentEstimate.lines?.length || 0;
   document.getElementById('detailAmount').textContent = formatCurrency(currentEstimate.total_amount);
+}
+
+// ============================================================
+// WORKFLOW STEPPER
+// ============================================================
+
+const WORKFLOW_STEPS = ['create', 'build', 'review', 'send'];
+let currentWorkflowStep = 'build'; // Default when viewing existing estimate
+
+function initWorkflowStepper() {
+  const stepper = document.getElementById('workflowStepper');
+  if (!stepper) return;
+
+  // Show stepper only when viewing an estimate
+  updateStepperVisibility();
+}
+
+function updateStepperVisibility() {
+  const stepper = document.getElementById('workflowStepper');
+  if (!stepper) return;
+
+  // Show stepper when an estimate is being viewed/edited
+  // Hide when on estimate list view
+  const isViewingEstimate = currentEstimate !== null;
+  stepper.style.display = isViewingEstimate ? 'flex' : 'none';
+}
+
+function setWorkflowStep(step) {
+  if (!WORKFLOW_STEPS.includes(step)) return;
+
+  const previousStep = currentWorkflowStep;
+  currentWorkflowStep = step;
+
+  // Update UI
+  updateStepperUI();
+
+  // Handle step-specific content
+  switch (step) {
+    case 'create':
+      // For existing estimates, "create" just shows the edit form
+      if (currentEstimate) {
+        editCurrentEstimate();
+      }
+      break;
+
+    case 'build':
+      // Show line items tab
+      switchTab('lines');
+      break;
+
+    case 'review':
+      // Show overview tab with summary
+      switchTab('overview');
+      showReviewView();
+      break;
+
+    case 'send':
+      // Show send/share options
+      showSendView();
+      break;
+  }
+}
+
+function updateStepperUI() {
+  const stepper = document.getElementById('workflowStepper');
+  if (!stepper) return;
+
+  const currentIndex = WORKFLOW_STEPS.indexOf(currentWorkflowStep);
+
+  // Update each step
+  stepper.querySelectorAll('.step').forEach((stepEl, index) => {
+    const stepName = stepEl.dataset.step;
+    const stepIndex = WORKFLOW_STEPS.indexOf(stepName);
+
+    stepEl.classList.remove('current', 'completed');
+
+    if (stepIndex < currentIndex) {
+      stepEl.classList.add('completed');
+    } else if (stepIndex === currentIndex) {
+      stepEl.classList.add('current');
+    }
+  });
+
+  // Update connectors
+  stepper.querySelectorAll('.step-connector').forEach((connector, index) => {
+    connector.classList.toggle('completed', index < currentIndex);
+  });
+}
+
+function determineWorkflowStep(estimate) {
+  // Determine appropriate step based on estimate status
+  if (!estimate) return 'create';
+
+  const lineCount = estimate.lines?.length || 0;
+
+  switch (estimate.status) {
+    case 'draft':
+      // If no lines, still in create/build phase
+      return lineCount === 0 ? 'create' : 'build';
+
+    case 'submitted':
+      return 'review';
+
+    case 'approved':
+    case 'sent':
+      return 'send';
+
+    case 'converted':
+      return 'send'; // Show as completed
+
+    default:
+      return 'build';
+  }
+}
+
+function showReviewView() {
+  // Ensure overview tab shows review-focused content
+  // Could show summary stats, markup totals, etc.
+  const statusActions = document.getElementById('statusActions');
+  if (statusActions && currentEstimate) {
+    statusActions.innerHTML = `
+      <div class="review-summary">
+        <h4>Estimate Summary</h4>
+        <div class="summary-stat">
+          <span class="summary-label">Line Items</span>
+          <span class="summary-value">${currentEstimate.lines?.length || 0}</span>
+        </div>
+        <div class="summary-stat">
+          <span class="summary-label">Subtotal</span>
+          <span class="summary-value">${formatCurrency(currentEstimate.subtotal || 0)}</span>
+        </div>
+        <div class="summary-stat">
+          <span class="summary-label">Total</span>
+          <span class="summary-value">${formatCurrency(currentEstimate.total_amount || 0)}</span>
+        </div>
+        <div class="review-actions" style="margin-top: 16px;">
+          <button class="btn btn-secondary" onclick="setWorkflowStep('build')">Edit Line Items</button>
+          <button class="btn btn-primary" onclick="setWorkflowStep('send')">Continue to Send</button>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function showSendView() {
+  // Show send options in the overview area
+  const statusActions = document.getElementById('statusActions');
+  if (statusActions && currentEstimate) {
+    statusActions.innerHTML = `
+      <div class="send-options">
+        <h4>Send Estimate</h4>
+        <p class="text-muted">Share this estimate with the client.</p>
+        <div class="send-actions" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+          <button class="btn btn-primary btn-block" onclick="openGenerateProposalModal()">
+            📄 Generate PDF Proposal
+          </button>
+          <button class="btn btn-secondary btn-block" onclick="emailEstimate()">
+            📧 Email to Client
+          </button>
+          <button class="btn btn-secondary btn-block" onclick="copyEstimateShareLink()">
+            🔗 Copy Share Link
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Switch to overview tab to show send options
+  switchTab('overview');
+}
+
+function emailEstimate() {
+  showToast('Email functionality coming soon', 'info');
+}
+
+function copyEstimateShareLink() {
+  const link = `${window.location.origin}/estimates/${currentEstimate?.id || ''}`;
+  navigator.clipboard.writeText(link).then(() => {
+    showToast('Link copied to clipboard', 'success');
+  }).catch(() => {
+    showToast('Failed to copy link', 'error');
+  });
+}
+
+function editCurrentEstimate() {
+  // Open create/edit modal with current estimate data
+  if (!currentEstimate) return;
+
+  document.getElementById('modalTitle').textContent = 'Edit Estimate';
+  document.getElementById('estimateId').value = currentEstimate.id;
+  document.getElementById('formTitle').value = currentEstimate.title;
+  document.getElementById('formJob').value = currentEstimate.job_id;
+  document.getElementById('formNotes').value = currentEstimate.notes || '';
+
+  const modal = document.getElementById('estimateModal');
+  modal.style.display = 'flex';
+  modal.classList.add('show');
 }
 
 function editLineItem(lineId) {
@@ -2193,5 +2468,183 @@ async function executeCopyEstimate() {
 // Update the placeholder function to use the new modal
 function openDuplicateModal() {
   openCopyEstimateModal();
+}
+
+// ============================================================
+// KEYBOARD SHORTCUTS
+// ============================================================
+
+const KEYBOARD_SHORTCUTS = {
+  'ctrl+s': { action: saveCurrentEstimate, description: 'Save estimate' },
+  'ctrl+n': { action: openAddLineModal, description: 'Add new line item' },
+  'ctrl+shift+n': { action: openCreateModal, description: 'New estimate' },
+  'escape': { action: handleEscapeKey, description: 'Close modal / Cancel edit' },
+  '?': { action: toggleShortcutHelp, description: 'Show keyboard shortcuts' },
+  'ctrl+/': { action: toggleShortcutHelp, description: 'Show keyboard shortcuts' },
+};
+
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', handleGlobalKeydown);
+}
+
+function handleGlobalKeydown(e) {
+  // Don't trigger shortcuts when typing in inputs (unless it's Escape)
+  const isTyping = e.target.matches('input, textarea, [contenteditable="true"]');
+
+  if (isTyping && e.key !== 'Escape') {
+    return;
+  }
+
+  // Build shortcut key string
+  const key = buildShortcutKey(e);
+
+  // Check if we have a handler for this shortcut
+  const shortcut = KEYBOARD_SHORTCUTS[key];
+  if (shortcut) {
+    e.preventDefault();
+    shortcut.action();
+  }
+}
+
+function buildShortcutKey(e) {
+  const parts = [];
+
+  if (e.ctrlKey || e.metaKey) parts.push('ctrl');
+  if (e.shiftKey) parts.push('shift');
+  if (e.altKey) parts.push('alt');
+
+  // Normalize key
+  let key = e.key.toLowerCase();
+  if (key === ' ') key = 'space';
+
+  parts.push(key);
+
+  return parts.join('+');
+}
+
+function saveCurrentEstimate() {
+  // If in detail modal and editing, save the estimate
+  if (currentEstimate) {
+    // Trigger save of any pending inline edits
+    const editingCell = document.querySelector('.editable-cell.editing');
+    if (editingCell && editingCell._inlineEdit) {
+      editingCell._inlineEdit.save();
+    }
+    showToast('Estimate saved', 'success');
+  } else {
+    // If in create modal, trigger save
+    const createModal = document.getElementById('estimateModal');
+    if (createModal && createModal.classList.contains('show')) {
+      saveEstimate();
+    }
+  }
+}
+
+function handleEscapeKey() {
+  // Priority: Close edit mode -> Close modal -> Close dropdown
+
+  // 1. If editing a cell, cancel edit
+  const editingCell = document.querySelector('.editable-cell.editing');
+  if (editingCell && editingCell._inlineEdit) {
+    editingCell._inlineEdit.cancel();
+    return;
+  }
+
+  // 2. Close any open dropdown
+  const openDropdown = document.querySelector('.dropdown.open');
+  if (openDropdown) {
+    openDropdown.classList.remove('open');
+    return;
+  }
+
+  // 3. Close any open modal
+  closeAllModals();
+}
+
+let shortcutHelpVisible = false;
+
+function toggleShortcutHelp() {
+  const existingHelp = document.getElementById('shortcutHelpPanel');
+
+  if (existingHelp) {
+    existingHelp.remove();
+    shortcutHelpVisible = false;
+    return;
+  }
+
+  showShortcutHelp();
+}
+
+function showShortcutHelp() {
+  // Create help panel
+  const panel = document.createElement('div');
+  panel.id = 'shortcutHelpPanel';
+  panel.className = 'shortcut-help-panel';
+
+  panel.innerHTML = `
+    <div class="shortcut-help-header">
+      <h3>Keyboard Shortcuts</h3>
+      <button class="btn btn-ghost btn-sm" onclick="toggleShortcutHelp()">&times;</button>
+    </div>
+    <div class="shortcut-help-body">
+      <div class="shortcut-section">
+        <h4>Navigation</h4>
+        <div class="shortcut-item">
+          <span class="shortcut-keys"><kbd>Tab</kbd></span>
+          <span class="shortcut-desc">Next cell</span>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-keys"><kbd>Shift</kbd> + <kbd>Tab</kbd></span>
+          <span class="shortcut-desc">Previous cell</span>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-keys"><kbd>Enter</kbd></span>
+          <span class="shortcut-desc">Save & next row</span>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-keys"><kbd>Esc</kbd></span>
+          <span class="shortcut-desc">Cancel edit / Close</span>
+        </div>
+      </div>
+      <div class="shortcut-section">
+        <h4>Actions</h4>
+        <div class="shortcut-item">
+          <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>S</kbd></span>
+          <span class="shortcut-desc">Save estimate</span>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
+          <span class="shortcut-desc">Add line item</span>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span>
+          <span class="shortcut-desc">New estimate</span>
+        </div>
+      </div>
+      <div class="shortcut-section">
+        <h4>Help</h4>
+        <div class="shortcut-item">
+          <span class="shortcut-keys"><kbd>?</kbd></span>
+          <span class="shortcut-desc">Show this help</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(panel);
+  shortcutHelpVisible = true;
+
+  // Close on click outside
+  setTimeout(() => {
+    document.addEventListener('click', closeShortcutHelpOnClickOutside, { once: true });
+  }, 100);
+}
+
+function closeShortcutHelpOnClickOutside(e) {
+  const panel = document.getElementById('shortcutHelpPanel');
+  if (panel && !panel.contains(e.target)) {
+    panel.remove();
+    shortcutHelpVisible = false;
+  }
 }
 

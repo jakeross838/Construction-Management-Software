@@ -1108,9 +1108,15 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
   }
 
   // CCL-01: Integrate vendor trade type with description matching
+  // Key insight: Vendor trade should be the PRIMARY signal for specialized trades
+  // A cabinet vendor billing for "countertop supports" is doing cabinet work, not countertop work
   if (tradeType && TRADE_COST_CODE_MAP[tradeType]) {
     const tradeCodes = TRADE_COST_CODE_MAP[tradeType];
     const tradeCode = Array.isArray(tradeCodes) ? tradeCodes[0] : tradeCodes;
+    const allTradeCodes = Array.isArray(tradeCodes) ? tradeCodes : [tradeCodes];
+
+    // Check if vendor trade is a specialized trade (not generic)
+    const isSpecializedTrade = !['general', 'other'].includes(tradeType.toLowerCase());
 
     if (!bestMatch || bestScore < 6) {
       // No strong description match - use trade
@@ -1118,13 +1124,20 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
       confidence = 0.85;
       matchType = 'trade';
       console.log(`[AI] Using vendor trade "${tradeType}" → ${tradeCode} (description match was weak: "${description}")`);
-    } else if (bestMatch === tradeCode) {
-      // Trade and description agree - boost confidence
+    } else if (allTradeCodes.includes(bestMatch)) {
+      // Trade and description agree (description matches one of vendor's trade codes) - boost confidence
       confidence = Math.min(confidence + 0.1, 0.95);
       matchType += '+trade';
-      console.log(`[AI] Trade/description agreement: "${tradeType}" + "${description}" → ${tradeCode} (boosted confidence: ${confidence.toFixed(2)})`);
+      console.log(`[AI] Trade/description agreement: "${tradeType}" + "${description}" → ${bestMatch} (boosted confidence: ${confidence.toFixed(2)})`);
+    } else if (isSpecializedTrade && bestScore < 15) {
+      // Trade and description disagree, but vendor is specialized and description match isn't very strong
+      // PREFER VENDOR TRADE - a cabinet vendor's "countertop supports" is cabinet work
+      console.log(`[AI] Overriding description match "${bestMatch}" with vendor trade "${tradeCode}" for specialized vendor "${tradeType}" (desc: "${description}")`);
+      bestMatch = tradeCode;
+      confidence = 0.80;
+      matchType = 'trade_override';
     }
-    // If trade and description disagree, keep description (more specific)
+    // Only keep description match if it's very strong (bestScore >= 15) or vendor is generic
   }
 
   if (!bestMatch) return null;

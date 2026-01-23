@@ -8554,6 +8554,151 @@ label .ai-indicator {
 }
 
 /* ============================================================
+   WORKFLOW STEPPER
+   ============================================================ */
+
+.workflow-stepper {
+  display: flex;
+  align-items: center;
+  padding: 16px 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: background-color 0.15s;
+}
+
+.step:hover {
+  background: var(--accent);
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  transition: all 0.2s;
+  position: relative;
+}
+
+.step-check {
+  display: none;
+}
+
+.step-num {
+  display: inline;
+}
+
+.step.current .step-number {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 0 0 4px rgba(59, 111, 212, 0.2);
+}
+
+.step.completed .step-number {
+  background: var(--accent-green);
+  color: white;
+}
+
+.step.completed .step-check {
+  display: flex;
+}
+
+.step.completed .step-num {
+  display: none;
+}
+
+.step-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  transition: color 0.15s;
+}
+
+.step.current .step-label {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.step.completed .step-label {
+  color: var(--foreground);
+}
+
+.step-connector {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  margin: 0 8px;
+  min-width: 32px;
+  transition: background 0.3s;
+}
+
+.step-connector.completed {
+  background: var(--accent-green);
+}
+
+/* Mobile: Compact horizontal or vertical stack */
+@media (max-width: 640px) {
+  .workflow-stepper {
+    padding: 12px 16px;
+    gap: 4px;
+  }
+
+  .step {
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+  }
+
+  .step-number {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+
+  .step-label {
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  .step-connector {
+    min-width: 16px;
+    margin: 0 4px;
+  }
+}
+
+/* Very small screens: Labels below */
+@media (max-width: 400px) {
+  .workflow-stepper {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .step-connector {
+    display: none;
+  }
+
+  .step {
+    min-width: 70px;
+  }
+}
+
+/* ============================================================
    DRAW WORKFLOW REDESIGN STYLES
    ============================================================ */
 
@@ -33851,7 +33996,429 @@ td.empty-state {
   background: var(--accent);
 }
 
+/* ============================================================
+   KEYBOARD SHORTCUT HELP
+   ============================================================ */
+
+.shortcut-help-panel {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 320px;
+  max-height: 80vh;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  z-index: 9999;
+  overflow: hidden;
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.shortcut-help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-help-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.shortcut-help-body {
+  padding: 16px 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.shortcut-section {
+  margin-bottom: 20px;
+}
+
+.shortcut-section:last-child {
+  margin-bottom: 0;
+}
+
+.shortcut-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+}
+
+.shortcut-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.shortcut-keys {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.shortcut-desc {
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+}
+
+kbd {
+  display: inline-block;
+  padding: 3px 8px;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Shortcut hint in footer */
+.shortcut-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--accent);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.shortcut-hint:hover {
+  background: var(--muted);
+}
+
+.footer-spacer {
+  flex: 1;
+}
+
+/* Mobile: Hide keyboard shortcut hint */
+@media (max-width: 768px) {
+  .shortcut-hint {
+    display: none;
+  }
+
+  .shortcut-help-panel {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+  }
+}
+
 /* Right-aligned columns */
 .col-right {
   text-align: right;
+}
+
+/* ============================================================
+   RESPONSIVE LINE ITEMS - Phase 110-05
+   ============================================================ */
+
+/* Desktop: Show table, hide cards */
+@media (min-width: 1024px) {
+  .worksheet-table-wrap {
+    display: block;
+  }
+
+  .line-items-cards {
+    display: none;
+  }
+}
+
+/* Tablet: Table with horizontal scroll and sticky first column */
+@media (min-width: 641px) and (max-width: 1023px) {
+  .worksheet-table-wrap {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .worksheet-table {
+    min-width: 800px;
+  }
+
+  /* Sticky description column */
+  .worksheet-table th:nth-child(5),
+  .worksheet-table td:nth-child(5) {
+    position: sticky;
+    left: 0;
+    background: var(--card);
+    z-index: 5;
+    box-shadow: 2px 0 4px rgba(0,0,0,0.05);
+  }
+
+  .worksheet-table tbody tr:hover td:nth-child(5) {
+    background: var(--accent);
+  }
+
+  .line-items-cards {
+    display: none;
+  }
+}
+
+/* Mobile: Hide table, show cards */
+@media (max-width: 640px) {
+  .worksheet-table-wrap {
+    display: none;
+  }
+
+  .line-items-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+  }
+}
+
+/* Mobile Card Styling */
+.line-item-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  transition: box-shadow 0.15s;
+}
+
+.line-item-card:active {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+.line-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.line-card-number {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.line-card-code {
+  padding: 4px 10px;
+  background: var(--accent);
+  border-radius: 6px;
+  font-family: 'SF Mono', monospace;
+  font-size: 0.8rem;
+}
+
+.line-card-header .btn-icon {
+  margin-left: auto;
+}
+
+.line-card-description {
+  font-weight: 500;
+  margin-bottom: 16px;
+  padding: 8px;
+  border-radius: 6px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.line-card-description[data-editable]:hover {
+  background: var(--accent);
+}
+
+.line-card-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.line-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.line-card-field .field-label {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.line-card-field .field-value {
+  font-weight: 500;
+  padding: 8px;
+  border-radius: 6px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.line-card-field .field-value[data-editable]:hover {
+  background: var(--accent);
+}
+
+.line-card-field .field-unit {
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+  margin-left: 4px;
+}
+
+.line-card-amount {
+  grid-column: 1 / -1;
+  background: var(--accent);
+  padding: 12px;
+  border-radius: 8px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.line-card-amount .field-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-family: 'SF Mono', monospace;
+  padding: 0;
+  min-height: auto;
+}
+
+/* Empty state for cards */
+.empty-state-card {
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--card);
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+}
+
+.empty-state-card p {
+  margin-bottom: 16px;
+  color: var(--muted-foreground);
+}
+
+/* Touch-friendly improvements */
+@media (max-width: 768px) {
+  /* Larger touch targets */
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .btn-sm {
+    min-height: 40px;
+    padding: 8px 16px;
+  }
+
+  /* Larger form controls */
+  .form-control {
+    min-height: 44px;
+    font-size: 16px; /* Prevents iOS zoom */
+  }
+
+  select.form-control {
+    padding: 10px 12px;
+  }
+
+  /* Larger checkboxes */
+  input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* More spacing */
+  .modal-body {
+    padding: 16px;
+  }
+
+  .modal-header {
+    padding: 16px;
+  }
+
+  .modal-footer {
+    padding: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Stack footer buttons on mobile */
+  .modal-footer .btn {
+    flex: 1 1 auto;
+  }
+
+  /* Adjust dropdown position for mobile */
+  .dropdown-menu {
+    position: fixed;
+    left: 16px !important;
+    right: 16px !important;
+    bottom: 16px;
+    top: auto !important;
+    width: auto;
+    max-height: 50vh;
+    overflow-y: auto;
+    border-radius: 12px;
+  }
+
+  /* Add bottom sheet animation */
+  .dropdown.open .dropdown-menu {
+    transform: translateY(0);
+    animation: slideUpSheet 0.2s ease;
+  }
+
+  @keyframes slideUpSheet {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+}
+
+/* Tablet-specific adjustments */
+@media (min-width: 641px) and (max-width: 1023px) {
+  /* Modal sizing */
+  .modal-content {
+    max-width: 90vw;
+  }
+
+  .modal-fullscreen-dark .modal-content {
+    width: 95vw;
+    max-width: none;
+  }
+
+  /* Worksheet footer */
+  .worksheet-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .worksheet-legend {
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  .worksheet-totals {
+    align-self: flex-end;
+  }
 }

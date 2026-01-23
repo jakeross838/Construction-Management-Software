@@ -210,8 +210,13 @@ router.get('/:id', async (req, res) => {
 
     // Detect variances if invoice is linked to a PO
     if (data.po_id) {
-      const variance = await detectVariances(data);
-      data.variance = variance;
+      try {
+        const variance = await detectVariances(data);
+        data.variance = variance;
+      } catch (varErr) {
+        console.error('[Variance] Error detecting variances:', varErr.message);
+        data.variance = { error: varErr.message };
+      }
     }
 
     res.json(data);

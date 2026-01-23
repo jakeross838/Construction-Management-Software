@@ -187,8 +187,49 @@ function calculateSimilarity(str1, str2) {
 }
 
 /**
+ * Patterns that indicate extra work / modifications NOT in original scope
+ * These items should be matched MORE STRICTLY to avoid false positives
+ */
+const EXTRA_WORK_PATTERNS = [
+  /change\s*order/i,
+  /\bco\s*[-#]?\d/i,
+  /\bco\b/i,
+  /modif(y|ied|ication)/i,    // modify, modified, modification
+  /addition(al)?/i,
+  /\bextra\b/i,
+  /redesign/i,
+  /revis(e|ed|ion)/i,         // revise, revised, revision
+  /credit/i,
+  /deduct(ion)?/i,            // deduct, deduction
+  /adjustment/i,
+  /scope\s*change/i,
+  /owner\s*request/i,
+  /per\s+owner/i,             // "per owner request"
+  /field\s*change/i,
+  /\badd\s+\d/i,              // "Add 3" wood supports"
+  /\badded\b/i,
+  /unforeseen/i,
+  /not\s+in\s+(original\s+)?scope/i
+];
+
+/**
+ * Check if a description indicates extra work / change order
+ * @param {string} description - Line item description
+ * @returns {boolean} True if description suggests extra/change order work
+ */
+function isExtraWorkItem(description) {
+  if (!description) return false;
+  return EXTRA_WORK_PATTERNS.some(pattern => pattern.test(description));
+}
+
+/**
  * Try to match an invoice line item to a PO line item.
  * Uses text similarity, amount matching, and cost code matching boost.
+ *
+ * ENHANCED MATCHING LOGIC:
+ * - Items labeled as "Change Order" or similar require HIGHER confidence to match
+ * - Credits (negative amounts) are treated specially
+ * - Amount mismatch is weighted more heavily for extra work items
  *
  * @param {Object} invoiceLineItem - Invoice line item with description, amount, and optionally cost_code_id
  * @param {Array} poLineItems - Array of PO line items to match against
@@ -198,6 +239,15 @@ function calculateSimilarity(str1, str2) {
 function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) {
   const invDesc = invoiceLineItem.description || '';
   const invAmount = parseFloat(invoiceLineItem.amount) || 0;
+
+  // If no description, cannot match - require at least some text
+  if (!invDesc || invDesc.trim().length === 0) {
+    return null;
+  }
+
+  // Detect if this looks like extra work / change order
+  const isExtraWork = isExtraWorkItem(invDesc);
+  const isCredit = invAmount < 0;
 
   let bestMatch = null;
   let bestScore = 0;
@@ -213,7 +263,7 @@ function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) 
 
     // Amount match with partial billing support
     let amountMatch = 0;
-    if (poAmount > 0) {
+    if (poAmount > 0 && invAmount > 0) {
       const amountDiff = Math.abs(invAmount - poAmount);
 
       // Exact match (within $1) gets full score
@@ -221,7 +271,7 @@ function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) 
         amountMatch = 1.0;
       }
       // Partial billing: invoice <= PO (common case) gets good score
-      else if (invAmount <= poAmount && invAmount > 0) {
+      else if (invAmount <= poAmount) {
         // Scale based on how much of PO is being billed
         const billedRatio = invAmount / poAmount;
         amountMatch = 0.5 + (billedRatio * 0.4); // 0.5-0.9 range
@@ -230,6 +280,10 @@ function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) 
       else {
         amountMatch = Math.max(0, 1 - (amountDiff / poAmount));
       }
+    } else if (isCredit) {
+      // Credits should NOT match positive PO line items
+      // A credit/deduction is almost always a change order item
+      amountMatch = 0;
     }
 
     // Cost code match boost
@@ -243,18 +297,38 @@ function findBestPOMatch(invoiceLineItem, poLineItems, usedMatches = new Set()) 
     }
 
     // Combined score: 60% text + 25% amount + 15% cost code (if both have codes)
-    // If no cost codes, it's 70% text + 30% amount (original weights, costCodeBoost = 0)
     const baseScore = (descSimilarity * 0.6) + (amountMatch * 0.25);
-    const score = baseScore + costCodeBoost;
+    let score = baseScore + costCodeBoost;
 
-    if (score > bestScore && score > 0.2) { // Minimum threshold
+    // EXTRA WORK PENALTY: Items labeled as change orders need MUCH higher
+    // similarity to match. A "Laundry Room Redesign" should NOT match
+    // "Laundry Cabinets" just because "laundry" is in both.
+    if (isExtraWork) {
+      // Require at least 0.5 text similarity AND reasonable amount match
+      // Otherwise, flag as unmatched (likely needs VPO/CO)
+      if (descSimilarity < 0.5 || amountMatch < 0.3) {
+        score = score * 0.3; // Heavy penalty - likely won't pass threshold
+      }
+    }
+
+    // CREDIT PENALTY: Negative amounts almost never match original PO scope
+    if (isCredit && poAmount > 0) {
+      score = score * 0.2; // Very heavy penalty
+    }
+
+    // Minimum threshold raised for extra work items
+    const threshold = isExtraWork ? 0.4 : 0.2;
+
+    if (score > bestScore && score > threshold) {
       bestScore = score;
       bestMatch = {
         poLineItem: poLine,
         similarity: descSimilarity,
         amountMatch,
         costCodeMatch: costCodeBoost > 0,
-        score
+        score,
+        isExtraWork,
+        isCredit
       };
     }
   }
@@ -685,29 +759,59 @@ async function detectVariances(invoice) {
               });
             } else {
               // NO MATCH FOUND - This is a new/unmatched line item!
-            result.hasVariances = true;
-            result.details.unmatchedItems.push({
-              description: invDesc,
-              amount: invAmount
-            });
+              result.hasVariances = true;
 
-            // Check if it looks like a change order
-            const isChangeOrder = /change\s*order|co\s*[-#]?\d|modification|addition|extra/i.test(invDesc);
-            const isCredit = invAmount < 0;
+              // Enhanced detection for extra work items
+              const detectedAsExtraWork = isExtraWorkItem(invDesc);
+              const isCredit = invAmount < 0;
 
-            result.warnings.push({
-              type: 'unmatched_line_item',
-              severity: isChangeOrder ? 'high' : 'medium',
-              message: isChangeOrder
-                ? `⚠️ Change Order not on PO: "${invDesc.substring(0, 60)}${invDesc.length > 60 ? '...' : ''}" ($${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })})`
-                : `New line item not on PO: "${invDesc.substring(0, 60)}${invDesc.length > 60 ? '...' : ''}" ($${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })})`,
-              details: {
+              result.details.unmatchedItems.push({
                 description: invDesc,
                 amount: invAmount,
-                isChangeOrder,
+                isExtraWork: detectedAsExtraWork,
                 isCredit
+              });
+
+              // Generate actionable warning with suggested action
+              let warningMessage = '';
+              let suggestedAction = '';
+              let warningType = 'unmatched_line_item';
+
+              if (detectedAsExtraWork) {
+                // Explicitly labeled as change order or extra work
+                warningType = 'change_order_not_in_po';
+                if (isCredit) {
+                  warningMessage = `🔴 CREDIT NOT IN PO: "${invDesc.substring(0, 50)}${invDesc.length > 50 ? '...' : ''}" ($${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })})`;
+                  suggestedAction = 'Create a Change Order to document this credit/deduction';
+                } else {
+                  warningMessage = `🔴 CHANGE ORDER NOT IN PO: "${invDesc.substring(0, 50)}${invDesc.length > 50 ? '...' : ''}" ($${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })})`;
+                  suggestedAction = 'Create a Change Order or VPO to authorize this work';
+                }
+              } else if (isCredit) {
+                // Credit without change order label
+                warningType = 'credit_not_in_po';
+                warningMessage = `🟡 CREDIT NOT IN PO: "${invDesc.substring(0, 50)}${invDesc.length > 50 ? '...' : ''}" ($${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })})`;
+                suggestedAction = 'Verify credit is authorized and create a Change Order if needed';
+              } else {
+                // Unknown line item not in PO
+                warningType = 'new_item_not_in_po';
+                warningMessage = `🟠 ITEM NOT IN PO: "${invDesc.substring(0, 50)}${invDesc.length > 50 ? '...' : ''}" ($${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })})`;
+                suggestedAction = 'Review and create VPO or Change Order to authorize this work';
               }
-            });
+
+              result.warnings.push({
+                type: warningType,
+                severity: detectedAsExtraWork ? 'high' : (isCredit ? 'high' : 'medium'),
+                message: warningMessage,
+                suggestedAction,
+                details: {
+                  description: invDesc,
+                  amount: invAmount,
+                  isExtraWork: detectedAsExtraWork,
+                  isCredit,
+                  requiresAction: true
+                }
+              });
             }
           }
         }
@@ -813,11 +917,81 @@ async function detectVariances(invoice) {
       result.potential_savings = totalPotentialSavings;
     }
 
+    // BUILD SUMMARY: Categorize all line items for easy UI display
+    result.summary = buildVarianceSummary(result, invoiceLineItems);
+
   } catch (err) {
     console.error('[Variance] Error detecting variances:', err);
   }
 
   return result;
+}
+
+/**
+ * Build a comprehensive summary of variance detection results
+ * Groups items by category and provides actionable next steps
+ */
+function buildVarianceSummary(result, invoiceLineItems) {
+  const summary = {
+    totalLineItems: invoiceLineItems.length,
+    matchedToPO: 0,
+    matchedToCO: 0,
+    matchedToVPO: 0,
+    unmatched: 0,
+    itemsRequiringAction: [],
+    allMatched: true,
+    overallStatus: 'ok'
+  };
+
+  // Count matched items by type
+  for (const matched of result.details.matchedItems || []) {
+    if (matched.matchedTo === 'change_order') {
+      summary.matchedToCO++;
+    } else if (matched.matchedTo === 'vpo') {
+      summary.matchedToVPO++;
+    } else {
+      summary.matchedToPO++;
+    }
+  }
+
+  // Count and collect unmatched items
+  summary.unmatched = (result.details.unmatchedItems || []).length;
+  summary.allMatched = summary.unmatched === 0;
+
+  // Collect items requiring action
+  for (const item of result.details.unmatchedItems || []) {
+    summary.itemsRequiringAction.push({
+      description: item.description,
+      amount: item.amount,
+      isCredit: item.isCredit,
+      isExtraWork: item.isExtraWork,
+      action: item.isCredit
+        ? 'Create Change Order for credit'
+        : (item.isExtraWork ? 'Create Change Order or VPO' : 'Review and authorize')
+    });
+  }
+
+  // Determine overall status
+  if (summary.unmatched > 0) {
+    const hasHighSeverity = result.warnings.some(w => w.severity === 'high');
+    summary.overallStatus = hasHighSeverity ? 'action_required' : 'review_needed';
+  } else if (result.warnings.length > 0) {
+    summary.overallStatus = 'warnings';
+  }
+
+  // Generate human-readable status message
+  if (summary.unmatched > 0) {
+    const actionItems = summary.itemsRequiringAction
+      .map(item => `• ${item.description.substring(0, 40)}... ($${item.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}) - ${item.action}`)
+      .join('\n');
+    summary.statusMessage = `⚠️ ${summary.unmatched} line item(s) NOT in PO require action:\n${actionItems}`;
+  } else if (result.warnings.length > 0) {
+    summary.statusMessage = `${summary.matchedToPO + summary.matchedToCO + summary.matchedToVPO}/${summary.totalLineItems} items verified. ${result.warnings.length} warning(s).`;
+  } else {
+    summary.statusMessage = `✅ All ${summary.totalLineItems} line items verified against PO`;
+  }
+
+  return summary;
 }
 
 /**
@@ -876,5 +1050,7 @@ module.exports = {
   calculateSimilarity,
   findBestPOMatch,
   levenshteinDistance,
-  ABBREVIATIONS
+  isExtraWorkItem,
+  ABBREVIATIONS,
+  EXTRA_WORK_PATTERNS
 };

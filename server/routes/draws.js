@@ -46,6 +46,122 @@ async function updateDrawTotal(drawId) {
   return total + coTotal;
 }
 
+/**
+ * PO-INT-04: Detect CO billing overlap between manual billings and allocations
+ * Returns warnings for any COs that have both manual and allocated billings
+ */
+async function detectCOBillingOverlap(drawId, jobId) {
+  const warnings = [];
+
+  // Get manual CO billings for this draw
+  const { data: manualBillings } = await supabase
+    .from('v2_job_co_draw_billings')
+    .select('change_order_id, amount')
+    .eq('draw_id', drawId);
+
+  const manualByCO = {};
+  (manualBillings || []).forEach(b => {
+    manualByCO[b.change_order_id] = (manualByCO[b.change_order_id] || 0) + parseFloat(b.amount || 0);
+  });
+
+  // Get invoice allocations linked to COs in this draw
+  const { data: drawInvoices } = await supabase
+    .from('v2_draw_invoices')
+    .select('invoice_id')
+    .eq('draw_id', drawId);
+
+  const invoiceIds = (drawInvoices || []).map(di => di.invoice_id);
+
+  if (invoiceIds.length > 0) {
+    const { data: invoiceAllocs } = await supabase
+      .from('v2_invoice_allocations')
+      .select('change_order_id, amount')
+      .in('invoice_id', invoiceIds)
+      .not('change_order_id', 'is', null);
+
+    const allocByCO = {};
+    (invoiceAllocs || []).forEach(a => {
+      allocByCO[a.change_order_id] = (allocByCO[a.change_order_id] || 0) + parseFloat(a.amount || 0);
+    });
+
+    // Check for overlap
+    for (const coId of Object.keys(manualByCO)) {
+      if (allocByCO[coId]) {
+        warnings.push({
+          change_order_id: coId,
+          manual_amount: manualByCO[coId],
+          allocated_amount: allocByCO[coId],
+          message: `CO has both manual billing ($${manualByCO[coId].toFixed(2)}) and invoice allocations ($${allocByCO[coId].toFixed(2)}) in this draw - potential double-count`
+        });
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * DRW-INT-03: Validate draw allocations match source invoice allocations
+ * Returns array of mismatches if any drift detected
+ */
+async function validateDrawAllocations(drawId) {
+  const mismatches = [];
+
+  // Get all draw allocations
+  const { data: drawAllocs } = await supabase
+    .from('v2_draw_allocations')
+    .select('invoice_id, cost_code_id, amount')
+    .eq('draw_id', drawId);
+
+  if (!drawAllocs || drawAllocs.length === 0) return mismatches;
+
+  // Group draw allocations by invoice
+  const drawAllocsByInvoice = {};
+  for (const da of drawAllocs) {
+    if (!drawAllocsByInvoice[da.invoice_id]) {
+      drawAllocsByInvoice[da.invoice_id] = [];
+    }
+    drawAllocsByInvoice[da.invoice_id].push(da);
+  }
+
+  // Compare each invoice's draw allocations to its source allocations
+  for (const [invoiceId, drawInvoiceAllocs] of Object.entries(drawAllocsByInvoice)) {
+    const { data: sourceAllocs } = await supabase
+      .from('v2_invoice_allocations')
+      .select('cost_code_id, amount')
+      .eq('invoice_id', invoiceId);
+
+    // Sum by cost code for comparison
+    const drawByCode = {};
+    for (const da of drawInvoiceAllocs) {
+      drawByCode[da.cost_code_id] = (drawByCode[da.cost_code_id] || 0) + parseFloat(da.amount || 0);
+    }
+
+    const sourceByCode = {};
+    for (const sa of (sourceAllocs || [])) {
+      sourceByCode[sa.cost_code_id] = (sourceByCode[sa.cost_code_id] || 0) + parseFloat(sa.amount || 0);
+    }
+
+    // Check for differences
+    const allCodes = new Set([...Object.keys(drawByCode), ...Object.keys(sourceByCode)]);
+    for (const codeId of allCodes) {
+      const drawAmt = drawByCode[codeId] || 0;
+      const sourceAmt = sourceByCode[codeId] || 0;
+      if (Math.abs(drawAmt - sourceAmt) > 0.01) {
+        mismatches.push({
+          invoice_id: invoiceId,
+          cost_code_id: codeId,
+          draw_amount: drawAmt,
+          source_amount: sourceAmt,
+          difference: drawAmt - sourceAmt
+        });
+      }
+    }
+  }
+
+  return mismatches;
+}
+
 // ============================================================
 // LIST ENDPOINTS
 // ============================================================
@@ -99,6 +215,33 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
     if (drawError) throw drawError;
     if (!draw) return res.status(404).json({ error: 'Draw not found' });
+
+    // DRW-INT-01: Recalculate draw total from actual allocations
+    const { data: drawAllocations } = await supabase
+      .from('v2_draw_allocations')
+      .select('amount')
+      .eq('draw_id', drawId);
+
+    const recalculatedTotal = (drawAllocations || []).reduce(
+      (sum, a) => sum + parseFloat(a.amount || 0), 0
+    );
+
+    // Also get CO billings for this draw
+    const { data: coBillings } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('amount')
+      .eq('draw_id', drawId);
+
+    const coTotal = (coBillings || []).reduce(
+      (sum, b) => sum + parseFloat(b.amount || 0), 0
+    );
+
+    const calculatedTotalAmount = recalculatedTotal + coTotal;
+
+    // Log if stored differs from calculated (data integrity check)
+    if (Math.abs(parseFloat(draw.total_amount || 0) - calculatedTotalAmount) > 0.01) {
+      console.warn(`[DRAW ${drawId}] Stored total (${draw.total_amount}) differs from calculated (${calculatedTotalAmount})`);
+    }
 
     // Get invoices in this draw
     const { data: drawInvoices } = await supabase
@@ -234,7 +377,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
       const totalBilled = previous + thisPeriod;
       const percentComplete = budget > 0 ? (totalBilled / budget) * 100 : (totalBilled > 0 ? 100 : 0);
 
-      if (thisPeriod === 0) return null;
+      // DRW-INT-02: Include all cost codes with budget, even if 0% billed
+      // Only filter out if BOTH: no current billing AND no budget AND no previous billings
+      if (thisPeriod === 0 && budget === 0 && previous === 0) return null;
 
       itemNum++;
       return {
@@ -351,8 +496,24 @@ router.get('/:id', asyncHandler(async (req, res) => {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
+    // DRW-INT-03: Validate allocations match source invoices
+    const allocationMismatches = await validateDrawAllocations(drawId);
+    if (allocationMismatches.length > 0) {
+      console.warn(`[DRAW ${drawId}] Found ${allocationMismatches.length} allocation mismatches:`,
+        allocationMismatches.slice(0, 3)); // Log first 3
+    }
+
+    // PO-INT-04: Detect CO billing overlap
+    const coBillingOverlap = await detectCOBillingOverlap(drawId, draw.job_id);
+    if (coBillingOverlap.length > 0) {
+      console.warn(`[DRAW ${drawId}] Found ${coBillingOverlap.length} CO billing overlaps:`,
+        coBillingOverlap);
+    }
+
     res.json({
       ...draw,
+      total_amount: calculatedTotalAmount,  // Use recalculated value
+      stored_total_amount: draw.total_amount,  // Keep original for debugging
       invoices,
       invoiceCount: invoices.length,
       scheduleOfValues,
@@ -370,6 +531,12 @@ router.get('/:id', asyncHandler(async (req, res) => {
       },
       attachments: attachments || [],
       activity: activity || [],
+      validation: {
+        allocation_mismatches: allocationMismatches,
+        has_drift: allocationMismatches.length > 0,
+        co_billing_overlap: coBillingOverlap,
+        has_co_overlap: coBillingOverlap.length > 0
+      },
       g702: {
         applicationNumber: draw.draw_number,
         periodTo: draw.period_end,
@@ -381,7 +548,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
         materialsStored: 0,
         grandTotal: grandTotalCompleted,
         lessPreviousCertificates: totalPrevious + coBilledPreviously,
-        currentPaymentDue
+        currentPaymentDue,
+        calculatedTotal: calculatedTotalAmount  // Add verification field
       }
     });
 }));
@@ -1091,6 +1259,74 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 router.post('/:id/recalculate', asyncHandler(async (req, res) => {
     const newTotal = await updateDrawTotal(req.params.id);
     res.json({ success: true, new_total: newTotal });
+}));
+
+// Repair draw allocations from source invoices
+router.post('/:id/repair-allocations', asyncHandler(async (req, res) => {
+  const drawId = req.params.id;
+
+  // Get draw
+  const { data: draw } = await supabase
+    .from('v2_draws')
+    .select('status')
+    .eq('id', drawId)
+    .single();
+
+  if (!draw) return res.status(404).json({ error: 'Draw not found' });
+  if (draw.status !== 'draft') {
+    return res.status(400).json({ error: 'Can only repair draft draws' });
+  }
+
+  // Get all invoices in this draw
+  const { data: drawInvoices } = await supabase
+    .from('v2_draw_invoices')
+    .select('invoice_id')
+    .eq('draw_id', drawId);
+
+  if (!drawInvoices || drawInvoices.length === 0) {
+    return res.json({ success: true, message: 'No invoices in draw', repaired: 0 });
+  }
+
+  let repaired = 0;
+
+  for (const di of drawInvoices) {
+    // Delete existing draw allocations for this invoice
+    await supabase
+      .from('v2_draw_allocations')
+      .delete()
+      .eq('draw_id', drawId)
+      .eq('invoice_id', di.invoice_id);
+
+    // Get current source allocations
+    const { data: sourceAllocs } = await supabase
+      .from('v2_invoice_allocations')
+      .select('cost_code_id, amount, notes')
+      .eq('invoice_id', di.invoice_id);
+
+    // Re-copy to draw_allocations
+    if (sourceAllocs && sourceAllocs.length > 0) {
+      await supabase.from('v2_draw_allocations').insert(
+        sourceAllocs.map(sa => ({
+          draw_id: drawId,
+          invoice_id: di.invoice_id,
+          cost_code_id: sa.cost_code_id,
+          amount: sa.amount,
+          notes: sa.notes,
+          created_by: 'System (repair)'
+        }))
+      );
+      repaired += sourceAllocs.length;
+    }
+  }
+
+  // Update draw total
+  await updateDrawTotal(drawId);
+
+  await logDrawActivity(drawId, 'allocations_repaired', req.body.performed_by || 'System', {
+    allocations_repaired: repaired
+  });
+
+  res.json({ success: true, repaired });
 }));
 
 router.post('/fix-legacy-status', asyncHandler(async (req, res) => {
