@@ -527,6 +527,21 @@
     .collapse-btn:hover {
       color: var(--accent-blue);
     }
+
+    /* Drag-and-drop styles (Phase 112-04) */
+    .item-row[draggable="true"] {
+      cursor: grab;
+    }
+
+    .item-row.dragging {
+      opacity: 0.5;
+      background: var(--bg-card-elevated);
+    }
+
+    .drop-zone-active {
+      background: rgba(88, 166, 255, 0.1);
+      border: 2px dashed var(--accent-blue);
+    }
   </style>
 </head>
 <body data-page-context="job" data-page-id="estimates-budget" data-page-group="precon" data-role-min="pm">
@@ -706,7 +721,9 @@
                   <!-- Worksheet Toolbar -->
                   <div class="worksheet-toolbar">
                     <div class="toolbar-left">
-                      <!-- Removed: Group dropdown, Library, Columns - not implemented -->
+                      <button class="btn btn-ghost btn-sm" onclick="openPhaseModal()">+ Phase</button>
+                      <button class="btn btn-ghost btn-sm" onclick="openGroupModal()">+ Group</button>
+                      <button class="btn btn-ghost btn-sm" onclick="openSubgroupModal()">+ Subgroup</button>
                     </div>
                     <div class="toolbar-right" id="lineItemsActions">
                       <button class="btn btn-ghost btn-sm" id="addSectionBtn" onclick="openSectionModal()">
@@ -2033,6 +2050,13 @@
         </div>
 
         <div class="form-group">
+          <label for="lineSubgroup">Subgroup *</label>
+          <select id="lineSubgroup" class="form-control">
+            <option value="">Select Subgroup...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label for="lineNotes">Notes (optional)</label>
           <textarea id="lineNotes" class="form-control" rows="2" placeholder="Additional notes..."></textarea>
         </div>
@@ -2080,6 +2104,95 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Phase Modal -->
+  <div id="phaseModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add Phase</h2>
+        <button class="close-btn" onclick="closePhaseModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Phase Name *</label>
+          <input type="text" id="phaseName" class="form-control" placeholder="e.g., Site Work, Foundation, Framing">
+        </div>
+        <div class="form-group">
+          <label>Phase Code</label>
+          <input type="text" id="phaseCode" class="form-control" placeholder="e.g., 01, 02, 03">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="phaseDescription" class="form-control" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closePhaseModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="savePhase()">Save Phase</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group Modal -->
+  <div id="groupModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add Group</h2>
+        <button class="close-btn" onclick="closeGroupModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Phase *</label>
+          <select id="groupPhase" class="form-control">
+            <option value="">Select Phase...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Group Name *</label>
+          <input type="text" id="groupName" class="form-control" placeholder="e.g., MEPs, Rough Carpentry">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="groupDescription" class="form-control" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeGroupModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveGroup()">Save Group</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Subgroup Modal -->
+  <div id="subgroupModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add Subgroup</h2>
+        <button class="close-btn" onclick="closeSubgroupModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Group *</label>
+          <select id="subgroupGroup" class="form-control">
+            <option value="">Select Group...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Subgroup Name *</label>
+          <input type="text" id="subgroupName" class="form-control" placeholder="e.g., Electrical, Plumbing, HVAC">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="subgroupDescription" class="form-control" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeSubgroupModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSubgroup()">Save Subgroup</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/toasts.js?v=20260121"></script>
   <script src="js/nav-sidebar.js?v=20260121"></script>
   <script src="js/sidebar.js?v=20260121"></script>

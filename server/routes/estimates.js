@@ -2445,4 +2445,86 @@ router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
   });
 }));
 
+// ============================================================
+// HIERARCHY CREATION & REORDERING (Phase 112-04)
+// ============================================================
+
+// Create phase
+router.post('/:id/phases', async (req, res) => {
+  const { id } = req.params;
+  const { name, phase_code, description } = req.body;
+
+  const { data, error } = await supabase
+    .from('v2_estimate_phases')
+    .insert({
+      estimate_id: id,
+      name,
+      phase_code,
+      description,
+      sort_order: 999
+    })
+    .select()
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+// Create group
+router.post('/:id/phases/:phaseId/groups', async (req, res) => {
+  const { id, phaseId } = req.params;
+  const { name, description } = req.body;
+
+  const { data, error } = await supabase
+    .from('v2_estimate_groups')
+    .insert({
+      estimate_id: id,
+      phase_id: phaseId,
+      name,
+      description,
+      sort_order: 999
+    })
+    .select()
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+// Create subgroup
+router.post('/:id/groups/:groupId/subgroups', async (req, res) => {
+  const { id, groupId } = req.params;
+  const { name, description } = req.body;
+
+  const { data, error } = await supabase
+    .from('v2_estimate_subgroups')
+    .insert({
+      estimate_id: id,
+      group_id: groupId,
+      name,
+      description,
+      sort_order: 999
+    })
+    .select()
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+// Reorder items (for drag-and-drop)
+router.post('/:id/reorder', async (req, res) => {
+  const { items } = req.body; // Array of { id, sort_order, subgroup_id }
+
+  const updates = items.map(item =>
+    supabase
+      .from('v2_estimate_line_items')
+      .update({ sort_order: item.sort_order, subgroup_id: item.subgroup_id })
+      .eq('id', item.id)
+  );
+
+  await Promise.all(updates);
+  res.json({ success: true });
+});
+
 module.exports = router;

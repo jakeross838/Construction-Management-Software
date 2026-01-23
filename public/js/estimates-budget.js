@@ -727,6 +727,20 @@ function openAddLineModal(lineId = null, sectionId = null) {
     sectionSelect.appendChild(opt);
   });
 
+  // Populate subgroups dropdown (Phase 112-04)
+  const subgroupSelect = document.getElementById('lineSubgroup');
+  subgroupSelect.innerHTML = '<option value="">Select Subgroup...</option>';
+  (currentEstimate.phases || []).forEach(phase => {
+    (phase.groups || []).forEach(group => {
+      (group.subgroups || []).forEach(subgroup => {
+        const opt = document.createElement('option');
+        opt.value = subgroup.id;
+        opt.textContent = `${phase.name} > ${group.name} > ${subgroup.name}`;
+        subgroupSelect.appendChild(opt);
+      });
+    });
+  });
+
   // Auto-calculate amount on input changes
   const qtyInput = document.getElementById('lineQuantity');
   const costInput = document.getElementById('lineUnitCost');
@@ -788,10 +802,11 @@ async function saveLineItem() {
   const amount = parseFloat(document.getElementById('lineAmount').value) || 0;
   const costCodeId = document.getElementById('lineCostCode').value || null;
   const sectionId = document.getElementById('lineSection').value || null;
+  const subgroupId = document.getElementById('lineSubgroup').value || null;
   const notes = document.getElementById('lineNotes').value.trim();
   const lineItemId = document.getElementById('lineItemId').value;
 
-  console.log('[saveLineItem] Form values:', { description, quantity, unit, unitCost, amount, costCodeId, sectionId, lineItemId });
+  console.log('[saveLineItem] Form values:', { description, quantity, unit, unitCost, amount, costCodeId, sectionId, subgroupId, lineItemId });
 
   if (!description) {
     showToast('Description is required', 'error');
@@ -809,6 +824,7 @@ async function saveLineItem() {
       amount,
       cost_code_id: costCodeId,
       section_id: sectionId,
+      subgroup_id: subgroupId,
       notes: notes || null,
       created_by: window.currentUser || 'User'
     };
@@ -1061,6 +1077,9 @@ function renderEstimateHierarchy() {
   });
 
   tbody.innerHTML = html || '<tr><td colspan="10" style="text-align: center; padding: 40px;">No estimate hierarchy. Use legacy view or create phases.</td></tr>';
+
+  // Initialize drag-drop
+  initDragDrop();
 }
 
 function renderPhaseRow(phase) {
@@ -1103,7 +1122,7 @@ function renderGroupRow(group, phaseId) {
 function renderSubgroupRow(subgroup, groupId) {
   const collapsed = collapsedSubgroups.has(subgroup.id);
   return `
-    <tr class="subgroup-row" style="padding-left: 32px;">
+    <tr class="subgroup-row" style="padding-left: 32px;" data-subgroup-id="${subgroup.id}">
       <td></td>
       <td></td>
       <td colspan="2">
@@ -1123,7 +1142,7 @@ function renderSubgroupRow(subgroup, groupId) {
 function renderItemRow(item, subgroupId, rowNum) {
   const isEditable = ['draft', 'rejected'].includes(currentEstimate?.status);
   return `
-    <tr class="item-row" style="padding-left: 48px;">
+    <tr class="item-row" style="padding-left: 48px;" data-item-id="${item.id}" data-subgroup-id="${subgroupId}">
       <td class="select-col">
         ${isEditable ? `<input type="checkbox" data-id="${item.id}">` : ''}
       </td>
@@ -3075,5 +3094,252 @@ function closeShortcutHelpOnClickOutside(e) {
     panel.remove();
     shortcutHelpVisible = false;
   }
+}
+
+// ============================================================
+// HIERARCHY CREATION MODALS (Phase 112-04)
+// ============================================================
+
+// Phase Modal
+function openPhaseModal() {
+  if (!currentEstimate) {
+    showToast('No estimate loaded', 'error');
+    return;
+  }
+  document.getElementById('phaseName').value = '';
+  document.getElementById('phaseCode').value = '';
+  document.getElementById('phaseDescription').value = '';
+
+  const modal = document.getElementById('phaseModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+}
+
+function closePhaseModal() {
+  const modal = document.getElementById('phaseModal');
+  modal.classList.remove('show');
+  setTimeout(() => modal.style.display = 'none', 200);
+}
+
+async function savePhase() {
+  const name = document.getElementById('phaseName').value.trim();
+  if (!name) {
+    showToast('Phase name required', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/phases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        phase_code: document.getElementById('phaseCode').value.trim(),
+        description: document.getElementById('phaseDescription').value.trim()
+      })
+    });
+
+    if (!response.ok) throw new Error('Failed to create phase');
+
+    showToast('Phase created', 'success');
+    closePhaseModal();
+    await loadEstimateForJob(currentJobId);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// Group Modal
+function openGroupModal() {
+  if (!currentEstimate) {
+    showToast('No estimate loaded', 'error');
+    return;
+  }
+
+  // Populate phases dropdown
+  const select = document.getElementById('groupPhase');
+  select.innerHTML = '<option value="">Select Phase...</option>';
+  (currentEstimate.phases || []).forEach(phase => {
+    const opt = document.createElement('option');
+    opt.value = phase.id;
+    opt.textContent = phase.name;
+    select.appendChild(opt);
+  });
+
+  document.getElementById('groupName').value = '';
+  document.getElementById('groupDescription').value = '';
+
+  const modal = document.getElementById('groupModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+}
+
+function closeGroupModal() {
+  const modal = document.getElementById('groupModal');
+  modal.classList.remove('show');
+  setTimeout(() => modal.style.display = 'none', 200);
+}
+
+async function saveGroup() {
+  const phaseId = document.getElementById('groupPhase').value;
+  const name = document.getElementById('groupName').value.trim();
+
+  if (!phaseId || !name) {
+    showToast('Phase and group name required', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/phases/${phaseId}/groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description: document.getElementById('groupDescription').value.trim()
+      })
+    });
+
+    if (!response.ok) throw new Error('Failed to create group');
+
+    showToast('Group created', 'success');
+    closeGroupModal();
+    await loadEstimateForJob(currentJobId);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// Subgroup Modal
+function openSubgroupModal() {
+  if (!currentEstimate) {
+    showToast('No estimate loaded', 'error');
+    return;
+  }
+
+  // Populate groups dropdown
+  const select = document.getElementById('subgroupGroup');
+  select.innerHTML = '<option value="">Select Group...</option>';
+  (currentEstimate.phases || []).forEach(phase => {
+    (phase.groups || []).forEach(group => {
+      const opt = document.createElement('option');
+      opt.value = group.id;
+      opt.textContent = `${phase.name} > ${group.name}`;
+      select.appendChild(opt);
+    });
+  });
+
+  document.getElementById('subgroupName').value = '';
+  document.getElementById('subgroupDescription').value = '';
+
+  const modal = document.getElementById('subgroupModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+}
+
+function closeSubgroupModal() {
+  const modal = document.getElementById('subgroupModal');
+  modal.classList.remove('show');
+  setTimeout(() => modal.style.display = 'none', 200);
+}
+
+async function saveSubgroup() {
+  const groupId = document.getElementById('subgroupGroup').value;
+  const name = document.getElementById('subgroupName').value.trim();
+
+  if (!groupId || !name) {
+    showToast('Group and subgroup name required', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/groups/${groupId}/subgroups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description: document.getElementById('subgroupDescription').value.trim()
+      })
+    });
+
+    if (!response.ok) throw new Error('Failed to create subgroup');
+
+    showToast('Subgroup created', 'success');
+    closeSubgroupModal();
+    await loadEstimateForJob(currentJobId);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================================
+// DRAG-AND-DROP FOR ITEMS (Phase 112-04)
+// ============================================================
+
+let draggedItem = null;
+
+function initDragDrop() {
+  // Make all item rows draggable
+  document.querySelectorAll('.item-row').forEach(row => {
+    row.draggable = true;
+
+    row.addEventListener('dragstart', (e) => {
+      draggedItem = {
+        id: row.dataset.itemId,
+        subgroupId: row.dataset.subgroupId
+      };
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    row.addEventListener('dragend', (e) => {
+      row.classList.remove('dragging');
+      draggedItem = null;
+    });
+  });
+
+  // Make subgroup rows drop zones
+  document.querySelectorAll('.subgroup-row').forEach(row => {
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      row.classList.add('drop-zone-active');
+    });
+
+    row.addEventListener('dragleave', (e) => {
+      row.classList.remove('drop-zone-active');
+    });
+
+    row.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      row.classList.remove('drop-zone-active');
+
+      if (!draggedItem) return;
+
+      const targetSubgroupId = row.dataset.subgroupId;
+      if (draggedItem.subgroupId === targetSubgroupId) return; // Same subgroup
+
+      // Move item to new subgroup
+      try {
+        const response = await fetch(`/api/estimates/${currentEstimate.id}/reorder`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: [{
+              id: draggedItem.id,
+              subgroup_id: targetSubgroupId,
+              sort_order: 999
+            }]
+          })
+        });
+
+        if (!response.ok) throw new Error('Failed to move item');
+
+        showToast('Item moved', 'success');
+        await loadEstimateForJob(currentJobId);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  });
 }
 
