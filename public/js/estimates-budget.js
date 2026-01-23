@@ -57,6 +57,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     showEmptyState();
   }
 
+  // Get job ID from URL parameter or sidebar
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlJobId = urlParams.get('job');
+
   // Setup job sidebar listener for both modes
   if (window.JobSidebar) {
     window.JobSidebar.onJobChange(async (jobId) => {
@@ -69,16 +73,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         showEmptyState();
       }
     });
+  }
 
-    // Get initially selected job on page load
-    const initialJobId = window.JobSidebar.getSelectedJobId();
-    if (initialJobId) {
-      currentJobId = initialJobId;
-      if (currentMode === 'estimates') {
-        await loadEstimateForJob(initialJobId);
-      } else if (currentMode === 'budget') {
-        await loadJobBudgetForJob(initialJobId);
-      }
+  // Load initial job - prioritize URL parameter, fall back to sidebar
+  const initialJobId = urlJobId || (window.JobSidebar?.getSelectedJobId());
+  if (initialJobId) {
+    currentJobId = initialJobId;
+    if (currentMode === 'estimates') {
+      await loadEstimateForJob(initialJobId);
+    } else if (currentMode === 'budget') {
+      await loadJobBudgetForJob(initialJobId);
     }
   }
 
