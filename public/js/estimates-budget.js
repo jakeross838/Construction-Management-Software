@@ -1666,33 +1666,34 @@ function editLineItem(lineId) {
 }
 
 async function deleteLineItem(lineId) {
+  console.log('[deleteLineItem] Deleting line item:', lineId);
+
   if (!confirm('Delete this line item?')) return;
 
+  if (!currentEstimate) {
+    showToast('No estimate loaded', 'error');
+    return;
+  }
+
   try {
-    const response = await fetch(`/api/estimate-lines/${lineId}`, {
-      method: 'DELETE'
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/lines/${lineId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleted_by: 'User' })
     });
 
-    if (!response.ok) throw new Error('Failed to delete');
-
-    // Remove row from table
-    const row = document.querySelector(`tr[data-id="${lineId}"]`);
-    if (row) {
-      row.style.opacity = '0';
-      setTimeout(() => {
-        row.remove();
-        recalculateTotals();
-        // Renumber rows
-        document.querySelectorAll('.line-item-row .row-number').forEach((cell, i) => {
-          cell.textContent = i + 1;
-        });
-      }, 200);
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to delete');
     }
 
     showToast('Line item deleted', 'success');
+
+    // Reload estimate to refresh totals and hierarchy
+    await loadEstimateForJob(currentJobId);
   } catch (err) {
-    console.error('Delete failed:', err);
-    showToast('Failed to delete line item', 'error');
+    console.error('[deleteLineItem] Error:', err);
+    showToast(err.message || 'Failed to delete line item', 'error');
   }
 }
 
