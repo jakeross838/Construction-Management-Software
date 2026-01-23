@@ -184,8 +184,23 @@ async function loadJobs() {
 }
 
 async function loadCostCodes() {
-  const response = await fetch('/api/cost-codes');
-  costCodes = await response.json();
+  console.log('[loadCostCodes] Fetching cost codes from API');
+  try {
+    const response = await fetch('/api/cost-codes');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const data = await response.json();
+    console.log('[loadCostCodes] API response type:', typeof data, 'is array:', Array.isArray(data));
+
+    // Handle both wrapped {costCodes: [...]} and unwrapped [...] formats
+    costCodes = Array.isArray(data) ? data : (data.costCodes || []);
+    console.log('[loadCostCodes] Loaded cost codes:', costCodes.length);
+  } catch (err) {
+    console.error('[loadCostCodes] Failed to load cost codes:', err);
+    costCodes = []; // Fallback to empty array
+    throw err; // Re-throw so Promise.all catches it
+  }
 }
 
 function populateJobDropdowns() {
