@@ -32,32 +32,45 @@ let aiEstimate = null;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('[INIT] Page initialization starting');
+  console.log('[INIT] URL:', window.location.href);
+
   // Force estimates mode (mode switcher removed from UI)
   currentMode = 'estimates';
   localStorage.setItem('estimatesBudgetMode', 'estimates');
+  console.log('[INIT] Mode set to:', currentMode);
 
   // Setup event listeners
   setupEventListeners();
+  console.log('[INIT] Event listeners setup complete');
 
   // Get job ID from URL parameter or sidebar first
   const urlParams = new URLSearchParams(window.location.search);
   const urlJobId = urlParams.get('job');
-  const initialJobId = urlJobId || (window.JobSidebar?.getSelectedJobId());
+  const sidebarJobId = window.JobSidebar?.getSelectedJobId();
+  const initialJobId = urlJobId || sidebarJobId;
+  console.log('[INIT] URL job ID:', urlJobId);
+  console.log('[INIT] Sidebar job ID:', sidebarJobId);
+  console.log('[INIT] Initial job ID:', initialJobId);
 
   // Load reference data (jobs, cost codes) - MUST complete before loading estimate
   try {
+    console.log('[INIT] Loading reference data (jobs, cost codes)...');
     await Promise.all([
       loadJobs(),
       loadCostCodes()
     ]);
+    console.log('[INIT] Reference data loaded - jobs:', jobs.length, 'cost codes:', costCodes.length);
   } catch (err) {
-    console.error('Failed to load reference data:', err);
+    console.error('[INIT] Failed to load reference data:', err);
     showToast('Failed to load reference data', 'error');
   }
 
   // Setup job sidebar listener for both modes
   if (window.JobSidebar) {
+    console.log('[INIT] Setting up job sidebar listener');
     window.JobSidebar.onJobChange(async (jobId) => {
+      console.log('[JobSidebar.onJobChange] Job changed to:', jobId);
       currentJobId = jobId || null;
       if (currentMode === 'budget' && jobId) {
         await loadJobBudgetForJob(jobId);
@@ -67,10 +80,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         showEmptyState();
       }
     });
+  } else {
+    console.warn('[INIT] window.JobSidebar not available');
   }
 
   // Load initial job data
   if (initialJobId) {
+    console.log('[INIT] Loading initial job data for:', initialJobId);
     currentJobId = initialJobId;
     if (currentMode === 'estimates') {
       await loadEstimateForJob(initialJobId);
@@ -79,11 +95,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   } else if (currentMode === 'estimates') {
     // Only show empty state if no job is selected
+    console.log('[INIT] No job selected, showing empty state');
     showEmptyState();
   }
 
   // Initialize keyboard shortcuts
   initKeyboardShortcuts();
+  console.log('[INIT] Initialization complete');
 });
 
 // Removed: View initialization - table view only
@@ -631,6 +649,7 @@ async function copyShareLink() {
 // ============================================================
 
 function openAddLineModal(lineId = null, sectionId = null) {
+  console.log('[openAddLineModal] Called with lineId:', lineId, 'sectionId:', sectionId);
   console.log('[openAddLineModal] currentEstimate:', currentEstimate);
   console.log('[openAddLineModal] currentJobId:', currentJobId);
 
@@ -652,6 +671,7 @@ function openAddLineModal(lineId = null, sectionId = null) {
   // Populate cost codes dropdown
   const costCodeSelect = document.getElementById('lineCostCode');
   costCodeSelect.innerHTML = '<option value="">Select cost code...</option>';
+  console.log('[openAddLineModal] Populating cost codes, count:', costCodes?.length || 0);
   (costCodes || []).forEach(cc => {
     const opt = document.createElement('option');
     opt.value = cc.id;
@@ -662,6 +682,7 @@ function openAddLineModal(lineId = null, sectionId = null) {
   // Populate sections dropdown
   const sectionSelect = document.getElementById('lineSection');
   sectionSelect.innerHTML = '<option value="">No section</option>';
+  console.log('[openAddLineModal] Populating sections, count:', currentEstimate.sections?.length || 0);
   (currentEstimate.sections || []).forEach(section => {
     const opt = document.createElement('option');
     opt.value = section.id;
@@ -678,20 +699,35 @@ function openAddLineModal(lineId = null, sectionId = null) {
   const calculateAmount = () => {
     const qty = parseFloat(qtyInput.value) || 0;
     const cost = parseFloat(costInput.value) || 0;
-    amountInput.value = (qty * cost).toFixed(2);
+    const total = qty * cost;
+    amountInput.value = total.toFixed(2);
+    console.log('[calculateAmount] qty:', qty, 'cost:', cost, 'total:', total);
   };
 
-  qtyInput.addEventListener('input', calculateAmount);
-  costInput.addEventListener('input', calculateAmount);
+  // CRITICAL: Remove old listeners to prevent duplicate event handlers
+  // Clone and replace to remove all event listeners
+  const qtyInputClone = qtyInput.cloneNode(true);
+  const costInputClone = costInput.cloneNode(true);
+  qtyInput.parentNode.replaceChild(qtyInputClone, qtyInput);
+  costInput.parentNode.replaceChild(costInputClone, costInput);
+
+  // Add new listeners to cloned inputs
+  document.getElementById('lineQuantity').addEventListener('input', calculateAmount);
+  document.getElementById('lineUnitCost').addEventListener('input', calculateAmount);
+
+  console.log('[openAddLineModal] Auto-calculation listeners attached');
 
   // Show modal
   document.getElementById('lineItemModalTitle').textContent = lineId ? 'Edit Line Item' : 'Add Line Item';
   const modal = document.getElementById('lineItemModal');
   modal.style.display = 'flex';
-  setTimeout(() => modal.classList.add('show'), 10);
+  setTimeout(() => {
+    modal.classList.add('show');
+    console.log('[openAddLineModal] Modal shown');
+  }, 10);
 
   // Focus description field
-  document.getElementById('lineDescription').focus();
+  setTimeout(() => document.getElementById('lineDescription').focus(), 100);
 }
 
 function closeLineItemModal() {
@@ -701,8 +737,11 @@ function closeLineItemModal() {
 }
 
 async function saveLineItem() {
+  console.log('[saveLineItem] Starting save');
+
   if (!currentEstimate) {
     showToast('No estimate loaded', 'error');
+    console.error('[saveLineItem] No currentEstimate - aborting');
     return;
   }
 
@@ -716,8 +755,11 @@ async function saveLineItem() {
   const notes = document.getElementById('lineNotes').value.trim();
   const lineItemId = document.getElementById('lineItemId').value;
 
+  console.log('[saveLineItem] Form values:', { description, quantity, unit, unitCost, amount, costCodeId, sectionId, lineItemId });
+
   if (!description) {
     showToast('Description is required', 'error');
+    console.error('[saveLineItem] Description is required');
     return;
   }
 
@@ -737,32 +779,44 @@ async function saveLineItem() {
 
     if (lineItemId) {
       // Update existing line
-      response = await fetch(`/api/estimates/${currentEstimate.id}/lines/${lineItemId}`, {
+      const url = `/api/estimates/${currentEstimate.id}/lines/${lineItemId}`;
+      console.log('[saveLineItem] PATCH', url, body);
+      response = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
     } else {
       // Create new line
-      response = await fetch(`/api/estimates/${currentEstimate.id}/lines`, {
+      const url = `/api/estimates/${currentEstimate.id}/lines`;
+      console.log('[saveLineItem] POST', url, body);
+      response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
     }
 
+    console.log('[saveLineItem] Response status:', response.status);
+
     if (!response.ok) {
       const err = await response.json();
+      console.error('[saveLineItem] API error:', err);
       throw new Error(err.error || 'Failed to save line item');
     }
+
+    const savedLine = await response.json();
+    console.log('[saveLineItem] Saved successfully:', savedLine);
 
     showToast(lineItemId ? 'Line item updated' : 'Line item added', 'success');
     closeLineItemModal();
 
     // Reload estimate to get updated lines
+    console.log('[saveLineItem] Reloading estimate...');
     await reloadCurrentEstimate();
+    console.log('[saveLineItem] Reload complete');
   } catch (err) {
-    console.error('Error saving line item:', err);
+    console.error('[saveLineItem] Error:', err);
     showToast(err.message, 'error');
   }
 }
