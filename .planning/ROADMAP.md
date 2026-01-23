@@ -398,6 +398,30 @@ Plans:
 Plans:
 - [x] 111-01-PLAN.md - Estimate page UI restructure to match Buildertrend layout
 
+### Phase 112: Fix Estimates Functionality
+**Goal**: Fix critical bugs preventing estimate creation and line item management
+**Depends on**: Phase 111
+**Requirements**:
+  - User can create estimates from empty state
+  - User can add line items to estimates
+  - Page correctly loads estimates when job is selected
+  - No UI glitches or broken workflows
+**Success Criteria** (what must be TRUE):
+  1. Create estimate modal opens with job pre-selected
+  2. Estimate saves successfully and loads on page
+  3. Add line item modal opens with all fields functional
+  4. Line item auto-calculation works (qty × unit cost = amount)
+  5. Line items save successfully and appear in table
+  6. Hierarchy displays with phases/groups/subgroups/items
+  7. Page loads estimate correctly from URL parameter
+  8. Collapse/expand works at all hierarchy levels
+**Status**: Complete (2026-01-22)
+**Plans**: 3 plans (all complete)
+Plans:
+- [x] 112-01-PLAN.md - Debug and fix estimate creation, line items, and page initialization
+- [x] 112-02-PLAN.md - Verify database schema for estimate hierarchy (already exists)
+- [x] 112-03-PLAN.md - Render estimate hierarchy with collapse/expand UI
+
 ## Progress
 
 ### v3.1 Business Intelligence & Financial Management
@@ -424,6 +448,7 @@ Plans:
 | 109. Proposal Generation | 3 | Complete | 2026-01-22 |
 | 110. UI/UX Overhaul | 5 | Complete | 2026-01-22 |
 | 111. Estimate Page Redesign | 1 | Complete | 2026-01-22 |
+| 112. Fix Estimates Functionality | 3 | Complete | 2026-01-22 |
 
 ---
 *Last updated: 2026-01-22*
