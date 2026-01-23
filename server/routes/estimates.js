@@ -792,6 +792,54 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// GET ESTIMATE BY JOB ID
+// ============================================================
+
+router.get('/job/:jobId', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  // Get the most recent estimate for this job
+  const { data: estimate, error } = await supabase
+    .from('v2_estimates')
+    .select(`
+      *,
+      job:v2_jobs(id, name, address),
+      source_bid:v2_bids(id, title, bid_amount, vendor:v2_vendors(id, name))
+    `)
+    .eq('job_id', jobId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!estimate) throw new AppError('NOT_FOUND', 'No estimate found for this job');
+
+  // Get line items with cost codes
+  const { data: lines } = await supabase
+    .from('v2_estimate_lines')
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .eq('estimate_id', estimate.id)
+    .order('sort_order', { ascending: true });
+
+  // Get sections
+  const { data: sections } = await supabase
+    .from('v2_estimate_sections')
+    .select('*')
+    .eq('estimate_id', estimate.id)
+    .order('sort_order', { ascending: true });
+
+  res.json({
+    ...estimate,
+    lines: lines || [],
+    sections: sections || []
+  });
+}));
+
+// ============================================================
 // GET SINGLE ESTIMATE
 // ============================================================
 
