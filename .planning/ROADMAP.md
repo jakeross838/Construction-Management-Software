@@ -393,10 +393,10 @@ Plans:
   3. Secondary toolbar has Proposal dashboard, Expand all, Jump to search
   4. Empty state matches reference design visually
   5. Page updates when sidebar job selection changes
-**Status**: Planned
-**Plans**: 1 plan
+**Status**: Complete (2026-01-22)
+**Plans**: 1 plan (complete)
 Plans:
-- [ ] 111-01-PLAN.md - Estimate page UI restructure to match Buildertrend layout
+- [x] 111-01-PLAN.md - Estimate page UI restructure to match Buildertrend layout
 
 ## Progress
 
@@ -423,7 +423,7 @@ Plans:
 | 108. Selections & Allowances | 3 | Complete | 2026-01-22 |
 | 109. Proposal Generation | 3 | Complete | 2026-01-22 |
 | 110. UI/UX Overhaul | 5 | Complete | 2026-01-22 |
-| 111. Estimate Page Redesign | 1 | Planned | - |
+| 111. Estimate Page Redesign | 1 | Complete | 2026-01-22 |
 
 ---
 *Last updated: 2026-01-22*
