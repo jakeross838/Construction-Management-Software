@@ -16,7 +16,10 @@ let jobs = [];
 let costCodes = [];
 let acceptedBids = [];
 let currentEstimate = null;
-let collapsedSections = new Set(); // Track collapsed section IDs
+let collapsedSections = new Set(); // Track collapsed section IDs (legacy)
+let collapsedPhases = new Set(); // Track collapsed phase IDs
+let collapsedGroups = new Set(); // Track collapsed group IDs
+let collapsedSubgroups = new Set(); // Track collapsed subgroup IDs
 let editingSectionId = null; // Currently editing section
 let selectedBidId = null;
 let debounceTimer;
@@ -1017,6 +1020,157 @@ function toggleSectionCollapse(sectionId) {
   renderLinesTable();
 }
 
+// ============================================================
+// HIERARCHY RENDERING (4-level: Phases > Groups > Subgroups > Items)
+// ============================================================
+
+function renderEstimateHierarchy() {
+  const tbody = document.getElementById('linesTableBody');
+  if (!currentEstimate || !currentEstimate.phases) {
+    tbody.innerHTML = '<tr><td colspan="10">No items</td></tr>';
+    return;
+  }
+
+  let html = '';
+  let rowNum = 1;
+
+  currentEstimate.phases.forEach(phase => {
+    // Phase row
+    html += renderPhaseRow(phase);
+
+    if (!collapsedPhases.has(phase.id)) {
+      (phase.groups || []).forEach(group => {
+        // Group row
+        html += renderGroupRow(group, phase.id);
+
+        if (!collapsedGroups.has(group.id)) {
+          (group.subgroups || []).forEach(subgroup => {
+            // Subgroup row
+            html += renderSubgroupRow(subgroup, group.id);
+
+            if (!collapsedSubgroups.has(subgroup.id)) {
+              (subgroup.items || []).forEach(item => {
+                // Item row
+                html += renderItemRow(item, subgroup.id, rowNum++);
+              });
+            }
+          });
+        }
+      });
+    }
+  });
+
+  tbody.innerHTML = html || '<tr><td colspan="10" style="text-align: center; padding: 40px;">No estimate hierarchy. Use legacy view or create phases.</td></tr>';
+}
+
+function renderPhaseRow(phase) {
+  const collapsed = collapsedPhases.has(phase.id);
+  return `
+    <tr class="phase-row">
+      <td colspan="2">
+        <button class="collapse-btn" onclick="togglePhase('${phase.id}')">
+          ${collapsed ? '▶' : '▼'}
+        </button>
+      </td>
+      <td colspan="6">
+        <strong>📋 ${escapeHtml(phase.name || 'Unnamed Phase')}</strong>
+      </td>
+      <td class="col-right">${formatCurrency(phase.subtotal || 0)}</td>
+      <td></td>
+    </tr>
+  `;
+}
+
+function renderGroupRow(group, phaseId) {
+  const collapsed = collapsedGroups.has(group.id);
+  return `
+    <tr class="group-row" style="padding-left: 16px;">
+      <td></td>
+      <td colspan="2">
+        <button class="collapse-btn" onclick="toggleGroup('${group.id}')">
+          ${collapsed ? '▶' : '▼'}
+        </button>
+      </td>
+      <td colspan="5">
+        <span style="margin-left: 16px;">📁 ${escapeHtml(group.name || 'Unnamed Group')}</span>
+      </td>
+      <td class="col-right">${formatCurrency(group.subtotal || 0)}</td>
+      <td></td>
+    </tr>
+  `;
+}
+
+function renderSubgroupRow(subgroup, groupId) {
+  const collapsed = collapsedSubgroups.has(subgroup.id);
+  return `
+    <tr class="subgroup-row" style="padding-left: 32px;">
+      <td></td>
+      <td></td>
+      <td colspan="2">
+        <button class="collapse-btn" onclick="toggleSubgroup('${subgroup.id}')">
+          ${collapsed ? '▶' : '▼'}
+        </button>
+      </td>
+      <td colspan="4">
+        <span style="margin-left: 32px;">📁 ${escapeHtml(subgroup.name || 'Unnamed Subgroup')}</span>
+      </td>
+      <td class="col-right">${formatCurrency(subgroup.subtotal || 0)}</td>
+      <td></td>
+    </tr>
+  `;
+}
+
+function renderItemRow(item, subgroupId, rowNum) {
+  const isEditable = ['draft', 'rejected'].includes(currentEstimate?.status);
+  return `
+    <tr class="item-row" style="padding-left: 48px;">
+      <td class="select-col">
+        ${isEditable ? `<input type="checkbox" data-id="${item.id}">` : ''}
+      </td>
+      <td></td>
+      <td></td>
+      <td class="row-number">${rowNum}</td>
+      <td>${item.cost_code?.code || '-'}</td>
+      <td style="padding-left: 48px;">${escapeHtml(item.description || '')}</td>
+      <td class="col-right">${item.quantity || 1}</td>
+      <td>${item.unit || 'LS'}</td>
+      <td class="col-right">${formatCurrency(item.unit_cost || 0)}</td>
+      <td class="col-right">${formatCurrency(item.amount || 0)}</td>
+      <td>
+        ${isEditable ? `<button class="btn btn-icon btn-ghost btn-sm" onclick="deleteLineItem('${item.id}')">🗑️</button>` : ''}
+      </td>
+    </tr>
+  `;
+}
+
+// Toggle functions
+function togglePhase(id) {
+  if (collapsedPhases.has(id)) {
+    collapsedPhases.delete(id);
+  } else {
+    collapsedPhases.add(id);
+  }
+  renderEstimateHierarchy();
+}
+
+function toggleGroup(id) {
+  if (collapsedGroups.has(id)) {
+    collapsedGroups.delete(id);
+  } else {
+    collapsedGroups.add(id);
+  }
+  renderEstimateHierarchy();
+}
+
+function toggleSubgroup(id) {
+  if (collapsedSubgroups.has(id)) {
+    collapsedSubgroups.delete(id);
+  } else {
+    collapsedSubgroups.add(id);
+  }
+  renderEstimateHierarchy();
+}
+
 async function reloadCurrentEstimate() {
   if (!currentEstimate?.id) return;
 
@@ -1037,6 +1191,13 @@ function renderLinesTable() {
   const tbody = document.getElementById('linesTableBody');
   if (!tbody || !currentEstimate) return;
 
+  // Check if estimate has new hierarchy structure
+  if (currentEstimate.phases && currentEstimate.phases.length > 0) {
+    renderEstimateHierarchy();
+    return;
+  }
+
+  // Fall back to legacy section-based rendering
   const sections = currentEstimate.sections || [];
   const lines = currentEstimate.lines || [];
   const isEditable = ['draft', 'rejected'].includes(currentEstimate.status);

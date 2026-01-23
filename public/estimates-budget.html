@@ -481,6 +481,52 @@
     .tab-content.active {
       display: block;
     }
+
+    /* =========================
+       HIERARCHY ROWS (Phases/Groups/Subgroups/Items)
+       ========================= */
+    .phase-row {
+      background: var(--bg-card-elevated);
+      font-weight: 700;
+      border-top: 2px solid var(--border);
+      font-size: 15px;
+    }
+
+    .group-row {
+      background: rgba(88, 166, 255, 0.05);
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .subgroup-row {
+      background: var(--bg-card);
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .item-row {
+      background: var(--bg-card);
+      font-size: 13px;
+    }
+
+    .item-row:hover {
+      background: rgba(88, 166, 255, 0.03);
+    }
+
+    /* Collapse button */
+    .collapse-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 12px;
+      transition: color 0.2s;
+    }
+
+    .collapse-btn:hover {
+      color: var(--accent-blue);
+    }
   </style>
 </head>
 <body data-page-context="job" data-page-id="estimates-budget" data-page-group="precon" data-role-min="pm">

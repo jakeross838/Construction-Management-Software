@@ -859,7 +859,26 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
   if (error || !estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
 
-  // Get line items with cost codes
+  // Get full hierarchy: phases > groups > subgroups > items
+  const { data: phases } = await supabase
+    .from('v2_estimate_phases')
+    .select(`
+      *,
+      groups:v2_estimate_groups(
+        *,
+        subgroups:v2_estimate_subgroups(
+          *,
+          items:v2_estimate_line_items(
+            *,
+            cost_code:v2_cost_codes(id, code, name, category)
+          )
+        )
+      )
+    `)
+    .eq('estimate_id', id)
+    .order('sort_order', { ascending: true });
+
+  // Get line items with cost codes (legacy flat structure for backward compatibility)
   const { data: lines } = await supabase
     .from('v2_estimate_lines')
     .select(`
@@ -869,7 +888,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .eq('estimate_id', id)
     .order('sort_order', { ascending: true });
 
-  // Get sections
+  // Get sections (legacy for backward compatibility)
   const { data: sections } = await supabase
     .from('v2_estimate_sections')
     .select('*')
@@ -903,6 +922,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .eq('source_estimate_id', id)
     .limit(1);
 
+  estimate.phases = phases || [];
   estimate.lines = lines || [];
   estimate.sections = sections || [];
   estimate.activity = activity || [];
