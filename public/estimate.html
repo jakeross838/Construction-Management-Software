@@ -14,54 +14,49 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 20px 24px;
+      padding: 16px 24px;
       background: var(--bg-card);
       border-bottom: 1px solid var(--border);
     }
     .estimate-page-title {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
     }
     .estimate-page-title h1 {
       margin: 0;
-      font-size: 1.5rem;
+      font-size: 1.3rem;
       font-weight: 600;
+      color: var(--text-primary);
     }
-    .estimate-job-info {
-      font-size: 0.9rem;
+    .estimate-breadcrumb {
+      font-size: 0.85rem;
       color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
     }
     .estimate-cost-summary {
       display: flex;
-      align-items: center;
-      gap: 32px;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 0.9rem;
     }
-    .cost-item {
-      text-align: right;
-    }
-    .cost-item-label {
-      font-size: 0.75rem;
+    .cost-label {
       color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
+      font-size: 0.85rem;
     }
-    .cost-item-value {
-      font-size: 1.25rem;
+    .cost-value {
       font-weight: 600;
-    }
-    .cost-item.profit .cost-item-value {
-      color: var(--accent-green);
-    }
-    .cost-item.total .cost-item-value {
-      color: var(--accent-blue);
-      font-size: 1.5rem;
+      color: var(--text-primary);
     }
     .cost-operator {
-      font-size: 1.25rem;
       color: var(--text-secondary);
-      align-self: center;
+      padding: 0 4px;
+    }
+    .cost-total-value {
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--text-primary);
     }
     .estimate-actions {
       display: flex;
@@ -72,9 +67,25 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 24px;
+      padding: 12px 24px;
       background: var(--bg-primary);
       border-bottom: 1px solid var(--border);
+    }
+    .btn-dashboard {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-dashboard:hover {
+      background: var(--bg-card);
     }
     .estimate-toolbar-left {
       display: flex;
@@ -143,16 +154,76 @@
     .estimate-empty-actions {
       display: flex;
       gap: 12px;
-      margin-bottom: 32px;
+      margin-bottom: 24px;
+    }
+    .btn-buildertrend {
+      background: #2E6BE5;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-buildertrend:hover {
+      background: #2558c7;
+    }
+    .btn-buildertrend-secondary {
+      background: white;
+      color: #2E6BE5;
+      border: 1px solid #2E6BE5;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-buildertrend-secondary:hover {
+      background: #f0f4ff;
     }
     .estimate-empty-divider {
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       color: var(--text-secondary);
-      margin: 24px 0;
+      margin: 20px 0 16px 0;
     }
     .estimate-empty-import {
       display: flex;
+      flex-direction: column;
+      align-items: center;
       gap: 12px;
+    }
+    .import-label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .import-buttons {
+      display: flex;
+      gap: 12px;
+    }
+    .btn-import {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-import:hover {
+      background: var(--bg-card);
+      border-color: #2E6BE5;
     }
     .estimate-content {
       padding: 24px;
@@ -241,31 +312,25 @@
         <div class="estimate-page-header">
           <div class="estimate-page-title">
             <button class="btn btn-ghost btn-sm" onclick="history.back()" title="Back">
-              ← Back
+              ←
             </button>
             <div>
               <h1>Estimate</h1>
-              <div class="estimate-job-info" id="estimateJobInfo">
+              <div class="estimate-breadcrumb" id="estimateBreadcrumb">
                 <span id="jobName">Select a job from the sidebar</span>
               </div>
             </div>
           </div>
 
           <div class="estimate-cost-summary" id="costSummary" style="display: none;">
-            <div class="cost-item">
-              <div class="cost-item-label">Builder cost</div>
-              <div class="cost-item-value" id="builderCost">$0.00</div>
-            </div>
+            <span class="cost-label">Builder cost</span>
+            <span class="cost-value" id="builderCost">$0.00</span>
             <span class="cost-operator">+</span>
-            <div class="cost-item profit">
-              <div class="cost-item-label">Profit (%)</div>
-              <div class="cost-item-value" id="profitPercent">$0.00</div>
-            </div>
+            <span class="cost-label">Profit (<span id="profitPercentLabel">0%</span>)</span>
+            <span class="cost-value" id="profitAmount">$0.00</span>
             <span class="cost-operator">=</span>
-            <div class="cost-item total">
-              <div class="cost-item-label">Total price</div>
-              <div class="cost-item-value" id="totalPrice">$0.00</div>
-            </div>
+            <span class="cost-label">Total price</span>
+            <span class="cost-total-value" id="totalPrice">$0.00</span>
           </div>
 
           <div class="estimate-actions" id="estimateActions" style="display: none;">
@@ -287,8 +352,12 @@
         <!-- Toolbar -->
         <div class="estimate-toolbar" id="estimateToolbar" style="display: none;">
           <div class="estimate-toolbar-left">
+            <button class="btn-dashboard" onclick="showProposalDashboard()">
+              <span>≡</span>
+              <span>Proposal dashboard</span>
+            </button>
             <button class="btn btn-secondary btn-sm" onclick="expandAll()">
-              📂 Expand all
+              ⌄ Expand all
             </button>
             <div class="jump-to-search">
               <span class="search-icon">🔍</span>
@@ -307,27 +376,35 @@
           <div class="estimate-empty-icon">🧮</div>
           <div class="estimate-empty-title">Add an estimate</div>
           <div class="estimate-empty-subtitle">
-            Estimate the cost of the job, turn it into a proposal, and send it straight to your clients.
+            Estimate the cost of the job, turn it into a proposal,<br>and send it straight to your clients.
           </div>
           <div class="estimate-empty-actions">
-            <button class="btn btn-primary" onclick="addLineItem()">
+            <button class="btn-buildertrend" onclick="addLineItem()">
               ➕ Add item
             </button>
-            <button class="btn btn-secondary" onclick="addGroup()">
+            <button class="btn-buildertrend-secondary" onclick="addGroup()">
               📁 Add group
             </button>
-            <button class="btn btn-secondary" onclick="setProfitAndTax()">
+            <button class="btn-buildertrend-secondary" onclick="setProfitAndTax()">
               📊 Set profit and tax
             </button>
           </div>
           <div class="estimate-empty-divider">or</div>
           <div class="estimate-empty-import">
-            <button class="btn btn-ghost" onclick="importFromExcel()">
-              📊 Excel
-            </button>
-            <button class="btn btn-ghost" onclick="importFromTemplate()">
-              📋 Template
-            </button>
+            <div class="import-label">
+              <span>⚡</span>
+              <span>IMPORT FROM</span>
+            </div>
+            <div class="import-buttons">
+              <button class="btn-import" onclick="importFromExcel()">
+                <span>📊</span>
+                <span>Excel</span>
+              </button>
+              <button class="btn-import" onclick="importFromTemplate()">
+                <span>📋</span>
+                <span>Template</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -435,9 +512,9 @@
     }
 
     function showEmptyState() {
-      // Update job name
+      // Update breadcrumb
       const job = window.JobSidebar?.getSelectedJob();
-      document.getElementById('jobName').textContent = job ? `JOB: ${job.name}` : 'Select a job';
+      document.getElementById('jobName').textContent = job ? `JOB: ${job.name.toUpperCase()} / ESTIMATE` : 'Select a job';
 
       // Hide cost summary and actions
       document.getElementById('costSummary').style.display = 'none';
@@ -450,18 +527,19 @@
     }
 
     function showEstimate(estimate) {
-      // Update job name
+      // Update breadcrumb
       const job = window.JobSidebar?.getSelectedJob();
-      document.getElementById('jobName').textContent = job ? `JOB: ${job.name} / ESTIMATE` : 'Estimate';
+      document.getElementById('jobName').textContent = job ? `JOB: ${job.name.toUpperCase()} / ESTIMATE` : 'Estimate';
 
-      // Show cost summary
+      // Show cost summary with inline format
       const builderCost = estimate.subtotal || 0;
       const profitAmount = estimate.profit_amount || 0;
       const profitPercent = estimate.profit_percent || 0;
       const totalPrice = estimate.total_amount || 0;
 
       document.getElementById('builderCost').textContent = formatCurrency(builderCost);
-      document.getElementById('profitPercent').textContent = `${profitPercent.toFixed(1)}% (${formatCurrency(profitAmount)})`;
+      document.getElementById('profitPercentLabel').textContent = `${profitPercent.toFixed(1)}%`;
+      document.getElementById('profitAmount').textContent = formatCurrency(profitAmount);
       document.getElementById('totalPrice').textContent = formatCurrency(totalPrice);
       document.getElementById('costSummary').style.display = 'flex';
 
@@ -598,6 +676,10 @@
 
     function createProposal() {
       showToast('Create proposal coming soon', 'info');
+    }
+
+    function showProposalDashboard() {
+      showToast('Proposal dashboard coming soon', 'info');
     }
 
     function expandAll() {
