@@ -881,6 +881,15 @@ async function convertToBudget() {
 // ============================================================
 
 function openSectionModal(sectionId = null) {
+  console.log('[openSectionModal] Called with sectionId:', sectionId);
+  console.log('[openSectionModal] currentEstimate:', currentEstimate);
+
+  if (!currentEstimate) {
+    showToast('No estimate loaded - please select a job or create an estimate first', 'error');
+    console.error('[openSectionModal] No currentEstimate set');
+    return;
+  }
+
   editingSectionId = sectionId;
 
   if (sectionId) {
@@ -902,10 +911,11 @@ function openSectionModal(sectionId = null) {
 
   const modal = document.getElementById('sectionModal');
   modal.style.display = 'flex';
-  modal.classList.add('show');
+  setTimeout(() => modal.classList.add('show'), 10);
 
   // Focus name field
   setTimeout(() => document.getElementById('sectionName').focus(), 100);
+  console.log('[openSectionModal] Modal opened');
 }
 
 function closeSectionModal() {
