@@ -5,26 +5,32 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** Phase 110 UI/UX Overhaul - IN PROGRESS
+**Current focus:** Phase 111 Estimate Page Redesign - PENDING
 
 ## Current Position
 
-Phase: 110 (UI/UX Overhaul)
-Plan: 2 of 4
-Status: IN PROGRESS
-Last activity: 2026-01-22 - Completed Phase 110-02 Inline editing
+Phase: 111 (Estimate Page Redesign)
+Plan: 1 of 1
+Status: PENDING
+Last activity: 2026-01-22 - Created Phase 111-01 plan
 
-Progress: [####------] 50% (2 of 4 plans complete)
+Progress: [----------] 0% (0 of 1 plans complete)
 
 ## Performance Metrics
 
-**Phase 110 (UI/UX Overhaul - IN PROGRESS):**
+**Phase 111 (Estimate Page Redesign - PENDING):**
+- Plan 111-01: Estimate page UI restructure (pending)
+- **Total Duration so far:** 0 min
+- **Output:** TBD
+
+**Phase 110 (UI/UX Overhaul - COMPLETE):**
 - Plan 110-01: Interface cleanup and dropdown menus (completed, 35 min)
 - Plan 110-02: Inline line item editing (completed, 15 min)
-- Plan 110-03: Assembly picker enhancements (pending)
-- Plan 110-04: Workflow polish (pending)
-- **Total Duration so far:** ~50 min
-- **Output:** Click-to-edit line items with keyboard navigation, reduced clicks from 4+ to 1 per edit
+- Plan 110-03: Workflow stepper (completed, 15 min)
+- Plan 110-04: Keyboard shortcuts (completed, 10 min)
+- Plan 110-05: Mobile responsive design (completed, 8 min)
+- **Total Duration:** ~83 min
+- **Output:** Full UI overhaul with keyboard shortcuts, mobile responsive, workflow stepper, inline editing
 
 **Phase 109 (Proposal Generation - COMPLETE):**
 - Plan 109-01: Database schema for proposals (completed, 5 min)
@@ -154,12 +160,21 @@ Key decisions for v3.1:
 - Assembly children excluded from totals (parent_line_id IS NULL filter)
 - Triggers cascade: line change -> section subtotal -> estimate totals -> assembly header
 
-**Phase 110 UI/UX Overhaul Decisions (IN PROGRESS):**
+**Phase 111 Estimate Page Redesign Decisions (PENDING):**
+- Single estimate per job - sidebar controls which job's estimate is shown (no job filter needed)
+- Buildertrend-style layout with two-tier header/toolbar structure
+- Inline cost summary: "Builder cost + Profit (%) = Total price" for quick visibility
+- Professional empty state with clear action hierarchy and import options
+- Clean spacing and button styling matching Buildertrend reference design
+
+**Phase 110 UI/UX Overhaul Decisions (COMPLETE):**
 - Removed card view entirely - table view provides better information density for construction data
 - Dropdown menu pattern established using .dropdown, .dropdown-toggle, .dropdown-menu classes
 - Progressive disclosure: secondary actions moved to overflow menus
 - Preserved proposal generation feature (fully implemented in Phase 109)
 - Future feature toasts reference specific phases (107, 108, 110-02) instead of generic "coming soon"
+- 44px minimum touch targets for mobile usability
+- Keyboard shortcuts mimic spreadsheet behavior (Tab/Enter navigation)
 
 **Phase 108 Selections & Allowances Decisions (COMPLETE):**
 - estimate_line_id uses ON DELETE SET NULL - allowance persists if estimate line deleted

@@ -375,12 +375,28 @@ Plans:
   5. Keyboard navigation (Tab, Enter, Escape) works intuitively
   6. Works on tablet/mobile for field use
   7. Visual design matches warm light theme
-**Research**: Likely (UX patterns, competitor analysis)
-**Plans**: 3 plans
+**Status**: Complete (2026-01-22)
+**Plans**: 5 plans (all complete)
+
+### Phase 111: Estimate Page Redesign
+**Goal**: Restructure estimate page to match Buildertrend's professional layout
+**Depends on**: Phase 110
+**Requirements**:
+  - Single estimate per job (sidebar-driven)
+  - Clean header with breadcrumb and inline cost summary
+  - Two-tier toolbar (main actions + secondary controls)
+  - Professional empty state with clear CTA hierarchy
+  - Buildertrend-style button colors and spacing
+**Success Criteria** (what must be TRUE):
+  1. Header shows "JOB: [Name] / ESTIMATE" breadcrumb
+  2. Cost summary displays inline: "Builder cost + Profit (%) = Total price"
+  3. Secondary toolbar has Proposal dashboard, Expand all, Jump to search
+  4. Empty state matches reference design visually
+  5. Page updates when sidebar job selection changes
+**Status**: Planned
+**Plans**: 1 plan
 Plans:
-- [ ] 109-01-PLAN.md - Database schema: v2_proposals, v2_company_settings, triggers
-- [ ] 109-02-PLAN.md - PDF generator + API routes for proposal CRUD and generation
-- [ ] 109-03-PLAN.md - Client view page + acceptance workflow
+- [ ] 111-01-PLAN.md - Estimate page UI restructure to match Buildertrend layout
 
 ## Progress
 
@@ -404,9 +420,10 @@ Plans:
 |-------|-------|--------|-----------|
 | 106. Data Model & Architecture | 2 | Complete | 2026-01-22 |
 | 107. Assembly Library & Builder | 3 | Complete | 2026-01-22 |
-| 108. Selections & Allowances | 3 | In progress (1/3) | - |
-| 109. Proposal Generation | 3 | Planned | - |
-| 110. UI/UX Overhaul | TBD | Not started | - |
+| 108. Selections & Allowances | 3 | Complete | 2026-01-22 |
+| 109. Proposal Generation | 3 | Complete | 2026-01-22 |
+| 110. UI/UX Overhaul | 5 | Complete | 2026-01-22 |
+| 111. Estimate Page Redesign | 1 | Planned | - |
 
 ---
 *Last updated: 2026-01-22*
