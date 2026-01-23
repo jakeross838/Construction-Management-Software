@@ -32,22 +32,9 @@ let aiEstimate = null;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Check URL params first, then localStorage for mode
-  const urlParams = new URLSearchParams(window.location.search);
-  const urlMode = urlParams.get('mode');
-
-  if (urlMode === 'budget' || urlMode === 'estimates') {
-    currentMode = urlMode;
-    localStorage.setItem('estimatesBudgetMode', urlMode);
-    // Clean up URL (remove mode param, keep others)
-    urlParams.delete('mode');
-    const newUrl = urlParams.toString()
-      ? `${window.location.pathname}?${urlParams.toString()}`
-      : window.location.pathname;
-    window.history.replaceState({}, '', newUrl);
-  } else {
-    currentMode = localStorage.getItem('estimatesBudgetMode') || 'estimates';
-  }
+  // Force estimates mode (mode switcher removed from UI)
+  currentMode = 'estimates';
+  localStorage.setItem('estimatesBudgetMode', 'estimates');
 
   // Initialize mode UI
   updateModeUI();
@@ -66,18 +53,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load mode-specific data
   if (currentMode === 'estimates') {
-    await loadEstimates();
-    await loadStats();
+    // Show empty state initially - will load estimate when job is selected from sidebar
+    showEmptyState();
   }
 
-  // Setup job sidebar listener for budget mode
+  // Setup job sidebar listener for both modes
   if (window.JobSidebar) {
     window.JobSidebar.onJobChange(async (jobId) => {
       currentJobId = jobId || null;
       if (currentMode === 'budget' && jobId) {
         await loadJobBudgetForJob(jobId);
+      } else if (currentMode === 'estimates' && jobId) {
+        await loadEstimateForJob(jobId);
+      } else if (currentMode === 'estimates' && !jobId) {
+        showEmptyState();
       }
     });
+
+    // Get initially selected job on page load
+    const initialJobId = window.JobSidebar.getSelectedJobId();
+    if (initialJobId) {
+      currentJobId = initialJobId;
+      if (currentMode === 'estimates') {
+        await loadEstimateForJob(initialJobId);
+      } else if (currentMode === 'budget') {
+        await loadJobBudgetForJob(initialJobId);
+      }
+    }
   }
 
   // Initialize keyboard shortcuts
@@ -87,22 +89,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Removed: View initialization - table view only
 
 function setupEventListeners() {
-  // Filter change handlers
-  const jobFilter = document.getElementById('jobFilter');
-  const statusFilter = document.getElementById('statusFilter');
-  const searchInput = document.getElementById('searchInput');
-
-  if (jobFilter) jobFilter.addEventListener('change', applyFilters);
-  if (statusFilter) statusFilter.addEventListener('change', applyFilters);
-
-  if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      clearTimeout(debounceTimer);
-      const clearBtn = document.getElementById('searchClear');
-      if (clearBtn) clearBtn.style.display = e.target.value ? 'block' : 'none';
-      debounceTimer = setTimeout(() => applyFilters(), 150);
-    });
-  }
+  // Filter change handlers - removed (no longer needed for single estimate view)
 
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
@@ -140,18 +127,25 @@ function setupEventListeners() {
 }
 
 // ============================================================
-// MODE SWITCHING
+// MODE SWITCHING (removed mode switcher UI, keeping for budget mode)
 // ============================================================
 
 function switchMode(mode) {
   currentMode = mode;
   localStorage.setItem('estimatesBudgetMode', mode);
-  updateModeUI();
+
+  // Show/hide sections
+  document.querySelectorAll('.mode-section').forEach(section => {
+    section.classList.toggle('active', section.dataset.mode === currentMode);
+  });
 
   // Load data for the new mode
   if (mode === 'estimates') {
-    loadEstimates();
-    loadStats();
+    if (currentJobId) {
+      loadEstimateForJob(currentJobId);
+    } else {
+      showEmptyState();
+    }
   } else if (mode === 'budget') {
     if (currentJobId) {
       loadJobBudgetForJob(currentJobId);
@@ -159,18 +153,6 @@ function switchMode(mode) {
       renderBudgetEmptyState();
     }
   }
-}
-
-function updateModeUI() {
-  // Update mode buttons
-  document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.mode === currentMode);
-  });
-
-  // Show/hide sections
-  document.querySelectorAll('.mode-section').forEach(section => {
-    section.classList.toggle('active', section.dataset.mode === currentMode);
-  });
 }
 
 // ============================================================
@@ -212,158 +194,7 @@ function populateJobDropdowns() {
 // ============================================================
 // ESTIMATES MODE - DATA & RENDERING
 // ============================================================
-
-async function loadEstimates() {
-  const params = new URLSearchParams();
-  const jobId = document.getElementById('jobFilter')?.value;
-  const status = document.getElementById('statusFilter')?.value;
-  const search = document.getElementById('searchInput')?.value;
-
-  if (jobId) params.append('job_id', jobId);
-  if (status) params.append('status', status);
-  if (search) params.append('search', search);
-
-  try {
-    const response = await fetch(`/api/estimates?${params}`);
-    estimates = await response.json();
-    renderEstimateList();
-  } catch (err) {
-    console.error('Error loading estimates:', err);
-    showToast('Failed to load estimates', 'error');
-  }
-}
-
-async function loadStats() {
-  const jobId = document.getElementById('jobFilter')?.value;
-  const params = jobId ? `?job_id=${jobId}` : '';
-
-  try {
-    const response = await fetch(`/api/estimates/stats${params}`);
-    const stats = await response.json();
-    renderStats(stats);
-  } catch (err) {
-    console.error('Error loading stats:', err);
-  }
-}
-
-function applyFilters() {
-  loadEstimates();
-  loadStats();
-}
-
-function clearSearch() {
-  const searchInput = document.getElementById('searchInput');
-  const searchClear = document.getElementById('searchClear');
-  if (searchInput) searchInput.value = '';
-  if (searchClear) searchClear.style.display = 'none';
-  applyFilters();
-}
-
-function renderEstimateList() {
-  // Card view removed - always use table view
-  renderEstimateTable();
-}
-
-function renderEstimateTable() {
-  const tbody = document.getElementById('estimateTableBody');
-  if (!tbody) return;
-
-  if (!estimates.length) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7">
-          <div class="empty-state">
-            <div class="empty-state-icon">ðŸ“‹</div>
-            <div class="empty-state-title">No Estimates Found</div>
-            <div class="empty-state-message">Create your first estimate to start tracking project costs.</div>
-            <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ Create Estimate</button>
-          </div>
-        </td>
-      </tr>
-    `;
-    return;
-  }
-
-  tbody.innerHTML = estimates.map(est => `
-    <tr onclick="openEstimateDetail('${est.id}')">
-      <td class="col-title">
-        <div class="cell-title">${escapeHtml(est.title)}</div>
-        ${est.version > 1 ? `<span class="cell-badge">v${est.version}</span>` : ''}
-      </td>
-      <td class="col-job">${escapeHtml(est.job?.name || '-')}</td>
-      <td class="col-status">
-        <span class="badge badge-${getStatusBadgeClass(est.status)}">${formatStatus(est.status)}</span>
-      </td>
-      <td style="text-align: center;">${est.line_count || 0}</td>
-      <td class="col-amount">${formatCurrency(est.total_amount)}</td>
-      <td class="col-date">${formatDate(est.created_at)}</td>
-      <td class="col-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-ghost btn-sm" onclick="openEstimateDetail('${est.id}')" title="Open">ðŸ“‚</button>
-      </td>
-    </tr>
-  `).join('');
-}
-
-// Removed: Card view rendering - simplified to table view only
-function renderEstimateCards() {
-  const container = document.getElementById('estimateCardView');
-  if (!container) return;
-
-  if (!estimates.length) {
-    container.innerHTML = `
-      <div class="empty-state" style="grid-column: 1 / -1;">
-        <div class="empty-state-icon">ðŸ“‹</div>
-        <div class="empty-state-title">No Estimates Found</div>
-        <div class="empty-state-message">Create your first estimate to start tracking project costs.</div>
-        <button class="btn btn-primary btn-lg" onclick="openCreateModal()">+ Create First Estimate</button>
-      </div>
-    `;
-    return;
-  }
-
-  container.innerHTML = estimates.map(est => `
-    <div class="estimate-card" data-id="${est.id}" onclick="openEstimateDetail('${est.id}')">
-      <div class="estimate-card-header">
-        <div class="estimate-card-title">
-          <h3>${escapeHtml(est.title)}</h3>
-          ${est.version > 1 ? `<span class="version-indicator">v${est.version}</span>` : ''}
-        </div>
-        <div class="estimate-card-job">${est.job?.name || 'No job assigned'}</div>
-      </div>
-      <div class="estimate-card-badges">
-        <span class="status-pill status-pill-${est.status}">
-          ${formatStatus(est.status)}
-        </span>
-      </div>
-      <div class="estimate-card-stats">
-        <div class="stat-block">
-          <span class="stat-block-value">${formatCurrency(est.total_amount)}</span>
-          <span class="stat-block-label">Total</span>
-        </div>
-        <div class="stat-block">
-          <span class="stat-block-value">${est.line_count || 0}</span>
-          <span class="stat-block-label">Line Items</span>
-        </div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function renderStats(stats) {
-  const statTotal = document.getElementById('statTotal');
-  const statDraft = document.getElementById('statDraft');
-  const statSubmitted = document.getElementById('statSubmitted');
-  const statApproved = document.getElementById('statApproved');
-  const statTotalValue = document.getElementById('statTotalValue');
-
-  if (statTotal) statTotal.textContent = stats.total || 0;
-  if (statDraft) statDraft.textContent = stats.draft || 0;
-  if (statSubmitted) statSubmitted.textContent = stats.submitted || 0;
-  if (statApproved) statApproved.textContent = stats.approved || 0;
-  if (statTotalValue) statTotalValue.textContent = formatCurrency(stats.total_value || 0);
-}
-
-// Removed: View switcher - table view only
+// Removed old list/table/filter functions - now showing single estimate per job
 
 // ============================================================
 // ESTIMATES MODE - MODALS
@@ -422,6 +253,105 @@ async function saveEstimate() {
     console.error('Error saving estimate:', err);
     showToast(err.message, 'error');
   }
+}
+
+// Load estimate for selected job (new main page view)
+async function loadEstimateForJob(jobId) {
+  try {
+    // Fetch estimate for this job
+    const response = await fetch(`/api/estimates?job_id=${jobId}`);
+    if (!response.ok) throw new Error('Failed to load estimate');
+
+    const estimates = await response.json();
+
+    // Show empty state if no estimate exists
+    if (!estimates || estimates.length === 0) {
+      showEmptyState('No estimate exists for this job');
+      return;
+    }
+
+    // Use the first estimate (most recent)
+    currentEstimate = estimates[0];
+
+    // Load full estimate details with line items
+    const detailResponse = await fetch(`/api/estimates/${currentEstimate.id}`);
+    if (!detailResponse.ok) throw new Error('Failed to load estimate details');
+    currentEstimate = await detailResponse.json();
+
+    // Show estimate content and hide empty state
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('estimateContent').style.display = 'block';
+
+    // Populate breadcrumb
+    const job = jobs.find(j => j.id === jobId);
+    document.getElementById('jobNameBreadcrumb').textContent = job?.name || 'Unknown Job';
+
+    // Populate cost summary
+    updateCostSummary();
+
+    // Populate overview tab
+    document.getElementById('detailJob').textContent = currentEstimate.job?.name || '-';
+    document.getElementById('detailAmount').textContent = formatCurrency(currentEstimate.total_amount);
+    document.getElementById('detailLineCount').textContent = currentEstimate.lines?.length || 0;
+    document.getElementById('detailCreated').textContent = formatDateTime(currentEstimate.created_at);
+    document.getElementById('detailNotes').textContent = currentEstimate.notes || '-';
+
+    // Render the lines table with sections
+    renderLinesTable();
+
+    // Initialize workflow stepper
+    currentWorkflowStep = determineWorkflowStep(currentEstimate);
+    updateStepperVisibility();
+    updateStepperUI();
+  } catch (err) {
+    console.error('Error loading estimate:', err);
+    showToast('Failed to load estimate', 'error');
+    showEmptyState('Error loading estimate');
+  }
+}
+
+function showEmptyState(message) {
+  document.getElementById('estimateContent').style.display = 'none';
+  const emptyState = document.getElementById('emptyState');
+  emptyState.style.display = 'block';
+
+  if (message) {
+    emptyState.innerHTML = `
+      <h3>No Estimate</h3>
+      <p>${message}</p>
+      <button class="btn btn-primary" onclick="openCreateModal()">+ Create Estimate</button>
+    `;
+  } else {
+    emptyState.innerHTML = `
+      <h3>No Job Selected</h3>
+      <p>Select a job from the sidebar to view its estimate</p>
+    `;
+  }
+}
+
+function updateCostSummary() {
+  if (!currentEstimate) return;
+
+  const subtotal = currentEstimate.total_amount || 0;
+  const markupPct = currentEstimate.markup_percent || 0;
+  const markup = subtotal * (markupPct / 100);
+  const total = subtotal + markup;
+
+  const summary = `Builder cost ${formatCurrency(subtotal)} + Profit (${markupPct}%) ${formatCurrency(markup)} = Total price ${formatCurrency(total)}`;
+  document.getElementById('costSummary').textContent = summary;
+}
+
+// Stub functions for new action buttons
+function exportEstimate() {
+  showToast('Export coming soon', 'info');
+}
+
+function lockEstimate() {
+  showToast('Lock estimate coming soon', 'info');
+}
+
+function sendToBudget() {
+  showToast('Send to budget coming soon', 'info');
 }
 
 async function openEstimateDetail(estimateId) {
