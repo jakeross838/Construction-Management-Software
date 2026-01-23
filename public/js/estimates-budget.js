@@ -42,24 +42,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup event listeners
   setupEventListeners();
 
-  try {
-    await Promise.all([
-      loadJobs().catch(err => console.error('Jobs failed:', err)),
-      loadCostCodes().catch(err => console.error('Cost codes failed:', err))
-    ]);
-  } catch (err) {
-    showToast('Some data failed to load', 'error');
-  }
-
-  // Load mode-specific data
-  if (currentMode === 'estimates') {
-    // Show empty state initially - will load estimate when job is selected from sidebar
-    showEmptyState();
-  }
-
-  // Get job ID from URL parameter or sidebar
+  // Get job ID from URL parameter or sidebar first
   const urlParams = new URLSearchParams(window.location.search);
   const urlJobId = urlParams.get('job');
+  const initialJobId = urlJobId || (window.JobSidebar?.getSelectedJobId());
+
+  // Load reference data (jobs, cost codes) - MUST complete before loading estimate
+  try {
+    await Promise.all([
+      loadJobs(),
+      loadCostCodes()
+    ]);
+  } catch (err) {
+    console.error('Failed to load reference data:', err);
+    showToast('Failed to load reference data', 'error');
+  }
 
   // Setup job sidebar listener for both modes
   if (window.JobSidebar) {
@@ -75,8 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Load initial job - prioritize URL parameter, fall back to sidebar
-  const initialJobId = urlJobId || (window.JobSidebar?.getSelectedJobId());
+  // Load initial job data
   if (initialJobId) {
     currentJobId = initialJobId;
     if (currentMode === 'estimates') {
@@ -84,6 +80,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (currentMode === 'budget') {
       await loadJobBudgetForJob(initialJobId);
     }
+  } else if (currentMode === 'estimates') {
+    // Only show empty state if no job is selected
+    showEmptyState();
   }
 
   // Initialize keyboard shortcuts
@@ -261,34 +260,47 @@ async function saveEstimate() {
 
 // Load estimate for selected job (new main page view)
 async function loadEstimateForJob(jobId) {
+  console.log('[loadEstimateForJob] Loading estimate for job:', jobId);
   try {
     // Fetch estimate for this job
     const response = await fetch(`/api/estimates?job_id=${jobId}`);
-    if (!response.ok) throw new Error('Failed to load estimate');
+    if (!response.ok) {
+      console.error('[loadEstimateForJob] API error:', response.status, response.statusText);
+      throw new Error('Failed to load estimate');
+    }
 
     const estimates = await response.json();
+    console.log('[loadEstimateForJob] Found estimates:', estimates.length);
 
     // Show empty state if no estimate exists
     if (!estimates || estimates.length === 0) {
+      console.log('[loadEstimateForJob] No estimate found, showing empty state');
       showEmptyState('No estimate exists for this job');
       return;
     }
 
     // Use the first estimate (most recent)
     currentEstimate = estimates[0];
+    console.log('[loadEstimateForJob] Using estimate:', currentEstimate.id);
 
     // Load full estimate details with line items
     const detailResponse = await fetch(`/api/estimates/${currentEstimate.id}`);
-    if (!detailResponse.ok) throw new Error('Failed to load estimate details');
+    if (!detailResponse.ok) {
+      console.error('[loadEstimateForJob] Detail API error:', detailResponse.status);
+      throw new Error('Failed to load estimate details');
+    }
     currentEstimate = await detailResponse.json();
+    console.log('[loadEstimateForJob] Loaded estimate details, sections:', currentEstimate.sections?.length, 'lines:', currentEstimate.lines?.length);
 
     // Show estimate content and hide empty state
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('estimateContent').style.display = 'block';
+    console.log('[loadEstimateForJob] Showing estimate content');
 
     // Populate breadcrumb
     const job = jobs.find(j => j.id === jobId);
-    document.getElementById('jobNameBreadcrumb').textContent = job?.name || 'Unknown Job';
+    console.log('[loadEstimateForJob] Found job:', job?.name);
+    document.getElementById('jobNameBreadcrumb').textContent = job?.name?.toUpperCase() || 'UNKNOWN JOB';
 
     // Populate cost summary
     updateCostSummary();
@@ -308,8 +320,9 @@ async function loadEstimateForJob(jobId) {
     updateStepperVisibility();
     updateStepperUI();
   } catch (err) {
-    console.error('Error loading estimate:', err);
-    showToast('Failed to load estimate', 'error');
+    console.error('[loadEstimateForJob] ERROR:', err);
+    console.error('[loadEstimateForJob] Stack:', err.stack);
+    showToast('Failed to load estimate: ' + err.message, 'error');
     showEmptyState('Error loading estimate');
   }
 }
