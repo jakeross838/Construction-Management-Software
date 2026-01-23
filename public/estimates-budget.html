@@ -1927,6 +1927,67 @@
     </div>
   </div>
 
+  <!-- Add Line Item Modal -->
+  <div id="lineItemModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h2 id="lineItemModalTitle">Add Line Item</h2>
+        <button class="close-btn" onclick="closeLineItemModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="lineDescription">Description *</label>
+          <input type="text" id="lineDescription" class="form-control" placeholder="e.g., 2x6 Framing Lumber">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="lineQuantity">Quantity</label>
+            <input type="number" id="lineQuantity" class="form-control" value="1" step="0.01">
+          </div>
+          <div class="form-group">
+            <label for="lineUnit">Unit</label>
+            <input type="text" id="lineUnit" class="form-control" placeholder="ea, lf, sf" value="ea">
+          </div>
+          <div class="form-group">
+            <label for="lineUnitCost">Unit Cost</label>
+            <input type="number" id="lineUnitCost" class="form-control" value="0" step="0.01">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="lineAmount">Total Amount</label>
+          <input type="number" id="lineAmount" class="form-control" value="0" step="0.01" readonly style="background: var(--bg-card-elevated);">
+        </div>
+
+        <div class="form-group">
+          <label for="lineCostCode">Cost Code (optional)</label>
+          <select id="lineCostCode" class="form-control">
+            <option value="">Select cost code...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="lineSection">Section (optional)</label>
+          <select id="lineSection" class="form-control">
+            <option value="">No section</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="lineNotes">Notes (optional)</label>
+          <textarea id="lineNotes" class="form-control" rows="2" placeholder="Additional notes..."></textarea>
+        </div>
+
+        <input type="hidden" id="lineItemId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeLineItemModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveLineItem()">Save Line Item</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Source Change Modal -->
   <div id="sourceModal" class="modal">
     <div class="modal-content modal-sm">

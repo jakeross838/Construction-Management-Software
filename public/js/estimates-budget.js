@@ -357,17 +357,45 @@ function updateCostSummary() {
   document.getElementById('costSummary').textContent = summary;
 }
 
-// Stub functions for new action buttons
-function exportEstimate() {
-  showToast('Export coming soon', 'info');
+// Action button functions
+async function exportEstimate() {
+  if (!currentEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+  // TODO: Implement export functionality
+  showToast('Export functionality coming soon', 'info');
 }
 
-function lockEstimate() {
-  showToast('Lock estimate coming soon', 'info');
+async function lockEstimate() {
+  if (!currentEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+  // TODO: Implement lock functionality
+  showToast('Lock functionality coming soon', 'info');
 }
 
-function sendToBudget() {
-  showToast('Send to budget coming soon', 'info');
+async function sendToBudget() {
+  if (!currentEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/estimates/${currentEstimate.id}/convert-to-budget`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) throw new Error('Failed to convert to budget');
+
+    showToast('Estimate converted to budget', 'success');
+    await loadEstimateForJob(currentJobId);
+  } catch (err) {
+    console.error('Error converting to budget:', err);
+    showToast('Failed to convert to budget', 'error');
+  }
 }
 
 async function openEstimateDetail(estimateId) {
@@ -562,8 +590,142 @@ async function copyShareLink() {
     showToast('Link copied to clipboard!', 'success');
   }
 }
-// Removed: Line item, Templates, Scope, Assembly, Markup modal functions - not implemented
-function openAddLineModal() { showToast('Add line item - coming in Phase 110-02', 'info'); }
+// ============================================================
+// LINE ITEM MODAL
+// ============================================================
+
+function openAddLineModal(lineId = null, sectionId = null) {
+  if (!currentEstimate) {
+    showToast('No estimate loaded', 'error');
+    return;
+  }
+
+  // Reset form
+  document.getElementById('lineDescription').value = '';
+  document.getElementById('lineQuantity').value = '1';
+  document.getElementById('lineUnit').value = 'ea';
+  document.getElementById('lineUnitCost').value = '0';
+  document.getElementById('lineAmount').value = '0';
+  document.getElementById('lineNotes').value = '';
+  document.getElementById('lineItemId').value = lineId || '';
+
+  // Populate cost codes dropdown
+  const costCodeSelect = document.getElementById('lineCostCode');
+  costCodeSelect.innerHTML = '<option value="">Select cost code...</option>';
+  (costCodes || []).forEach(cc => {
+    const opt = document.createElement('option');
+    opt.value = cc.id;
+    opt.textContent = `${cc.code} - ${cc.name}`;
+    costCodeSelect.appendChild(opt);
+  });
+
+  // Populate sections dropdown
+  const sectionSelect = document.getElementById('lineSection');
+  sectionSelect.innerHTML = '<option value="">No section</option>';
+  (currentEstimate.sections || []).forEach(section => {
+    const opt = document.createElement('option');
+    opt.value = section.id;
+    opt.textContent = section.name;
+    if (sectionId && section.id === sectionId) opt.selected = true;
+    sectionSelect.appendChild(opt);
+  });
+
+  // Auto-calculate amount on input changes
+  const qtyInput = document.getElementById('lineQuantity');
+  const costInput = document.getElementById('lineUnitCost');
+  const amountInput = document.getElementById('lineAmount');
+
+  const calculateAmount = () => {
+    const qty = parseFloat(qtyInput.value) || 0;
+    const cost = parseFloat(costInput.value) || 0;
+    amountInput.value = (qty * cost).toFixed(2);
+  };
+
+  qtyInput.addEventListener('input', calculateAmount);
+  costInput.addEventListener('input', calculateAmount);
+
+  // Show modal
+  document.getElementById('lineItemModalTitle').textContent = lineId ? 'Edit Line Item' : 'Add Line Item';
+  const modal = document.getElementById('lineItemModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+
+  // Focus description field
+  document.getElementById('lineDescription').focus();
+}
+
+function closeLineItemModal() {
+  const modal = document.getElementById('lineItemModal');
+  modal.classList.remove('show');
+  setTimeout(() => modal.style.display = 'none', 200);
+}
+
+async function saveLineItem() {
+  if (!currentEstimate) {
+    showToast('No estimate loaded', 'error');
+    return;
+  }
+
+  const description = document.getElementById('lineDescription').value.trim();
+  const quantity = parseFloat(document.getElementById('lineQuantity').value) || 1;
+  const unit = document.getElementById('lineUnit').value.trim();
+  const unitCost = parseFloat(document.getElementById('lineUnitCost').value) || 0;
+  const amount = parseFloat(document.getElementById('lineAmount').value) || 0;
+  const costCodeId = document.getElementById('lineCostCode').value || null;
+  const sectionId = document.getElementById('lineSection').value || null;
+  const notes = document.getElementById('lineNotes').value.trim();
+  const lineItemId = document.getElementById('lineItemId').value;
+
+  if (!description) {
+    showToast('Description is required', 'error');
+    return;
+  }
+
+  try {
+    let response;
+    const body = {
+      description,
+      quantity,
+      unit,
+      unit_cost: unitCost,
+      amount,
+      cost_code_id: costCodeId,
+      section_id: sectionId,
+      notes: notes || null,
+      created_by: window.currentUser || 'User'
+    };
+
+    if (lineItemId) {
+      // Update existing line
+      response = await fetch(`/api/estimates/${currentEstimate.id}/lines/${lineItemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    } else {
+      // Create new line
+      response = await fetch(`/api/estimates/${currentEstimate.id}/lines`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    }
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to save line item');
+    }
+
+    showToast(lineItemId ? 'Line item updated' : 'Line item added', 'success');
+    closeLineItemModal();
+
+    // Reload estimate to get updated lines
+    await reloadCurrentEstimate();
+  } catch (err) {
+    console.error('Error saving line item:', err);
+    showToast(err.message, 'error');
+  }
+}
 async function convertToBudget() {
   if (!currentEstimate) {
     showToast('No estimate selected', 'error');
@@ -1132,6 +1294,11 @@ function showSendView() {
 }
 
 function emailEstimate() {
+  if (!currentEstimate) {
+    showToast('No estimate selected', 'error');
+    return;
+  }
+  // TODO: Implement email functionality
   showToast('Email functionality coming soon', 'info');
 }
 
@@ -1160,7 +1327,25 @@ function editCurrentEstimate() {
 }
 
 function editLineItem(lineId) {
-  showToast('Edit line item - coming in Phase 110-02', 'info');
+  const line = currentEstimate?.lines?.find(l => l.id === lineId);
+  if (!line) {
+    showToast('Line item not found', 'error');
+    return;
+  }
+
+  // Populate the form with existing data
+  document.getElementById('lineDescription').value = line.description || '';
+  document.getElementById('lineQuantity').value = line.quantity || 1;
+  document.getElementById('lineUnit').value = line.unit || 'ea';
+  document.getElementById('lineUnitCost').value = line.unit_cost || 0;
+  document.getElementById('lineAmount').value = line.amount || 0;
+  document.getElementById('lineCostCode').value = line.cost_code_id || '';
+  document.getElementById('lineSection').value = line.section_id || '';
+  document.getElementById('lineNotes').value = line.notes || '';
+  document.getElementById('lineItemId').value = lineId;
+
+  // Open the modal (which will populate dropdowns)
+  openAddLineModal(lineId);
 }
 
 async function deleteLineItem(lineId) {
