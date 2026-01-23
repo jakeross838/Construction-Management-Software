@@ -546,8 +546,14 @@
         <!-- ESTIMATES MODE SECTION -->
         <!-- ============================================================ -->
         <div class="mode-section active" data-mode="estimates">
+          <!-- Loading state -->
+          <div id="loadingState" class="no-ai-estimate">
+            <h3>Loading...</h3>
+            <p>Please wait</p>
+          </div>
+
           <!-- Empty state when no job selected -->
-          <div id="emptyState" class="no-ai-estimate">
+          <div id="emptyState" class="no-ai-estimate" style="display: none;">
             <h3>No Job Selected</h3>
             <p>Select a job from the sidebar to view its estimate</p>
           </div>

@@ -289,7 +289,8 @@ async function loadEstimateForJob(jobId) {
     currentEstimate = await detailResponse.json();
     console.log('[loadEstimateForJob] Loaded estimate details, sections:', currentEstimate.sections?.length, 'lines:', currentEstimate.lines?.length);
 
-    // Show estimate content and hide empty state
+    // Hide loading and empty state, show estimate content
+    document.getElementById('loadingState').style.display = 'none';
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('estimateContent').style.display = 'block';
     console.log('[loadEstimateForJob] Showing estimate content');
@@ -325,6 +326,7 @@ async function loadEstimateForJob(jobId) {
 }
 
 function showEmptyState(message) {
+  document.getElementById('loadingState').style.display = 'none';
   document.getElementById('estimateContent').style.display = 'none';
   const emptyState = document.getElementById('emptyState');
   emptyState.style.display = 'block';
