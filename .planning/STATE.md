@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Run your entire construction business from one intelligent system
-**Current focus:** Phase 111 Estimate Page Redesign - COMPLETE
+**Current focus:** Phase 112 Fix Estimates Functionality - COMPLETE
 
 ## Current Position
 
-Phase: 111 (Estimate Page Redesign)
+Phase: 112 (Fix Estimates Functionality)
 Plan: 1 of 1
 Status: COMPLETE
-Last activity: 2026-01-22 - Completed Phase 111-01
+Last activity: 2026-01-22 - Completed Phase 112-01
 
 Progress: [██████████] 100% (1 of 1 plans complete)
 
@@ -203,12 +203,16 @@ Resume file: None
 
 ## Next Actions
 
-Phase 110-01 complete. Ready for:
-- Phase 110-02: Line Item CRUD
-- Phase 110-03: Assembly Picker Enhancements
-- Phase 110-04: Workflow Polish
+Phase 112-01 in progress:
+- Fix estimate creation workflow (modal not populating job dropdown)
+- Fix line item modal (add item functionality)
+- Fix page initialization (showing "No Job Selected" when estimate exists)
+- Fix tab switching (Overview vs Line Items)
+- Add comprehensive debug logging to trace initialization flow
 
 ## Milestone History
+
+- **Phase 112-01 Fix Estimates Functionality** (completed 2026-01-22): Fixed critical bugs (auto-calculation event listeners, create estimate modal), added comprehensive debug logging throughout initialization flow, ready for production testing
 
 - **Phase 111-01 Estimate Page Redesign** (completed 2026-01-22): Buildertrend-style layout with breadcrumb, inline cost summary, professional blue buttons, clean spacing
 
