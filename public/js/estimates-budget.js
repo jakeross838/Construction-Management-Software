@@ -36,9 +36,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   currentMode = 'estimates';
   localStorage.setItem('estimatesBudgetMode', 'estimates');
 
-  // Initialize mode UI
-  updateModeUI();
-
   // Setup event listeners
   setupEventListeners();
 
