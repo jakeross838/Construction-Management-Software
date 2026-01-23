@@ -205,9 +205,38 @@ function openCreateModal() {
   document.getElementById('estimateId').value = '';
   document.getElementById('estimateForm').reset();
 
+  // Populate job dropdown
+  const jobSelect = document.getElementById('formJob');
+  jobSelect.innerHTML = '<option value="">Select Job...</option>';
+
+  if (currentJobId) {
+    // Pre-select current job if one is selected
+    const currentJob = jobs.find(j => j.id === currentJobId);
+    if (currentJob) {
+      const opt = document.createElement('option');
+      opt.value = currentJob.id;
+      opt.textContent = currentJob.name;
+      opt.selected = true;
+      jobSelect.appendChild(opt);
+    }
+  }
+
+  // Add all other jobs
+  jobs.forEach(job => {
+    if (job.id !== currentJobId) {
+      const opt = document.createElement('option');
+      opt.value = job.id;
+      opt.textContent = job.name;
+      jobSelect.appendChild(opt);
+    }
+  });
+
   const modal = document.getElementById('estimateModal');
   modal.style.display = 'flex';
   modal.classList.add('show');
+
+  // Focus title field
+  setTimeout(() => document.getElementById('formTitle').focus(), 100);
 }
 
 function closeModal() {
@@ -245,10 +274,14 @@ async function saveEstimate() {
       throw new Error(err.error || 'Failed to save estimate');
     }
 
+    const savedEstimate = await response.json();
+
     showToast(estimateId ? 'Estimate updated' : 'Estimate created', 'success');
     closeModal();
-    await loadEstimates();
-    await loadStats();
+
+    // Set current job to the estimate's job and reload
+    currentJobId = data.job_id;
+    await loadEstimateForJob(data.job_id);
   } catch (err) {
     console.error('Error saving estimate:', err);
     showToast(err.message, 'error');
