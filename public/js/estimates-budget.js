@@ -275,13 +275,16 @@ async function saveEstimate() {
     }
 
     const savedEstimate = await response.json();
+    console.log('[saveEstimate] Saved estimate:', savedEstimate);
 
     showToast(estimateId ? 'Estimate updated' : 'Estimate created', 'success');
     closeModal();
 
     // Set current job to the estimate's job and reload
     currentJobId = data.job_id;
+    console.log('[saveEstimate] Loading estimate for job:', data.job_id);
     await loadEstimateForJob(data.job_id);
+    console.log('[saveEstimate] After loadEstimateForJob, currentEstimate:', currentEstimate);
   } catch (err) {
     console.error('Error saving estimate:', err);
     showToast(err.message, 'error');
@@ -628,8 +631,12 @@ async function copyShareLink() {
 // ============================================================
 
 function openAddLineModal(lineId = null, sectionId = null) {
+  console.log('[openAddLineModal] currentEstimate:', currentEstimate);
+  console.log('[openAddLineModal] currentJobId:', currentJobId);
+
   if (!currentEstimate) {
     showToast('No estimate loaded', 'error');
+    console.error('[openAddLineModal] No currentEstimate set - this should not happen if estimate was loaded');
     return;
   }
 
