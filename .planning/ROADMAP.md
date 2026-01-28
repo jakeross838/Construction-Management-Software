@@ -30,7 +30,7 @@ Upgrade Kind Creation's AI invoice processing from the credit-limited Lovable ga
   4. Existing matching logic (vendor, job, PO) continues to work
 **Research**: Likely (external API integration)
 **Research topics**: Claude API for Deno, message format, image/PDF handling
-**Plans**: TBD
+**Plans**: PLAN-01 (Claude API Integration)
 
 ### Phase 2: OCR Support
 **Goal**: Enable processing of scanned/image-based PDFs using Claude Vision
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Claude API Integration | 0/TBD | Not started | - |
+| 1. Claude API Integration | 0/1 | Planned | - |
 | 2. OCR Support | 0/TBD | Not started | - |
 | 3. AI Learning System | 0/TBD | Not started | - |
 | 4. Enhanced Matching | 0/TBD | Not started | - |
