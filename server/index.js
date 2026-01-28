@@ -10822,6 +10822,44 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// SINGLE INVOICE STAMP ENDPOINT
+// ============================================================
+
+// Re-stamp a single invoice based on its current status
+app.post('/api/invoices/:id/stamp', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status: requestedStatus } = req.body;
+
+  // Get invoice current status if not provided
+  const { data: invoice, error: fetchError } = await supabase
+    .from('v2_invoices')
+    .select('id, status')
+    .eq('id', id)
+    .single();
+
+  if (fetchError || !invoice) {
+    return res.status(404).json({ error: 'Invoice not found' });
+  }
+
+  const statusToStamp = requestedStatus || invoice.status;
+
+  try {
+    const result = await stampInvoice(id, { force: true });
+    res.json({
+      success: true,
+      stamped_pdf_url: result?.pdf_stamped_url,
+      status: statusToStamp
+    });
+  } catch (error) {
+    console.error('[STAMP] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to stamp invoice'
+    });
+  }
+}));
+
+// ============================================================
 // BATCH RE-STAMP ENDPOINT
 // ============================================================
 

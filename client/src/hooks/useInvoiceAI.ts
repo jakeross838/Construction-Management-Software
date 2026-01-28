@@ -132,37 +132,30 @@ export function useInvoiceAI() {
     file: File
   ): Promise<AIExtractionResult> => {
     setIsProcessing(true);
-    setProcessingStep('Converting file...');
+    setProcessingStep('Uploading file...');
 
     try {
-      // Convert file to base64
-      const imageBase64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64 = result.split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
 
       setProcessingStep('Extracting data with AI...');
 
-      // Call the enhanced extraction function
-      const { data, error } = await supabase.functions.invoke('extract-invoice', {
-        body: { 
-          imageBase64, 
-          mimeType: file.type || 'application/pdf'
-        }
+      // Call the Node.js backend API
+      const response = await fetch('/api/invoices/process', {
+        method: 'POST',
+        body: formData,
       });
 
-      if (error) {
-        throw new Error(error.message || 'Failed to extract invoice data');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to process invoice`);
       }
 
-      if (!data?.success) {
-        throw new Error(data?.error || 'Extraction failed');
+      const data = await response.json();
+
+      if (!data?.success && data?.error) {
+        throw new Error(data.error || 'Extraction failed');
       }
 
       setProcessingStep('Processing matches...');
@@ -172,7 +165,27 @@ export function useInvoiceAI() {
         console.log('AI Processing:', data.messages);
       }
 
-      return data as AIExtractionResult;
+      // Map backend response to expected format
+      return {
+        success: true,
+        data: {
+          invoice_number: data.invoice?.invoice_number || null,
+          vendor_name: data.invoice?.vendor_name || data.vendor?.name || null,
+          amount: data.invoice?.amount || null,
+          invoice_date: data.invoice?.invoice_date || null,
+          due_date: data.invoice?.due_date || null,
+          line_items: data.invoice?.line_items || [],
+          invoice_type: data.invoice?.invoice_type || 'standard',
+          confidence: data.invoice?.ai_confidence || {
+            invoice_number: 0,
+            vendor_name: 0,
+            amount: 0,
+            invoice_date: 0,
+            due_date: 0,
+          },
+        },
+        extracted: data.invoice?.ai_extracted_data,
+      } as AIExtractionResult;
 
     } catch (error) {
       console.error('Invoice AI extraction error:', error);

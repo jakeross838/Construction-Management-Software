@@ -13,13 +13,21 @@ export function useStampInvoice() {
 
   return useMutation({
     mutationFn: async ({ invoiceId, status }: StampInvoiceParams) => {
-      const { data, error } = await supabase.functions.invoke('stamp-invoice', {
-        body: { invoiceId, status },
+      // Call Node.js backend for PDF stamping
+      const response = await fetch(`/api/invoices/${invoiceId}/stamp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
       });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to stamp invoice: HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
       if (!data?.success) throw new Error(data?.error || 'Failed to stamp invoice');
-      
+
       return data;
     },
     onSuccess: (_, variables) => {
