@@ -42,15 +42,20 @@ interface InvoiceDetails {
 
 // Color definitions (RGB 0-1 scale)
 const colors = {
-  orange: rgb(0.95, 0.55, 0.1),
-  blue: rgb(0.2, 0.4, 0.8),
-  green: rgb(0.13, 0.55, 0.13),
-  purple: rgb(0.5, 0.25, 0.7),
-  gray: rgb(0.4, 0.4, 0.4),
-  lightGray: rgb(0.85, 0.85, 0.85),
+  // Status colors - more saturated for better visibility
+  orange: rgb(0.91, 0.45, 0.08),    // Darker, more professional orange
+  blue: rgb(0.15, 0.35, 0.75),      // Deeper blue
+  green: rgb(0.08, 0.50, 0.20),     // Richer green
+  purple: rgb(0.45, 0.20, 0.65),    // Deeper purple
+
+  // Neutrals
+  gray: rgb(0.35, 0.35, 0.35),      // Darker for better text contrast
+  lightGray: rgb(0.88, 0.88, 0.88), // Slightly darker for visible borders
   white: rgb(1, 1, 1),
-  red: rgb(0.8, 0.2, 0.2),
-  amber: rgb(0.85, 0.55, 0.1),
+
+  // Accent colors
+  red: rgb(0.75, 0.15, 0.15),       // Deeper red for credits
+  amber: rgb(0.80, 0.50, 0.05),     // Warning color for flags
 };
 
 function formatCurrency(amount: number): string {
@@ -479,7 +484,7 @@ serve(async (req) => {
         y: height / 2 - watermarkSize / 2,
         size: watermarkSize,
         font: helveticaBold,
-        color: rgb(0.13, 0.55, 0.13),
+        color: colors.green,
         opacity: 0.15,
         rotate: degrees(-30),
       });
