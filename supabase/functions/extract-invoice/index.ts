@@ -292,9 +292,17 @@ JOB/PROJECT IDENTIFICATION - Check these locations (in order of reliability):
 
 INVOICE TYPE DETECTION:
 - Look for "Credit Memo", "Credit", "Refund", "Return", "Adjustment" = credit_memo
-- NEGATIVE total amounts = credit_memo  
+- NEGATIVE total amounts = credit_memo
 - "Debit Memo" = debit_memo
 - Otherwise = standard
+
+PROGRESS BILLING / PARTIAL INVOICES:
+Many construction invoices are progress billings (e.g., "50% Deposit", "40% Delivery", "Draw #3").
+- If you see BOTH a "Grand Total" / "Contract Total" AND an "Amount Due" / "Balance Due" / "Payment Due":
+  - Use the AMOUNT DUE as the totalAmount (this is what needs to be paid NOW)
+  - The grand total is the full contract value, not this invoice's amount
+- Look for phrases like: "Amount Due", "Balance Due", "Payment Due", "Due Now", "This Invoice", "Current Due"
+- Progress billing indicators: "Deposit", "Draw", "Progress Payment", "% Payment", "Delivery Invoice"
 
 TRADE TYPE - Identify what trade/category this vendor is based on invoice content:
 Valid trade types: ${TRADE_TYPES.join(', ')}
@@ -309,7 +317,7 @@ Extract the following and return ONLY valid JSON:
     "phone": "Vendor phone number",
     "email": "Vendor email"
   },
-  "invoiceNumber": "Invoice number/ID",
+  "invoiceNumber": "Invoice number/ID. If no explicit invoice number exists, use null. Do NOT use titles like '40% Delivery Invoice' as the invoice number.",
   "invoiceDate": "YYYY-MM-DD format",
   "dueDate": "YYYY-MM-DD format or null",
   "invoiceType": "standard, credit_memo, or debit_memo",
@@ -322,7 +330,7 @@ Extract the following and return ONLY valid JSON:
   "amounts": {
     "subtotal": number or null,
     "taxAmount": number or null,
-    "totalAmount": number (the final total)
+    "totalAmount": number (the amount to be paid on THIS invoice - prefer 'Amount Due'/'Balance Due' over 'Grand Total' for progress billing)
   },
   "lineItems": [
     {
