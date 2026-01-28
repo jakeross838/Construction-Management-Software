@@ -1,0 +1,16 @@
+project_id = "sorghqcpeamdfbvysafj"
+
+[functions.extract-invoice]
+verify_jwt = false
+
+[functions.extract-po]
+verify_jwt = false
+
+[functions.extract-prices]
+verify_jwt = false
+
+[functions.stamp-invoice]
+verify_jwt = false
+
+[functions.send-po-email]
+verify_jwt = false

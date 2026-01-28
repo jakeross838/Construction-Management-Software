@@ -161,20 +161,21 @@ export function InvoiceDetailDialog({
     try {
       // Delete existing allocations
       await supabase
-        .from('invoice_allocations')
+        .from('v2_invoice_allocations')
         .delete()
         .eq('invoice_id', invoice.id);
-      
+
       // Insert new allocations
       const validAllocs = allocations.filter(a => a.cost_code_id && parseFloat(a.amount) > 0);
       if (validAllocs.length > 0) {
         const { error } = await supabase
-          .from('invoice_allocations')
+          .from('v2_invoice_allocations')
           .insert(validAllocs.map(a => ({
             invoice_id: invoice.id,
             cost_code_id: a.cost_code_id,
             amount: parseFloat(a.amount),
-            description: a.description || null,
+            notes: a.description || null,
+            job_id: invoice.job_id,
           })));
         
         if (error) throw error;
@@ -336,11 +337,11 @@ export function InvoiceDetailDialog({
   if (!invoice && !isLoading) return null;
 
   const statusConfig = invoice ? invoiceStatusConfig[invoice.status] : null;
-  const canEdit = invoice?.status === 'received' || invoice?.status === 'needs_approval';
+  const canEdit = invoice?.status === 'received' || invoice?.status === 'needs_review' || invoice?.status === 'needs_approval';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] w-[1400px] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-3">
@@ -476,11 +477,11 @@ export function InvoiceDetailDialog({
                   )}
                 </div>
               </div>
-              <div className="border rounded-lg bg-muted/30 min-h-[400px] flex items-center justify-center">
+              <div className="border rounded-lg bg-muted/30 min-h-[75vh] flex items-center justify-center">
                 {(invoice.stamped_pdf_url || invoice.pdf_url) ? (
-                  <iframe 
-                    src={invoice.stamped_pdf_url || invoice.pdf_url!} 
-                    className="w-full h-[400px] rounded-lg"
+                  <iframe
+                    src={invoice.stamped_pdf_url || invoice.pdf_url!}
+                    className="w-full h-[75vh] rounded-lg"
                     title="Invoice PDF"
                   />
                 ) : (
@@ -599,6 +600,64 @@ export function InvoiceDetailDialog({
                     <p className="text-muted-foreground text-sm">No POs available for this job</p>
                   )}
                 </div>
+
+                {/* Budget Standing */}
+                {invoice.po_id && (() => {
+                  const po = purchaseOrders.find(p => p.id === invoice.po_id);
+                  if (!po) return null;
+
+                  const committed = po.current_amount ?? po.original_amount ?? 0;
+                  const invoiced = po.invoiced_amount ?? 0;
+                  const remaining = committed - invoiced;
+                  const percentUsed = committed > 0 ? (invoiced / committed) * 100 : 0;
+                  const isOverBudget = invoiced > committed;
+                  const willExceed = (invoiced + invoice.amount) > committed;
+
+                  return (
+                    <div className={`mt-3 p-3 rounded-lg border ${isOverBudget ? 'bg-red-50 border-red-200' : willExceed ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Budget Standing</span>
+                        {isOverBudget ? (
+                          <Badge variant="destructive" className="text-xs">Over Budget</Badge>
+                        ) : willExceed ? (
+                          <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">Will Exceed</Badge>
+                        ) : (
+                          <Badge className="bg-green-100 text-green-700 border-0 text-xs">Within Budget</Badge>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground text-xs">PO Amount</p>
+                          <p className="font-medium">{formatCurrency(committed)}</p>
+                          {po.change_order_amount > 0 && (
+                            <p className="text-xs text-muted-foreground">+{formatCurrency(po.change_order_amount)} COs</p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">Already Invoiced</p>
+                          <p className="font-medium">{formatCurrency(invoiced)}</p>
+                          <p className="text-xs text-muted-foreground">{percentUsed.toFixed(0)}% used</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">Remaining</p>
+                          <p className={`font-medium ${remaining < 0 ? 'text-red-600' : remaining < invoice.amount ? 'text-amber-600' : 'text-green-600'}`}>
+                            {formatCurrency(remaining)}
+                          </p>
+                          {remaining < invoice.amount && remaining >= 0 && (
+                            <p className="text-xs text-amber-600">Less than this invoice</p>
+                          )}
+                        </div>
+                      </div>
+                      {/* Progress bar */}
+                      <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all ${isOverBudget ? 'bg-red-500' : percentUsed > 80 ? 'bg-amber-500' : 'bg-green-500'}`}
+                          style={{ width: `${Math.min(percentUsed, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <Separator />
@@ -773,7 +832,7 @@ export function InvoiceDetailDialog({
                   Save Allocations
                 </Button>
               )}
-              {invoice?.status === 'needs_approval' && (
+              {(invoice?.status === 'needs_approval' || invoice?.status === 'needs_review') && (
                 <>
                   <Button
                     variant="destructive"
@@ -797,7 +856,7 @@ export function InvoiceDetailDialog({
                   </Button>
                 </>
               )}
-              {invoice?.status !== 'needs_approval' && !canEdit && (
+              {invoice?.status !== 'needs_approval' && invoice?.status !== 'needs_review' && !canEdit && (
                 <Button variant="outline" onClick={() => onOpenChange(false)}>
                   Close
                 </Button>

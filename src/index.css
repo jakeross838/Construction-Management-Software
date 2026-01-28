@@ -1,0 +1,317 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ross Built CMS Design System
+   Warm light theme with cream/off-white backgrounds
+   Inspired by Buildertrend, CoConstruct, Airtable, Notion
+*/
+
+@layer base {
+  :root {
+    /* Core - Warm cream backgrounds */
+    --background: 36 20% 96%;           /* #f5f3ef - Warm cream */
+    --foreground: 30 12% 16%;           /* #2d2a26 - Warm dark brown text */
+
+    --card: 40 25% 98%;                 /* #faf9f6 - Soft cream cards */
+    --card-foreground: 30 12% 16%;
+
+    --popover: 40 25% 98%;
+    --popover-foreground: 30 12% 16%;
+
+    /* Primary - Warm blue for primary actions */
+    --primary: 220 62% 53%;             /* #3b6fd4 */
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Warm gray */
+    --secondary: 35 15% 93%;
+    --secondary-foreground: 30 12% 25%;
+
+    /* Muted - Subtle backgrounds */
+    --muted: 36 15% 94%;
+    --muted-foreground: 30 8% 45%;
+
+    /* Accent */
+    --accent: 220 30% 95%;
+    --accent-foreground: 220 62% 45%;
+
+    /* Status colors */
+    --destructive: 0 72% 51%;           /* #dc2626 - Red */
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 36%;             /* #16a34a - Green */
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 95% 44%;              /* #d97706 - Amber */
+    --warning-foreground: 32 95% 10%;
+
+    --info: 221 83% 53%;                /* #2563eb - Blue */
+    --info-foreground: 0 0% 100%;
+
+    --purple: 263 70% 58%;              /* #7c3aed - Purple (in progress) */
+    --purple-foreground: 0 0% 100%;
+
+    /* Borders and inputs */
+    --border: 35 12% 85%;               /* #ddd9d2 - Warm gray borders */
+    --input: 36 15% 94%;
+    --ring: 220 62% 53%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar */
+    --sidebar-background: 36 20% 97%;
+    --sidebar-foreground: 30 8% 45%;
+    --sidebar-primary: 220 62% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 30% 95%;
+    --sidebar-accent-foreground: 220 62% 45%;
+    --sidebar-border: 35 12% 88%;
+    --sidebar-ring: 220 62% 53%;
+
+    /* Custom tokens for construction CMS */
+    --surface-elevated: 40 25% 98%;
+    --surface-overlay: 36 15% 94%;
+    
+    /* Financial indicators */
+    --profit: 142 71% 36%;
+    --loss: 0 72% 51%;
+    --neutral: 30 8% 55%;
+
+    /* Chart colors */
+    --chart-1: 220 62% 53%;
+    --chart-2: 142 71% 36%;
+    --chart-3: 32 95% 44%;
+    --chart-4: 263 70% 58%;
+    --chart-5: 0 72% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Inter', sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  /* Stat cards with icons */
+  .stat-card {
+    @apply relative overflow-hidden rounded-lg border border-border bg-card p-5;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04);
+  }
+
+  .stat-card:hover {
+    @apply border-primary/30;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+  }
+
+  /* Data table styling */
+  .data-table {
+    @apply w-full text-sm;
+  }
+
+  .data-table th {
+    @apply text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground px-4 py-3 bg-muted/50;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 border-b border-border;
+  }
+
+  .data-table tbody tr {
+    @apply transition-colors hover:bg-accent/50 cursor-pointer;
+  }
+
+  /* Status badges/pills */
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .status-badge-success {
+    @apply bg-success/10 text-success;
+  }
+
+  .status-badge-warning {
+    @apply bg-warning/10 text-warning;
+  }
+
+  .status-badge-danger {
+    @apply bg-destructive/10 text-destructive;
+  }
+
+  .status-badge-info {
+    @apply bg-info/10 text-info;
+  }
+
+  .status-badge-purple {
+    background-color: hsl(var(--purple) / 0.1);
+    color: hsl(var(--purple));
+  }
+
+  .status-badge-neutral {
+    @apply bg-muted text-muted-foreground;
+  }
+
+  /* Sidebar navigation items */
+  .nav-item {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all duration-200;
+  }
+
+  .nav-item:hover {
+    @apply bg-sidebar-accent text-sidebar-accent-foreground;
+  }
+
+  .nav-item.active {
+    @apply bg-primary/10 text-primary font-medium;
+  }
+
+  .nav-item.active::before {
+    content: '';
+    @apply absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-primary rounded-r;
+  }
+
+  /* Section headers */
+  .section-header {
+    @apply text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-3;
+  }
+
+  /* Card shadows */
+  .card-shadow {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04);
+  }
+
+  .card-shadow-hover:hover {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.06);
+  }
+
+  /* Empty states */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-12 px-6 text-center;
+  }
+
+  .empty-state-icon {
+    @apply w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4;
+  }
+
+  .empty-state-title {
+    @apply text-lg font-semibold text-foreground mb-2;
+  }
+
+  .empty-state-description {
+    @apply text-sm text-muted-foreground mb-4 max-w-sm;
+  }
+
+  /* Loading shimmer */
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+
+  .shimmer::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--foreground) / 0.03),
+      transparent
+    );
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  /* Job card styling */
+  .job-card {
+    @apply relative rounded-lg border border-border bg-card p-4 transition-all cursor-pointer;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04);
+  }
+
+  .job-card:hover {
+    @apply border-primary/40 -translate-y-0.5;
+    box-shadow: 0 4px 8px -2px rgb(0 0 0 / 0.08);
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    @apply h-2 rounded-full bg-muted overflow-hidden;
+  }
+
+  .progress-bar-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted/30;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/30;
+}
+
+/* Custom animations */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { 
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from { 
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}

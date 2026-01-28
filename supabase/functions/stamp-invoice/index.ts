@@ -9,7 +9,7 @@ const corsHeaders = {
 
 interface StampData {
   invoiceId: string;
-  status: "needs_review" | "ready_for_approval" | "approved" | "in_draw" | "paid";
+  status: "needs_review" | "needs_approval" | "approved" | "in_draw" | "paid";
 }
 
 interface InvoiceDetails {
@@ -95,25 +95,23 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch invoice with all related data
+    // Fetch invoice with all related data (using v2_ tables directly for FK joins)
     const { data: invoiceData, error: invoiceError } = await supabase
-      .from("invoices")
+      .from("v2_invoices")
       .select(`
         *,
-        vendors (name),
-        jobs (name),
-        purchase_orders (
+        v2_vendors (name),
+        v2_jobs (name),
+        v2_purchase_orders (
           po_number,
           original_amount,
-          change_order_amount,
-          current_amount,
-          invoiced_amount,
-          remaining_amount
+          change_order_total,
+          total_amount
         ),
-        draws (draw_number),
-        invoice_allocations (
+        v2_draws (draw_number),
+        v2_invoice_allocations (
           amount,
-          cost_codes (code, name)
+          v2_cost_codes (code, name)
         )
       `)
       .eq("id", invoiceId)
@@ -127,15 +125,15 @@ serve(async (req) => {
       );
     }
 
-    // Transform to our interface
+    // Transform to our interface (using v2_ prefixed keys from response)
     const invoice: InvoiceDetails = {
       id: invoiceData.id,
       invoice_number: invoiceData.invoice_number,
       amount: invoiceData.amount,
       invoice_date: invoiceData.invoice_date,
       due_date: invoiceData.due_date,
-      vendor_name: (invoiceData.vendors as any)?.name || null,
-      job_name: (invoiceData.jobs as any)?.name || null,
+      vendor_name: (invoiceData.v2_vendors as any)?.name || null,
+      job_name: (invoiceData.v2_jobs as any)?.name || null,
       status: invoiceData.status,
       pdf_url: invoiceData.pdf_url,
       approved_at: invoiceData.approved_at,
@@ -143,16 +141,16 @@ serve(async (req) => {
       paid_at: invoiceData.paid_at,
       is_credit: invoiceData.is_credit || false,
       ai_confidence: invoiceData.ai_confidence as Record<string, number> | null,
-      draw_number: (invoiceData.draws as any)?.draw_number,
-      allocations: ((invoiceData.invoice_allocations as any[]) || []).map((a: any) => ({
-        cost_code: a.cost_codes?.code || "",
-        cost_code_name: a.cost_codes?.name || "",
+      draw_number: (invoiceData.v2_draws as any)?.draw_number,
+      allocations: ((invoiceData.v2_invoice_allocations as any[]) || []).map((a: any) => ({
+        cost_code: a.v2_cost_codes?.code || "",
+        cost_code_name: a.v2_cost_codes?.name || "",
         amount: a.amount,
       })),
-      po_number: (invoiceData.purchase_orders as any)?.po_number,
-      po_total: (invoiceData.purchase_orders as any)?.current_amount,
-      po_invoiced: (invoiceData.purchase_orders as any)?.invoiced_amount,
-      po_remaining: (invoiceData.purchase_orders as any)?.remaining_amount,
+      po_number: (invoiceData.v2_purchase_orders as any)?.po_number,
+      po_total: (invoiceData.v2_purchase_orders as any)?.total_amount || (invoiceData.v2_purchase_orders as any)?.original_amount,
+      po_invoiced: 0, // Will need to compute from invoices if needed
+      po_remaining: 0, // Will need to compute if needed
     };
 
     // Check if we have a PDF to stamp
@@ -164,7 +162,15 @@ serve(async (req) => {
     }
 
     // Download the original PDF from storage
-    const pdfPath = invoice.pdf_url.split("/").pop();
+    // Extract path after /invoices/ from the full URL
+    const invoicesBucketIndex = invoice.pdf_url.indexOf("/invoices/");
+    if (invoicesBucketIndex === -1) {
+      return new Response(
+        JSON.stringify({ error: "Invalid PDF URL format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const pdfPath = invoice.pdf_url.substring(invoicesBucketIndex + "/invoices/".length);
     if (!pdfPath) {
       return new Response(
         JSON.stringify({ error: "Invalid PDF URL" }),
@@ -172,6 +178,7 @@ serve(async (req) => {
       );
     }
 
+    console.log("Downloading PDF from path:", pdfPath);
     const { data: pdfData, error: downloadError } = await supabase.storage
       .from("invoices")
       .download(pdfPath);
@@ -242,9 +249,9 @@ serve(async (req) => {
         }
         break;
 
-      case "ready_for_approval":
+      case "needs_approval":
         headerColor = colors.blue;
-        headerText = "READY FOR APPROVAL";
+        headerText = "NEEDS APPROVAL";
         stampLines = [
           { text: formatDate(new Date().toISOString()), font: helvetica, size: 8, color: colors.gray },
           { text: invoice.coded_by ? `Coded by ${invoice.coded_by}` : "", font: helvetica, size: 8, color: colors.gray },
@@ -493,8 +500,15 @@ serve(async (req) => {
     // Save the stamped PDF
     const stampedPdfBytes = await pdfDoc.save();
 
-    // Upload stamped PDF
-    const stampedFileName = `stamped-${Date.now()}-${pdfPath}`;
+    // Upload stamped PDF (preserve folder structure, just prefix filename with stamped-)
+    const pathParts = pdfPath.split("/");
+    const fileName = pathParts.pop();
+    const folderPath = pathParts.join("/");
+    const stampedFileName = folderPath
+      ? `${folderPath}/stamped-${Date.now()}-${fileName}`
+      : `stamped-${Date.now()}-${fileName}`;
+
+    console.log("Uploading stamped PDF to:", stampedFileName);
     const { error: uploadError } = await supabase.storage
       .from("invoices")
       .upload(stampedFileName, stampedPdfBytes, {
@@ -515,10 +529,10 @@ serve(async (req) => {
       .from("invoices")
       .getPublicUrl(stampedFileName);
 
-    // Update invoice with stamped PDF URL
+    // Update invoice with stamped PDF URL (use v2_ table directly)
     const { error: updateError } = await supabase
-      .from("invoices")
-      .update({ stamped_pdf_url: urlData.publicUrl })
+      .from("v2_invoices")
+      .update({ pdf_stamped_url: urlData.publicUrl })
       .eq("id", invoiceId);
 
     if (updateError) {

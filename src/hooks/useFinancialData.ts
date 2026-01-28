@@ -180,16 +180,17 @@ export function useInvoices(jobId?: string, status?: InvoiceStatus | 'all') {
           jobs (id, name),
           purchase_orders (id, po_number)
         `)
+        .is('deleted_at', null)  // Filter out soft-deleted invoices
         .order('created_at', { ascending: false });
-      
+
       if (jobId) {
         query = query.eq('job_id', jobId);
       }
-      
+
       if (status && status !== 'all') {
         query = query.eq('status', status);
       }
-      
+
       const { data, error } = await query;
       
       if (error) throw error;
@@ -209,35 +210,38 @@ export function useInvoice(id: string) {
   return useQuery({
     queryKey: ['invoice', id],
     queryFn: async () => {
+      // Use v2_ tables for FK joins (views don't support them)
       const { data, error } = await supabase
-        .from('invoices')
+        .from('v2_invoices')
         .select(`
           *,
-          vendors (id, name),
-          jobs (id, name),
-          purchase_orders (id, po_number),
-          invoice_allocations (
+          v2_vendors (id, name),
+          v2_jobs (id, name),
+          v2_purchase_orders (id, po_number),
+          v2_invoice_allocations (
             id,
             cost_code_id,
             amount,
-            description,
-            cost_codes (id, code, name)
+            notes,
+            v2_cost_codes (id, code, name)
           )
         `)
         .eq('id', id)
         .single();
-      
+
       if (error) throw error;
-      
+
       return {
         ...data,
-        vendor_name: (data as any).vendors?.name,
-        job_name: (data as any).jobs?.name,
-        po_number: (data as any).purchase_orders?.po_number,
-        allocations: (data as any).invoice_allocations?.map((a: any) => ({
+        vendor_name: (data as any).v2_vendors?.name,
+        job_name: (data as any).v2_jobs?.name,
+        po_number: (data as any).v2_purchase_orders?.po_number,
+        stamped_pdf_url: (data as any).pdf_stamped_url, // Map column name
+        allocations: (data as any).v2_invoice_allocations?.map((a: any) => ({
           ...a,
-          cost_code: a.cost_codes?.code,
-          cost_code_name: a.cost_codes?.name,
+          description: a.notes,
+          cost_code: a.v2_cost_codes?.code,
+          cost_code_name: a.v2_cost_codes?.name,
         })),
       } as Invoice;
     },
@@ -252,7 +256,7 @@ export function useCreateInvoice() {
     mutationFn: async (invoice: Partial<Invoice>) => {
       const { allocations, vendor_name, job_name, po_number, ...invoiceData } = invoice as any;
       const { data, error } = await supabase
-        .from('invoices')
+        .from('v2_invoices')
         .insert([invoiceData])
         .select()
         .single();
@@ -277,7 +281,7 @@ export function useUpdateInvoice() {
     mutationFn: async ({ id, ...updates }: Partial<Invoice> & { id: string }) => {
       const { allocations, vendor_name, job_name, po_number, ...updateData } = updates as any;
       const { data, error } = await supabase
-        .from('invoices')
+        .from('v2_invoices')
         .update(updateData)
         .eq('id', id)
         .select()
@@ -302,7 +306,7 @@ export function useApproveInvoice() {
   return useMutation({
     mutationFn: async ({ id, approved_by }: { id: string; approved_by: string }) => {
       const { data, error } = await supabase
-        .from('invoices')
+        .from('v2_invoices')
         .update({
           status: 'approved',
           approved_at: new Date().toISOString(),
@@ -332,13 +336,13 @@ export function useDeleteInvoice() {
     mutationFn: async (id: string) => {
       // First delete related allocations
       await supabase
-        .from('invoice_allocations')
+        .from('v2_invoice_allocations')
         .delete()
         .eq('invoice_id', id);
 
       // Then delete the invoice
       const { error } = await supabase
-        .from('invoices')
+        .from('v2_invoices')
         .delete()
         .eq('id', id);
 
@@ -374,7 +378,7 @@ export function useChangeInvoiceStatus() {
       }
 
       const { data, error } = await supabase
-        .from('invoices')
+        .from('v2_invoices')
         .update(updateData)
         .eq('id', id)
         .select()
@@ -803,8 +807,8 @@ export function useCreateDraw() {
       // If invoiceIds were provided, link them to this draw and update their status
       if (invoiceIds && invoiceIds.length > 0) {
         const { error: updateError } = await supabase
-          .from('invoices')
-          .update({ 
+          .from('v2_invoices')
+          .update({
             draw_id: data.id,
             status: 'in_draw'
           })
