@@ -178,6 +178,27 @@ function normalizeInvoiceNumber(num: string): string {
   return num.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 }
 
+// Minimum confidence to consider extraction successful (not scanned/OCR)
+const MIN_OCR_CONFIDENCE = 0.5;
+
+/**
+ * Check if extraction results indicate a scanned/OCR document
+ * Based on confidence scores - low confidence across all fields suggests OCR
+ */
+function isLikelyScannedDocument(confidence: ExtractedInvoiceData['extractionConfidence']): boolean {
+  if (!confidence) return false;
+
+  const avgConfidence = (
+    (confidence.vendor || 0) +
+    (confidence.amount || 0) +
+    (confidence.invoiceNumber || 0) +
+    (confidence.date || 0) +
+    (confidence.job || 0)
+  ) / 5;
+
+  return avgConfidence < MIN_OCR_CONFIDENCE;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -891,6 +912,9 @@ For confidence scores:
 
       // Extraction method tracking (pdf_vision for PDFs, image_vision for images)
       extractionMethod: actualMimeType === "application/pdf" ? "pdf_vision" : "image_vision",
+
+      // Scanned document detection based on confidence heuristics
+      isScannedDocument: isLikelyScannedDocument(extracted.extractionConfidence),
 
       // Processing messages for UI
       messages: [
