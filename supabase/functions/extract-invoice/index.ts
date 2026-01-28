@@ -332,7 +332,15 @@ For confidence scores:
 - 0.7-0.9 = Visible but slightly unclear
 - 0.4-0.6 = Partially visible or inferred
 - 0.1-0.3 = Guessed based on context
-- 0 = Not found`;
+- 0 = Not found
+
+SCANNED DOCUMENT HANDLING:
+If this appears to be a scanned document (image of a document rather than digital PDF):
+- Look carefully at all visible text, even if blurry or at angles
+- Check for handwritten notes or stamps
+- The scan quality may affect readability - do your best to extract all visible information
+- If text is partially illegible, extract what you can and reduce confidence scores accordingly
+- Look for typical invoice elements: letterhead at top, totals at bottom, line items in middle`;
 
     // Call Claude API for extraction
     let content: string;
