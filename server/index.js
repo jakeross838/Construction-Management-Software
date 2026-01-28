@@ -104,7 +104,8 @@ app.use('/js', (req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, '../public')));
+// Serve React build from client/dist
+app.use(express.static(path.join(__dirname, '../client/dist')));
 
 // ============================================================
 // ROUTE MODULES (Refactored from monolithic index.js)
@@ -12712,13 +12713,24 @@ app.get('/api/jobs/:id/integrity', asyncHandler(async (req, res) => {
   res.json(checks);
 }));
 
+// Catch-all: serve React app for any non-API routes
+app.get('*', (req, res) => {
+  // Don't serve index.html for API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+});
+
 app.listen(port, () => {
   console.log('');
   console.log('='.repeat(50));
   console.log('ROSS BUILT CONSTRUCTION MANAGEMENT');
   console.log('='.repeat(50));
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`App running at http://localhost:${port}`);
   console.log(`PID: ${process.pid} (use 'npm run stop' to safely stop)`);
+  console.log('');
+  console.log('Open http://localhost:' + port + ' in your browser');
   console.log('');
   console.log('API Endpoints:');
   console.log('  GET  /api/dashboard/stats       - Owner dashboard');

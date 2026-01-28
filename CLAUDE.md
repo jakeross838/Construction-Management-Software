@@ -3,11 +3,10 @@
 ## Overview
 Full-featured construction management system for Ross Built Custom Homes. Handles invoices, POs, draws, estimates, schedules, and more.
 
-**Frontend**: http://localhost:8080 (React)
-**API**: http://localhost:3001 (Node.js)
+**URL**: http://localhost:3001
 
 ## Tech Stack
-- **Frontend**: React + TypeScript + Vite + Tailwind CSS
+- **Frontend**: React + TypeScript + Tailwind CSS (served by Node.js)
 - **Backend**: Node.js + Express
 - **Database**: Supabase (PostgreSQL)
 - **File Storage**: Supabase Storage (PDFs)
@@ -17,17 +16,17 @@ Full-featured construction management system for Ross Built Custom Homes. Handle
 
 ## Quick Commands
 ```bash
-# Run both frontend + backend
-npm run dev
+# Start the app
+npm start
 
-# Run only backend
-npm run server
-
-# Run only frontend
-npm run client
+# Build React frontend (required before first run)
+npm run build
 
 # Install all dependencies
 npm run install:all
+
+# Development mode (hot reload for React)
+npm run dev
 ```
 
 ---
