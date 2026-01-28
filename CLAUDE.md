@@ -16,6 +16,88 @@ Simplified invoice approval and AR pipeline system for Ross Built Custom Homes. 
 
 ---
 
+## Agentic Development Workflow (MANDATORY)
+
+### BEFORE Writing Any Code
+
+```
+1. UNDERSTAND THE REQUEST
+   - What exactly is the user asking for?
+   - What is the expected behavior?
+   - What are the success criteria?
+
+2. EXPLORE THE CODEBASE
+   - Find relevant files using Grep/Glob/Task agents
+   - Read the actual code, don't assume
+   - Check existing patterns in similar features
+   - Look at how other pages/endpoints handle similar functionality
+
+3. VERIFY THE SCHEMA
+   - Check database tables/columns before writing queries
+   - Don't trust memory - verify column names exist
+   - Review migration files for table structure
+```
+
+### WHILE Writing Code
+
+```
+4. IMPLEMENT INCREMENTALLY
+   - Make one change at a time
+   - Don't make assumptions about column names or types
+   - Follow existing patterns in the codebase
+
+5. TEST EACH CHANGE
+   - For API endpoints: Test with curl or browser
+   - For frontend: Check the page loads without console errors
+   - For database: Verify data is written correctly
+```
+
+### BEFORE Saying "It's Done"
+
+```
+6. VERIFICATION CHECKLIST (MANDATORY)
+   [ ] Server starts without errors (npm start)
+   [ ] API endpoint tested with curl or browser
+   [ ] Frontend page loads without JS errors
+   [ ] Full data flow traced: UI → API → Database → Response → UI
+   [ ] Logic test: Does it actually accomplish the user's request?
+
+7. LOGIC TESTING
+   - Manually trace the code path
+   - Verify state changes happen in correct order
+   - Check error handling paths
+   - Verify UI reflects the expected state
+```
+
+### Testing Commands
+
+```bash
+# Start server
+npm start
+
+# Test API endpoint
+curl http://localhost:3001/api/ENDPOINT
+
+# Check server logs for errors
+# Look at terminal running npm start
+
+# Run Playwright tests (if applicable)
+npm test
+```
+
+### Pre-Implementation Ritual
+
+Before implementing ANY feature, answer these:
+
+1. **What files are involved?** (Use Glob/Grep to find them)
+2. **What's the existing pattern?** (Read similar implementations)
+3. **What database tables are involved?** (Check schema/migrations)
+4. **What API endpoints exist?** (Check server/index.js)
+5. **How will I test this?** (Write the test command first)
+6. **What could break?** (Check dependencies/imports)
+
+---
+
 ## Quick Start
 
 ```bash
