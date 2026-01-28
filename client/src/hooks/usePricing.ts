@@ -179,6 +179,18 @@ export interface BurdenClass {
 
 // ==================== MASTER ITEMS ====================
 
+// Database returns different field names than frontend expects
+interface DBMasterItem {
+  id: string;
+  standard_name: string;
+  standard_unit: string;
+  category: string;
+  subcategory: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export function useMasterItems(category?: string) {
   return useQuery({
     queryKey: ['master-items', category],
@@ -187,7 +199,19 @@ export function useMasterItems(category?: string) {
       if (category) {
         endpoint += `?category=${encodeURIComponent(category)}`;
       }
-      return api<MasterItem[]>(endpoint);
+      const data = await api<DBMasterItem[]>(endpoint);
+      // Map database fields to frontend interface
+      return data.map(item => ({
+        id: item.id,
+        name: item.standard_name,
+        description: item.subcategory,
+        category: item.category,
+        default_unit: item.standard_unit,
+        waste_factor_percent: 0,
+        is_active: item.is_active,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+      })) as MasterItem[];
     },
   });
 }
