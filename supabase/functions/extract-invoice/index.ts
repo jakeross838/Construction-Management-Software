@@ -174,6 +174,19 @@ function normalizeVendorName(name: string): string {
     .trim();
 }
 
+/**
+ * Normalize a string for learning/matching
+ * Lowercase, remove special chars, collapse whitespace
+ */
+function normalizeForLearning(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function normalizeInvoiceNumber(num: string): string {
   return num.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 }
