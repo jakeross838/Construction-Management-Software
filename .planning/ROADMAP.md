@@ -56,7 +56,7 @@ Upgrade Kind Creation's AI invoice processing from the credit-limited Lovable ga
   4. Vendor name variations map to canonical vendor
   5. Job reference patterns map to correct job
 **Research**: Unlikely (database operations, existing matching patterns)
-**Plans**: TBD
+**Plans**: 03-01-PLAN (AI Learning System)
 
 ### Phase 4: Enhanced Matching
 **Goal**: Improve cost code suggestions using multiple strategies
@@ -104,7 +104,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Claude API Integration | 1/1 | Complete | 2026-01-27 |
 | 2. OCR Support | 1/1 | Complete | 2026-01-27 |
-| 3. AI Learning System | 0/TBD | Not started | - |
+| 3. AI Learning System | 0/1 | Planned | - |
 | 4. Enhanced Matching | 0/TBD | Not started | - |
 | 5. PDF Stamp Redesign | 0/TBD | Not started | - |
 | 6. Bulk Processing | 0/TBD | Not started | - |
