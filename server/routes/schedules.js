@@ -31,10 +31,9 @@ router.get('/', asyncHandler(async (req, res) => {
       .select(`
         *,
         job:v2_jobs(id, name, address),
-        tasks:v2_schedule_tasks(id, name, status, completion_percent)
+        tasks:v2_schedule_tasks(id, name, status, percent_complete)
       `)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false });
 
     if (job_id) {
       query = query.eq('job_id', job_id);
@@ -49,7 +48,7 @@ router.get('/', asyncHandler(async (req, res) => {
       task_count: schedule.tasks?.length || 0,
       completed_tasks: schedule.tasks?.filter(t => t.status === 'completed').length || 0,
       overall_progress: schedule.tasks?.length > 0
-        ? Math.round(schedule.tasks.reduce((sum, t) => sum + (t.completion_percent || 0), 0) / schedule.tasks.length)
+        ? Math.round(schedule.tasks.reduce((sum, t) => sum + (t.percent_complete || 0), 0) / schedule.tasks.length)
         : 0
     }));
 
@@ -66,18 +65,16 @@ router.get('/by-job/:jobId', asyncHandler(async (req, res) => {
         *,
         job:v2_jobs(id, name, address),
         tasks:v2_schedule_tasks(
-          id, name, description, trade, construction_phase,
-          planned_start, planned_end, planned_duration_days,
-          actual_start, actual_end, actual_duration_days,
-          status, completion_percent, depends_on, sort_order,
-          vendor:v2_vendors(id, name),
-          po:v2_purchase_orders(id, po_number),
+          id, name, description, phase,
+          planned_start, planned_end, estimated_days,
+          actual_start, actual_end, actual_days,
+          status, percent_complete, sort_order,
+          trade:v2_trades(id, name),
           cost_code:v2_cost_codes(id, code, name)
         )
       `)
       .eq('job_id', jobId)
-      .is('deleted_at', null)
-      .single();
+            .single();
 
     if (error && error.code !== 'PGRST116') throw error;
 
@@ -103,18 +100,16 @@ router.get('/:id', asyncHandler(async (req, res) => {
         *,
         job:v2_jobs(id, name, address),
         tasks:v2_schedule_tasks(
-          id, name, description, trade, construction_phase,
-          planned_start, planned_end, planned_duration_days,
-          actual_start, actual_end, actual_duration_days,
-          status, completion_percent, depends_on, sort_order,
-          vendor:v2_vendors(id, name),
-          po:v2_purchase_orders(id, po_number),
+          id, name, description, phase,
+          planned_start, planned_end, estimated_days,
+          actual_start, actual_end, actual_days,
+          status, percent_complete, sort_order,
+          trade:v2_trades(id, name),
           cost_code:v2_cost_codes(id, code, name)
         )
       `)
       .eq('id', id)
-      .is('deleted_at', null)
-      .single();
+            .single();
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -155,8 +150,7 @@ router.post('/', asyncHandler(async (req, res) => {
       .from('v2_schedules')
       .select('id')
       .eq('job_id', job_id)
-      .is('deleted_at', null)
-      .single();
+            .single();
 
     if (existing) {
       return res.status(409).json({
@@ -214,19 +208,19 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     res.json(schedule);
 }));
 
-// Delete schedule (soft delete)
+// Delete schedule (hard delete - tasks cascade via FK)
 router.delete('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { deleted_by } = req.body;
 
+    await logScheduleActivity(id, null, 'deleted', deleted_by);
+
     const { error } = await supabase
       .from('v2_schedules')
-      .update({ deleted_at: new Date().toISOString() })
+      .delete()
       .eq('id', id);
 
     if (error) throw error;
-
-    await logScheduleActivity(id, null, 'deleted', deleted_by);
 
     res.json({ success: true });
 }));
@@ -245,8 +239,7 @@ router.get('/tasks/by-job/:jobId', asyncHandler(async (req, res) => {
       .from('v2_schedules')
       .select('id')
       .eq('job_id', jobId)
-      .is('deleted_at', null)
-      .single();
+            .single();
 
     if (!schedule) {
       return res.json([]); // No schedule, no tasks
@@ -254,7 +247,7 @@ router.get('/tasks/by-job/:jobId', asyncHandler(async (req, res) => {
 
     let query = supabase
       .from('v2_schedule_tasks')
-      .select('id, name, trade, status, completion_percent')
+      .select('id, name, status, percent_complete')
       .eq('schedule_id', schedule.id)
       .order('sort_order', { ascending: true });
 
@@ -283,15 +276,13 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
     const {
       name,
       description,
-      trade,
+      phase,
       cost_code_id,
-      construction_phase,
+      trade_id,
       planned_start,
       planned_end,
-      planned_duration_days,
-      depends_on,
-      vendor_id,
-      po_id,
+      estimated_days,
+      assigned_vendor_id,
       sort_order,
       created_by
     } = req.body;
@@ -320,23 +311,20 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
         schedule_id: scheduleId,
         name,
         description,
-        trade,
+        phase,
         cost_code_id,
-        construction_phase,
+        trade_id,
         planned_start,
         planned_end,
-        planned_duration_days,
-        depends_on: depends_on || [],
-        vendor_id,
-        po_id,
+        estimated_days: estimated_days || 1,
+        assigned_vendor_id,
         sort_order: taskSortOrder,
-        status: 'pending',
-        completion_percent: 0
+        status: 'not_started',
+        percent_complete: 0
       })
       .select(`
         *,
-        vendor:v2_vendors(id, name),
-        po:v2_purchase_orders(id, po_number),
+        trade:v2_trades(id, name),
         cost_code:v2_cost_codes(id, code, name)
       `)
       .single();
@@ -354,20 +342,18 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
     const {
       name,
       description,
-      trade,
+      phase,
       cost_code_id,
-      construction_phase,
+      trade_id,
       planned_start,
       planned_end,
-      planned_duration_days,
+      estimated_days,
       actual_start,
       actual_end,
-      actual_duration_days,
+      actual_days,
       status,
-      completion_percent,
-      depends_on,
-      vendor_id,
-      po_id,
+      percent_complete,
+      assigned_vendor_id,
       sort_order,
       updated_by
     } = req.body;
@@ -376,30 +362,28 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
 
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
-    if (trade !== undefined) updates.trade = trade;
+    if (phase !== undefined) updates.phase = phase;
     if (cost_code_id !== undefined) updates.cost_code_id = cost_code_id;
-    if (construction_phase !== undefined) updates.construction_phase = construction_phase;
+    if (trade_id !== undefined) updates.trade_id = trade_id;
     if (planned_start !== undefined) updates.planned_start = planned_start;
     if (planned_end !== undefined) updates.planned_end = planned_end;
-    if (planned_duration_days !== undefined) updates.planned_duration_days = planned_duration_days;
+    if (estimated_days !== undefined) updates.estimated_days = estimated_days;
     if (actual_start !== undefined) updates.actual_start = actual_start;
     if (actual_end !== undefined) updates.actual_end = actual_end;
-    if (actual_duration_days !== undefined) updates.actual_duration_days = actual_duration_days;
+    if (actual_days !== undefined) updates.actual_days = actual_days;
     if (status !== undefined) updates.status = status;
-    if (completion_percent !== undefined) updates.completion_percent = completion_percent;
-    if (depends_on !== undefined) updates.depends_on = depends_on;
-    if (vendor_id !== undefined) updates.vendor_id = vendor_id;
-    if (po_id !== undefined) updates.po_id = po_id;
+    if (percent_complete !== undefined) updates.percent_complete = percent_complete;
+    if (assigned_vendor_id !== undefined) updates.assigned_vendor_id = assigned_vendor_id;
     if (sort_order !== undefined) updates.sort_order = sort_order;
 
     // Auto-update status based on completion
-    if (completion_percent !== undefined) {
-      if (completion_percent >= 100 && status !== 'completed') {
-        updates.status = 'completed';
+    if (percent_complete !== undefined) {
+      if (percent_complete >= 100 && status !== 'complete') {
+        updates.status = 'complete';
         if (!updates.actual_end) {
           updates.actual_end = new Date().toISOString().split('T')[0];
         }
-      } else if (completion_percent > 0 && completion_percent < 100 && status === 'pending') {
+      } else if (percent_complete > 0 && percent_complete < 100 && status === 'not_started') {
         updates.status = 'in_progress';
         if (!updates.actual_start) {
           updates.actual_start = new Date().toISOString().split('T')[0];
@@ -420,8 +404,7 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
       .eq('id', taskId)
       .select(`
         *,
-        vendor:v2_vendors(id, name),
-        po:v2_purchase_orders(id, po_number),
+        trade:v2_trades(id, name),
         cost_code:v2_cost_codes(id, code, name)
       `)
       .single();
@@ -510,15 +493,14 @@ router.get('/:id/gantt', asyncHandler(async (req, res) => {
         id, name, start_date, target_end_date,
         job:v2_jobs(id, name),
         tasks:v2_schedule_tasks(
-          id, name, trade, construction_phase,
+          id, name, phase,
           planned_start, planned_end,
           actual_start, actual_end,
-          status, completion_percent, depends_on, sort_order
+          status, percent_complete, sort_order
         )
       `)
       .eq('id', id)
-      .is('deleted_at', null)
-      .single();
+            .single();
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -648,7 +630,7 @@ router.get('/:id/baseline', asyncHandler(async (req, res) => {
   // Get tasks with baseline data
   const { data: tasks, error: tasksError } = await supabase
     .from('v2_schedule_tasks')
-    .select('id, name, baseline_start, baseline_end, planned_start, planned_end, status, completion_percent, sort_order')
+    .select('id, name, baseline_start, baseline_end, planned_start, planned_end, status, percent_complete, sort_order')
     .eq('schedule_id', id)
     .order('sort_order');
 

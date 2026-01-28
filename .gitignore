@@ -39,3 +39,9 @@ tmpclaude-*
 # Runtime files
 server.pid
 test-results/
+
+# Client build
+client/dist/
+
+# Legacy vanilla JS frontend (archived)
+public-legacy/

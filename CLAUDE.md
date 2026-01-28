@@ -1,18 +1,34 @@
 # Ross Built Construction Management Software
 
 ## Overview
-Simplified invoice approval and AR pipeline system for Ross Built Custom Homes. Focuses on the core workflow: Invoice → AI Processing → Approval → Draw → Payment.
+Full-featured construction management system for Ross Built Custom Homes. Handles invoices, POs, draws, estimates, schedules, and more.
 
-**Server**: http://localhost:3001
+**Frontend**: http://localhost:8080 (React)
+**API**: http://localhost:3001 (Node.js)
 
 ## Tech Stack
+- **Frontend**: React + TypeScript + Vite + Tailwind CSS
 - **Backend**: Node.js + Express
 - **Database**: Supabase (PostgreSQL)
 - **File Storage**: Supabase Storage (PDFs)
-- **Frontend**: Vanilla JS (no framework)
 - **AI Processing**: Claude Sonnet (Anthropic API)
 - **PDF Stamping**: pdf-lib
 - **Excel Export**: ExcelJS
+
+## Quick Commands
+```bash
+# Run both frontend + backend
+npm run dev
+
+# Run only backend
+npm run server
+
+# Run only frontend
+npm run client
+
+# Install all dependencies
+npm run install:all
+```
 
 ---
 

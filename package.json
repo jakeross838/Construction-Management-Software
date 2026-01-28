@@ -1,13 +1,17 @@
 {
   "name": "ross-built-cms",
-  "version": "1.0.0",
-  "description": "Ross Built Construction Management Software",
+  "version": "2.0.0",
+  "description": "Ross Built Construction Management Software - React + Node.js",
   "main": "server/index.js",
   "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "node server/index.js",
+    "client": "cd client && npm run dev",
     "start": "node server/index.js",
     "stop": "node server/stop.js",
     "restart": "node server/stop.js && node server/index.js",
-    "dev": "node server/index.js",
+    "build": "cd client && npm run build",
+    "install:all": "npm install && cd client && npm install",
     "migrate": "node server/migrate.js",
     "migrate:status": "node server/migrate.js --status",
     "migrate:force": "node server/migrate.js --force",
@@ -44,6 +48,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
+    "concurrently": "^8.2.2",
     "pg": "^8.16.3",
     "playwright": "^1.57.0"
   }
