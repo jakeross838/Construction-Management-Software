@@ -12,14 +12,12 @@ A comprehensive construction management platform for Ross Built, combining a mod
 
 ### Validated
 
-<!-- Shipped and confirmed valuable — existing in codebase -->
+<!-- Shipped and confirmed valuable -->
 
 - ✓ Job/project management with status tracking — existing
 - ✓ Vendor directory with contact management — existing
 - ✓ Purchase order creation and tracking — existing
-- ✓ Invoice upload and basic AI extraction (Lovable gateway) — existing
 - ✓ Invoice status workflow (needs_review → approved → in_draw → paid) — existing
-- ✓ PDF stamping with approval metadata — existing
 - ✓ Vendor/job/PO matching algorithms (fuzzy, Soundex) — existing
 - ✓ Cost code management and allocation — existing
 - ✓ Draw request management — existing
@@ -30,19 +28,20 @@ A comprehensive construction management platform for Ross Built, combining a mod
 - ✓ Daily logs and schedule tracking — existing
 - ✓ PO email sending via Resend — existing
 - ✓ Dashboard with financial metrics — existing
+- ✓ Claude API invoice extraction (replaces Lovable gateway) — v1.0
+- ✓ OCR support for scanned PDFs via Claude Vision — v1.0
+- ✓ AI learning system (corrections improve future extractions) — v1.0
+- ✓ Vendor alias learning (vendor name variations) — v1.0
+- ✓ Job reference learning (job reference patterns) — v1.0
+- ✓ Multi-strategy cost code suggestions — v1.0
+- ✓ Professional PDF stamp aesthetics — v1.0
+- ✓ Bulk invoice processing with queue — v1.0
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [x] Replace Lovable AI gateway with Claude/Anthropic API for invoice extraction
-- [ ] Add OCR support for scanned PDFs using Claude Vision
-- [ ] Implement AI learning system (corrections improve future extractions)
-- [ ] Improve PDF stamp aesthetics (professional appearance)
-- [ ] Add vendor alias learning (remember vendor name variations)
-- [ ] Add job reference learning (remember job reference patterns)
-- [ ] Multi-strategy cost code suggestions from line items and trade types
-- [ ] Bulk invoice processing (queue multiple invoices)
+(None yet — define requirements for next milestone)
 
 ### Out of Scope
 
@@ -85,10 +84,20 @@ A comprehensive construction management platform for Ross Built, combining a mod
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Use Claude API for extraction | Lovable gateway has credit limits, Claude has OCR capability | Implemented |
-| Keep Supabase Edge Functions | Already deployed architecture, Deno is capable | — Pending |
-| Port AI logic to TypeScript | Original is JS, Edge Functions are TS | — Pending |
-| Store learned mappings in database | Enables persistence across sessions | — Pending |
+| Use Claude API for extraction | Lovable gateway has credit limits, Claude has OCR capability | ✓ Good |
+| Keep Supabase Edge Functions | Already deployed architecture, Deno is capable | ✓ Good |
+| Port AI logic to TypeScript | Original is JS, Edge Functions are TS | ✓ Good |
+| Store learned mappings in database | Enables persistence across sessions | ✓ Good |
+| Confidence < 0.5 = scanned document | Heuristic detection without separate OCR pipeline | ✓ Good |
+| 90% initial confidence, +2% per confirmation | Gradual trust building for learned mappings | ✓ Good |
+| Job+vendor history highest priority (0.80-0.95) | Most specific pattern wins for cost code suggestions | ✓ Good |
+| Batch size 3, Promise.allSettled | Rate limit respect + fault tolerance for bulk upload | ✓ Good |
+
+## Current State
+
+**Shipped:** v1.0 AI Upgrade (2026-01-28)
+**Codebase:** 59,541 lines TypeScript
+**Tech stack:** React 18, Vite, Supabase, Claude API, pdf-lib
 
 ---
-*Last updated: 2026-01-27 after initialization*
+*Last updated: 2026-01-28 after v1.0 milestone*
