@@ -1,6 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 // Record when user corrects an AI match
 export function useRecordCorrection() {
@@ -16,79 +28,14 @@ export function useRecordCorrection() {
       extractedValue: string;
       correctedId: string;
     }) => {
-      // Check if mapping already exists
-      const { data: existing } = await supabase
-        .from('ai_learned_mappings')
-        .select('*')
-        .eq('entity_type', entityType)
-        .eq('extracted_value', extractedValue)
-        .maybeSingle();
-
-      let result;
-      if (existing) {
-        if (existing.matched_id === correctedId) {
-          // Same match - increment use_count and boost confidence
-          const newConfidence = Math.min(0.99, (existing.confidence || 0.9) + 0.02);
-          const { data, error } = await supabase
-            .from('ai_learned_mappings')
-            .update({
-              use_count: (existing.use_count || 0) + 1,
-              confidence: newConfidence,
-              last_used_at: new Date().toISOString()
-            })
-            .eq('id', existing.id)
-            .select()
-            .single();
-          if (error) throw error;
-          result = data;
-        } else {
-          // Different match - update mapping with new ID, reset confidence
-          const { data, error } = await supabase
-            .from('ai_learned_mappings')
-            .update({
-              matched_id: correctedId,
-              confidence: 0.90,
-              use_count: 1,
-              last_used_at: new Date().toISOString()
-            })
-            .eq('id', existing.id)
-            .select()
-            .single();
-          if (error) throw error;
-          result = data;
-        }
-      } else {
-        // Create new mapping
-        const { data, error } = await supabase
-          .from('ai_learned_mappings')
-          .insert({
-            entity_type: entityType,
-            extracted_value: extractedValue,
-            matched_id: correctedId,
-            confidence: 0.90,
-            use_count: 1,
-            last_used_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-        if (error) throw error;
-        result = data;
-      }
-
-      // If vendor correction, also create alias
-      if (entityType === 'vendor') {
-        await supabase
-          .from('vendor_aliases')
-          .upsert({
-            vendor_id: correctedId,
-            alias_name: extractedValue,
-            source: 'ai_correction'
-          }, {
-            onConflict: 'alias_name'
-          });
-      }
-
-      return result;
+      return api('/ai/corrections', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_type: entityType,
+          extracted_value: extractedValue,
+          corrected_id: correctedId,
+        }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ai-learned-mappings'] });
@@ -110,26 +57,13 @@ export function useIncrementMappingUse() {
       entityType: string;
       extractedValue: string;
     }) => {
-      // First get the current record
-      const { data: existing } = await supabase
-        .from('ai_learned_mappings')
-        .select('use_count')
-        .eq('entity_type', entityType)
-        .eq('extracted_value', extractedValue)
-        .maybeSingle();
-
-      if (!existing) return;
-
-      const { error } = await supabase
-        .from('ai_learned_mappings')
-        .update({
-          use_count: (existing.use_count || 0) + 1,
-          last_used_at: new Date().toISOString()
-        })
-        .eq('entity_type', entityType)
-        .eq('extracted_value', extractedValue);
-
-      if (error) throw error;
+      return api('/ai/mappings/increment', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_type: entityType,
+          extracted_value: extractedValue,
+        }),
+      });
     }
   });
 }
@@ -146,18 +80,14 @@ export function useCreateVendorAlias() {
       vendorId: string;
       aliasName: string;
     }) => {
-      const { data, error } = await supabase
-        .from('vendor_aliases')
-        .insert({
+      return api('/vendors/aliases', {
+        method: 'POST',
+        body: JSON.stringify({
           vendor_id: vendorId,
           alias_name: aliasName,
-          source: 'manual'
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+          source: 'manual',
+        }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendor-aliases'] });
@@ -184,20 +114,14 @@ export function useUpdateTradeCostMapping() {
       costCodeId: string;
       priority?: number;
     }) => {
-      const { data, error } = await supabase
-        .from('trade_cost_mappings')
-        .upsert({
+      return api('/cost-codes/trade-mappings', {
+        method: 'POST',
+        body: JSON.stringify({
           trade_type: tradeType,
           cost_code_id: costCodeId,
-          priority
-        }, {
-          onConflict: 'trade_type,cost_code_id'
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+          priority,
+        }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trade-cost-mappings'] });

@@ -1,6 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 interface CreateCostCodeData {
   code: string;
@@ -19,14 +31,10 @@ export const useCreateCostCode = () => {
 
   return useMutation({
     mutationFn: async (data: CreateCostCodeData) => {
-      const { data: result, error } = await supabase
-        .from('cost_codes')
-        .insert(data)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return result;
+      return api('/cost-codes', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cost-codes'] });
@@ -44,15 +52,10 @@ export const useUpdateCostCode = () => {
 
   return useMutation({
     mutationFn: async ({ id, ...data }: UpdateCostCodeData) => {
-      const { data: result, error } = await supabase
-        .from('cost_codes')
-        .update(data)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return result;
+      return api(`/cost-codes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cost-codes'] });
@@ -70,9 +73,7 @@ export const useDeleteCostCode = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('cost_codes').delete().eq('id', id);
-
-      if (error) throw error;
+      return api(`/cost-codes/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cost-codes'] });

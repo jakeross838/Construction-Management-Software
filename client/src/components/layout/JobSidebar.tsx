@@ -39,8 +39,8 @@ export function JobSidebar({ selectedJobId, onJobSelect }: JobSidebarProps) {
   const filteredJobs = useMemo(() => {
     if (!searchQuery.trim()) return dbJobs;
     const query = searchQuery.toLowerCase();
-    return dbJobs.filter(job => 
-      job.name.toLowerCase().includes(query) ||
+    return dbJobs.filter(job =>
+      job.name?.toLowerCase().includes(query) ||
       job.address?.toLowerCase().includes(query) ||
       job.client?.toLowerCase().includes(query)
     );

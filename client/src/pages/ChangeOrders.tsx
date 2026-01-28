@@ -78,8 +78,8 @@ const ChangeOrders = () => {
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(co => 
-        co.co_number.toLowerCase().includes(query) ||
+      filtered = filtered.filter(co =>
+        co.co_number?.toLowerCase().includes(query) ||
         co.description?.toLowerCase().includes(query) ||
         co.job_name?.toLowerCase().includes(query)
       );

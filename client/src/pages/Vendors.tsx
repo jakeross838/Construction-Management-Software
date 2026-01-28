@@ -79,12 +79,12 @@ const Vendors = () => {
 
   const filteredVendors = useMemo(() => {
     return vendorsWithStatus.filter(vendor => {
-      const matchesSearch = !searchQuery.trim() || 
-        vendor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      const matchesSearch = !searchQuery.trim() ||
+        vendor.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         vendor.contact_name?.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       const matchesStatus = statusFilter === 'all' || vendor.computedStatus === statusFilter;
-      
+
       return matchesSearch && matchesStatus;
     });
   }, [vendorsWithStatus, searchQuery, statusFilter]);

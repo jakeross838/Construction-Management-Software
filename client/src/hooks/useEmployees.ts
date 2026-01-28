@@ -1,5 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export interface Employee {
   id: string;
@@ -21,19 +34,8 @@ export function useEmployees(activeOnly = true) {
   return useQuery({
     queryKey: ['employees', activeOnly],
     queryFn: async () => {
-      let query = supabase
-        .from('employees')
-        .select('*')
-        .order('last_name', { ascending: true })
-        .order('first_name', { ascending: true });
-
-      if (activeOnly) {
-        query = query.eq('is_active', true);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as Employee[];
+      const endpoint = activeOnly ? '/employees?active_only=true' : '/employees';
+      return api<Employee[]>(endpoint);
     },
   });
 }
@@ -43,17 +45,17 @@ export function useCreateEmployee() {
 
   return useMutation({
     mutationFn: async (employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('employees')
-        .insert(employee)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<Employee>('/employees', {
+        method: 'POST',
+        body: JSON.stringify(employee),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success('Employee created');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to create employee: ${error.message}`);
     },
   });
 }
@@ -63,18 +65,17 @@ export function useUpdateEmployee() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Employee> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('employees')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<Employee>(`/employees/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success('Employee updated');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update employee: ${error.message}`);
     },
   });
 }
@@ -84,15 +85,14 @@ export function useDeleteEmployee() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('employees')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      return api(`/employees/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success('Employee deleted');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to delete employee: ${error.message}`);
     },
   });
 }

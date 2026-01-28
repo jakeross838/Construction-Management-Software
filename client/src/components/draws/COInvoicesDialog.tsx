@@ -19,7 +19,6 @@ import { Receipt, FileEdit, ExternalLink, Eye } from 'lucide-react';
 import { formatCurrency, formatDate, invoiceStatusConfig } from '@/types/financial';
 import type { ChangeOrder, Invoice } from '@/types/financial';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 
@@ -38,22 +37,13 @@ export function COInvoicesDialog({ changeOrder, open, onOpenChange }: COInvoices
     queryKey: ['co-invoices', changeOrder?.id, changeOrder?.po_id],
     queryFn: async () => {
       if (!changeOrder?.po_id) return [];
-      
-      const { data, error } = await supabase
-        .from('invoices')
-        .select(`
-          *,
-          vendors (name)
-        `)
-        .eq('po_id', changeOrder.po_id)
-        .order('invoice_date', { ascending: false });
-      
-      if (error) throw error;
-      
-      return data.map((inv: any) => ({
-        ...inv,
-        vendor_name: inv.vendors?.name,
-      })) as Invoice[];
+
+      const response = await fetch(`/api/invoices?po_id=${changeOrder.po_id}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch invoices: HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      return (Array.isArray(data) ? data : []) as Invoice[];
     },
     enabled: !!changeOrder?.po_id && open,
   });

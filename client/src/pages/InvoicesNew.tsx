@@ -70,10 +70,10 @@ const InvoicesPage = () => {
 
   const filteredInvoices = useMemo(() => {
     if (!searchQuery.trim()) return invoices;
-    
+
     const query = searchQuery.toLowerCase();
     return invoices.filter(inv =>
-      inv.invoice_number.toLowerCase().includes(query) ||
+      inv.invoice_number?.toLowerCase().includes(query) ||
       inv.vendor_name?.toLowerCase().includes(query) ||
       inv.job_name?.toLowerCase().includes(query)
     );

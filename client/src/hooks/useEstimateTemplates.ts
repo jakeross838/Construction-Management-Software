@@ -1,8 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Estimate, EstimateSection, EstimateMarkupSettings, defaultMarkupSettings, generateId } from '@/types/estimate';
-import { Json } from '@/integrations/supabase/types';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export interface EstimateTemplate {
   id: string;
@@ -24,17 +35,17 @@ export interface EstimateTemplate {
 }
 
 // Type helpers for JSON conversion
-function parseSections(json: Json): EstimateSection[] {
+function parseSections(json: unknown): EstimateSection[] {
   if (!json || !Array.isArray(json)) return [];
   return json as unknown as EstimateSection[];
 }
 
-function parseMarkupSettings(json: Json): EstimateMarkupSettings {
+function parseMarkupSettings(json: unknown): EstimateMarkupSettings {
   if (!json || typeof json !== 'object') return defaultMarkupSettings;
   return json as unknown as EstimateMarkupSettings;
 }
 
-function parseStringArray(json: Json): string[] {
+function parseStringArray(json: unknown): string[] {
   if (!json || !Array.isArray(json)) return [];
   return json as string[];
 }
@@ -43,14 +54,7 @@ export function useEstimateTemplates() {
   return useQuery({
     queryKey: ['estimate-templates'],
     queryFn: async (): Promise<EstimateTemplate[]> => {
-      const { data, error } = await supabase
-        .from('estimate_templates')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .order('name', { ascending: true });
-
-      if (error) throw error;
+      const data = await api<EstimateTemplate[]>('/estimates/templates');
 
       return (data || []).map(row => ({
         ...row,
@@ -68,34 +72,16 @@ export function useCreateTemplate() {
 
   return useMutation({
     mutationFn: async (template: Omit<EstimateTemplate, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('estimate_templates')
-        .insert({
-          name: template.name,
-          description: template.description,
-          category: template.category,
-          project_type: template.project_type,
-          sections: template.sections as unknown as Json,
-          markup_settings: template.markup_settings as unknown as Json,
-          exclusions: template.exclusions as unknown as Json,
-          clarifications: template.clarifications as unknown as Json,
-          terms_and_conditions: template.terms_and_conditions,
-          is_active: template.is_active,
-          is_default: template.is_default,
-          sort_order: template.sort_order,
-          created_by: template.created_by,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<EstimateTemplate>('/estimates/templates', {
+        method: 'POST',
+        body: JSON.stringify(template),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['estimate-templates'] });
       toast.success('Template created successfully');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Failed to create template: ${error.message}`);
     },
   });
@@ -106,36 +92,16 @@ export function useUpdateTemplate() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<EstimateTemplate> & { id: string }) => {
-      const updateData: Record<string, unknown> = {};
-      
-      if (updates.name !== undefined) updateData.name = updates.name;
-      if (updates.description !== undefined) updateData.description = updates.description;
-      if (updates.category !== undefined) updateData.category = updates.category;
-      if (updates.project_type !== undefined) updateData.project_type = updates.project_type;
-      if (updates.sections !== undefined) updateData.sections = updates.sections as unknown as Json;
-      if (updates.markup_settings !== undefined) updateData.markup_settings = updates.markup_settings as unknown as Json;
-      if (updates.exclusions !== undefined) updateData.exclusions = updates.exclusions as unknown as Json;
-      if (updates.clarifications !== undefined) updateData.clarifications = updates.clarifications as unknown as Json;
-      if (updates.terms_and_conditions !== undefined) updateData.terms_and_conditions = updates.terms_and_conditions;
-      if (updates.is_active !== undefined) updateData.is_active = updates.is_active;
-      if (updates.is_default !== undefined) updateData.is_default = updates.is_default;
-      if (updates.sort_order !== undefined) updateData.sort_order = updates.sort_order;
-
-      const { data, error } = await supabase
-        .from('estimate_templates')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<EstimateTemplate>(`/estimates/templates/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['estimate-templates'] });
       toast.success('Template updated');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Failed to update template: ${error.message}`);
     },
   });
@@ -146,18 +112,13 @@ export function useDeleteTemplate() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('estimate_templates')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      return api(`/estimates/templates/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['estimate-templates'] });
       toast.success('Template deleted');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Failed to delete template: ${error.message}`);
     },
   });
@@ -238,9 +199,9 @@ export function templateToEstimate(template: EstimateTemplate): Partial<Estimate
 // Get unique categories from templates
 export function useTemplateCategories() {
   const { data: templates } = useEstimateTemplates();
-  
+
   const categories = new Set<string>();
   templates?.forEach(t => categories.add(t.category));
-  
+
   return ['General', 'New Construction', 'Remodel', 'Kitchen', 'Bath', 'Addition', ...Array.from(categories)].filter((v, i, a) => a.indexOf(v) === i);
 }

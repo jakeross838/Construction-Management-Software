@@ -410,20 +410,20 @@ export function ScheduleFilters({ filters, onFiltersChange, taskCount, filteredC
                 </Label>
                 <ScrollArea className="h-28 border rounded-md p-2">
                   <div className="space-y-1">
-                    {vendors.filter(v => v.status === 'active').map(vendor => (
+                    {vendors.filter(v => !v.deleted_at).map(vendor => (
                       <div
                         key={vendor.id}
                         className="flex items-center space-x-2 cursor-pointer hover:bg-muted/50 p-1.5 rounded"
                         onClick={() => toggleArrayFilter('assignedTo', vendor.id)}
                       >
-                        <Checkbox 
-                          checked={filters.assignedTo.includes(vendor.id)} 
+                        <Checkbox
+                          checked={filters.assignedTo.includes(vendor.id)}
                           className="pointer-events-none"
                         />
                         <span className="text-sm">{vendor.name}</span>
                       </div>
                     ))}
-                    {vendors.filter(v => v.status === 'active').length === 0 && (
+                    {vendors.filter(v => !v.deleted_at).length === 0 && (
                       <p className="text-xs text-muted-foreground p-2">No vendors found</p>
                     )}
                   </div>
@@ -501,8 +501,8 @@ export function applyFilters(tasks: ScheduleTask[], filters: ScheduleFiltersStat
     // Search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
-      const matchesSearch = 
-        task.name.toLowerCase().includes(searchLower) ||
+      const matchesSearch =
+        task.name?.toLowerCase().includes(searchLower) ||
         task.description?.toLowerCase().includes(searchLower) ||
         task.phase?.toLowerCase().includes(searchLower) ||
         task.assigned_to?.toLowerCase().includes(searchLower);
@@ -546,9 +546,12 @@ export function applyFilters(tasks: ScheduleTask[], filters: ScheduleFiltersStat
           end = new Date(8640000000000000);
       }
 
+      // Skip tasks without valid dates
+      if (!task.start_date || !task.end_date) return true; // Include tasks without dates
+
       const taskStart = parseISO(task.start_date);
       const taskEnd = parseISO(task.end_date);
-      
+
       // Check if task overlaps with the time range
       const overlaps = taskStart <= end && taskEnd >= start;
       if (!overlaps) return false;

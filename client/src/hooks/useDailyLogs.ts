@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export type WeatherCondition = 'sunny' | 'partly_cloudy' | 'cloudy' | 'rainy' | 'stormy' | 'windy' | 'snow';
 export type LogStatus = 'draft' | 'completed';
@@ -206,33 +218,14 @@ export function useDailyLogs(jobId?: string | null, status?: LogStatus | null) {
   return useQuery({
     queryKey: ['daily-logs', jobId, status],
     queryFn: async (): Promise<DailyLog[]> => {
-      let query = supabase
-        .from('daily_logs')
-        .select(`
-          *,
-          jobs!inner(name, address),
-          crew:daily_log_crew(*, vendors(name)),
-          deliveries:daily_log_deliveries(*, vendors(name)),
-          inspections:daily_log_inspections(*),
-          attachments:daily_log_attachments(*)
-        `)
-        .is('deleted_at', null)
-        .order('log_date', { ascending: false });
-
-      if (jobId) {
-        query = query.eq('job_id', jobId);
-      }
-      if (status) {
-        query = query.eq('status', status);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      
+      let endpoint = '/daily-logs?';
+      if (jobId) endpoint += `job_id=${jobId}&`;
+      if (status) endpoint += `status=${status}&`;
+      const data = await api<DailyLog[]>(endpoint);
       return (data || []).map(log => ({
         ...log,
         absent_crews: Array.isArray(log.absent_crews) ? log.absent_crews as unknown as AbsentCrew[] : [],
-      })) as unknown as DailyLog[];
+      }));
     },
   });
 }
@@ -243,25 +236,11 @@ export function useDailyLog(id: string | null) {
     queryKey: ['daily-log', id],
     queryFn: async (): Promise<DailyLog | null> => {
       if (!id) return null;
-      
-      const { data, error } = await supabase
-        .from('daily_logs')
-        .select(`
-          *,
-          jobs!inner(name, address),
-          crew:daily_log_crew(*, vendors(name)),
-          deliveries:daily_log_deliveries(*, vendors(name)),
-          inspections:daily_log_inspections(*),
-          attachments:daily_log_attachments(*)
-        `)
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
+      const data = await api<DailyLog>(`/daily-logs/${id}`);
       return {
         ...data,
         absent_crews: Array.isArray(data.absent_crews) ? data.absent_crews as unknown as AbsentCrew[] : [],
-      } as unknown as DailyLog;
+      };
     },
     enabled: !!id,
   });
@@ -272,7 +251,7 @@ export function useCreateDailyLog() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: DailyLogInsert & { 
+    mutationFn: async (data: DailyLogInsert & {
       crew?: Array<{
         id?: string;
         vendor_id?: string | null;
@@ -303,76 +282,10 @@ export function useCreateDailyLog() {
         notes?: string | null;
       }>;
     }) => {
-      const { crew, deliveries, inspections, ...logData } = data;
-
-      // Create the main log - cast absent_crews properly
-      const insertData = {
-        ...logData,
-        absent_crews: logData.absent_crews ? JSON.parse(JSON.stringify(logData.absent_crews)) : null,
-      };
-
-      const { data: log, error: logError } = await supabase
-        .from('daily_logs')
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (logError) throw logError;
-
-      // Insert crew entries
-      if (crew && crew.length > 0) {
-        const crewInserts = crew.map(c => ({
-          daily_log_id: log.id,
-          vendor_id: c.vendor_id ?? null,
-          worker_count: c.worker_count ?? 1,
-          hours_worked: c.hours_worked ?? null,
-          trade: c.trade ?? null,
-          work_area: c.work_area ?? null,
-          completion_percent: c.completion_percent ?? null,
-          po_id: c.po_id ?? null,
-          schedule_task_id: c.schedule_task_id ?? null,
-          notes: c.notes ?? null,
-        }));
-        const { error: crewError } = await supabase
-          .from('daily_log_crew')
-          .insert(crewInserts);
-        if (crewError) throw crewError;
-      }
-
-      // Insert deliveries
-      if (deliveries && deliveries.length > 0) {
-        const deliveryInserts = deliveries.map(d => ({
-          daily_log_id: log.id,
-          vendor_id: d.vendor_id ?? null,
-          po_id: d.po_id ?? null,
-          description: d.description,
-          quantity: d.quantity ?? null,
-          unit: d.unit ?? null,
-          received_by: d.received_by ?? null,
-          notes: d.notes ?? null,
-        }));
-        const { error: deliveriesError } = await supabase
-          .from('daily_log_deliveries')
-          .insert(deliveryInserts);
-        if (deliveriesError) throw deliveriesError;
-      }
-
-      // Insert inspections
-      if (inspections && inspections.length > 0) {
-        const inspectionInserts = inspections.map(i => ({
-          daily_log_id: log.id,
-          inspection_type: i.inspection_type,
-          result: i.result ?? 'scheduled',
-          inspector: i.inspector ?? null,
-          notes: i.notes ?? null,
-        }));
-        const { error: inspectionsError } = await supabase
-          .from('daily_log_inspections')
-          .insert(inspectionInserts);
-        if (inspectionsError) throw inspectionsError;
-      }
-
-      return log;
+      return api<DailyLog>('/daily-logs', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
@@ -380,7 +293,7 @@ export function useCreateDailyLog() {
     },
     onError: (error: Error) => {
       console.error('Failed to create daily log:', error);
-      if (error.message.includes('duplicate key')) {
+      if (error.message.includes('already exists')) {
         toast.error('A log already exists for this job on this date');
       } else {
         toast.error('Failed to create daily log');
@@ -425,84 +338,11 @@ export function useUpdateDailyLog() {
         notes?: string | null;
       }>;
     }) => {
-      const { id, crew, deliveries, inspections, ...logData } = data;
-
-      // Update the main log - cast absent_crews properly
-      const updateData = {
-        ...logData,
-        absent_crews: logData.absent_crews ? JSON.parse(JSON.stringify(logData.absent_crews)) : null,
-      };
-
-      const { error: logError } = await supabase
-        .from('daily_logs')
-        .update(updateData)
-        .eq('id', id);
-
-      if (logError) throw logError;
-
-      // Replace crew entries
-      if (crew !== undefined) {
-        await supabase.from('daily_log_crew').delete().eq('daily_log_id', id);
-        if (crew.length > 0) {
-          const crewInserts = crew.map(c => ({
-            daily_log_id: id,
-            vendor_id: c.vendor_id ?? null,
-            worker_count: c.worker_count ?? 1,
-            hours_worked: c.hours_worked ?? null,
-            trade: c.trade ?? null,
-            work_area: c.work_area ?? null,
-            completion_percent: c.completion_percent ?? null,
-            po_id: c.po_id ?? null,
-            schedule_task_id: c.schedule_task_id ?? null,
-            notes: c.notes ?? null,
-          }));
-          const { error: crewError } = await supabase
-            .from('daily_log_crew')
-            .insert(crewInserts);
-          if (crewError) throw crewError;
-        }
-      }
-
-      // Replace deliveries
-      if (deliveries !== undefined) {
-        await supabase.from('daily_log_deliveries').delete().eq('daily_log_id', id);
-        if (deliveries.length > 0) {
-          const deliveryInserts = deliveries.map(d => ({
-            daily_log_id: id,
-            vendor_id: d.vendor_id ?? null,
-            po_id: d.po_id ?? null,
-            description: d.description,
-            quantity: d.quantity ?? null,
-            unit: d.unit ?? null,
-            received_by: d.received_by ?? null,
-            notes: d.notes ?? null,
-          }));
-          const { error: deliveriesError } = await supabase
-            .from('daily_log_deliveries')
-            .insert(deliveryInserts);
-          if (deliveriesError) throw deliveriesError;
-        }
-      }
-
-      // Replace inspections
-      if (inspections !== undefined) {
-        await supabase.from('daily_log_inspections').delete().eq('daily_log_id', id);
-        if (inspections.length > 0) {
-          const inspectionInserts = inspections.map(i => ({
-            daily_log_id: id,
-            inspection_type: i.inspection_type,
-            result: i.result ?? 'scheduled',
-            inspector: i.inspector ?? null,
-            notes: i.notes ?? null,
-          }));
-          const { error: inspectionsError } = await supabase
-            .from('daily_log_inspections')
-            .insert(inspectionInserts);
-          if (inspectionsError) throw inspectionsError;
-        }
-      }
-
-      return { id };
+      const { id, ...updateData } = data;
+      return api<DailyLog>(`/daily-logs/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updateData),
+      });
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
@@ -522,16 +362,10 @@ export function useCompleteDailyLog() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('daily_logs')
-        .update({ 
-          status: 'completed', 
-          completed_at: new Date().toISOString() 
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-      return { id };
+      return api<DailyLog>(`/daily-logs/${id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ completed_by: 'User' }),
+      });
     },
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
@@ -551,16 +385,10 @@ export function useReopenDailyLog() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('daily_logs')
-        .update({ 
-          status: 'draft', 
-          completed_at: null 
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-      return { id };
+      return api<DailyLog>(`/daily-logs/${id}/reopen`, {
+        method: 'POST',
+        body: JSON.stringify({ reopened_by: 'User' }),
+      });
     },
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
@@ -580,12 +408,10 @@ export function useDeleteDailyLog() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('daily_logs')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', id);
-
-      if (error) throw error;
+      return api(`/daily-logs/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ deleted_by: 'User' }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
@@ -603,53 +429,34 @@ export function useUploadDailyLogPhoto() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ 
-      logId, 
-      file, 
+    mutationFn: async ({
+      logId,
+      file,
       category,
-      caption 
-    }: { 
-      logId: string; 
-      file: File; 
+      caption
+    }: {
+      logId: string;
+      file: File;
       category: PhotoCategory;
       caption?: string;
     }) => {
-      // Create unique filename
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${logId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const formData = new FormData();
+      formData.append('photo', file);
+      formData.append('category', category);
+      if (caption) formData.append('caption', caption);
+      formData.append('uploaded_by', 'User');
 
-      // Upload to storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('daily-log-photos')
-        .upload(fileName, file, { 
-          cacheControl: '3600',
-          upsert: false 
-        });
+      const response = await fetch(`/api/daily-logs/${logId}/photos`, {
+        method: 'POST',
+        body: formData,
+      });
 
-      if (uploadError) throw uploadError;
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
 
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('daily-log-photos')
-        .getPublicUrl(uploadData.path);
-
-      // Save to attachments table
-      const { data, error } = await supabase
-        .from('daily_log_attachments')
-        .insert({
-          daily_log_id: logId,
-          file_url: publicUrl,
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
-          category,
-          caption,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return response.json();
     },
     onSuccess: (_, { logId }) => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
@@ -668,22 +475,11 @@ export function useDeleteDailyLogPhoto() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, fileUrl }: { id: string; fileUrl: string }) => {
-      // Delete from attachments table first
-      const { error } = await supabase
-        .from('daily_log_attachments')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Try to delete from storage (extract path from URL)
-      const pathMatch = fileUrl.match(/daily-log-photos\/(.+)$/);
-      if (pathMatch) {
-        await supabase.storage
-          .from('daily-log-photos')
-          .remove([pathMatch[1]]);
-      }
+    mutationFn: async ({ id, logId }: { id: string; logId: string }) => {
+      return api(`/daily-logs/${logId}/photos/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ deleted_by: 'User' }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
@@ -701,31 +497,24 @@ export function useDailyLogStats(jobId?: string | null) {
   return useQuery({
     queryKey: ['daily-log-stats', jobId],
     queryFn: async () => {
-      let query = supabase
-        .from('daily_logs')
-        .select('id, status, log_date, created_at')
-        .is('deleted_at', null);
-
+      let endpoint = '/daily-logs/stats/summary';
       if (jobId) {
-        query = query.eq('job_id', jobId);
+        endpoint += `?job_id=${jobId}`;
       }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const logs = data || [];
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay());
-      startOfWeek.setHours(0, 0, 0, 0);
+      const data = await api<{
+        total: number;
+        draft: number;
+        completed: number;
+        last_30_days: number;
+        this_week: number;
+      }>(endpoint);
 
       return {
-        total: logs.length,
-        draft: logs.filter(l => l.status === 'draft').length,
-        completed: logs.filter(l => l.status === 'completed').length,
-        last30Days: logs.filter(l => new Date(l.log_date) >= thirtyDaysAgo).length,
-        thisWeek: logs.filter(l => new Date(l.log_date) >= startOfWeek).length,
+        total: data.total,
+        draft: data.draft,
+        completed: data.completed,
+        last30Days: data.last_30_days,
+        thisWeek: data.this_week,
       };
     },
   });

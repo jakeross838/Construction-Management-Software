@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 // ==================== TYPES ====================
 
@@ -171,20 +183,11 @@ export function useMasterItems(category?: string) {
   return useQuery({
     queryKey: ['master-items', category],
     queryFn: async () => {
-      let query = supabase
-        .from('v2_master_items')
-        .select('*')
-        .eq('is_active', true)
-        .order('category')
-        .order('name');
-
+      let endpoint = '/price-intelligence/master-items';
       if (category) {
-        query = query.eq('category', category);
+        endpoint += `?category=${encodeURIComponent(category)}`;
       }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as MasterItem[];
+      return api<MasterItem[]>(endpoint);
     },
   });
 }
@@ -193,13 +196,10 @@ export function useCreateMasterItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { name: string; category: string; description?: string; default_unit?: string; waste_factor_percent?: number }) => {
-      const { data: result, error } = await supabase
-        .from('v2_master_items')
-        .insert([data])
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
+      return api<MasterItem>('/price-intelligence/master-items', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['master-items'] });
@@ -213,14 +213,10 @@ export function useUpdateMasterItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<MasterItem> & { id: string }) => {
-      const { data: result, error } = await supabase
-        .from('v2_master_items')
-        .update(data)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
+      return api<MasterItem>(`/price-intelligence/master-items/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['master-items'] });
@@ -236,29 +232,11 @@ export function useCurrentPrices(category?: string) {
   return useQuery({
     queryKey: ['current-prices', category],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('v2_current_prices')
-        .select(`
-          *,
-          v2_master_items!inner(name, category),
-          vendors!inner(name)
-        `)
-        .order('last_updated', { ascending: false });
-
-      if (error) throw error;
-
-      let results = (data || []).map((p: any) => ({
-        ...p,
-        master_item_name: p.v2_master_items?.name,
-        master_item_category: p.v2_master_items?.category,
-        vendor_name: p.vendors?.name,
-      })) as CurrentPrice[];
-
+      let endpoint = '/price-intelligence/current-prices';
       if (category) {
-        results = results.filter(p => p.master_item_category === category);
+        endpoint += `?category=${encodeURIComponent(category)}`;
       }
-
-      return results;
+      return api<CurrentPrice[]>(endpoint);
     },
   });
 }
@@ -269,29 +247,10 @@ export function usePriceHistory(masterItemId?: string, vendorId?: string) {
   return useQuery({
     queryKey: ['price-history', masterItemId, vendorId],
     queryFn: async () => {
-      let query = supabase
-        .from('v2_price_history')
-        .select(`
-          *,
-          v2_master_items(name),
-          vendors(name),
-          jobs(name)
-        `)
-        .order('captured_at', { ascending: false })
-        .limit(100);
-
-      if (masterItemId) query = query.eq('master_item_id', masterItemId);
-      if (vendorId) query = query.eq('vendor_id', vendorId);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return (data || []).map((p: any) => ({
-        ...p,
-        master_item_name: p.v2_master_items?.name,
-        vendor_name: p.vendors?.name,
-        job_name: p.jobs?.name,
-      })) as PriceHistory[];
+      let endpoint = '/price-intelligence/price-history?';
+      if (masterItemId) endpoint += `master_item_id=${masterItemId}&`;
+      if (vendorId) endpoint += `vendor_id=${vendorId}&`;
+      return api<PriceHistory[]>(endpoint);
     },
   });
 }
@@ -300,13 +259,10 @@ export function useCreatePriceEntry() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { master_item_id: string; vendor_id: string; unit_price: number; unit: string; source_type: string; quantity?: number; source_id?: string; job_id?: string; notes?: string }) => {
-      const { data: result, error } = await supabase
-        .from('v2_price_history')
-        .insert([data])
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
+      return api<PriceHistory>('/price-intelligence/price-history', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-history'] });
@@ -323,14 +279,7 @@ export function useLaborCategories() {
   return useQuery({
     queryKey: ['labor-categories'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('v2_labor_categories')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order');
-
-      if (error) throw error;
-      return data as LaborCategory[];
+      return api<LaborCategory[]>('/labor-bids/categories');
     },
   });
 }
@@ -339,14 +288,10 @@ export function useUpdateLaborCategory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<LaborCategory> & { id: string }) => {
-      const { data: result, error } = await supabase
-        .from('v2_labor_categories')
-        .update(data)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
+      return api<LaborCategory>(`/labor-bids/categories/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['labor-categories'] });
@@ -362,31 +307,11 @@ export function useLaborBids(jobId?: string) {
   return useQuery({
     queryKey: ['labor-bids', jobId],
     queryFn: async () => {
-      let query = supabase
-        .from('v2_labor_bids')
-        .select(`
-          *,
-          vendors(name),
-          jobs(name),
-          v2_labor_categories(name),
-          v2_labor_specifications(name)
-        `)
-        .order('submitted_at', { ascending: false });
-
-      if (jobId) query = query.eq('job_id', jobId);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return (data || []).map((b: any) => ({
-        ...b,
-        inclusions: b.inclusions || [],
-        exclusions: b.exclusions || [],
-        vendor_name: b.vendors?.name,
-        job_name: b.jobs?.name,
-        category_name: b.v2_labor_categories?.name,
-        specification_name: b.v2_labor_specifications?.name,
-      })) as LaborBid[];
+      let endpoint = '/labor-bids';
+      if (jobId) {
+        endpoint += `?job_id=${jobId}`;
+      }
+      return api<LaborBid[]>(endpoint);
     },
   });
 }
@@ -395,18 +320,10 @@ export function useCreateLaborBid() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { job_id: string; labor_category_id: string; vendor_id: string; bid_amount: number; labor_specification_id?: string; square_footage?: number; scope_description?: string; inclusions?: string[]; exclusions?: string[]; terms?: string; valid_until?: string; notes?: string }) => {
-      const insertData = {
-        ...data,
-        inclusions: data.inclusions as any,
-        exclusions: data.exclusions as any,
-      };
-      const { data: result, error } = await supabase
-        .from('v2_labor_bids')
-        .insert([insertData])
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
+      return api<LaborBid>('/labor-bids', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['labor-bids'] });
@@ -420,19 +337,10 @@ export function useUpdateLaborBid() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<LaborBid> & { id: string }) => {
-      const updateData = {
-        ...data,
-        inclusions: data.inclusions as any,
-        exclusions: data.exclusions as any,
-      };
-      const { data: result, error } = await supabase
-        .from('v2_labor_bids')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
+      return api<LaborBid>(`/labor-bids/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['labor-bids'] });
@@ -448,14 +356,7 @@ export function useBurdenClasses() {
   return useQuery({
     queryKey: ['burden-classes'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('v2_burden_classes')
-        .select('*')
-        .eq('is_active', true)
-        .order('name');
-
-      if (error) throw error;
-      return data as BurdenClass[];
+      return api<BurdenClass[]>('/overhead/burden-classes');
     },
   });
 }
@@ -464,14 +365,10 @@ export function useUpdateBurdenClass() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<BurdenClass> & { id: string }) => {
-      const { data: result, error } = await supabase
-        .from('v2_burden_classes')
-        .update(data)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
+      return api<BurdenClass>(`/overhead/burden-classes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['burden-classes'] });
@@ -487,25 +384,11 @@ export function useSubPerformance(vendorId?: string) {
   return useQuery({
     queryKey: ['sub-performance', vendorId],
     queryFn: async () => {
-      let query = supabase
-        .from('v2_sub_performance')
-        .select(`
-          *,
-          vendors(name),
-          v2_labor_categories(name)
-        `)
-        .order('quality_score', { ascending: false });
-
-      if (vendorId) query = query.eq('vendor_id', vendorId);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return (data || []).map((p: any) => ({
-        ...p,
-        vendor_name: p.vendors?.name,
-        category_name: p.v2_labor_categories?.name,
-      })) as SubPerformance[];
+      let endpoint = '/vendors/performance';
+      if (vendorId) {
+        endpoint += `?vendor_id=${vendorId}`;
+      }
+      return api<SubPerformance[]>(endpoint);
     },
   });
 }

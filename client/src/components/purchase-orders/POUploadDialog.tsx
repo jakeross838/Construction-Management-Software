@@ -143,13 +143,13 @@ export function POUploadDialog({ open, onOpenChange, selectedJobId }: POUploadDi
 
   const matchVendor = (vendorName: string | null): string => {
     if (!vendorName) return '';
-    
+
     const lowerName = vendorName.toLowerCase();
-    const matched = vendors.find(v => 
-      v.name.toLowerCase().includes(lowerName) ||
-      lowerName.includes(v.name.toLowerCase())
+    const matched = vendors.find(v =>
+      v.name?.toLowerCase().includes(lowerName) ||
+      lowerName.includes(v.name?.toLowerCase() || '')
     );
-    
+
     return matched?.id || '';
   };
 

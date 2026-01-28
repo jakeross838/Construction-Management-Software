@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export type ExpenseCategory = 'labor-burden' | 'fleet' | 'office' | 'professional' | 'tools' | 'insurance' | 'marketing';
 export type ExpenseFrequency = 'weekly' | 'monthly' | 'quarterly' | 'annual';
@@ -51,22 +63,11 @@ export function useExpenses(status?: ExpenseStatus | 'all') {
   return useQuery({
     queryKey: ['expenses', status],
     queryFn: async (): Promise<Expense[]> => {
-      let query = supabase
-        .from('expenses')
-        .select(`
-          *,
-          vendor:vendors(id, name)
-        `)
-        .order('category')
-        .order('name');
-
+      let endpoint = '/expenses';
       if (status && status !== 'all') {
-        query = query.eq('status', status);
+        endpoint += `?status=${status}`;
       }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []) as Expense[];
+      return api<Expense[]>(endpoint);
     },
   });
 }
@@ -74,19 +75,7 @@ export function useExpenses(status?: ExpenseStatus | 'all') {
 export function useExpense(id: string) {
   return useQuery({
     queryKey: ['expense', id],
-    queryFn: async (): Promise<Expense | null> => {
-      const { data, error } = await supabase
-        .from('expenses')
-        .select(`
-          *,
-          vendor:vendors(id, name)
-        `)
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      return data as Expense;
-    },
+    queryFn: () => api<Expense>(`/expenses/${id}`),
     enabled: !!id,
   });
 }
@@ -96,14 +85,10 @@ export function useCreateExpense() {
 
   return useMutation({
     mutationFn: async (expense: ExpenseInsert) => {
-      const { data, error } = await supabase
-        .from('expenses')
-        .insert(expense)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<Expense>('/expenses', {
+        method: 'POST',
+        body: JSON.stringify(expense),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
@@ -121,15 +106,10 @@ export function useUpdateExpense() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: ExpenseUpdate) => {
-      const { data, error } = await supabase
-        .from('expenses')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<Expense>(`/expenses/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
@@ -147,8 +127,7 @@ export function useDeleteExpense() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('expenses').delete().eq('id', id);
-      if (error) throw error;
+      return api(`/expenses/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });

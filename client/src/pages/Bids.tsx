@@ -66,10 +66,10 @@ const Bids = () => {
 
   const filteredPackages = useMemo(() => {
     return packages.filter((pkg) => {
-      const matchesSearch =
-        pkg.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        pkg.package_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        pkg.trade_category.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !searchQuery.trim() ||
+        pkg.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pkg.package_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pkg.trade_category?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || pkg.status === statusFilter;
       const matchesTrade = tradeFilter === 'all' || pkg.trade_category === tradeFilter;
       return matchesSearch && matchesStatus && matchesTrade;

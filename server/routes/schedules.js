@@ -3,6 +3,19 @@ const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError, notFoundError } = require('../errors');
 
+// Helper: Map database status to frontend status
+function mapTaskStatus(dbStatus) {
+  const statusMap = {
+    'not_started': 'scheduled',
+    'in_progress': 'in_progress',
+    'completed': 'completed',
+    'on_hold': 'delayed',
+    'delayed': 'delayed',
+    'cancelled': 'cancelled',
+  };
+  return statusMap[dbStatus] || dbStatus || 'scheduled';
+}
+
 // Helper: Log schedule activity
 async function logScheduleActivity(scheduleId, taskId, action, performedBy, details = {}) {
   try {
@@ -69,8 +82,7 @@ router.get('/by-job/:jobId', asyncHandler(async (req, res) => {
           planned_start, planned_end, estimated_days,
           actual_start, actual_end, actual_days,
           status, percent_complete, sort_order,
-          trade:v2_trades(id, name),
-          cost_code:v2_cost_codes(id, code, name)
+                    cost_code_id
         )
       `)
       .eq('job_id', jobId)
@@ -90,6 +102,74 @@ router.get('/by-job/:jobId', asyncHandler(async (req, res) => {
     res.json(schedule);
 }));
 
+// List all tasks (optionally filtered by job_id) - MUST BE BEFORE /:id route
+router.get('/tasks', asyncHandler(async (req, res) => {
+    const { job_id } = req.query;
+
+    // Simple query without problematic joins
+    let query = supabase
+      .from('v2_schedule_tasks')
+      .select('*')
+      .order('planned_start', { ascending: true })
+      .order('sort_order', { ascending: true });
+
+    // If job_id is provided, filter through schedules table
+    if (job_id) {
+      const { data: schedules } = await supabase
+        .from('v2_schedules')
+        .select('id')
+        .eq('job_id', job_id);
+
+      if (!schedules || schedules.length === 0) {
+        return res.json([]);
+      }
+
+      const scheduleIds = schedules.map(s => s.id);
+      query = query.in('schedule_id', scheduleIds);
+    }
+
+    const { data: tasks, error } = await query;
+    if (error) throw error;
+
+    // Fetch job names separately to avoid join issues
+    const scheduleIds = [...new Set((tasks || []).map(t => t.schedule_id).filter(Boolean))];
+    let scheduleJobMap = {};
+    if (scheduleIds.length > 0) {
+      const { data: schedules } = await supabase
+        .from('v2_schedules')
+        .select('id, job_id, job:v2_jobs(id, name)')
+        .in('id', scheduleIds);
+
+      if (schedules) {
+        schedules.forEach(s => {
+          scheduleJobMap[s.id] = { job_id: s.job_id, job_name: s.job?.name };
+        });
+      }
+    }
+
+    // Map to expected format - translate database fields to frontend expectations
+    const mappedTasks = (tasks || []).map(task => ({
+      ...task,
+      // Map planned_start/planned_end to start_date/end_date for frontend
+      start_date: task.planned_start || task.actual_start || null,
+      end_date: task.planned_end || task.actual_end || null,
+      // Map status values
+      status: mapTaskStatus(task.status),
+      // Additional mappings
+      job_id: scheduleJobMap[task.schedule_id]?.job_id || task.job_id || null,
+      job_name: scheduleJobMap[task.schedule_id]?.job_name || null,
+      task_type: task.task_type || 'work',
+      critical_path: task.is_critical || task.critical_path || false,
+      predecessors: task.predecessors || [],
+      color: task.color || '#3b82f6',
+      assigned_to: task.assigned_vendor_id || task.assigned_to || null,
+      trades: task.trades || [],
+      tags: task.tags || [],
+    }));
+
+    res.json(mappedTasks);
+}));
+
 // Get single schedule with all tasks
 router.get('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
@@ -104,8 +184,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
           planned_start, planned_end, estimated_days,
           actual_start, actual_end, actual_days,
           status, percent_complete, sort_order,
-          trade:v2_trades(id, name),
-          cost_code:v2_cost_codes(id, code, name)
+                    cost_code_id
         )
       `)
       .eq('id', id)
@@ -324,8 +403,7 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
       })
       .select(`
         *,
-        trade:v2_trades(id, name),
-        cost_code:v2_cost_codes(id, code, name)
+                cost_code_id
       `)
       .single();
 
@@ -404,8 +482,7 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
       .eq('id', taskId)
       .select(`
         *,
-        trade:v2_trades(id, name),
-        cost_code:v2_cost_codes(id, code, name)
+                cost_code_id
       `)
       .single();
 

@@ -65,9 +65,10 @@ const Employees = () => {
   const [deleteConfirmEmployee, setDeleteConfirmEmployee] = useState<Employee | null>(null);
 
   const filteredEmployees = employees.filter(emp => {
-    const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+    if (!searchQuery.trim()) return true;
+    const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
     const query = searchQuery.toLowerCase();
-    return fullName.includes(query) || 
+    return fullName.includes(query) ||
            emp.email?.toLowerCase().includes(query) ||
            emp.role?.toLowerCase().includes(query);
   });

@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 
 export interface CostCode {
   id: string;
@@ -14,14 +13,12 @@ export const useCostCodes = () => {
   return useQuery({
     queryKey: ['cost-codes'],
     queryFn: async (): Promise<CostCode[]> => {
-      const { data, error } = await supabase
-        .from('cost_codes')
-        .select('*')
-        .eq('is_active', true)
-        .order('code');
-
-      if (error) throw error;
-      return data || [];
+      const response = await fetch('/api/cost-codes');
+      if (!response.ok) throw new Error('Failed to fetch cost codes');
+      const data = await response.json();
+      // API returns { costCodes: [...] } (camelCase)
+      if (Array.isArray(data)) return data;
+      return data.costCodes || data.cost_codes || [];
     },
   });
 };
@@ -30,15 +27,12 @@ export const useBaseCostCodes = () => {
   return useQuery({
     queryKey: ['cost-codes-base'],
     queryFn: async (): Promise<CostCode[]> => {
-      const { data, error } = await supabase
-        .from('cost_codes')
-        .select('*')
-        .eq('is_active', true)
-        .not('code', 'like', '%C')
-        .order('code');
-
-      if (error) throw error;
-      return data || [];
+      const response = await fetch('/api/cost-codes');
+      if (!response.ok) throw new Error('Failed to fetch cost codes');
+      const data = await response.json();
+      // API returns { costCodes: [...] } (camelCase)
+      const codes = Array.isArray(data) ? data : (data.costCodes || data.cost_codes || []);
+      return codes.filter((c: CostCode) => c.code && !c.code.endsWith('C'));
     },
   });
 };
@@ -47,15 +41,12 @@ export const useChangeCostCodes = () => {
   return useQuery({
     queryKey: ['cost-codes-change'],
     queryFn: async (): Promise<CostCode[]> => {
-      const { data, error } = await supabase
-        .from('cost_codes')
-        .select('*')
-        .eq('is_active', true)
-        .like('code', '%C')
-        .order('code');
-
-      if (error) throw error;
-      return data || [];
+      const response = await fetch('/api/cost-codes');
+      if (!response.ok) throw new Error('Failed to fetch cost codes');
+      const data = await response.json();
+      // API returns { costCodes: [...] } (camelCase)
+      const codes = Array.isArray(data) ? data : (data.costCodes || data.cost_codes || []);
+      return codes.filter((c: CostCode) => c.code && c.code.endsWith('C'));
     },
   });
 };

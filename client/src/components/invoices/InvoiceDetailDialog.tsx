@@ -58,7 +58,6 @@ import {
 } from '@/types/financial';
 import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { ReviewFlagsList, ReviewStatusSummary } from './ReviewFlagsBadges';
 import { AIConfidenceBadge, AIConfidenceBar } from './AIConfidenceBadge';
@@ -137,16 +136,20 @@ export function InvoiceDetailDialog({
     }
   }, [open]);
 
-  const costCodeOptions = costCodes.map(cc => ({
-    value: cc.id,
-    label: `${cc.code} - ${cc.name}`,
-  }));
+  const costCodeOptions = costCodes
+    .filter(cc => cc.code && cc.name)
+    .map(cc => ({
+      value: cc.id,
+      label: `${cc.code} - ${cc.name}`,
+    }));
 
-  const poOptions = purchaseOrders.map(po => ({
-    value: po.id,
-    label: `${po.po_number} - ${po.vendor_name}`,
-    description: `Remaining: ${formatCurrency(po.remaining_amount)}`,
-  }));
+  const poOptions = purchaseOrders
+    .filter(po => po.po_number)
+    .map(po => ({
+      value: po.id,
+      label: `${po.po_number} - ${po.vendor_name || 'Unknown Vendor'}`,
+      description: `Remaining: ${formatCurrency(po.remaining_amount || 0)}`,
+    }));
 
   // Validation
   const validAllocations = allocations.filter(a => a.cost_code_id && parseFloat(a.amount) > 0);
@@ -156,41 +159,41 @@ export function InvoiceDetailDialog({
 
   const saveAllocations = async () => {
     if (!invoice) return false;
-    
+
     setIsSaving(true);
     try {
-      // Delete existing allocations
-      await supabase
-        .from('v2_invoice_allocations')
-        .delete()
-        .eq('invoice_id', invoice.id);
-
-      // Insert new allocations
+      // Use the API endpoint to save allocations
       const validAllocs = allocations.filter(a => a.cost_code_id && parseFloat(a.amount) > 0);
-      if (validAllocs.length > 0) {
-        const { error } = await supabase
-          .from('v2_invoice_allocations')
-          .insert(validAllocs.map(a => ({
-            invoice_id: invoice.id,
+
+      const response = await fetch(`/api/invoices/${invoice.id}/allocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allocations: validAllocs.map(a => ({
             cost_code_id: a.cost_code_id,
             amount: parseFloat(a.amount),
             notes: a.description || null,
             job_id: invoice.job_id,
-          })));
-        
-        if (error) throw error;
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to save allocations: HTTP ${response.status}`);
       }
-      
+
       // Update notes if changed
       if (notes !== invoice.notes) {
         await updateInvoice.mutateAsync({ id: invoice.id, notes });
       }
-      
+
       queryClient.invalidateQueries({ queryKey: ['invoice', invoice.id] });
       toast.success('Cost allocations saved');
       return true;
     } catch (error) {
-      toast.error('Failed to save allocations');
+      const message = error instanceof Error ? error.message : 'Failed to save allocations';
+      toast.error(message);
       return false;
     } finally {
       setIsSaving(false);

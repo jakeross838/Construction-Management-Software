@@ -1,7 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { LeadStage } from '@/types/job';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export interface Lead {
   id: string;
@@ -30,15 +42,7 @@ export type LeadUpdate = Partial<LeadInsert> & { id: string };
 export function useDBLeads() {
   return useQuery({
     queryKey: ['leads'],
-    queryFn: async (): Promise<Lead[]> => {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return (data || []) as Lead[];
-    },
+    queryFn: () => api<Lead[]>('/leads'),
   });
 }
 
@@ -47,9 +51,9 @@ export function useCreateLead() {
 
   return useMutation({
     mutationFn: async (lead: Partial<LeadInsert>) => {
-      const { data, error } = await supabase
-        .from('leads')
-        .insert({
+      return api<Lead>('/leads', {
+        method: 'POST',
+        body: JSON.stringify({
           name: lead.name || 'Untitled Lead',
           client_name: lead.client_name,
           client_email: lead.client_email,
@@ -64,12 +68,8 @@ export function useCreateLead() {
           assigned_to: lead.assigned_to,
           notes: lead.notes,
           next_follow_up: lead.next_follow_up,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+        }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
@@ -87,15 +87,10 @@ export function useUpdateLead() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: LeadUpdate) => {
-      const { data, error } = await supabase
-        .from('leads')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<Lead>(`/leads/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
@@ -113,8 +108,7 @@ export function useDeleteLead() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('leads').delete().eq('id', id);
-      if (error) throw error;
+      return api(`/leads/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
@@ -132,15 +126,10 @@ export function useMoveLeadToStage() {
 
   return useMutation({
     mutationFn: async ({ id, stage }: { id: string; stage: LeadStage }) => {
-      const { data, error } = await supabase
-        .from('leads')
-        .update({ stage, days_in_stage: 0 })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<Lead>(`/leads/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ stage, days_in_stage: 0 }),
+      });
     },
     onSuccess: (_, { stage }) => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });

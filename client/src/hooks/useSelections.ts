@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export type SelectionCategory = 
   | 'flooring' 
@@ -147,34 +159,8 @@ export function useSelections(jobId?: string | null) {
   return useQuery({
     queryKey: ['selections', jobId],
     queryFn: async () => {
-      let query = supabase
-        .from('selections')
-        .select(`
-          *,
-          jobs:job_id(name),
-          vendors:vendor_id(name),
-          cost_codes:cost_code_id(name, code),
-          purchase_orders:po_id(po_number)
-        `)
-        .order('category')
-        .order('sort_order');
-
-      if (jobId) {
-        query = query.eq('job_id', jobId);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      return (data || []).map((s: any) => ({
-        ...s,
-        options: s.options || [],
-        job_name: s.jobs?.name,
-        vendor_name: s.vendors?.name,
-        cost_code_name: s.cost_codes ? `${s.cost_codes.code} - ${s.cost_codes.name}` : null,
-        po_number: s.purchase_orders?.po_number,
-      })) as Selection[];
+      const endpoint = jobId ? `/selections?job_id=${jobId}` : '/selections';
+      return api<Selection[]>(endpoint);
     },
   });
 }
@@ -183,16 +169,9 @@ export function useSelectionStats(jobId?: string | null) {
   return useQuery({
     queryKey: ['selection-stats', jobId],
     queryFn: async () => {
-      let query = supabase.from('selections').select('*');
+      const endpoint = jobId ? `/selections?job_id=${jobId}` : '/selections';
+      const selections = await api<Selection[]>(endpoint);
 
-      if (jobId) {
-        query = query.eq('job_id', jobId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const selections = data || [];
       const pending = selections.filter(s => s.approval_status === 'pending');
       const approved = selections.filter(s => s.approval_status === 'approved');
       const needsOrder = approved.filter(s => s.order_status === 'not_ordered');
@@ -218,18 +197,10 @@ export function useCreateSelection() {
 
   return useMutation({
     mutationFn: async (data: SelectionInsert) => {
-      const insertData = {
-        ...data,
-        options: data.options as unknown as any,
-      };
-      const { data: result, error } = await supabase
-        .from('selections')
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return result;
+      return api<Selection>('/selections', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['selections'] });
@@ -246,20 +217,11 @@ export function useUpdateSelection() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, options, ...data }: Partial<Selection> & { id: string }) => {
-      const updateData = {
-        ...data,
-        ...(options !== undefined && { options: options as unknown as any }),
-      };
-      const { data: result, error } = await supabase
-        .from('selections')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return result;
+    mutationFn: async ({ id, ...data }: Partial<Selection> & { id: string }) => {
+      return api<Selection>(`/selections/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['selections'] });
@@ -277,8 +239,7 @@ export function useDeleteSelection() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('selections').delete().eq('id', id);
-      if (error) throw error;
+      return api(`/selections/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['selections'] });

@@ -128,9 +128,9 @@ const Proposals = () => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(prop =>
-        prop.number.toLowerCase().includes(query) ||
-        prop.clientName.toLowerCase().includes(query) ||
-        prop.projectName.toLowerCase().includes(query)
+        prop.number?.toLowerCase().includes(query) ||
+        prop.clientName?.toLowerCase().includes(query) ||
+        prop.projectName?.toLowerCase().includes(query)
       );
     }
     

@@ -53,7 +53,7 @@ const Jobs = () => {
     const query = searchQuery.toLowerCase();
     return jobs.filter(
       (job) =>
-        job.name.toLowerCase().includes(query) ||
+        job.name?.toLowerCase().includes(query) ||
         job.client?.toLowerCase().includes(query) ||
         job.address?.toLowerCase().includes(query)
     );

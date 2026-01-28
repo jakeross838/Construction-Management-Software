@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export interface Vendor {
@@ -25,13 +24,9 @@ export function useVendors() {
   return useQuery({
     queryKey: ['vendors'],
     queryFn: async (): Promise<Vendor[]> => {
-      const { data, error } = await supabase
-        .from('vendors')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-      return data || [];
+      const response = await fetch('/api/vendors');
+      if (!response.ok) throw new Error('Failed to fetch vendors');
+      return response.json();
     },
   });
 }
@@ -41,14 +36,13 @@ export function useCreateVendor() {
 
   return useMutation({
     mutationFn: async (vendor: VendorInsert) => {
-      const { data, error } = await supabase
-        .from('vendors')
-        .insert(vendor)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const response = await fetch('/api/vendors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vendor),
+      });
+      if (!response.ok) throw new Error('Failed to create vendor');
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] });
@@ -66,15 +60,13 @@ export function useUpdateVendor() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: VendorUpdate) => {
-      const { data, error } = await supabase
-        .from('vendors')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const response = await fetch(`/api/vendors/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) throw new Error('Failed to update vendor');
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] });
@@ -92,8 +84,8 @@ export function useDeleteVendor() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('vendors').delete().eq('id', id);
-      if (error) throw error;
+      const response = await fetch(`/api/vendors/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete vendor');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] });
@@ -108,7 +100,7 @@ export function useDeleteVendor() {
 
 export function getVendorStatus(insuranceExpiry: string | null): 'active' | 'expiring' | 'expired' {
   if (!insuranceExpiry) return 'active';
-  
+
   const expiry = new Date(insuranceExpiry);
   const now = new Date();
   const thirtyDaysFromNow = new Date();

@@ -77,9 +77,9 @@ export function TemplatesTab({ onCreateFromTemplate, onEditTemplate }: Templates
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         return (
-          template.name.toLowerCase().includes(query) ||
+          template.name?.toLowerCase().includes(query) ||
           (template.description?.toLowerCase().includes(query) ?? false) ||
-          template.category.toLowerCase().includes(query)
+          template.category?.toLowerCase().includes(query)
         );
       }
       return true;

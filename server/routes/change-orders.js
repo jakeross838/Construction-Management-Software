@@ -26,6 +26,28 @@ async function logCOActivity(changeOrderId, action, performedBy, details = {}) {
 // LIST ENDPOINTS
 // ============================================================
 
+// Get all change orders (with optional filters)
+router.get('/', asyncHandler(async (req, res) => {
+  const { job_id, draw_id, status } = req.query;
+
+  let query = supabase
+    .from('v2_job_change_orders')
+    .select(`
+      *,
+      job:v2_jobs(id, name, client_name)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (job_id) query = query.eq('job_id', job_id);
+  if (draw_id) query = query.eq('draw_id', draw_id);
+  if (status) query = query.eq('status', status);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  res.json(data || []);
+}));
+
 // Get single change order with billing history
 router.get('/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;

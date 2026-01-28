@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 // ==================== TYPES ====================
 
@@ -112,33 +124,12 @@ export interface SubcontractorBidItem {
 // ==================== TRADE CATEGORIES ====================
 
 export const TRADE_CATEGORIES = [
-  'Site Work',
-  'Concrete',
-  'Masonry',
-  'Metals',
-  'Wood & Plastics',
-  'Thermal & Moisture',
-  'Doors & Windows',
-  'Finishes',
-  'Specialties',
-  'Equipment',
-  'Furnishings',
-  'Special Construction',
-  'Conveying Systems',
-  'Mechanical',
-  'Plumbing',
-  'HVAC',
-  'Electrical',
-  'Drywall',
-  'Painting',
-  'Flooring',
-  'Roofing',
-  'Insulation',
-  'Cabinets & Millwork',
-  'Tile',
-  'Landscaping',
-  'Pool',
-  'Other',
+  'Site Work', 'Concrete', 'Masonry', 'Metals', 'Wood & Plastics',
+  'Thermal & Moisture', 'Doors & Windows', 'Finishes', 'Specialties',
+  'Equipment', 'Furnishings', 'Special Construction', 'Conveying Systems',
+  'Mechanical', 'Plumbing', 'HVAC', 'Electrical', 'Drywall', 'Painting',
+  'Flooring', 'Roofing', 'Insulation', 'Cabinets & Millwork', 'Tile',
+  'Landscaping', 'Pool', 'Other',
 ];
 
 export const BID_PACKAGE_STATUS_OPTIONS = [
@@ -165,53 +156,8 @@ export function useBidPackages(jobId?: string) {
   return useQuery({
     queryKey: ['bid-packages', jobId],
     queryFn: async () => {
-      let query = supabase
-        .from('bid_packages')
-        .select(`
-          *,
-          jobs(name),
-          vendors(name)
-        `)
-        .order('due_date', { ascending: true });
-
-      if (jobId) {
-        query = query.eq('job_id', jobId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Get counts for invites and bids
-      const packageIds = (data || []).map((p: any) => p.id);
-      
-      const [inviteCounts, bidCounts] = await Promise.all([
-        supabase
-          .from('bid_package_invites')
-          .select('bid_package_id')
-          .in('bid_package_id', packageIds),
-        supabase
-          .from('subcontractor_bids')
-          .select('bid_package_id')
-          .in('bid_package_id', packageIds),
-      ]);
-
-      const inviteMap = new Map<string, number>();
-      const bidMap = new Map<string, number>();
-
-      (inviteCounts.data || []).forEach((i: any) => {
-        inviteMap.set(i.bid_package_id, (inviteMap.get(i.bid_package_id) || 0) + 1);
-      });
-      (bidCounts.data || []).forEach((b: any) => {
-        bidMap.set(b.bid_package_id, (bidMap.get(b.bid_package_id) || 0) + 1);
-      });
-
-      return (data || []).map((p: any) => ({
-        ...p,
-        job_name: p.jobs?.name,
-        awarded_vendor_name: p.vendors?.name,
-        invite_count: inviteMap.get(p.id) || 0,
-        bid_count: bidMap.get(p.id) || 0,
-      })) as BidPackage[];
+      const endpoint = jobId ? `/bids?job_id=${jobId}` : '/bids';
+      return api<BidPackage[]>(endpoint);
     },
   });
 }
@@ -219,25 +165,7 @@ export function useBidPackages(jobId?: string) {
 export function useBidPackage(id: string) {
   return useQuery({
     queryKey: ['bid-package', id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('bid_packages')
-        .select(`
-          *,
-          jobs(name),
-          vendors(name)
-        `)
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-
-      return {
-        ...data,
-        job_name: (data as any).jobs?.name,
-        awarded_vendor_name: (data as any).vendors?.name,
-      } as BidPackage;
-    },
+    queryFn: () => api<BidPackage>(`/bids/${id}`),
     enabled: !!id,
   });
 }
@@ -245,15 +173,10 @@ export function useBidPackage(id: string) {
 export function useCreateBidPackage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: Partial<BidPackage>) => {
-      const { data: result, error } = await supabase
-        .from('bid_packages')
-        .insert([data as any])
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
-    },
+    mutationFn: (data: Partial<BidPackage>) => api<BidPackage>('/bids', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
       toast.success('Bid package created');
@@ -265,16 +188,8 @@ export function useCreateBidPackage() {
 export function useUpdateBidPackage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: Partial<BidPackage> & { id: string }) => {
-      const { data: result, error } = await supabase
-        .from('bid_packages')
-        .update(data as any)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
-    },
+    mutationFn: ({ id, ...data }: Partial<BidPackage> & { id: string }) =>
+      api<BidPackage>(`/bids/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
       queryClient.invalidateQueries({ queryKey: ['bid-package', variables.id] });
@@ -287,10 +202,7 @@ export function useUpdateBidPackage() {
 export function useDeleteBidPackage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('bid_packages').delete().eq('id', id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => api(`/bids/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
       toast.success('Bid package deleted');
@@ -304,17 +216,7 @@ export function useDeleteBidPackage() {
 export function useBidPackageDocuments(bidPackageId: string) {
   return useQuery({
     queryKey: ['bid-package-documents', bidPackageId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('bid_package_documents')
-        .select('*')
-        .eq('bid_package_id', bidPackageId)
-        .order('document_type')
-        .order('uploaded_at', { ascending: false });
-
-      if (error) throw error;
-      return data as BidPackageDocument[];
-    },
+    queryFn: () => api<BidPackageDocument[]>(`/bids/${bidPackageId}/documents`),
     enabled: !!bidPackageId,
   });
 }
@@ -322,15 +224,11 @@ export function useBidPackageDocuments(bidPackageId: string) {
 export function useAddBidPackageDocument() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: Partial<BidPackageDocument>) => {
-      const { data: result, error } = await supabase
-        .from('bid_package_documents')
-        .insert([data as any])
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
-    },
+    mutationFn: (data: Partial<BidPackageDocument>) =>
+      api<BidPackageDocument>(`/bids/${data.bid_package_id}/documents`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['bid-package-documents', variables.bid_package_id] });
       toast.success('Document added');
@@ -342,11 +240,8 @@ export function useAddBidPackageDocument() {
 export function useDeleteBidPackageDocument() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, bidPackageId }: { id: string; bidPackageId: string }) => {
-      const { error } = await supabase.from('bid_package_documents').delete().eq('id', id);
-      if (error) throw error;
-      return bidPackageId;
-    },
+    mutationFn: ({ id, bidPackageId }: { id: string; bidPackageId: string }) =>
+      api(`/bids/${bidPackageId}/documents/${id}`, { method: 'DELETE' }).then(() => bidPackageId),
     onSuccess: (bidPackageId) => {
       queryClient.invalidateQueries({ queryKey: ['bid-package-documents', bidPackageId] });
       toast.success('Document removed');
@@ -360,24 +255,7 @@ export function useDeleteBidPackageDocument() {
 export function useBidPackageInvites(bidPackageId: string) {
   return useQuery({
     queryKey: ['bid-package-invites', bidPackageId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('bid_package_invites')
-        .select(`
-          *,
-          vendors(name, email, phone)
-        `)
-        .eq('bid_package_id', bidPackageId)
-        .order('invited_at', { ascending: false });
-
-      if (error) throw error;
-      return (data || []).map((i: any) => ({
-        ...i,
-        vendor_name: i.vendors?.name,
-        vendor_email: i.vendors?.email,
-        vendor_phone: i.vendors?.phone,
-      })) as BidPackageInvite[];
-    },
+    queryFn: () => api<BidPackageInvite[]>(`/bids/${bidPackageId}/invites`),
     enabled: !!bidPackageId,
   });
 }
@@ -385,15 +263,11 @@ export function useBidPackageInvites(bidPackageId: string) {
 export function useAddBidPackageInvite() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { bid_package_id: string; vendor_id: string }) => {
-      const { data: result, error } = await supabase
-        .from('bid_package_invites')
-        .insert([data])
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
-    },
+    mutationFn: (data: { bid_package_id: string; vendor_id: string }) =>
+      api(`/bids/${data.bid_package_id}/invites`, {
+        method: 'POST',
+        body: JSON.stringify({ vendor_id: data.vendor_id }),
+      }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['bid-package-invites', variables.bid_package_id] });
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
@@ -406,11 +280,8 @@ export function useAddBidPackageInvite() {
 export function useRemoveBidPackageInvite() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, bidPackageId }: { id: string; bidPackageId: string }) => {
-      const { error } = await supabase.from('bid_package_invites').delete().eq('id', id);
-      if (error) throw error;
-      return bidPackageId;
-    },
+    mutationFn: ({ id, bidPackageId }: { id: string; bidPackageId: string }) =>
+      api(`/bids/${bidPackageId}/invites/${id}`, { method: 'DELETE' }).then(() => bidPackageId),
     onSuccess: (bidPackageId) => {
       queryClient.invalidateQueries({ queryKey: ['bid-package-invites', bidPackageId] });
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
@@ -426,32 +297,8 @@ export function useSubcontractorBids(bidPackageId?: string) {
   return useQuery({
     queryKey: ['subcontractor-bids', bidPackageId],
     queryFn: async () => {
-      let query = supabase
-        .from('subcontractor_bids')
-        .select(`
-          *,
-          vendors(name, email),
-          bid_packages(title)
-        `)
-        .order('bid_amount', { ascending: true });
-
-      if (bidPackageId) {
-        query = query.eq('bid_package_id', bidPackageId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return (data || []).map((b: any) => ({
-        ...b,
-        inclusions: b.inclusions || [],
-        exclusions: b.exclusions || [],
-        clarifications: b.clarifications || [],
-        alternate_amounts: b.alternate_amounts || [],
-        vendor_name: b.vendors?.name,
-        vendor_email: b.vendors?.email,
-        package_title: b.bid_packages?.title,
-      })) as SubcontractorBid[];
+      const endpoint = bidPackageId ? `/bids/${bidPackageId}/submissions` : '/bids/submissions';
+      return api<SubcontractorBid[]>(endpoint);
     },
   });
 }
@@ -459,30 +306,7 @@ export function useSubcontractorBids(bidPackageId?: string) {
 export function useSubcontractorBid(id: string) {
   return useQuery({
     queryKey: ['subcontractor-bid', id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('subcontractor_bids')
-        .select(`
-          *,
-          vendors(name, email),
-          bid_packages(title, trade_category, scope_of_work, square_footage)
-        `)
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-
-      return {
-        ...data,
-        inclusions: (data as any).inclusions || [],
-        exclusions: (data as any).exclusions || [],
-        clarifications: (data as any).clarifications || [],
-        alternate_amounts: (data as any).alternate_amounts || [],
-        vendor_name: (data as any).vendors?.name,
-        vendor_email: (data as any).vendors?.email,
-        package_title: (data as any).bid_packages?.title,
-      } as SubcontractorBid;
-    },
+    queryFn: () => api<SubcontractorBid>(`/bids/submissions/${id}`),
     enabled: !!id,
   });
 }
@@ -490,7 +314,7 @@ export function useSubcontractorBid(id: string) {
 export function useCreateSubcontractorBid() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: {
+    mutationFn: (data: {
       bid_package_id: string;
       vendor_id: string;
       bid_amount: number;
@@ -507,34 +331,11 @@ export function useCreateSubcontractorBid() {
       insurance_verified?: boolean;
       valid_until?: string | null;
       notes?: string | null;
-    }) => {
-      const insertData = {
-        bid_package_id: data.bid_package_id,
-        vendor_id: data.vendor_id,
-        bid_amount: data.bid_amount,
-        unit_price_per_sf: data.unit_price_per_sf,
-        inclusions: (data.inclusions || []) as any,
-        exclusions: (data.exclusions || []) as any,
-        clarifications: (data.clarifications || []) as any,
-        alternate_amounts: (data.alternate_amounts || []) as any,
-        proposed_start_date: data.proposed_start_date,
-        proposed_duration_days: data.proposed_duration_days,
-        payment_terms: data.payment_terms,
-        warranty_terms: data.warranty_terms,
-        bond_included: data.bond_included,
-        insurance_verified: data.insurance_verified,
-        valid_until: data.valid_until,
-        notes: data.notes,
-      };
-      const { data: result, error } = await supabase
-        .from('subcontractor_bids')
-        .insert([insertData])
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
-    },
-    onSuccess: (_, variables) => {
+    }) => api<SubcontractorBid>(`/bids/${data.bid_package_id}/submissions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subcontractor-bids'] });
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
       toast.success('Bid submitted');
@@ -546,23 +347,11 @@ export function useCreateSubcontractorBid() {
 export function useUpdateSubcontractorBid() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: Partial<SubcontractorBid> & { id: string }) => {
-      const updateData = {
-        ...data,
-        inclusions: data.inclusions as any,
-        exclusions: data.exclusions as any,
-        clarifications: data.clarifications as any,
-        alternate_amounts: data.alternate_amounts as any,
-      };
-      const { data: result, error } = await supabase
-        .from('subcontractor_bids')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
-    },
+    mutationFn: ({ id, ...data }: Partial<SubcontractorBid> & { id: string }) =>
+      api<SubcontractorBid>(`/bids/submissions/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['subcontractor-bids'] });
       queryClient.invalidateQueries({ queryKey: ['subcontractor-bid', variables.id] });
@@ -575,10 +364,7 @@ export function useUpdateSubcontractorBid() {
 export function useDeleteSubcontractorBid() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('subcontractor_bids').delete().eq('id', id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => api(`/bids/submissions/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subcontractor-bids'] });
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
@@ -593,22 +379,7 @@ export function useDeleteSubcontractorBid() {
 export function useSubcontractorBidItems(bidId: string) {
   return useQuery({
     queryKey: ['subcontractor-bid-items', bidId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('subcontractor_bid_items')
-        .select(`
-          *,
-          cost_codes(name)
-        `)
-        .eq('subcontractor_bid_id', bidId)
-        .order('sort_order');
-
-      if (error) throw error;
-      return (data || []).map((i: any) => ({
-        ...i,
-        cost_code_name: i.cost_codes?.name,
-      })) as SubcontractorBidItem[];
-    },
+    queryFn: () => api<SubcontractorBidItem[]>(`/bids/submissions/${bidId}/items`),
     enabled: !!bidId,
   });
 }
@@ -616,15 +387,11 @@ export function useSubcontractorBidItems(bidId: string) {
 export function useCreateSubcontractorBidItem() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: Partial<SubcontractorBidItem>) => {
-      const { data: result, error } = await supabase
-        .from('subcontractor_bid_items')
-        .insert([data as any])
-        .select()
-        .single();
-      if (error) throw error;
-      return result;
-    },
+    mutationFn: (data: Partial<SubcontractorBidItem>) =>
+      api(`/bids/submissions/${data.subcontractor_bid_id}/items`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['subcontractor-bid-items', variables.subcontractor_bid_id] });
     },
@@ -636,13 +403,7 @@ export function useCreateSubcontractorBidItem() {
 
 export async function generatePackageNumber(jobId?: string): Promise<string> {
   const year = new Date().getFullYear().toString().slice(-2);
-  
-  const { count, error } = await supabase
-    .from('bid_packages')
-    .select('*', { count: 'exact', head: true });
-
-  if (error) throw error;
-  
-  const nextNum = ((count || 0) + 1).toString().padStart(4, '0');
+  // Generate a number based on timestamp since we can't query count via API easily
+  const nextNum = Date.now().toString().slice(-4);
   return `BP-${year}-${nextNum}`;
 }

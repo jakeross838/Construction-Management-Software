@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export interface ExtractedVendor {
@@ -122,6 +121,10 @@ export interface AIExtractionResult {
   reviewFlags?: string[];
   overallConfidence?: number;
   messages?: string[];
+
+  // Created invoice info (from API)
+  invoiceId?: string;
+  pdfUrl?: string;
 }
 
 export function useInvoiceAI() {
@@ -185,6 +188,18 @@ export function useInvoiceAI() {
           },
         },
         extracted: data.invoice?.ai_extracted_data,
+        // Pass through created invoice info
+        invoiceId: data.invoice?.id,
+        pdfUrl: data.invoice?.pdf_url,
+        matchedVendor: data.matchedVendor,
+        matchedJob: data.matchedJob,
+        matchedPO: data.matchedPO,
+        suggestions: data.suggestions,
+        possibleDuplicate: data.possibleDuplicate,
+        needsReview: data.invoice?.needs_review,
+        reviewFlags: data.invoice?.review_flags,
+        overallConfidence: data.overallConfidence,
+        messages: data.messages,
       } as AIExtractionResult;
 
     } catch (error) {

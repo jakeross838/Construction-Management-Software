@@ -50,6 +50,113 @@ function filterSelectionsForRole(selections, role = 'admin') {
 }
 
 // ============================================================
+// ROOT SELECTIONS ENDPOINT (for React hook compatibility)
+// ============================================================
+
+/**
+ * GET /api/selections
+ * List all selections with joined data
+ * Query params: job_id (filters through allowance relationship)
+ */
+router.get('/', asyncHandler(async (req, res) => {
+  const { job_id } = req.query;
+
+  let data = [];
+  let error = null;
+
+  if (job_id) {
+    // Filter through allowance relationship since selections don't have direct job_id
+    const result = await supabase
+      .from('selections')
+      .select(`
+        *,
+        allowance:v2_allowances!inner(id, job_id)
+      `)
+      .eq('allowance.job_id', job_id)
+      .order('created_at', { ascending: false });
+
+    data = result.data;
+    error = result.error;
+  } else {
+    // No filter - get all selections
+    const result = await supabase
+      .from('selections')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    data = result.data;
+    error = result.error;
+  }
+
+  if (error) throw error;
+
+  // Map to expected format (remove nested allowance object if present)
+  const mapped = (data || []).map(s => {
+    const { allowance, ...rest } = s;
+    return {
+      ...rest,
+      options: s.options || [],
+      job_id: allowance?.job_id || null,
+      job_name: null, // Will be populated if needed
+      vendor_name: null,
+      cost_code_name: null,
+      po_number: null,
+    };
+  });
+
+  res.json(mapped);
+}));
+
+/**
+ * POST /api/selections
+ * Create a new selection
+ */
+router.post('/', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('selections')
+    .insert(req.body)
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+
+/**
+ * PATCH /api/selections/:id
+ * Update a selection
+ */
+router.patch('/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('selections')
+    .update(req.body)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.json(data);
+}));
+
+/**
+ * DELETE /api/selections/:id
+ * Delete a selection
+ */
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { error } = await supabase
+    .from('selections')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+  res.status(204).send();
+}));
+
+// ============================================================
 // SELECTION CATEGORIES
 // ============================================================
 

@@ -71,9 +71,9 @@ const Estimates = () => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(est =>
-        est.number.toLowerCase().includes(query) ||
-        est.clientName.toLowerCase().includes(query) ||
-        est.projectName.toLowerCase().includes(query)
+        est.number?.toLowerCase().includes(query) ||
+        est.clientName?.toLowerCase().includes(query) ||
+        est.projectName?.toLowerCase().includes(query)
       );
     }
     

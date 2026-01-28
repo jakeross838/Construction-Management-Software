@@ -114,7 +114,7 @@ const Selections = () => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(s =>
-        s.name.toLowerCase().includes(query) ||
+        s.name?.toLowerCase().includes(query) ||
         s.description?.toLowerCase().includes(query) ||
         s.vendor_name?.toLowerCase().includes(query) ||
         s.room_area?.toLowerCase().includes(query)

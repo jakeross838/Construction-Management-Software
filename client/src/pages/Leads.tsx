@@ -68,8 +68,8 @@ const Leads = () => {
   const filteredLeads = useMemo(() => {
     if (!searchQuery.trim()) return leads;
     const query = searchQuery.toLowerCase();
-    return leads.filter(lead => 
-      lead.name.toLowerCase().includes(query) ||
+    return leads.filter(lead =>
+      lead.name?.toLowerCase().includes(query) ||
       lead.client_email?.toLowerCase().includes(query) ||
       lead.description?.toLowerCase().includes(query)
     );

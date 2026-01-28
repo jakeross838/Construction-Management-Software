@@ -74,10 +74,10 @@ const Invoices = () => {
       const vendor = vendors.find(v => v.id === inv.vendor_id);
       const job = jobs.find(j => j.id === inv.job_id);
       
-      const matchesSearch = !searchQuery.trim() || 
-        inv.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        job?.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !searchQuery.trim() ||
+        inv.invoice_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        vendor?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        job?.name?.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesStatus = statusFilter === 'all' || inv.status === statusFilter;
       const matchesJob = !selectedJobId || inv.job_id === selectedJobId;

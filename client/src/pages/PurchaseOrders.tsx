@@ -55,8 +55,8 @@ const PurchaseOrders = () => {
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(po => 
-        po.po_number.toLowerCase().includes(query) ||
+      filtered = filtered.filter(po =>
+        po.po_number?.toLowerCase().includes(query) ||
         po.vendor_name?.toLowerCase().includes(query) ||
         po.description?.toLowerCase().includes(query)
       );

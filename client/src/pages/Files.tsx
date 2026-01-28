@@ -83,8 +83,8 @@ const Files = () => {
     return files.filter(file => {
       const matchesJob = !selectedJobId || file.jobId === selectedJobId;
       const matchesFolder = folderFilter === 'All Files' || file.folder === folderFilter;
-      const matchesSearch = !searchQuery.trim() || 
-        file.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !searchQuery.trim() ||
+        file.name?.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesJob && matchesFolder && matchesSearch;
     });
   }, [searchQuery, selectedJobId, folderFilter]);

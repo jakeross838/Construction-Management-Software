@@ -9,7 +9,6 @@ import { useCreateLienRelease, useUpdateLienRelease, releaseTypeOptions, release
 import { useVendors } from '@/hooks/useVendors';
 import { useDBJobs } from '@/hooks/useFinancialData';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useJob } from '@/contexts/JobContext';
 
 interface LienReleaseFormDialogProps {
@@ -43,13 +42,12 @@ export function LienReleaseFormDialog({ open, onOpenChange, release, defaultJobI
     queryKey: ['draws-for-job', jobId],
     queryFn: async () => {
       if (!jobId) return [];
-      const { data, error } = await supabase
-        .from('draws')
-        .select('id, draw_number')
-        .eq('job_id', jobId)
-        .order('draw_number');
-      if (error) throw error;
-      return data || [];
+      const response = await fetch(`/api/draws?job_id=${jobId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch draws: HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
     },
     enabled: !!jobId,
   });

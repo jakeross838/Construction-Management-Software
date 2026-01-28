@@ -30,8 +30,8 @@ const PunchLists = () => {
     }
     
     if (searchQuery.trim()) {
-      filtered = filtered.filter(item => 
-        item.description.toLowerCase().includes(searchQuery.toLowerCase())
+      filtered = filtered.filter(item =>
+        item.description?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
     

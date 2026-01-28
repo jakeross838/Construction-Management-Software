@@ -1,5 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export type TaskStatus = 'scheduled' | 'in_progress' | 'completed' | 'delayed' | 'cancelled';
 export type TaskType = 'work' | 'inspection' | 'delivery' | 'milestone' | 'meeting' | 'walkthrough' | 'punch_list';
@@ -116,23 +129,13 @@ export function useScheduleTasks(jobId?: string | null) {
   return useQuery({
     queryKey: ['schedule-tasks', jobId],
     queryFn: async () => {
-      let query = supabase
-        .from('schedule_tasks')
-        .select(`
-          *,
-          jobs!inner(name)
-        `)
-        .order('start_date', { ascending: true })
-        .order('sort_order', { ascending: true });
-
+      let endpoint = '/schedules/tasks';
       if (jobId) {
-        query = query.eq('job_id', jobId);
+        endpoint += `?job_id=${jobId}`;
       }
+      const data = await api<ScheduleTask[]>(endpoint);
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return (data || []).map((task: any) => {
+      return (data || []).map((task: ScheduleTask) => {
         // Parse predecessors from JSONB
         let predecessors: Predecessor[] = [];
         if (task.predecessors) {
@@ -140,10 +143,9 @@ export function useScheduleTasks(jobId?: string | null) {
             predecessors = task.predecessors;
           }
         }
-        
+
         const mappedTask = {
           ...task,
-          job_name: task.jobs?.name,
           task_type: task.task_type || 'work',
           critical_path: task.critical_path || false,
           predecessors,
@@ -161,24 +163,17 @@ export function useCreateScheduleTask() {
 
   return useMutation({
     mutationFn: async (task: Omit<ScheduleTask, 'id' | 'job_name' | 'created_at' | 'updated_at'>) => {
-      // Convert predecessors to JSON-compatible format
-      const { predecessors, ...rest } = task;
-      const insertData = {
-        ...rest,
-        predecessors: predecessors ? JSON.parse(JSON.stringify(predecessors)) : [],
-      };
-      
-      const { data, error } = await supabase
-        .from('schedule_tasks')
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<ScheduleTask>('/schedules/tasks', {
+        method: 'POST',
+        body: JSON.stringify(task),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedule-tasks'] });
+      toast.success('Task created');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to create task: ${error.message}`);
     },
   });
 }
@@ -188,26 +183,17 @@ export function useUpdateScheduleTask() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<ScheduleTask> & { id: string }) => {
-      // Convert predecessors to JSON-compatible format if present
-      const { predecessors, ...rest } = updates;
-      const updateData: Record<string, unknown> = { ...rest };
-      
-      if (predecessors !== undefined) {
-        updateData.predecessors = JSON.parse(JSON.stringify(predecessors));
-      }
-      
-      const { data, error } = await supabase
-        .from('schedule_tasks')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<ScheduleTask>(`/schedules/tasks/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedule-tasks'] });
+      toast.success('Task updated');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update task: ${error.message}`);
     },
   });
 }
@@ -217,15 +203,14 @@ export function useDeleteScheduleTask() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('schedule_tasks')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      return api(`/schedules/tasks/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedule-tasks'] });
+      toast.success('Task deleted');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to delete task: ${error.message}`);
     },
   });
 }

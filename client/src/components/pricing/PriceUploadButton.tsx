@@ -202,8 +202,9 @@ export function PriceUploadButton() {
           // Find or create master item
           let masterItem = masterItems.find(
             (mi) =>
-              mi.name.toLowerCase() === item.item_name.toLowerCase() ||
-              mi.name.toLowerCase().includes(item.item_name.toLowerCase())
+              mi.name && item.item_name &&
+              (mi.name.toLowerCase() === item.item_name.toLowerCase() ||
+               mi.name.toLowerCase().includes(item.item_name.toLowerCase()))
           );
 
           if (!masterItem) {

@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export interface LienRelease {
   id: string;
@@ -40,23 +52,8 @@ export function useLienReleases(jobId?: string | null) {
   return useQuery({
     queryKey: ['lien-releases', jobId],
     queryFn: async (): Promise<LienRelease[]> => {
-      let query = supabase
-        .from('lien_releases')
-        .select(`
-          *,
-          vendor:vendors(id, name),
-          draw:draws(id, draw_number),
-          job:jobs(id, name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (jobId) {
-        query = query.eq('job_id', jobId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      const endpoint = jobId ? `/lien-releases?job_id=${jobId}` : '/lien-releases';
+      return api<LienRelease[]>(endpoint);
     },
   });
 }
@@ -66,17 +63,10 @@ export function useCreateLienRelease() {
 
   return useMutation({
     mutationFn: async (release: LienReleaseInsert) => {
-      const { data, error } = await supabase
-        .from('lien_releases')
-        .insert({
-          ...release,
-          status: release.status || 'pending',
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<LienRelease>('/lien-releases', {
+        method: 'POST',
+        body: JSON.stringify({ ...release, status: release.status || 'pending' }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lien-releases'] });
@@ -95,15 +85,10 @@ export function useUpdateLienRelease() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: LienReleaseUpdate) => {
-      const { data, error } = await supabase
-        .from('lien_releases')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return api<LienRelease>(`/lien-releases/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lien-releases'] });
@@ -122,8 +107,7 @@ export function useDeleteLienRelease() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('lien_releases').delete().eq('id', id);
-      if (error) throw error;
+      return api(`/lien-releases/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lien-releases'] });
@@ -142,19 +126,14 @@ export function useMarkLienReleaseReceived() {
 
   return useMutation({
     mutationFn: async ({ id, receivedBy }: { id: string; receivedBy?: string }) => {
-      const { data, error } = await supabase
-        .from('lien_releases')
-        .update({
+      return api<LienRelease>(`/lien-releases/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
           status: 'received',
           received_at: new Date().toISOString(),
           received_by: receivedBy || null,
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+        }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lien-releases'] });

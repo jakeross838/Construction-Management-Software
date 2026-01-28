@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 export interface Permit {
   id: string;
@@ -62,45 +74,30 @@ export function usePermits(jobId?: string | null) {
   return useQuery({
     queryKey: ['permits', jobId],
     queryFn: async () => {
-      let query = supabase
-        .from('permits')
-        .select(`
-          *,
-          jobs:job_id (name)
-        `)
-        .order('created_at', { ascending: false });
-      
+      let endpoint = '/permits';
       if (jobId) {
-        query = query.eq('job_id', jobId);
+        endpoint += `?job_id=${jobId}`;
       }
-      
-      const { data, error } = await query;
-      
-      if (error) throw error;
-      return data as Permit[];
+      return api<Permit[]>(endpoint);
     }
   });
 }
 
 export function useCreatePermit() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (permit: PermitInsert) => {
-      const { data, error } = await supabase
-        .from('permits')
-        .insert(permit)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      return api<Permit>('/permits', {
+        method: 'POST',
+        body: JSON.stringify(permit),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['permits'] });
       toast.success('Permit created successfully');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Error creating permit:', error);
       toast.error('Failed to create permit');
     }
@@ -109,24 +106,19 @@ export function useCreatePermit() {
 
 export function useUpdatePermit() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ id, ...updates }: PermitUpdate & { id: string }) => {
-      const { data, error } = await supabase
-        .from('permits')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      return api<Permit>(`/permits/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['permits'] });
       toast.success('Permit updated successfully');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Error updating permit:', error);
       toast.error('Failed to update permit');
     }
@@ -135,21 +127,16 @@ export function useUpdatePermit() {
 
 export function useDeletePermit() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('permits')
-        .delete()
-        .eq('id', id);
-      
-      if (error) throw error;
+      return api(`/permits/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['permits'] });
       toast.success('Permit deleted successfully');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Error deleting permit:', error);
       toast.error('Failed to delete permit');
     }

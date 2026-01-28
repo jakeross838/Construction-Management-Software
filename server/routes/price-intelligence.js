@@ -155,23 +155,40 @@ router.get('/master-items/:id', asyncHandler(async (req, res) => {
 /**
  * POST /api/price-intelligence/master-items
  * Create a new master item
+ * Accepts both frontend naming (name, default_unit) and backend naming (standard_name, standard_unit)
  */
 router.post('/master-items', asyncHandler(async (req, res) => {
-  const { category, subcategory, standard_name, standard_unit, dimensions, keywords } = req.body;
+  const {
+    category,
+    subcategory,
+    standard_name,
+    standard_unit,
+    dimensions,
+    keywords,
+    // Frontend naming conventions
+    name,
+    default_unit,
+    description,
+    waste_factor_percent
+  } = req.body;
 
-  if (!category || !standard_name || !standard_unit) {
-    throw new AppError('category, standard_name, and standard_unit are required', 400);
+  // Support both naming conventions
+  const itemName = standard_name || name;
+  const itemUnit = standard_unit || default_unit || 'each';
+
+  if (!category || !itemName) {
+    throw new AppError('category and name are required', 400);
   }
 
   const { data, error } = await supabase
     .from('v2_master_items')
     .insert({
       category,
-      subcategory,
-      standard_name,
-      standard_unit,
+      subcategory: subcategory || description || null,
+      standard_name: itemName,
+      standard_unit: itemUnit,
       dimensions: dimensions || null,
-      keywords: keywords || priceMatcher.extractKeywords(standard_name)
+      keywords: keywords || priceMatcher.extractKeywords(itemName)
     })
     .select()
     .single();

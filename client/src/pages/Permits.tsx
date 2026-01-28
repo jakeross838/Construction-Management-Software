@@ -95,12 +95,14 @@ export default function Permits() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [permitToDelete, setPermitToDelete] = useState<Permit | null>(null);
 
-  const filteredPermits = permits?.filter(permit => 
-    permit.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    permit.number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    permit.jurisdiction?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    permit.jobs?.name.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredPermits = permits?.filter(permit => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return permit.type?.toLowerCase().includes(query) ||
+      permit.number?.toLowerCase().includes(query) ||
+      permit.jurisdiction?.toLowerCase().includes(query) ||
+      permit.jobs?.name?.toLowerCase().includes(query);
+  }) || [];
 
   const stats = {
     total: filteredPermits.length,

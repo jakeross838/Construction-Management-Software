@@ -119,9 +119,9 @@ const Contracts = () => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(contract =>
-        contract.number.toLowerCase().includes(query) ||
-        contract.clientName.toLowerCase().includes(query) ||
-        contract.projectName.toLowerCase().includes(query)
+        contract.number?.toLowerCase().includes(query) ||
+        contract.clientName?.toLowerCase().includes(query) ||
+        contract.projectName?.toLowerCase().includes(query)
       );
     }
     

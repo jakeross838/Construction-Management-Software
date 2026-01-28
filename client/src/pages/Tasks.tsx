@@ -73,9 +73,9 @@ const Tasks = () => {
     return tasks.filter(task => {
       const matchesJob = !selectedJobId || task.jobId === selectedJobId;
       const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
-      const matchesSearch = !searchQuery.trim() || 
-        task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (task.assignee?.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesSearch = !searchQuery.trim() ||
+        task.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        task.assignee?.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesJob && matchesStatus && matchesSearch;
     });
   }, [searchQuery, selectedJobId, statusFilter]);

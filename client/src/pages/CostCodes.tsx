@@ -36,22 +36,23 @@ const CostCodes = () => {
   const categories = [...new Set(costCodes.map(c => c.category).filter(Boolean))] as string[];
   
   const filtered = costCodes.filter(c => {
-    const matchesSearch = !searchQuery.trim() || 
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    if (!c.code) return false; // Skip entries without code
+    const matchesSearch = !searchQuery.trim() ||
+      c.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.code.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesCategory = categoryFilter === 'all' || c.category === categoryFilter;
-    
+
     const isChangeCode = c.code.endsWith('C');
-    const matchesType = typeFilter === 'all' || 
-      (typeFilter === 'base' && !isChangeCode) || 
+    const matchesType = typeFilter === 'all' ||
+      (typeFilter === 'base' && !isChangeCode) ||
       (typeFilter === 'change' && isChangeCode);
-    
+
     return matchesSearch && matchesCategory && matchesType;
   });
 
-  const baseCodes = costCodes.filter(c => !c.code.endsWith('C'));
-  const changeCodes = costCodes.filter(c => c.code.endsWith('C'));
+  const baseCodes = costCodes.filter(c => c.code && !c.code.endsWith('C'));
+  const changeCodes = costCodes.filter(c => c.code && c.code.endsWith('C'));
 
   const handleEdit = (costCode: CostCode) => {
     setEditingCode(costCode);
@@ -183,8 +184,8 @@ const CostCodes = () => {
                       <Badge variant="outline">{c.category}</Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={c.code.endsWith('C') ? 'secondary' : 'default'}>
-                        {c.code.endsWith('C') ? 'Change' : 'Base'}
+                      <Badge variant={c.code?.endsWith('C') ? 'secondary' : 'default'}>
+                        {c.code?.endsWith('C') ? 'Change' : 'Base'}
                       </Badge>
                     </TableCell>
                     <TableCell>

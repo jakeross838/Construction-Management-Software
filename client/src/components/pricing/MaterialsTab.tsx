@@ -88,6 +88,7 @@ export function MaterialsTab() {
   });
 
   const filteredItems = items.filter((item) => {
+    if (!item.name) return false; // Skip items without names
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.description?.toLowerCase().includes(searchQuery.toLowerCase());

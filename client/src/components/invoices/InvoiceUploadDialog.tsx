@@ -14,12 +14,11 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Upload, FileText, CheckCircle, Loader2, AlertCircle, Sparkles, AlertTriangle, Building2, Briefcase, FileWarning } from 'lucide-react';
 import { Vendor } from '@/types/financial';
-import { useCreateInvoice } from '@/hooks/useFinancialData';
+import { useCreateInvoice, useUpdateInvoice } from '@/hooks/useFinancialData';
 import { useDBJobs } from '@/hooks/useFinancialData';
 import { useStampInvoice } from '@/hooks/useInvoiceStamping';
 import { useRecordCorrection } from '@/hooks/useAILearning';
 import { useInvoiceAI, AIExtractionResult, REVIEW_FLAG_LABELS, getConfidenceColor, getConfidenceLabel } from '@/hooks/useInvoiceAI';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface InvoiceUploadDialogProps {
@@ -43,7 +42,7 @@ export function InvoiceUploadDialog({
 }: InvoiceUploadDialogProps) {
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload');
   const [file, setFile] = useState<File | null>(null);
-  const [storedFileName, setStoredFileName] = useState<string | null>(null);
+  const [createdInvoiceId, setCreatedInvoiceId] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<AIExtractionResult | null>(null);
   const [processingSteps, setProcessingSteps] = useState<ProcessingStep[]>([
     { id: 'upload', label: 'Uploading file', status: 'pending' },
@@ -65,6 +64,7 @@ export function InvoiceUploadDialog({
 
   const { data: jobs = [] } = useDBJobs();
   const createInvoice = useCreateInvoice();
+  const updateInvoice = useUpdateInvoice();
   const stampInvoice = useStampInvoice();
   const recordCorrection = useRecordCorrection();
   const { extractInvoiceData, isProcessing, processingStep } = useInvoiceAI();
@@ -107,22 +107,12 @@ export function InvoiceUploadDialog({
     setProcessingSteps(prev => prev.map(s => ({ ...s, status: 'pending' })));
 
     try {
-      // Step 1: Upload file to storage
+      // Step 1-4: Upload + AI extraction with matching (API handles storage)
       updateStep('upload', 'active');
-      const fileName = `${Date.now()}-${selectedFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('invoices')
-        .upload(fileName, selectedFile);
-      
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-      }
-      setStoredFileName(fileName);
-      updateStep('upload', 'complete');
-
-      // Step 2-4: AI extraction with matching
       updateStep('extract', 'active');
       const result = await extractInvoiceData(selectedFile);
+
+      updateStep('upload', 'complete');
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to extract invoice data');
@@ -133,6 +123,11 @@ export function InvoiceUploadDialog({
       updateStep('suggest', 'complete');
 
       setAiResult(result);
+
+      // Store the created invoice ID from the API
+      if (result.invoiceId) {
+        setCreatedInvoiceId(result.invoiceId);
+      }
 
       // Populate form with extracted and matched data
       const extracted = result.data;
@@ -213,25 +208,8 @@ export function InvoiceUploadDialog({
     }
 
     try {
-      // Get the PDF URL if file was uploaded
-      let pdfUrl = null;
-      if (storedFileName) {
-        const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(storedFileName);
-        pdfUrl = urlData?.publicUrl || null;
-      }
-
-      // Build AI data to store
-      const aiData = aiResult ? {
-        extracted: aiResult.extracted,
-        matchedVendor: aiResult.matchedVendor,
-        matchedJob: aiResult.matchedJob,
-        matchedPO: aiResult.matchedPO,
-        reviewFlags: aiResult.reviewFlags,
-        overallConfidence: aiResult.overallConfidence
-      } : null;
-
-      // Build invoice data - cast to any to include new columns
-      const invoiceData: any = {
+      // Build update data for any user corrections
+      const updateData: Record<string, unknown> = {
         invoice_number: formData.invoice_number,
         vendor_id: formData.vendor_id || null,
         job_id: formData.job_id || null,
@@ -240,35 +218,58 @@ export function InvoiceUploadDialog({
         invoice_date: formData.invoice_date,
         due_date: formData.due_date || null,
         notes: formData.notes || null,
-        status: 'needs_approval',
         is_credit: formData.is_credit,
-        ai_confidence: aiResult?.data?.confidence,
-        ai_extracted_data: aiData,
-        pdf_url: pdfUrl,
-        needs_review: aiResult?.needsReview ?? true,
-        review_flags: aiResult?.reviewFlags || [],
-        matched_confidence: {
-          vendor: aiResult?.matchedVendor?.confidence,
-          job: aiResult?.matchedJob?.confidence,
-          po: aiResult?.matchedPO?.confidence,
-          overall: aiResult?.overallConfidence
-        },
       };
 
-      const newInvoice = await createInvoice.mutateAsync(invoiceData);
-      
-      // Stamp the invoice with "Needs Review" stamp
-      if (newInvoice?.id && pdfUrl) {
+      let invoiceId = createdInvoiceId;
+      let pdfUrl = aiResult?.pdfUrl;
+
+      if (createdInvoiceId) {
+        // Invoice was already created by AI processing - just update with user corrections
+        await updateInvoice.mutateAsync({ id: createdInvoiceId, ...updateData });
+      } else {
+        // Manual entry mode - create new invoice
+        const aiData = aiResult ? {
+          extracted: aiResult.extracted,
+          matchedVendor: aiResult.matchedVendor,
+          matchedJob: aiResult.matchedJob,
+          matchedPO: aiResult.matchedPO,
+          reviewFlags: aiResult.reviewFlags,
+          overallConfidence: aiResult.overallConfidence
+        } : null;
+
+        const invoiceData: Record<string, unknown> = {
+          ...updateData,
+          status: 'needs_approval',
+          ai_confidence: aiResult?.data?.confidence,
+          ai_extracted_data: aiData,
+          needs_review: aiResult?.needsReview ?? true,
+          review_flags: aiResult?.reviewFlags || [],
+          matched_confidence: {
+            vendor: aiResult?.matchedVendor?.confidence,
+            job: aiResult?.matchedJob?.confidence,
+            po: aiResult?.matchedPO?.confidence,
+            overall: aiResult?.overallConfidence
+          },
+        };
+
+        const newInvoice = await createInvoice.mutateAsync(invoiceData);
+        invoiceId = newInvoice?.id;
+      }
+
+      // Stamp the invoice with "Needs Review" stamp (if PDF exists)
+      if (invoiceId && pdfUrl) {
         try {
           await stampInvoice.mutateAsync({
-            invoiceId: newInvoice.id,
+            invoiceId,
             status: 'needs_approval',
           });
         } catch (stampError) {
           console.error('Stamping error:', stampError);
         }
       }
-      
+
+      toast.success('Invoice saved successfully');
       onOpenChange(false);
       resetForm();
     } catch (error) {
@@ -279,7 +280,7 @@ export function InvoiceUploadDialog({
   const resetForm = () => {
     setStep('upload');
     setFile(null);
-    setStoredFileName(null);
+    setCreatedInvoiceId(null);
     setAiResult(null);
     setProcessingSteps(prev => prev.map(s => ({ ...s, status: 'pending' })));
     setFormData({

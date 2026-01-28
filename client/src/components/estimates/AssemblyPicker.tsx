@@ -41,9 +41,9 @@ export function AssemblyPicker({ open, onOpenChange, onInsert }: AssemblyPickerP
       if (categoryFilter !== 'all' && assembly.category !== categoryFilter) return false;
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        return assembly.name.toLowerCase().includes(query) ||
-               assembly.description.toLowerCase().includes(query) ||
-               assembly.category.toLowerCase().includes(query);
+        return assembly.name?.toLowerCase().includes(query) ||
+               assembly.description?.toLowerCase().includes(query) ||
+               assembly.category?.toLowerCase().includes(query);
       }
       return true;
     });

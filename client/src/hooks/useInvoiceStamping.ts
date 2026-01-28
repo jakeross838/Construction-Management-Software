@@ -1,7 +1,19 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { InvoiceStatus } from '@/types/financial';
+
+// API helper
+async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
 interface StampInvoiceParams {
   invoiceId: string;
@@ -54,18 +66,16 @@ export function useInvoiceStatusChange() {
     }: {
       invoiceId: string;
       newStatus: InvoiceStatus;
-      additionalUpdates?: Record<string, any>;
+      additionalUpdates?: Record<string, unknown>;
     }) => {
-      // Update the invoice status
-      const { error: updateError } = await supabase
-        .from('v2_invoices')
-        .update({
+      // Update the invoice status via API
+      await api(`/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
           status: newStatus,
           ...additionalUpdates,
-        })
-        .eq('id', invoiceId);
-
-      if (updateError) throw updateError;
+        }),
+      });
 
       // Trigger re-stamping
       await stampInvoice.mutateAsync({ invoiceId, status: newStatus });
@@ -76,7 +86,7 @@ export function useInvoiceStatusChange() {
       queryClient.invalidateQueries({ queryKey: ['invoice', variables.invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Failed to update invoice: ${error.message}`);
     },
   });
@@ -97,17 +107,15 @@ export function useApproveAndStampInvoice() {
     }) => {
       const now = new Date().toISOString();
 
-      // Update invoice to approved status
-      const { error: updateError } = await supabase
-        .from('v2_invoices')
-        .update({
+      // Update invoice to approved status via API
+      await api(`/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
           status: 'approved',
           approved_at: now,
           approved_by: approvedBy,
-        })
-        .eq('id', invoiceId);
-
-      if (updateError) throw updateError;
+        }),
+      });
 
       // Stamp the PDF with approval details
       await stampInvoice.mutateAsync({ invoiceId, status: 'approved' });
@@ -119,7 +127,7 @@ export function useApproveAndStampInvoice() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success('Invoice approved and PDF stamped');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Failed to approve invoice: ${error.message}`);
     },
   });
@@ -138,16 +146,14 @@ export function useAddInvoiceToDraw() {
       invoiceId: string;
       drawId: string;
     }) => {
-      // Update invoice with draw assignment
-      const { error: updateError } = await supabase
-        .from('v2_invoices')
-        .update({
+      // Update invoice with draw assignment via API
+      await api(`/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
           status: 'in_draw',
           draw_id: drawId,
-        })
-        .eq('id', invoiceId);
-
-      if (updateError) throw updateError;
+        }),
+      });
 
       // Re-stamp with draw badge
       await stampInvoice.mutateAsync({ invoiceId, status: 'in_draw' });
@@ -161,7 +167,7 @@ export function useAddInvoiceToDraw() {
       queryClient.invalidateQueries({ queryKey: ['draws'] });
       toast.success('Invoice added to draw');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Failed to add to draw: ${error.message}`);
     },
   });
@@ -182,17 +188,15 @@ export function useMarkInvoicePaid() {
     }) => {
       const now = new Date().toISOString();
 
-      // Update invoice to paid status
-      const { error: updateError } = await supabase
-        .from('v2_invoices')
-        .update({
+      // Update invoice to paid status via API
+      await api(`/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
           status: 'paid',
           paid_at: now,
           payment_reference: paymentReference || null,
-        })
-        .eq('id', invoiceId);
-
-      if (updateError) throw updateError;
+        }),
+      });
 
       // Stamp with PAID watermark
       await stampInvoice.mutateAsync({ invoiceId, status: 'paid' });
@@ -204,7 +208,7 @@ export function useMarkInvoicePaid() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success('Invoice marked as paid');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Failed to mark as paid: ${error.message}`);
     },
   });

@@ -18,12 +18,11 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useJob } from '@/contexts/JobContext';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { 
-  Permit, 
-  PermitInsert, 
-  permitTypes, 
+import { useDBJobs } from '@/hooks/useFinancialData';
+import {
+  Permit,
+  PermitInsert,
+  permitTypes,
   permitStatuses,
   useCreatePermit,
   useUpdatePermit
@@ -57,17 +56,7 @@ export function PermitFormDialog({ open, onOpenChange, permit }: PermitFormDialo
     notes: ''
   });
 
-  const { data: jobs } = useQuery({
-    queryKey: ['jobs-list'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('jobs')
-        .select('id, name')
-        .order('name');
-      if (error) throw error;
-      return data;
-    }
-  });
+  const { data: jobs } = useDBJobs();
 
   useEffect(() => {
     if (permit) {

@@ -21,9 +21,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useBulkInvoiceUpload, QueuedFile } from '@/hooks/useBulkInvoiceUpload';
-import { useCreateInvoice } from '@/hooks/useFinancialData';
 import { useStampInvoice } from '@/hooks/useInvoiceStamping';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface BulkInvoiceUploadDialogProps {
@@ -49,7 +47,6 @@ export function BulkInvoiceUploadDialog({
     stats,
   } = useBulkInvoiceUpload();
 
-  const createInvoice = useCreateInvoice();
   const stampInvoice = useStampInvoice();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,71 +72,34 @@ export function BulkInvoiceUploadDialog({
   };
 
   const handleSaveCompleted = async () => {
+    // Invoices are already created by the API during processing
+    // This function now just stamps them if needed and clears the queue
     const completedFiles = queue.filter(f => f.status === 'complete' && f.result?.success);
-    let savedCount = 0;
+    let stampedCount = 0;
 
     for (const qf of completedFiles) {
       try {
         const result = qf.result!;
-        const extracted = result.data;
+        const invoiceId = result.invoiceId;
+        const pdfUrl = result.pdfUrl;
 
-        // Get PDF URL
-        let pdfUrl = null;
-        if (qf.storedFileName) {
-          const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(qf.storedFileName);
-          pdfUrl = urlData?.publicUrl || null;
-        }
-
-        // Build invoice data
-        const invoiceData: any = {
-          invoice_number: extracted?.invoice_number || qf.file.name,
-          vendor_id: result.matchedVendor?.id || null,
-          job_id: result.matchedJob?.id || selectedJobId || null,
-          po_id: result.matchedPO?.id || null,
-          amount: extracted?.amount || 0,
-          invoice_date: extracted?.invoice_date || new Date().toISOString().split('T')[0],
-          due_date: extracted?.due_date || null,
-          status: 'needs_approval',
-          is_credit: extracted?.invoice_type === 'credit_memo',
-          ai_confidence: extracted?.confidence,
-          ai_extracted_data: {
-            extracted: result.extracted,
-            matchedVendor: result.matchedVendor,
-            matchedJob: result.matchedJob,
-            matchedPO: result.matchedPO,
-            reviewFlags: result.reviewFlags,
-            overallConfidence: result.overallConfidence
-          },
-          pdf_url: pdfUrl,
-          needs_review: result.needsReview ?? true,
-          review_flags: result.reviewFlags || [],
-          matched_confidence: {
-            vendor: result.matchedVendor?.confidence,
-            job: result.matchedJob?.confidence,
-            po: result.matchedPO?.confidence,
-            overall: result.overallConfidence
-          },
-        };
-
-        const newInvoice = await createInvoice.mutateAsync(invoiceData);
-
-        // Stamp if we have PDF
-        if (newInvoice?.id && pdfUrl) {
+        // Stamp if we have invoice ID and PDF
+        if (invoiceId && pdfUrl) {
           try {
-            await stampInvoice.mutateAsync({ invoiceId: newInvoice.id, status: 'needs_approval' });
+            await stampInvoice.mutateAsync({ invoiceId, status: 'needs_approval' });
+            stampedCount++;
           } catch (e) {
             console.error('Stamping error:', e);
           }
         }
-
-        savedCount++;
       } catch (error) {
-        console.error('Error saving invoice:', error);
+        console.error('Error processing invoice:', error);
       }
     }
 
-    if (savedCount > 0) {
-      toast.success(`Saved ${savedCount} invoice(s)`);
+    const totalCompleted = completedFiles.length;
+    if (totalCompleted > 0) {
+      toast.success(`${totalCompleted} invoice${totalCompleted !== 1 ? 's' : ''} processed successfully`);
       clearQueue(true);
     }
   };
