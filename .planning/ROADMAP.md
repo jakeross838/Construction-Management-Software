@@ -43,7 +43,7 @@ Upgrade Kind Creation's AI invoice processing from the credit-limited Lovable ga
   4. Extracted text fed to existing extraction pipeline
 **Research**: Likely (Claude Vision API, PDF image extraction in Deno)
 **Research topics**: pdf-lib image extraction, Claude Vision message format, image encoding
-**Plans**: TBD
+**Plans**: 02-01-PLAN (OCR Support)
 
 ### Phase 3: AI Learning System
 **Goal**: System learns from user corrections to improve future extractions
@@ -103,7 +103,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Claude API Integration | 1/1 | Complete | 2026-01-27 |
-| 2. OCR Support | 0/TBD | Not started | - |
+| 2. OCR Support | 0/1 | Planned | - |
 | 3. AI Learning System | 0/TBD | Not started | - |
 | 4. Enhanced Matching | 0/TBD | Not started | - |
 | 5. PDF Stamp Redesign | 0/TBD | Not started | - |
