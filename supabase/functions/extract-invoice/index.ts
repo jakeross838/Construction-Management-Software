@@ -826,7 +826,42 @@ If this appears to be a scanned document (image of a document rather than digita
         }
       }
 
-      // 3. Historical allocations for this vendor
+      // 3a. Job-specific historical allocations (highest priority)
+      if (matchedJob && matchedVendor) {
+        const jobVendorInvoices = (invoicesWithAllocations || [])
+          .filter((inv: { vendor_id: string; job_id: string }) =>
+            inv.vendor_id === matchedVendor.id && inv.job_id === matchedJob.id);
+
+        const jobCodeFrequency: Map<string, { count: number }> = new Map();
+        for (const inv of jobVendorInvoices) {
+          for (const alloc of (inv as { invoice_allocations?: { cost_code_id: string; amount: number }[] }).invoice_allocations || []) {
+            if (!alloc.cost_code_id) continue;
+            const existing = jobCodeFrequency.get(alloc.cost_code_id) || { count: 0 };
+            jobCodeFrequency.set(alloc.cost_code_id, { count: existing.count + 1 });
+          }
+        }
+
+        // Job-specific patterns get higher confidence
+        const jobSortedCodes = Array.from(jobCodeFrequency.entries())
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 2);
+
+        for (const [codeId, stats] of jobSortedCodes) {
+          const cc = costCodes.find(c => c.id === codeId);
+          if (cc) {
+            costCodeSuggestions.push({
+              id: cc.id,
+              code: cc.code,
+              name: cc.name,
+              amount: totalAmount,
+              confidence: Math.min(0.95, 0.75 + (stats.count * 0.05)), // 0.80-0.95
+              reason: `Used ${stats.count}x for this vendor+job`
+            });
+          }
+        }
+      }
+
+      // 3b. Historical allocations for this vendor (vendor-only fallback)
       if (matchedVendor) {
         // Find all invoices for this vendor with allocations
         const vendorInvoices = (invoicesWithAllocations || [])
