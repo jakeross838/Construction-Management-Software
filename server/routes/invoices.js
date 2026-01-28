@@ -1223,17 +1223,30 @@ router.post('/:id/allocate', async (req, res) => {
 
     if (invoice) {
       const invoiceAmount = parseFloat(invoice.amount || 0);
-      const alreadyBilled = Math.max(
-        parseFloat(invoice.billed_amount || 0),
-        parseFloat(invoice.paid_amount || 0)
-      );
-      const remainingAmount = invoiceAmount - alreadyBilled;
       const allocationTotal = (allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
 
-      if (allocationTotal > remainingAmount + 0.01) {
-        return res.status(400).json({
-          error: `Allocation total ($${allocationTotal.toFixed(2)}) exceeds remaining amount ($${remainingAmount.toFixed(2)})`
-        });
+      // Only check billed_amount constraint for invoices that are already in a draw or paid
+      // For invoices still being allocated (needs_approval, approved), allow up to full amount
+      const billedStatuses = ['in_draw', 'paid'];
+      if (billedStatuses.includes(invoice.status)) {
+        const alreadyBilled = Math.max(
+          parseFloat(invoice.billed_amount || 0),
+          parseFloat(invoice.paid_amount || 0)
+        );
+        const remainingAmount = invoiceAmount - alreadyBilled;
+
+        if (allocationTotal > remainingAmount + 0.01) {
+          return res.status(400).json({
+            error: `Allocation total ($${allocationTotal.toFixed(2)}) exceeds remaining amount ($${remainingAmount.toFixed(2)})`
+          });
+        }
+      } else {
+        // For pre-billed invoices, just check allocation doesn't exceed invoice amount
+        if (allocationTotal > invoiceAmount + 0.01) {
+          return res.status(400).json({
+            error: `Allocation total ($${allocationTotal.toFixed(2)}) exceeds invoice amount ($${invoiceAmount.toFixed(2)})`
+          });
+        }
       }
     }
 
