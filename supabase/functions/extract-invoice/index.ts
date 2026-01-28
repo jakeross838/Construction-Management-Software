@@ -888,7 +888,10 @@ For confidence scores:
       
       // Overall confidence
       overallConfidence,
-      
+
+      // Extraction method tracking (pdf_vision for PDFs, image_vision for images)
+      extractionMethod: actualMimeType === "application/pdf" ? "pdf_vision" : "image_vision",
+
       // Processing messages for UI
       messages: [
         "Extracted invoice data with AI",
