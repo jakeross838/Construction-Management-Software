@@ -261,7 +261,8 @@ serve(async (req) => {
       { data: learnedMappings },
       { data: purchaseOrders },
       { data: costCodes },
-      { data: tradeMappings }
+      { data: tradeMappings },
+      { data: invoicesWithAllocations }
     ] = await Promise.all([
       supabase.from('jobs').select('id, name, address, client').eq('status', 'active'),
       supabase.from('vendors').select('id, name, trade_type, email, phone'),
@@ -269,7 +270,8 @@ serve(async (req) => {
       supabase.from('ai_learned_mappings').select('*'),
       supabase.from('purchase_orders').select('id, po_number, vendor_id, job_id, total_amount, invoiced_amount, status').eq('status', 'approved'),
       supabase.from('cost_codes').select('id, code, name, category').eq('is_active', true),
-      supabase.from('trade_cost_mappings').select('trade_type, cost_code_id')
+      supabase.from('trade_cost_mappings').select('trade_type, cost_code_id'),
+      supabase.from('invoices').select('id, vendor_id, job_id, invoice_allocations(cost_code_id, amount)').not('invoice_allocations', 'is', null)
     ]);
 
     // Build the enhanced extraction prompt
@@ -820,6 +822,46 @@ If this appears to be a scanned document (image of a document rather than digita
                 });
               }
             }
+          }
+        }
+      }
+
+      // 3. Historical allocations for this vendor
+      if (matchedVendor) {
+        // Find all invoices for this vendor with allocations
+        const vendorInvoices = (invoicesWithAllocations || [])
+          .filter((inv: { vendor_id: string }) => inv.vendor_id === matchedVendor.id);
+
+        // Count cost code usage frequency
+        const costCodeFrequency: Map<string, { count: number; totalAmount: number }> = new Map();
+
+        for (const inv of vendorInvoices) {
+          for (const alloc of (inv as { invoice_allocations?: { cost_code_id: string; amount: number }[] }).invoice_allocations || []) {
+            if (!alloc.cost_code_id) continue;
+            const existing = costCodeFrequency.get(alloc.cost_code_id) || { count: 0, totalAmount: 0 };
+            costCodeFrequency.set(alloc.cost_code_id, {
+              count: existing.count + 1,
+              totalAmount: existing.totalAmount + (alloc.amount || 0)
+            });
+          }
+        }
+
+        // Add top 3 most-used cost codes as suggestions
+        const sortedCodes = Array.from(costCodeFrequency.entries())
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 3);
+
+        for (const [codeId, stats] of sortedCodes) {
+          const cc = costCodes.find(c => c.id === codeId);
+          if (cc && !costCodeSuggestions.find(s => s.id === cc.id)) {
+            costCodeSuggestions.push({
+              id: cc.id,
+              code: cc.code,
+              name: cc.name,
+              amount: totalAmount,
+              confidence: Math.min(0.90, 0.60 + (stats.count * 0.05)), // 0.65-0.90 based on frequency
+              reason: `Used ${stats.count}x for this vendor (historical)`
+            });
           }
         }
       }
