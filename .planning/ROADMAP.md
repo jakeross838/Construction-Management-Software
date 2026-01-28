@@ -11,7 +11,7 @@ Upgrade Kind Creation's AI invoice processing from the credit-limited Lovable ga
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Claude API Integration** - Replace Lovable AI gateway with Claude/Anthropic API
-- [ ] **Phase 2: OCR Support** - Add Claude Vision for scanned PDF processing
+- [x] **Phase 2: OCR Support** - Add Claude Vision for scanned PDF processing
 - [ ] **Phase 3: AI Learning System** - Enable learning from corrections and alias tracking
 - [ ] **Phase 4: Enhanced Matching** - Multi-strategy cost code suggestions
 - [ ] **Phase 5: PDF Stamp Redesign** - Professional approval stamp aesthetics
@@ -103,7 +103,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Claude API Integration | 1/1 | Complete | 2026-01-27 |
-| 2. OCR Support | 0/1 | Planned | - |
+| 2. OCR Support | 1/1 | Complete | 2026-01-27 |
 | 3. AI Learning System | 0/TBD | Not started | - |
 | 4. Enhanced Matching | 0/TBD | Not started | - |
 | 5. PDF Stamp Redesign | 0/TBD | Not started | - |
