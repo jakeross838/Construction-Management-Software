@@ -203,6 +203,7 @@ serve(async (req) => {
       font: typeof helvetica;
       size: number;
       color: typeof colors.gray;
+      separator?: boolean;  // Draw separator line before this item
     }> = [];
 
     let headerColor = colors.gray;
@@ -251,10 +252,10 @@ serve(async (req) => {
         }
         // Add allocations
         if (invoice.allocations.length > 0) {
-          stampLines.push({ text: "", font: helvetica, size: 4, color: colors.gray });
+          stampLines.push({ text: "", font: helvetica, size: 4, color: colors.gray, separator: true });
           for (const alloc of invoice.allocations.slice(0, 5)) {
-            const truncatedName = alloc.cost_code_name.length > 12 
-              ? alloc.cost_code_name.substring(0, 12) + "..." 
+            const truncatedName = alloc.cost_code_name.length > 12
+              ? alloc.cost_code_name.substring(0, 12) + "..."
               : alloc.cost_code_name;
             stampLines.push({
               text: `${alloc.cost_code} ${truncatedName} ${formatCurrency(alloc.amount)}`,
@@ -284,10 +285,10 @@ serve(async (req) => {
         }
         // Add allocations
         if (invoice.allocations.length > 0) {
-          stampLines.push({ text: "", font: helvetica, size: 4, color: colors.gray });
+          stampLines.push({ text: "", font: helvetica, size: 4, color: colors.gray, separator: true });
           for (const alloc of invoice.allocations.slice(0, 5)) {
-            const truncatedName = alloc.cost_code_name.length > 12 
-              ? alloc.cost_code_name.substring(0, 12) + "..." 
+            const truncatedName = alloc.cost_code_name.length > 12
+              ? alloc.cost_code_name.substring(0, 12) + "..."
               : alloc.cost_code_name;
             stampLines.push({
               text: `${alloc.cost_code} ${truncatedName} ${formatCurrency(alloc.amount)}`,
@@ -299,7 +300,7 @@ serve(async (req) => {
         }
         // Add PO info
         if (invoice.po_number) {
-          stampLines.push({ text: "", font: helvetica, size: 4, color: colors.gray });
+          stampLines.push({ text: "", font: helvetica, size: 4, color: colors.gray, separator: true });
           stampLines.push({ text: `PO: ${invoice.po_number}`, font: helveticaBold, size: 8, color: colors.gray });
           if (invoice.po_total && invoice.po_invoiced !== undefined) {
             const percent = Math.round((invoice.po_invoiced / invoice.po_total) * 100);
@@ -336,10 +337,10 @@ serve(async (req) => {
           stampLines.push({ text: invoice.job_name, font: helveticaBold, size: 9, color: colors.gray });
         }
         if (invoice.allocations.length > 0) {
-          stampLines.push({ text: "", font: helvetica, size: 4, color: colors.gray });
+          stampLines.push({ text: "", font: helvetica, size: 4, color: colors.gray, separator: true });
           for (const alloc of invoice.allocations.slice(0, 4)) {
-            const truncatedName = alloc.cost_code_name.length > 12 
-              ? alloc.cost_code_name.substring(0, 12) + "..." 
+            const truncatedName = alloc.cost_code_name.length > 12
+              ? alloc.cost_code_name.substring(0, 12) + "..."
               : alloc.cost_code_name;
             stampLines.push({
               text: `${alloc.cost_code} ${truncatedName} ${formatCurrency(alloc.amount)}`,
@@ -350,7 +351,7 @@ serve(async (req) => {
           }
         }
         // Add draw badge at the end
-        stampLines.push({ text: "", font: helvetica, size: 6, color: colors.gray });
+        stampLines.push({ text: "", font: helvetica, size: 6, color: colors.gray, separator: true });
         stampLines.push({
           text: `DRAW #${invoice.draw_number || "—"}`,
           font: helveticaBold,
@@ -396,6 +397,16 @@ serve(async (req) => {
     const stampX = width - margin - stampWidth;
     const stampY = height - margin - totalHeight;
 
+    // Shadow effect
+    firstPage.drawRectangle({
+      x: stampX + 2,
+      y: stampY - 2,
+      width: stampWidth,
+      height: totalHeight,
+      color: rgb(0.85, 0.85, 0.85),
+      opacity: 0.5,
+    });
+
     // Draw white background with border
     firstPage.drawRectangle({
       x: stampX,
@@ -407,6 +418,16 @@ serve(async (req) => {
       borderColor: colors.lightGray,
       borderWidth: 1,
     });
+
+    // Helper to draw separator line
+    const drawSeparator = (y: number) => {
+      firstPage.drawLine({
+        start: { x: stampX + padding, y },
+        end: { x: stampX + stampWidth - padding, y },
+        thickness: 0.5,
+        color: colors.lightGray,
+      });
+    };
 
     // Draw colored header bar
     firstPage.drawRectangle({
@@ -430,6 +451,10 @@ serve(async (req) => {
     // Draw stamp lines
     let currentY = stampY + totalHeight - headerHeight - padding - 2;
     for (const line of stampLines) {
+      // Draw separator if flagged
+      if (line.separator) {
+        drawSeparator(currentY + line.size * 0.3);
+      }
       if (line.text) {
         const textWidth = line.font.widthOfTextAtSize(line.text, line.size);
         firstPage.drawText(line.text, {
