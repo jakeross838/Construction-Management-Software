@@ -237,7 +237,9 @@ export function PriceTrendsTab() {
                         </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
                           <div className="flex items-center justify-end gap-1">
-                            {formatDistanceToNow(new Date(entry.captured_at), { addSuffix: true })}
+                            {entry.captured_at
+                              ? formatDistanceToNow(new Date(entry.captured_at), { addSuffix: true })
+                              : '—'}
                             <ChevronRight className="h-4 w-4" />
                           </div>
                         </TableCell>

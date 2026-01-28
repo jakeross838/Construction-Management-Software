@@ -107,7 +107,11 @@ export function MaterialDetailPanel({ item, open, onOpenChange }: MaterialDetail
       }
       return acc;
     }, [] as Array<{ source_id: string; source_type: string; vendor_name: string; job_name?: string; captured_at: string; unit_price: number; unit: string }>)
-    .sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
+    .sort((a, b) => {
+      const dateA = a.captured_at ? new Date(a.captured_at).getTime() : 0;
+      const dateB = b.captured_at ? new Date(b.captured_at).getTime() : 0;
+      return dateB - dateA;
+    });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -293,7 +297,7 @@ export function MaterialDetailPanel({ item, open, onOpenChange }: MaterialDetail
                               {formatCurrency(source.unit_price)}/{source.unit}
                             </TableCell>
                             <TableCell className="text-right text-xs text-muted-foreground">
-                              {format(new Date(source.captured_at), 'MMM d, yyyy')}
+                              {source.captured_at ? format(new Date(source.captured_at), 'MMM d, yyyy') : '—'}
                             </TableCell>
                           </TableRow>
                         );
@@ -329,7 +333,9 @@ export function MaterialDetailPanel({ item, open, onOpenChange }: MaterialDetail
                           {formatCurrency(entry.unit_price)}/{entry.unit}
                         </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(entry.captured_at), { addSuffix: true })}
+                          {entry.captured_at
+                            ? formatDistanceToNow(new Date(entry.captured_at), { addSuffix: true })
+                            : '—'}
                         </TableCell>
                       </TableRow>
                     ))}

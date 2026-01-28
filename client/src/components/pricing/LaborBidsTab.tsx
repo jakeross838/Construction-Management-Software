@@ -266,7 +266,7 @@ export function LaborBidsTab() {
                       </Select>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(bid.submitted_at), 'MMM d, yyyy')}
+                      {bid.submitted_at ? format(new Date(bid.submitted_at), 'MMM d, yyyy') : '—'}
                     </TableCell>
                   </TableRow>
                 ))}
