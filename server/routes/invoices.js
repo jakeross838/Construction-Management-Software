@@ -1620,6 +1620,46 @@ router.post('/:id/transition', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// STAMP ENDPOINT
+// ============================================================
+
+/**
+ * POST /api/invoices/:id/stamp
+ * Manually trigger PDF stamping for an invoice
+ */
+router.post('/:id/stamp', asyncHandler(async (req, res) => {
+  const { id: invoiceId } = req.params;
+  const { status } = req.body;
+
+  // Verify invoice exists
+  const { data: invoice, error: fetchError } = await supabase
+    .from('v2_invoices')
+    .select('id, status, pdf_url')
+    .eq('id', invoiceId)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !invoice) {
+    throw notFoundError('Invoice not found');
+  }
+
+  if (!invoice.pdf_url) {
+    throw validationError('Invoice has no PDF to stamp');
+  }
+
+  console.log('[STAMP] Manual stamp requested for invoice:', invoiceId, 'status:', status || invoice.status);
+
+  // Trigger stamping
+  const stampedUrl = await restampInvoice(invoiceId);
+
+  res.json({
+    success: true,
+    stamped_url: stampedUrl,
+    message: 'PDF stamped successfully'
+  });
+}));
+
+// ============================================================
 // SPLIT INVOICE ENDPOINTS
 // ============================================================
 
