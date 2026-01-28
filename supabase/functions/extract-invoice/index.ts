@@ -867,6 +867,20 @@ If this appears to be a scanned document (image of a document rather than digita
       }
     }
 
+    // Deduplicate and merge suggestions (keep highest confidence)
+    const uniqueSuggestions = new Map<string, CostCodeSuggestion>();
+    for (const suggestion of costCodeSuggestions) {
+      const existing = uniqueSuggestions.get(suggestion.id);
+      if (!existing || suggestion.confidence > existing.confidence) {
+        uniqueSuggestions.set(suggestion.id, suggestion);
+      }
+    }
+
+    // Sort by confidence (highest first) and limit to top 5
+    const finalSuggestions = Array.from(uniqueSuggestions.values())
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 5);
+
     // === DUPLICATE CHECK ===
     let possibleDuplicate: { id: string; invoice_number: string; amount: number } | null = null;
     
@@ -964,7 +978,7 @@ If this appears to be a scanned document (image of a document rather than digita
         vendors: vendorSuggestions,
         jobs: jobSuggestions,
         purchaseOrders: poSuggestions,
-        costCodes: costCodeSuggestions.slice(0, 5)
+        costCodes: finalSuggestions
       },
       
       // Duplicate warning
