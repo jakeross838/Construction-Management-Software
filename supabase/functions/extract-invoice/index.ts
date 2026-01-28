@@ -457,10 +457,12 @@ If this appears to be a scanned document (image of a document rather than digita
     const normalizedVendorName = vendorName ? normalizeVendorName(vendorName) : '';
     
     if (vendorName) {
-      // 1. Check learned mappings first
+      // 1. Check learned mappings first (with normalized comparison)
+      const normalizedExtracted = normalizeForLearning(vendorName);
       const learnedVendor = (learnedMappings || []).find(
-        m => m.entity_type === 'vendor' && 
-        m.extracted_value.toLowerCase() === vendorName.toLowerCase()
+        m => m.entity_type === 'vendor' &&
+        (m.extracted_value.toLowerCase() === vendorName.toLowerCase() ||
+         normalizeForLearning(m.extracted_value) === normalizedExtracted)
       );
       if (learnedVendor) {
         const vendor = (vendors || []).find(v => v.id === learnedVendor.matched_id);
@@ -474,11 +476,11 @@ If this appears to be a scanned document (image of a document rather than digita
         }
       }
 
-      // 2. Check vendor aliases
+      // 2. Check vendor aliases (with normalized comparison)
       if (!matchedVendor) {
         const alias = (vendorAliases || []).find(
           a => a.alias_name.toLowerCase() === vendorName.toLowerCase() ||
-               a.alias_name.toLowerCase() === normalizedVendorName.toLowerCase()
+               normalizeForLearning(a.alias_name) === normalizedExtracted
         );
         if (alias) {
           const vendor = (vendors || []).find(v => v.id === alias.vendor_id);
