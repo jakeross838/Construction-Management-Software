@@ -1334,7 +1334,7 @@ export type Database = {
           po_id: string | null
           received_date: string | null
           review_flags: string[] | null
-          stamped_pdf_url: string | null
+          pdf_stamped_url: string | null
           status: string
           updated_at: string
           vendor_id: string | null
@@ -1364,7 +1364,7 @@ export type Database = {
           po_id?: string | null
           received_date?: string | null
           review_flags?: string[] | null
-          stamped_pdf_url?: string | null
+          pdf_stamped_url?: string | null
           status?: string
           updated_at?: string
           vendor_id?: string | null
@@ -1394,7 +1394,7 @@ export type Database = {
           po_id?: string | null
           received_date?: string | null
           review_flags?: string[] | null
-          stamped_pdf_url?: string | null
+          pdf_stamped_url?: string | null
           status?: string
           updated_at?: string
           vendor_id?: string | null

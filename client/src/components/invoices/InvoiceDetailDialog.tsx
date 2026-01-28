@@ -441,11 +441,11 @@ export function InvoiceDetailDialog({
               <div className="flex items-center justify-between">
                 <Label className="text-muted-foreground">PDF Preview</Label>
                 <div className="flex items-center gap-1">
-                  {invoice.stamped_pdf_url && (
-                    <Button 
-                      variant="ghost" 
+                  {invoice.pdf_stamped_url && (
+                    <Button
+                      variant="ghost"
                       size="sm"
-                      onClick={() => window.open(invoice.stamped_pdf_url!, '_blank')}
+                      onClick={() => window.open(invoice.pdf_stamped_url!, '_blank')}
                     >
                       <ExternalLink className="h-4 w-4 mr-1" />
                       Stamped
@@ -481,9 +481,9 @@ export function InvoiceDetailDialog({
                 </div>
               </div>
               <div className="border rounded-lg bg-muted/30 min-h-[75vh] flex items-center justify-center">
-                {(invoice.stamped_pdf_url || invoice.pdf_url) ? (
+                {(invoice.pdf_stamped_url || invoice.pdf_url) ? (
                   <iframe
-                    src={invoice.stamped_pdf_url || invoice.pdf_url!}
+                    src={invoice.pdf_stamped_url || invoice.pdf_url!}
                     className="w-full h-[75vh] rounded-lg"
                     title="Invoice PDF"
                   />

@@ -25,7 +25,7 @@ export interface Invoice {
   received_date: string | null;
   status: InvoiceStatus;
   pdf_url: string | null;
-  stamped_pdf_url: string | null;
+  pdf_stamped_url: string | null;
   ai_extracted_data: AIExtractedData | null;
   ai_confidence: AIConfidence | null;
   matched_confidence: MatchedConfidence | null;
