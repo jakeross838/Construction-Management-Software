@@ -68,7 +68,7 @@ Upgrade Kind Creation's AI invoice processing from the credit-limited Lovable ga
   3. Historical allocations inform suggestions
   4. Multiple suggestions ranked by confidence
 **Research**: Unlikely (extending existing matching logic)
-**Plans**: TBD
+**Plans**: 04-01-PLAN (Enhanced Matching)
 
 ### Phase 5: PDF Stamp Redesign
 **Goal**: Professional-looking approval stamps on invoices
@@ -105,6 +105,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Claude API Integration | 1/1 | Complete | 2026-01-27 |
 | 2. OCR Support | 1/1 | Complete | 2026-01-27 |
 | 3. AI Learning System | 1/1 | Complete | 2026-01-28 |
-| 4. Enhanced Matching | 0/TBD | Not started | - |
+| 4. Enhanced Matching | 0/1 | Planned | - |
 | 5. PDF Stamp Redesign | 0/TBD | Not started | - |
 | 6. Bulk Processing | 0/TBD | Not started | - |
