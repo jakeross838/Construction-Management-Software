@@ -549,12 +549,14 @@ If this appears to be a scanned document (image of a document rather than digita
     const poNumber = extracted.job?.poNumber;
 
     if (jobs && jobs.length > 0) {
-      // 1. Check learned mappings
+      // 1. Check learned mappings (with normalized comparison)
       const searchTerms = [jobRef, jobAddress, clientName, poNumber].filter(Boolean);
       for (const term of searchTerms) {
+        const normalizedTerm = normalizeForLearning(term!);
         const learnedJob = (learnedMappings || []).find(
-          m => m.entity_type === 'job' && 
-          m.extracted_value.toLowerCase() === term!.toLowerCase()
+          m => m.entity_type === 'job' &&
+          (m.extracted_value.toLowerCase() === term!.toLowerCase() ||
+           normalizeForLearning(m.extracted_value) === normalizedTerm)
         );
         if (learnedJob) {
           const job = jobs.find(j => j.id === learnedJob.matched_id);
