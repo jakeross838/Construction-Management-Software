@@ -35,7 +35,7 @@ A comprehensive construction management platform for Ross Built, combining a mod
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Replace Lovable AI gateway with Claude/Anthropic API for invoice extraction
+- [x] Replace Lovable AI gateway with Claude/Anthropic API for invoice extraction
 - [ ] Add OCR support for scanned PDFs using Claude Vision
 - [ ] Implement AI learning system (corrections improve future extractions)
 - [ ] Improve PDF stamp aesthetics (professional appearance)
@@ -85,7 +85,7 @@ A comprehensive construction management platform for Ross Built, combining a mod
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Use Claude API for extraction | Lovable gateway has credit limits, Claude has OCR capability | — Pending |
+| Use Claude API for extraction | Lovable gateway has credit limits, Claude has OCR capability | Implemented |
 | Keep Supabase Edge Functions | Already deployed architecture, Deno is capable | — Pending |
 | Port AI logic to TypeScript | Original is JS, Edge Functions are TS | — Pending |
 | Store learned mappings in database | Enables persistence across sessions | — Pending |
