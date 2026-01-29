@@ -656,32 +656,72 @@ router.post('/:id/add-invoices', validateRequest({
     const { data: invoices } = await supabase
       .from('v2_invoices')
       .select(`
-        id, amount, pdf_url, job_id, billed_amount,
+        id, amount, pdf_url, job_id, billed_amount, billable_amount, non_billable_reason,
         allocations:v2_invoice_allocations(id, amount, cost_code_id, notes)
       `)
       .in('id', invoice_ids);
 
     const partialInvoices = [];
     const fullyBilledInvoices = [];
+    const nonBillableInvoices = [];
 
     for (const inv of invoices) {
       const invoiceAmount = parseFloat(inv.amount || 0);
+      // Use billable_amount if set, otherwise use full amount
+      const effectiveBillableAmount = inv.billable_amount !== null
+        ? parseFloat(inv.billable_amount)
+        : invoiceAmount;
+
+      // Skip non-billable invoices from draw (but still mark them as processed)
+      if (effectiveBillableAmount === 0) {
+        nonBillableInvoices.push({
+          id: inv.id,
+          amount: invoiceAmount,
+          reason: inv.non_billable_reason || 'non-billable'
+        });
+        // Update status but don't add to draw
+        await supabase.from('v2_invoices').update({
+          status: 'paid', // Non-billable goes straight to paid (absorbed)
+          fully_billed_at: new Date().toISOString()
+        }).eq('id', inv.id);
+        // Remove from draw_invoices since we just inserted it
+        await supabase.from('v2_draw_invoices').delete()
+          .eq('draw_id', drawId)
+          .eq('invoice_id', inv.id);
+        await logActivity(inv.id, 'non_billable_absorbed', 'System', {
+          amount: invoiceAmount,
+          reason: inv.non_billable_reason
+        });
+        continue;
+      }
+
       const previouslyBilled = parseFloat(inv.billed_amount || 0);
       const currentAllocationSum = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
-      const newBilledTotal = previouslyBilled + currentAllocationSum;
+      // Cap allocation to billable amount
+      const cappedAllocationSum = Math.min(currentAllocationSum, effectiveBillableAmount - previouslyBilled);
+      const newBilledTotal = previouslyBilled + cappedAllocationSum;
       const isCredit = invoiceAmount < 0;
+      // Check against billable amount, not total amount
       const isFullyBilled = isCredit
-        ? newBilledTotal <= invoiceAmount + 0.01
-        : newBilledTotal >= invoiceAmount - 0.01;
+        ? newBilledTotal <= effectiveBillableAmount + 0.01
+        : newBilledTotal >= effectiveBillableAmount - 0.01;
 
       // Copy allocations to draw_allocations
+      // If partially billable, scale allocations proportionally
+      const allocationTotal = (inv.allocations || []).reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      const billableRatio = (effectiveBillableAmount < allocationTotal && allocationTotal > 0)
+        ? effectiveBillableAmount / allocationTotal
+        : 1.0;
+
       for (const alloc of (inv.allocations || [])) {
+        // Scale allocation amount by billable ratio if invoice is partially billable
+        const billableAllocAmount = parseFloat(alloc.amount || 0) * billableRatio;
         await supabase.from('v2_draw_allocations').upsert({
           draw_id: drawId,
           invoice_id: inv.id,
           cost_code_id: alloc.cost_code_id,
-          amount: alloc.amount,
-          notes: alloc.notes,
+          amount: billableAllocAmount,
+          notes: billableRatio < 1 ? `${alloc.notes || ''} (Partial: ${Math.round(billableRatio * 100)}% billable)`.trim() : alloc.notes,
           created_by: 'System'
         }, { onConflict: 'draw_id,invoice_id,cost_code_id' });
       }
@@ -710,17 +750,17 @@ router.post('/:id/add-invoices', validateRequest({
           fully_billed: true
         });
       } else {
-        // Partial allocation: send back for approval with remaining amount
+        // Partial allocation: send back for approval with remaining billable amount
         updateData.status = 'needs_approval';
         partialInvoices.push({
           id: inv.id,
-          billed: currentAllocationSum,
-          remaining: invoiceAmount - newBilledTotal
+          billed: cappedAllocationSum,
+          remaining: effectiveBillableAmount - newBilledTotal
         });
 
         await logActivity(inv.id, 'partial_billed', 'System', {
           draw_number: draw?.draw_number,
-          remaining_amount: invoiceAmount - newBilledTotal,
+          remaining_amount: effectiveBillableAmount - newBilledTotal,
           sent_back_for: 'approval'
         });
       }
@@ -775,7 +815,9 @@ router.post('/:id/add-invoices', validateRequest({
       success: true,
       fully_billed: fullyBilledInvoices.length,
       partial_billed: partialInvoices.length,
+      non_billable: nonBillableInvoices.length,
       partial_invoices: partialInvoices,
+      non_billable_invoices: nonBillableInvoices,
       warnings: missingBudgetLines ? {
         missing_budget_lines: missingBudgetLines,
         message: 'Some allocations could not update budget because no budget line exists. Please add budget for these cost codes.'

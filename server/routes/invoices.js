@@ -2356,4 +2356,38 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   });
 }));
 
+// ============================================================
+// TEST ENDPOINT - Create invoice directly (for testing only)
+// ============================================================
+router.post('/test-create', asyncHandler(async (req, res) => {
+  const { job_id, vendor_id, invoice_number, invoice_date, amount, status } = req.body;
+
+  if (!job_id || !vendor_id || !amount) {
+    throw validationError('job_id, vendor_id, and amount are required');
+  }
+
+  const { data: invoice, error } = await supabase
+    .from('v2_invoices')
+    .insert({
+      job_id,
+      vendor_id,
+      invoice_number: invoice_number || `TEST-${Date.now()}`,
+      invoice_date: invoice_date || new Date().toISOString().split('T')[0],
+      amount: parseFloat(amount),
+      status: status || 'needs_approval',
+      ai_processed: false,
+      version: 1
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', `Failed to create test invoice: ${error.message}`);
+  }
+
+  await logActivity(invoice.id, 'created', 'Test System', { test: true });
+
+  res.json(invoice);
+}));
+
 module.exports = router;

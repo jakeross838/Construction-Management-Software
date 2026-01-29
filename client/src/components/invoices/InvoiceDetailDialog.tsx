@@ -138,6 +138,14 @@ export function InvoiceDetailDialog({
     }
   }, [open]);
 
+  // Resolve vendor and job names with fallback to lookup from fetched lists
+  const resolvedVendorName = invoice?.vendor_name ||
+    vendors.find(v => v.id === invoice?.vendor_id)?.name ||
+    null;
+  const resolvedJobName = invoice?.job_name ||
+    jobs.find(j => j.id === invoice?.job_id)?.name ||
+    null;
+
   const costCodeOptions = costCodes
     .filter(cc => cc.code && cc.name)
     .map(cc => ({
@@ -205,9 +213,9 @@ export function InvoiceDetailDialog({
     }
   };
 
-  const handleApprove = async () => {
+  const handleApprove = async (allowPartial = false) => {
     if (!invoice) return;
-    
+
     // Validate allocations before approval
     if (!hasValidAllocations) {
       if (validAllocations.length === 0) {
@@ -217,16 +225,31 @@ export function InvoiceDetailDialog({
       }
       return;
     }
-    
+
+    // If partial allocation, confirm with user first
+    if (isPartialAllocation && !allowPartial) {
+      const remaining = invoice.amount - totalAllocated;
+      const confirmed = window.confirm(
+        `This invoice has only ${formatCurrency(totalAllocated)} of ${formatCurrency(invoice.amount)} allocated.\n\n` +
+        `${formatCurrency(remaining)} remains unallocated.\n\n` +
+        `When added to a draw, the allocated portion will be billed, and the invoice will return to "Needs Approval" for the remaining amount.\n\n` +
+        `Proceed with partial approval?`
+      );
+      if (!confirmed) return;
+      // Recursively call with allowPartial = true
+      return handleApprove(true);
+    }
+
     try {
       // Save allocations first
       const saved = await saveAllocations();
       if (!saved) return;
-      
+
       // Use the new approve and stamp hook
-      await approveAndStamp.mutateAsync({ 
-        invoiceId: invoice.id, 
-        approvedBy: userName // TODO: Get actual user name
+      await approveAndStamp.mutateAsync({
+        invoiceId: invoice.id,
+        approvedBy: userName,
+        allowPartial: isPartialAllocation
       });
       onOpenChange(false);
     } catch (error) {
@@ -372,7 +395,7 @@ export function InvoiceDetailDialog({
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-3">
               Invoice: {invoice?.invoice_number}
-              {invoice?.vendor_name && ` - ${invoice.vendor_name}`}
+              {resolvedVendorName && ` - ${resolvedVendorName}`}
             </DialogTitle>
             <div className="flex items-center gap-2">
               {/* Status Dropdown */}
@@ -536,7 +559,7 @@ export function InvoiceDetailDialog({
                       searchPlaceholder="Search vendors..."
                     />
                   ) : (
-                    <p className="font-medium">{invoice.vendor_name || '—'}</p>
+                    <p className="font-medium">{resolvedVendorName || '—'}</p>
                   )}
                 </div>
                 <div>
@@ -594,6 +617,91 @@ export function InvoiceDetailDialog({
                 )}
               </div>
 
+              {/* Billable Status */}
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Billable to Client</Label>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={
+                      invoice.billable_amount === null ? 'full' :
+                      invoice.billable_amount === 0 ? 'none' : 'partial'
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      let billableAmount: number | null = null;
+                      if (value === 'none') billableAmount = 0;
+                      else if (value === 'partial') billableAmount = invoice.amount / 2; // Default to 50%
+                      updateInvoice.mutate({
+                        id: invoice.id,
+                        billable_amount: billableAmount
+                      });
+                    }}
+                    disabled={!canEdit}
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="full">Fully Billable</option>
+                    <option value="partial">Partially Billable</option>
+                    <option value="none">Non-Billable</option>
+                  </select>
+                  {invoice.billable_amount !== null && invoice.billable_amount < invoice.amount && (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={invoice.billable_amount}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0;
+                          updateInvoice.mutate({
+                            id: invoice.id,
+                            billable_amount: Math.min(Math.max(0, value), invoice.amount)
+                          });
+                        }}
+                        disabled={!canEdit}
+                        className="w-32"
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        of {formatCurrency(invoice.amount)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {invoice.billable_amount !== null && invoice.billable_amount < invoice.amount && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Label className="text-sm text-muted-foreground">Reason:</Label>
+                    <select
+                      value={invoice.non_billable_reason || ''}
+                      onChange={(e) => {
+                        updateInvoice.mutate({
+                          id: invoice.id,
+                          non_billable_reason: e.target.value || null
+                        });
+                      }}
+                      disabled={!canEdit}
+                      className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                    >
+                      <option value="">Select reason...</option>
+                      <option value="warranty">Warranty/Callback</option>
+                      <option value="overhead">Overhead/Administrative</option>
+                      <option value="rework">Rework (Our Error)</option>
+                      <option value="goodwill">Customer Goodwill</option>
+                      <option value="absorbed">Absorbed Cost Overrun</option>
+                      <option value="other">Other</option>
+                    </select>
+                    {invoice.billable_amount === 0 && (
+                      <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                        Not in Draw
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                {invoice.billable_amount !== null && invoice.billable_amount > 0 && invoice.billable_amount < invoice.amount && (
+                  <p className="text-xs text-muted-foreground">
+                    {formatCurrency(invoice.billable_amount)} will go to draw,
+                    {formatCurrency(invoice.amount - invoice.billable_amount)} absorbed by contractor
+                  </p>
+                )}
+              </div>
+
               <Separator />
 
               {/* Job & PO Assignment */}
@@ -610,7 +718,7 @@ export function InvoiceDetailDialog({
                       searchPlaceholder="Search jobs..."
                     />
                   ) : (
-                    <p className="font-medium">{invoice.job_name || 'Not assigned'}</p>
+                    <p className="font-medium">{resolvedJobName || 'Not assigned'}</p>
                   )}
                 </div>
                 <div className="space-y-2">

@@ -101,31 +101,34 @@ export function useApproveAndStampInvoice() {
     mutationFn: async ({
       invoiceId,
       approvedBy,
+      allowPartial = false,
     }: {
       invoiceId: string;
       approvedBy: string;
+      allowPartial?: boolean;
     }) => {
-      const now = new Date().toISOString();
-
-      // Update invoice to approved status via API
-      await api(`/invoices/${invoiceId}`, {
+      // Use dedicated approve endpoint which handles validation
+      await api(`/invoices/${invoiceId}/approve`, {
         method: 'PATCH',
         body: JSON.stringify({
-          status: 'approved',
-          approved_at: now,
           approved_by: approvedBy,
+          allow_partial: allowPartial,
         }),
       });
 
       // Stamp the PDF with approval details
       await stampInvoice.mutateAsync({ invoiceId, status: 'approved' });
 
-      return { invoiceId };
+      return { invoiceId, isPartial: allowPartial };
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['invoice', variables.invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Invoice approved and PDF stamped');
+      if (result.isPartial) {
+        toast.success('Invoice approved with partial allocation');
+      } else {
+        toast.success('Invoice approved and PDF stamped');
+      }
     },
     onError: (error: Error) => {
       toast.error(`Failed to approve invoice: ${error.message}`);

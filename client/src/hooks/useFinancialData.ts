@@ -119,6 +119,17 @@ export function useCostCodes() {
 // =====================================================
 // INVOICES HOOKS
 // =====================================================
+// Transform API invoice response to flatten nested objects
+function transformInvoice(inv: any): Invoice {
+  return {
+    ...inv,
+    vendor_name: inv.vendor?.name || inv.vendor_name,
+    job_name: inv.job?.name || inv.job_name,
+    po_number: inv.po?.po_number || inv.po_number,
+    draw_id: inv.draw_invoices?.[0]?.draw_id || inv.draw_id,
+  };
+}
+
 export function useInvoices(jobId?: string, status?: InvoiceStatus | 'all') {
   return useQuery({
     queryKey: ['invoices', jobId, status],
@@ -126,7 +137,8 @@ export function useInvoices(jobId?: string, status?: InvoiceStatus | 'all') {
       let endpoint = '/invoices?';
       if (jobId) endpoint += `job_id=${jobId}&`;
       if (status && status !== 'all') endpoint += `status=${status}&`;
-      return api<Invoice[]>(endpoint);
+      const data = await api<any[]>(endpoint);
+      return data.map(transformInvoice) as Invoice[];
     },
   });
 }
@@ -134,7 +146,10 @@ export function useInvoices(jobId?: string, status?: InvoiceStatus | 'all') {
 export function useInvoice(id: string) {
   return useQuery({
     queryKey: ['invoice', id],
-    queryFn: () => api<Invoice>(`/invoices/${id}`),
+    queryFn: async () => {
+      const data = await api<any>(`/invoices/${id}`);
+      return transformInvoice(data) as Invoice;
+    },
     enabled: !!id,
   });
 }
@@ -142,13 +157,21 @@ export function useInvoice(id: string) {
 export function useCreateInvoice() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (invoice: Partial<Invoice>) => api<Invoice>('/invoices', {
+    mutationFn: (invoice: {
+      job_id: string;
+      vendor_id: string;
+      invoice_number: string;
+      invoice_date: string;
+      amount: number;
+      due_date?: string;
+      notes?: string;
+    }) => api<Invoice>('/invoices/test-create', {
       method: 'POST',
-      body: JSON.stringify(invoice),
+      body: JSON.stringify({ ...invoice, status: 'needs_approval' }),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Invoice created successfully');
+      toast.success('Invoice created');
     },
     onError: (error: Error) => toast.error(`Failed to create invoice: ${error.message}`),
   });
@@ -212,6 +235,102 @@ export function useChangeInvoiceStatus() {
     onError: (error: Error) => toast.error(`Failed to change status: ${error.message}`),
   });
 }
+
+// Bulk delete invoices
+export function useBulkDeleteInvoices() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map(id => api(`/invoices/${id}?performedBy=Bulk`, { method: 'DELETE' }))
+      );
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) {
+        throw new Error(`${failed} of ${ids.length} deletions failed`);
+      }
+      return { deleted: ids.length };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success(`${result.deleted} invoice(s) deleted`);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+}
+
+// Bulk approve invoices
+export function useBulkApproveInvoices() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, approvedBy }: { ids: string[]; approvedBy: string }) => {
+      const results = await Promise.allSettled(
+        ids.map(id => api(`/invoices/${id}/approve`, {
+          method: 'PATCH',
+          body: JSON.stringify({ approved_by: approvedBy, allow_partial: true })
+        }))
+      );
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+      return { succeeded, failed };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      if (result.failed > 0) {
+        toast.warning(`${result.succeeded} approved, ${result.failed} failed (may need allocations)`);
+      } else {
+        toast.success(`${result.succeeded} invoice(s) approved`);
+      }
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+}
+
+// Bulk status change
+export function useBulkStatusChange() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, status, performedBy }: { ids: string[]; status: string; performedBy: string }) => {
+      const results = await Promise.allSettled(
+        ids.map(id => api(`/invoices/${id}/transition`, {
+          method: 'POST',
+          body: JSON.stringify({ new_status: status, performed_by: performedBy })
+        }))
+      );
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+      return { succeeded, failed, status };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      if (result.failed > 0) {
+        toast.warning(`${result.succeeded} changed to ${result.status}, ${result.failed} failed`);
+      } else {
+        toast.success(`${result.succeeded} invoice(s) changed to ${result.status}`);
+      }
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+}
+
+// Bulk add to draw
+export function useBulkAddToDraw() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ invoiceIds, drawId }: { invoiceIds: string[]; drawId: string }) => {
+      return api(`/draws/${drawId}/add-invoices`, {
+        method: 'POST',
+        body: JSON.stringify({ invoice_ids: invoiceIds })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      toast.success('Invoices added to draw');
+    },
+    onError: (error: Error) => toast.error(`Failed to add to draw: ${error.message}`),
+  });
+}
+
 
 // =====================================================
 // PURCHASE ORDERS HOOKS

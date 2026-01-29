@@ -4395,15 +4395,18 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
     // ==========================================
     // VALIDATION: Allocation total must match invoice amount
     // Allow partial billing (already billed amount + new allocations should cover invoice)
+    // OR allow explicit partial approval via allow_partial flag
     // ==========================================
     const invoiceAmount = parseFloat(invoice.amount || 0);
     const allocationTotal = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
     const previouslyBilled = parseFloat(invoice.billed_amount || 0);
     const totalCoded = previouslyBilled + allocationTotal;
+    const allowPartial = req.body.allow_partial === true;
 
     // For credits, check if allocation is negative enough; for regular invoices, check if fully coded
     const isCredit = invoiceAmount < 0;
     const tolerance = 0.01; // Allow penny rounding differences
+    let isPartialApproval = false;
 
     if (isCredit) {
       // Credit: allocation should be negative and match invoice
@@ -4416,13 +4419,21 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
       // Regular invoice: allocations should fully cover the invoice (allowing for partial billing)
       if (totalCoded < invoiceAmount - tolerance) {
         const remaining = invoiceAmount - totalCoded;
-        return res.status(400).json({
-          error: `Allocations ($${allocationTotal.toFixed(2)}) do not fully cover invoice amount ($${invoiceAmount.toFixed(2)}). $${remaining.toFixed(2)} remains unallocated.`,
-          invoice_amount: invoiceAmount,
-          allocation_total: allocationTotal,
-          previously_billed: previouslyBilled,
-          remaining: remaining
-        });
+
+        // If allow_partial flag is set, proceed with partial approval
+        if (allowPartial) {
+          isPartialApproval = true;
+          console.log(`[Approval] Partial approval: $${allocationTotal.toFixed(2)} of $${invoiceAmount.toFixed(2)} (remaining: $${remaining.toFixed(2)})`);
+        } else {
+          return res.status(400).json({
+            error: `Allocations ($${allocationTotal.toFixed(2)}) do not fully cover invoice amount ($${invoiceAmount.toFixed(2)}). $${remaining.toFixed(2)} remains unallocated.`,
+            invoice_amount: invoiceAmount,
+            allocation_total: allocationTotal,
+            previously_billed: previouslyBilled,
+            remaining: remaining,
+            allow_partial_option: true
+          });
+        }
       }
     }
 
@@ -4611,10 +4622,18 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
     }
 
     // ==========================================
-    // ADD INVOICE TO DRAFT DRAW
+    // ADD INVOICE TO DRAFT DRAW (unless non-billable)
     // ==========================================
 
-    if (draftDraw) {
+    // Check if invoice is non-billable (billable_amount = 0)
+    const effectiveBillableAmount = invoice.billable_amount !== null
+      ? parseFloat(invoice.billable_amount)
+      : parseFloat(invoice.amount || 0);
+    const isNonBillable = effectiveBillableAmount === 0;
+
+    if (isNonBillable) {
+      console.log(`[APPROVAL] Invoice ${invoiceId} is non-billable (absorbed) - skipping draw, marking as paid`);
+    } else if (draftDraw) {
       try {
         // Add invoice to draw (creates draw_allocations)
         await addInvoiceToDraw(invoiceId, draftDraw.id, approved_by);
@@ -4627,8 +4646,11 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
       }
     }
 
-    // Update invoice - status is now 'in_draw' if added to draw, otherwise 'approved'
-    const newStatus = addedToDraw ? 'in_draw' : 'approved';
+    // Update invoice status:
+    // - non-billable: 'paid' (absorbed, not in draw)
+    // - added to draw: 'in_draw'
+    // - otherwise: 'approved'
+    const newStatus = isNonBillable ? 'paid' : (addedToDraw ? 'in_draw' : 'approved');
 
     const { data: updated, error: updateError } = await supabase
       .from('v2_invoices')

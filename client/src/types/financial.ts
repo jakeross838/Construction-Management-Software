@@ -8,6 +8,8 @@
 // =====================================================
 export type InvoiceStatus = 'received' | 'needs_review' | 'needs_approval' | 'approved' | 'denied' | 'in_draw' | 'paid';
 
+export type NonBillableReason = 'warranty' | 'overhead' | 'rework' | 'goodwill' | 'absorbed' | 'other';
+
 export interface Invoice {
   id: string;
   invoice_number: string;
@@ -20,6 +22,8 @@ export interface Invoice {
   draw_id: string | null;
   parent_invoice_id: string | null;
   amount: number;
+  billable_amount: number | null; // null=fully billable, 0=non-billable, partial=split
+  non_billable_reason: NonBillableReason | null;
   invoice_date: string;
   due_date: string | null;
   received_date: string | null;
@@ -41,6 +45,17 @@ export interface Invoice {
   created_at: string;
   updated_at: string;
   allocations?: InvoiceAllocation[];
+}
+
+// Helper to get effective billable amount
+export function getEffectiveBillableAmount(invoice: Invoice): number {
+  return invoice.billable_amount ?? invoice.amount;
+}
+
+// Helper to get non-billable amount
+export function getNonBillableAmount(invoice: Invoice): number {
+  if (invoice.billable_amount === null) return 0;
+  return invoice.amount - invoice.billable_amount;
 }
 
 export interface AIExtractedData {
