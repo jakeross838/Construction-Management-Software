@@ -291,7 +291,21 @@ export function InvoiceDetailDialog({
   const handleStatusChange = async (newStatus: string) => {
     if (!invoice) return;
 
+    // Require valid allocations for approval
+    if (newStatus === 'approved' && !hasValidAllocations) {
+      toast.error('Cost code allocations are required before approval', {
+        description: 'Total allocations must equal invoice amount',
+      });
+      return;
+    }
+
     try {
+      // Save allocations first if approving
+      if (newStatus === 'approved') {
+        const saved = await saveAllocations();
+        if (!saved) return;
+      }
+
       await changeStatus.mutateAsync({
         id: invoice.id,
         status: newStatus as any,
@@ -372,9 +386,10 @@ export function InvoiceDetailDialog({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => handleStatusChange('approved')}
-                      disabled={invoice.status === 'approved'}
+                      disabled={invoice.status === 'approved' || !hasValidAllocations}
+                      title={!hasValidAllocations ? 'Cost allocations required' : ''}
                     >
-                      Approved
+                      Approved {!hasValidAllocations && '(needs allocations)'}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => handleStatusChange('in_draw')}
