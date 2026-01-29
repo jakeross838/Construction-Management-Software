@@ -58,6 +58,7 @@ import {
 } from '@/types/financial';
 import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
+import { useUserName } from '@/contexts/UserContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { ReviewFlagsList, ReviewStatusSummary } from './ReviewFlagsBadges';
 import { AIConfidenceBadge, AIConfidenceBar } from './AIConfidenceBadge';
@@ -75,6 +76,7 @@ export function InvoiceDetailDialog({
   onOpenChange,
 }: InvoiceDetailDialogProps) {
   const queryClient = useQueryClient();
+  const userName = useUserName();
   const { data: invoice, isLoading } = useInvoice(invoiceId || '');
   const { data: costCodes = [] } = useCostCodes();
   const { data: purchaseOrders = [] } = usePurchaseOrders(invoice?.job_id || undefined);
@@ -224,7 +226,7 @@ export function InvoiceDetailDialog({
       // Use the new approve and stamp hook
       await approveAndStamp.mutateAsync({ 
         invoiceId: invoice.id, 
-        approvedBy: 'Jake Ross' // TODO: Get actual user name
+        approvedBy: userName // TODO: Get actual user name
       });
       onOpenChange(false);
     } catch (error) {
@@ -316,7 +318,7 @@ export function InvoiceDetailDialog({
       await changeStatus.mutateAsync({
         id: invoice.id,
         status: newStatus as any,
-        approved_by: newStatus === 'approved' ? 'Jake Ross' : undefined, // TODO: Get actual user
+        approved_by: newStatus === 'approved' ? userName : undefined, // TODO: Get actual user
       });
 
       // Re-stamp the PDF with new status

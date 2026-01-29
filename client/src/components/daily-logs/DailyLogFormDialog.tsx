@@ -46,6 +46,7 @@ import { useJobs } from '@/hooks/useJobs';
 import { useVendors } from '@/hooks/useVendors';
 import { toast } from 'sonner';
 import { useJob } from '@/contexts/JobContext';
+import { useUserName } from '@/contexts/UserContext';
 import {
   DailyLog,
   DailyLogInsert,
@@ -184,6 +185,7 @@ export function DailyLogFormDialog({
   templateLog,
   defaultJobId,
 }: DailyLogFormDialogProps) {
+  const userName = useUserName();
   const { data: jobs = [] } = useJobs();
   const { data: vendors = [] } = useVendors();
   const createLog = useCreateDailyLog();
@@ -493,7 +495,7 @@ export function DailyLogFormDialog({
       safety_notes: safetyNotes || null,
       dumpster_exchange: dumpsterExchange,
       absent_crews: absentCrews.filter(a => a.vendor_id),
-      created_by: 'Current User', // TODO: Replace with actual user
+      created_by: userName,
     };
 
     const crew = crewEntries.filter(c => c.vendor_id || c.trade);

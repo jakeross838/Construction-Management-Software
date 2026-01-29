@@ -35,6 +35,7 @@ import {
   useUpdateSelection,
   useDeleteSelection,
 } from '@/hooks/useSelections';
+import { useUserName } from '@/contexts/UserContext';
 
 interface SelectionTableProps {
   selections: Selection[];
@@ -52,6 +53,7 @@ const formatCurrency = (value: number) => {
 };
 
 export function SelectionTable({ selections, onEdit, onSelect }: SelectionTableProps) {
+  const userName = useUserName();
   const updateMutation = useUpdateSelection();
   const deleteMutation = useDeleteSelection();
 
@@ -72,7 +74,7 @@ export function SelectionTable({ selections, onEdit, onSelect }: SelectionTableP
       id: selection.id,
       approval_status: 'approved',
       approved_at: new Date().toISOString(),
-      approved_by: 'Current User', // TODO: Replace with actual user
+      approved_by: userName,
     });
   };
 
