@@ -710,7 +710,8 @@ router.post('/:id/add-invoices', validateRequest({
           fully_billed: true
         });
       } else {
-        updateData.status = 'needs_review';
+        // Partial allocation: send back for approval with remaining amount
+        updateData.status = 'needs_approval';
         partialInvoices.push({
           id: inv.id,
           billed: currentAllocationSum,
@@ -719,7 +720,8 @@ router.post('/:id/add-invoices', validateRequest({
 
         await logActivity(inv.id, 'partial_billed', 'System', {
           draw_number: draw?.draw_number,
-          remaining_amount: invoiceAmount - newBilledTotal
+          remaining_amount: invoiceAmount - newBilledTotal,
+          sent_back_for: 'approval'
         });
       }
 

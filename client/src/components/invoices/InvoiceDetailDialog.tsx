@@ -151,11 +151,14 @@ export function InvoiceDetailDialog({
       description: `Remaining: ${formatCurrency(po.remaining_amount || 0)}`,
     }));
 
-  // Validation
+  // Validation - allow partial allocations (total <= invoice amount)
   const validAllocations = allocations.filter(a => a.cost_code_id && parseFloat(a.amount) > 0);
   const totalAllocated = allocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
   const allocationMatch = invoice ? Math.abs(totalAllocated - invoice.amount) < 0.01 : true;
-  const hasValidAllocations = validAllocations.length > 0 && allocationMatch;
+  const isPartialAllocation = invoice ? totalAllocated < invoice.amount - 0.01 : false;
+  const isOverAllocated = invoice ? totalAllocated > invoice.amount + 0.01 : false;
+  // Valid if: has at least one allocation AND not over-allocated
+  const hasValidAllocations = validAllocations.length > 0 && !isOverAllocated;
 
   const saveAllocations = async () => {
     if (!invoice) return false;
@@ -205,9 +208,11 @@ export function InvoiceDetailDialog({
     
     // Validate allocations before approval
     if (!hasValidAllocations) {
-      toast.error('Cost code allocations are required before approval', {
-        description: 'Total allocations must equal invoice amount',
-      });
+      if (validAllocations.length === 0) {
+        toast.error('Cost code allocations are required before approval');
+      } else if (isOverAllocated) {
+        toast.error('Allocation total cannot exceed invoice amount');
+      }
       return;
     }
     
@@ -293,9 +298,11 @@ export function InvoiceDetailDialog({
 
     // Require valid allocations for approval
     if (newStatus === 'approved' && !hasValidAllocations) {
-      toast.error('Cost code allocations are required before approval', {
-        description: 'Total allocations must equal invoice amount',
-      });
+      if (validAllocations.length === 0) {
+        toast.error('Cost code allocations are required before approval');
+      } else if (isOverAllocated) {
+        toast.error('Allocation total cannot exceed invoice amount');
+      }
       return;
     }
 
@@ -732,8 +739,10 @@ export function InvoiceDetailDialog({
                   ))}
                 </div>
 
-                <div className={`flex items-center gap-2 text-sm ${hasValidAllocations ? 'text-green-600' : 'text-amber-600'}`}>
-                  {hasValidAllocations ? (
+                <div className={`flex items-center gap-2 text-sm ${isOverAllocated ? 'text-red-600' : hasValidAllocations ? 'text-green-600' : 'text-amber-600'}`}>
+                  {isOverAllocated ? (
+                    <AlertTriangle className="h-4 w-4" />
+                  ) : hasValidAllocations ? (
                     <CheckCircle className="h-4 w-4" />
                   ) : (
                     <AlertTriangle className="h-4 w-4" />
@@ -742,8 +751,14 @@ export function InvoiceDetailDialog({
                     Total: {formatCurrency(totalAllocated)}
                     {!allocationMatch && ` (Invoice: ${formatCurrency(invoice.amount)})`}
                   </span>
-                  {!hasValidAllocations && (
-                    <span className="text-xs ml-2">— Must match invoice total to approve</span>
+                  {isOverAllocated && (
+                    <span className="text-xs ml-2">— Cannot exceed invoice total</span>
+                  )}
+                  {isPartialAllocation && hasValidAllocations && (
+                    <span className="text-xs ml-2 text-blue-600">— Partial allocation</span>
+                  )}
+                  {validAllocations.length === 0 && (
+                    <span className="text-xs ml-2">— Add at least one cost code</span>
                   )}
                 </div>
               </div>
@@ -863,7 +878,7 @@ export function InvoiceDetailDialog({
                   <Button
                     onClick={handleApprove}
                     disabled={approveAndStamp.isPending || !hasValidAllocations}
-                    title={!hasValidAllocations ? 'Cost allocations must match invoice total' : ''}
+                    title={!hasValidAllocations ? (isOverAllocated ? 'Allocations exceed invoice amount' : 'At least one cost code allocation required') : ''}
                   >
                     {approveAndStamp.isPending ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
