@@ -223,7 +223,8 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
   // Funding status display
   const getFundingStatus = () => {
     if (!isFunded || !draw) return null;
-    const due = draw.current_payment_due || 0;
+    // Use G702 currentPaymentDue, fallback to total_amount (sum of invoices)
+    const due = draw.g702?.currentPaymentDue || draw.total_amount || 0;
     const funded = draw.funded_amount || 0;
     if (funded === due) return { status: 'full', variance: 0 };
     if (funded < due) return { status: 'partial', variance: funded - due };
@@ -807,7 +808,7 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
       />
       
       <FundDrawDialog
-        draw={draw ? { id: draw.id, draw_number: draw.draw_number, current_payment_due: draw.current_payment_due } : null}
+        draw={draw ? { id: draw.id, draw_number: draw.draw_number, current_payment_due: draw.g702?.currentPaymentDue || draw.total_amount || 0 } : null}
         open={fundDialogOpen}
         onOpenChange={setFundDialogOpen}
       />
