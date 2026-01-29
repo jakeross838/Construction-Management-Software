@@ -22,7 +22,7 @@ async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    throw new Error(error.message || error.error || `HTTP ${response.status}`);
   }
   return response.json();
 }
@@ -185,6 +185,7 @@ export function useUpdateInvoice() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('Invoice updated');
     },
     onError: (error: Error) => toast.error(`Failed to update invoice: ${error.message}`),
@@ -202,6 +203,7 @@ export function useApproveInvoice() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('Invoice approved');
     },
     onError: (error: Error) => toast.error(`Failed to approve: ${error.message}`),
@@ -214,6 +216,7 @@ export function useDeleteInvoice() {
     mutationFn: (id: string) => api(`/invoices/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('Invoice deleted');
     },
     onError: (error: Error) => toast.error(`Failed to delete: ${error.message}`),
@@ -231,6 +234,7 @@ export function useChangeInvoiceStatus() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
     },
     onError: (error: Error) => toast.error(`Failed to change status: ${error.message}`),
   });
@@ -252,6 +256,7 @@ export function useBulkDeleteInvoices() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success(`${result.deleted} invoice(s) deleted`);
     },
     onError: (error: Error) => toast.error(error.message),
@@ -275,6 +280,7 @@ export function useBulkApproveInvoices() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       if (result.failed > 0) {
         toast.warning(`${result.succeeded} approved, ${result.failed} failed (may need allocations)`);
       } else {
@@ -302,6 +308,7 @@ export function useBulkStatusChange() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       if (result.failed > 0) {
         toast.warning(`${result.succeeded} changed to ${result.status}, ${result.failed} failed`);
       } else {
@@ -325,6 +332,7 @@ export function useBulkAddToDraw() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['draws'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('Invoices added to draw');
     },
     onError: (error: Error) => toast.error(`Failed to add to draw: ${error.message}`),
@@ -364,6 +372,7 @@ export function useCreatePurchaseOrder() {
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('PO created successfully');
     },
     onError: (error: Error) => toast.error(`Failed to create PO: ${error.message}`),
@@ -378,6 +387,7 @@ export function useUpdatePurchaseOrder() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-order', id] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('PO updated');
     },
     onError: (error: Error) => toast.error(`Failed to update PO: ${error.message}`),
@@ -392,6 +402,7 @@ export function useUpdatePOLineItem() {
     onSuccess: (_, { poId }) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-order', poId] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
     },
     onError: (error: Error) => toast.error(`Failed to update line item: ${error.message}`),
   });
@@ -405,6 +416,7 @@ export function useCreatePOLineItem() {
     onSuccess: (_, { poId }) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-order', poId] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('Line item added');
     },
     onError: (error: Error) => toast.error(`Failed to add line item: ${error.message}`),
@@ -419,6 +431,7 @@ export function useDeletePOLineItem() {
     onSuccess: (_, { poId }) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-order', poId] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('Line item deleted');
     },
     onError: (error: Error) => toast.error(`Failed to delete line item: ${error.message}`),

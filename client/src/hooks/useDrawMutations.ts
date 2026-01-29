@@ -9,7 +9,7 @@ async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+    throw new Error(error.message || error.error || `HTTP ${response.status}`);
   }
   return response.json();
 }
@@ -28,6 +28,7 @@ export function useRemoveInvoiceFromDraw() {
       queryClient.invalidateQueries({ queryKey: ['draws'] });
       queryClient.invalidateQueries({ queryKey: ['draw'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('Invoice removed from draw');
     },
     onError: (error: Error) => {
@@ -152,6 +153,7 @@ export function useFundDraw() {
       queryClient.invalidateQueries({ queryKey: ['draws'] });
       queryClient.invalidateQueries({ queryKey: ['draw', data.id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
 
       const statusText = data.fundingStatus === 'partial'
         ? 'partially funded'
@@ -182,6 +184,7 @@ export function useAddInvoiceToExistingDraw() {
       queryClient.invalidateQueries({ queryKey: ['draw'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['unassigned-approved-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
       toast.success('Invoice added to draw');
     },
     onError: (error: Error) => {

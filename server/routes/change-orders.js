@@ -30,6 +30,45 @@ async function logCOActivity(changeOrderId, action, performedBy, details = {}) {
 router.get('/', asyncHandler(async (req, res) => {
   const { job_id, draw_id, status } = req.query;
 
+  // If filtering by draw_id, we need to find COs that have billings for that draw
+  if (draw_id) {
+    // Get change order IDs that have billings in this draw
+    const { data: billings, error: billingsError } = await supabase
+      .from('v2_job_co_draw_billings')
+      .select('change_order_id, amount')
+      .eq('draw_id', draw_id);
+
+    if (billingsError) throw billingsError;
+
+    if (!billings || billings.length === 0) {
+      return res.json([]);
+    }
+
+    const coIds = [...new Set(billings.map(b => b.change_order_id))];
+
+    const { data, error } = await supabase
+      .from('v2_job_change_orders')
+      .select(`
+        *,
+        job:v2_jobs(id, name, client_name)
+      `)
+      .in('id', coIds)
+      .order('change_order_number', { ascending: true });
+
+    if (error) throw error;
+
+    // Add billing amount for this draw to each CO
+    const result = (data || []).map(co => ({
+      ...co,
+      draw_billing_amount: billings
+        .filter(b => b.change_order_id === co.id)
+        .reduce((sum, b) => sum + parseFloat(b.amount || 0), 0)
+    }));
+
+    return res.json(result);
+  }
+
+  // Standard query without draw_id filter
   let query = supabase
     .from('v2_job_change_orders')
     .select(`
@@ -39,7 +78,6 @@ router.get('/', asyncHandler(async (req, res) => {
     .order('created_at', { ascending: false });
 
   if (job_id) query = query.eq('job_id', job_id);
-  if (draw_id) query = query.eq('draw_id', draw_id);
   if (status) query = query.eq('status', status);
 
   const { data, error } = await query;

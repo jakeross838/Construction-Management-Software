@@ -30,6 +30,7 @@ import {
   Pencil,
   X,
   ChevronDown,
+  DollarSign,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -51,9 +52,9 @@ import {
 import { useInvoice, useUpdateInvoice, useDeleteInvoice, useChangeInvoiceStatus, useCostCodes, usePurchaseOrders, useVendors, useDBJobs } from '@/hooks/useFinancialData';
 import { useApproveAndStampInvoice, useStampInvoice } from '@/hooks/useInvoiceStamping';
 import { useRecordCorrection } from '@/hooks/useAILearning';
-import { 
-  invoiceStatusConfig, 
-  formatCurrency, 
+import {
+  invoiceStatusConfig,
+  formatCurrency,
   formatDate,
 } from '@/types/financial';
 import { Combobox } from '@/components/ui/combobox';
@@ -63,6 +64,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ReviewFlagsList, ReviewStatusSummary } from './ReviewFlagsBadges';
 import { AIConfidenceBadge, AIConfidenceBar } from './AIConfidenceBadge';
 import { CostCodeSuggestions, CostCodeSuggestion } from './CostCodeSuggestions';
+import { PaymentStatusBadge } from './PaymentStatusBadge';
+import { RecordPaymentDialog } from './RecordPaymentDialog';
+import { usePaymentHistory } from '@/hooks/useVendorPayments';
 
 interface InvoiceDetailDialogProps {
   invoiceId: string | null;
@@ -93,6 +97,10 @@ export function InvoiceDetailDialog({
   const [showCostSuggestions, setShowCostSuggestions] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+
+  // Vendor payment tracking
+  const { data: paymentData } = usePaymentHistory(invoiceId || '');
 
   const [allocations, setAllocations] = useState<Array<{ id?: string; cost_code_id: string; amount: string; description: string }>>([]);
   const [notes, setNotes] = useState('');
@@ -398,7 +406,16 @@ export function InvoiceDetailDialog({
               {resolvedVendorName && ` - ${resolvedVendorName}`}
             </DialogTitle>
             <div className="flex items-center gap-2">
-              {/* Status Dropdown */}
+              {/* Vendor Payment Status */}
+              {invoice && (
+                <PaymentStatusBadge
+                  paymentStatus={invoice.payment_status}
+                  paidAmount={paymentData?.summary?.total_paid || invoice.paid_amount}
+                  totalAmount={invoice.amount}
+                />
+              )}
+
+              {/* Workflow Status Dropdown */}
               {invoice && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -430,10 +447,10 @@ export function InvoiceDetailDialog({
                       In Draw
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={() => handleStatusChange('paid')}
-                      disabled={invoice.status === 'paid'}
+                      onClick={() => handleStatusChange('billed')}
+                      disabled={invoice.status === 'billed'}
                     >
-                      Paid
+                      Billed (Draw Funded)
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -999,6 +1016,13 @@ export function InvoiceDetailDialog({
                   </Button>
                 </>
               )}
+              {/* Record Payment Button - show when invoice is approved/in_draw/billed and not fully paid */}
+              {invoice && ['approved', 'in_draw', 'billed', 'paid'].includes(invoice.status) && invoice.payment_status !== 'paid' && (
+                <Button variant="outline" onClick={() => setShowPaymentDialog(true)}>
+                  <DollarSign className="h-4 w-4 mr-2" />
+                  Record Payment
+                </Button>
+              )}
               {invoice?.status !== 'needs_approval' && invoice?.status !== 'needs_review' && !canEdit && (
                 <Button variant="outline" onClick={() => onOpenChange(false)}>
                   Close
@@ -1035,6 +1059,13 @@ export function InvoiceDetailDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Record Vendor Payment Dialog */}
+      <RecordPaymentDialog
+        invoice={invoice || null}
+        open={showPaymentDialog}
+        onOpenChange={setShowPaymentDialog}
+      />
     </Dialog>
   );
 }

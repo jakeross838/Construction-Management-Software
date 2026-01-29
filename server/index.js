@@ -1775,10 +1775,9 @@ app.patch('/api/purchase-orders/:id', asyncHandler(async (req, res) => {
   res.json(updated);
 }));
 
-// Delete (soft delete) purchase order
+// Delete purchase order (hard delete with cascade)
 app.delete('/api/purchase-orders/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { deleted_by } = req.body;
 
   // Check if PO has linked invoices
   const { data: linkedInvoices } = await supabase
@@ -1791,25 +1790,31 @@ app.delete('/api/purchase-orders/:id', asyncHandler(async (req, res) => {
     throw new AppError('VALIDATION_FAILED', 'Cannot delete PO with linked invoices');
   }
 
-  // Soft delete
-  const { data, error } = await supabase
-    .from('v2_purchase_orders')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single();
+  // Delete line items first
+  await supabase
+    .from('v2_po_line_items')
+    .delete()
+    .eq('po_id', id);
 
-  if (error) throw new AppError('DATABASE_ERROR', error.message);
-
-  // Log activity
+  // Delete activity logs
   await supabase
     .from('v2_po_activity')
-    .insert({
-      po_id: id,
-      action: 'deleted',
-      performed_by: deleted_by || 'system',
-      details: {}
-    });
+    .delete()
+    .eq('po_id', id);
+
+  // Delete attachments
+  await supabase
+    .from('v2_po_attachments')
+    .delete()
+    .eq('po_id', id);
+
+  // Hard delete the PO
+  const { error } = await supabase
+    .from('v2_purchase_orders')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   res.json({ success: true, message: 'Purchase order deleted' });
 }));
@@ -5329,11 +5334,12 @@ app.get('/api/invoices/:id/family', async (req, res) => {
   }
 });
 
-// Mark invoice as paid to vendor
+// Record vendor payment (we pay the vendor)
+// Supports partial payments - payment_status: unpaid → partial → paid
 app.patch('/api/invoices/:id/pay', async (req, res) => {
   try {
     const invoiceId = req.params.id;
-    const { payment_method, payment_reference, payment_date, payment_amount } = req.body;
+    const { payment_method, payment_reference, payment_date, payment_amount, payment_notes, recorded_by } = req.body;
 
     // Validate required fields
     if (!payment_method) {
@@ -5345,10 +5351,10 @@ app.patch('/api/invoices/:id/pay', async (req, res) => {
       return res.status(400).json({ error: 'Invalid payment method' });
     }
 
-    // Get current invoice
+    // Get current invoice with existing payments
     const { data: invoice, error: getError } = await supabase
       .from('v2_invoices')
-      .select('id, status, amount, paid_to_vendor')
+      .select('id, status, amount, payment_status, paid_amount')
       .eq('id', invoiceId)
       .single();
 
@@ -5356,21 +5362,54 @@ app.patch('/api/invoices/:id/pay', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    if (invoice.paid_to_vendor) {
-      return res.status(400).json({ error: 'Invoice has already been marked as paid' });
+    if (invoice.payment_status === 'paid') {
+      return res.status(400).json({ error: 'Invoice has already been fully paid to vendor' });
     }
 
-    // Determine payment amount (default to invoice amount if not specified)
-    const paidAmount = payment_amount !== undefined ? parseFloat(payment_amount) : parseFloat(invoice.amount || 0);
+    // Calculate payment amount
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const previouslyPaid = parseFloat(invoice.paid_amount || 0);
+    const remainingBalance = invoiceAmount - previouslyPaid;
+    const thisPayment = payment_amount !== undefined ? parseFloat(payment_amount) : remainingBalance;
 
-    // Update invoice with payment info
+    if (thisPayment <= 0) {
+      return res.status(400).json({ error: 'Payment amount must be positive' });
+    }
+
+    if (thisPayment > remainingBalance + 0.01) {
+      return res.status(400).json({
+        error: `Payment amount ($${thisPayment.toFixed(2)}) exceeds remaining balance ($${remainingBalance.toFixed(2)})`
+      });
+    }
+
+    const newTotalPaid = previouslyPaid + thisPayment;
+    const isFullyPaid = Math.abs(newTotalPaid - invoiceAmount) < 0.01;
+    const paymentDate = payment_date || new Date().toISOString().split('T')[0];
+
+    // Record payment in history table
+    await supabase
+      .from('v2_invoice_payments')
+      .insert({
+        invoice_id: invoiceId,
+        amount: thisPayment,
+        payment_date: paymentDate,
+        payment_method,
+        reference_number: payment_reference || null,
+        notes: payment_notes || null,
+        recorded_by: recorded_by || 'System'
+      });
+
+    // Update invoice payment status
     const { data: updated, error: updateError } = await supabase
       .from('v2_invoices')
       .update({
-        paid_to_vendor: true,
-        paid_to_vendor_date: payment_date || new Date().toISOString().split('T')[0],
-        paid_to_vendor_amount: paidAmount,
-        paid_to_vendor_ref: payment_reference || null
+        payment_status: isFullyPaid ? 'paid' : 'partial',
+        paid_amount: newTotalPaid,
+        paid_to_vendor_at: isFullyPaid ? new Date().toISOString() : invoice.paid_to_vendor_at,
+        paid_to_vendor_by: recorded_by || 'System',
+        payment_method: payment_method,
+        payment_reference: payment_reference || null,
+        payment_notes: payment_notes || null
       })
       .eq('id', invoiceId)
       .select(`
@@ -5383,29 +5422,40 @@ app.patch('/api/invoices/:id/pay', async (req, res) => {
     if (updateError) throw updateError;
 
     // Log activity
-    await logActivity(invoiceId, 'paid_to_vendor', 'System', {
+    await logActivity(invoiceId, 'vendor_payment', recorded_by || 'System', {
       payment_method,
       payment_reference,
-      payment_amount: paidAmount,
-      payment_date: payment_date || new Date().toISOString().split('T')[0]
+      payment_amount: thisPayment,
+      total_paid: newTotalPaid,
+      payment_date: paymentDate,
+      fully_paid: isFullyPaid
     });
 
-    res.json(updated);
+    res.json({
+      ...updated,
+      payment_recorded: {
+        amount: thisPayment,
+        total_paid: newTotalPaid,
+        remaining: invoiceAmount - newTotalPaid,
+        fully_paid: isFullyPaid
+      }
+    });
   } catch (err) {
-    console.error('Error marking invoice as paid:', err);
+    console.error('Error recording vendor payment:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Unmark invoice as paid to vendor
+// Void all vendor payments (reset to unpaid)
 app.patch('/api/invoices/:id/unpay', async (req, res) => {
   try {
     const invoiceId = req.params.id;
+    const { voided_by, reason } = req.body;
 
     // Get current invoice
     const { data: invoice, error: getError } = await supabase
       .from('v2_invoices')
-      .select('id, paid_to_vendor')
+      .select('id, payment_status, paid_amount')
       .eq('id', invoiceId)
       .single();
 
@@ -5413,18 +5463,27 @@ app.patch('/api/invoices/:id/unpay', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    if (!invoice.paid_to_vendor) {
-      return res.status(400).json({ error: 'Invoice is not marked as paid' });
+    if (invoice.payment_status === 'unpaid') {
+      return res.status(400).json({ error: 'Invoice has no payments to void' });
     }
 
-    // Clear payment info
+    // Delete all payment history records
+    await supabase
+      .from('v2_invoice_payments')
+      .delete()
+      .eq('invoice_id', invoiceId);
+
+    // Reset payment fields
     const { data: updated, error: updateError } = await supabase
       .from('v2_invoices')
       .update({
-        paid_to_vendor: false,
-        paid_to_vendor_date: null,
-        paid_to_vendor_amount: null,
-        paid_to_vendor_ref: null
+        payment_status: 'unpaid',
+        paid_amount: 0,
+        paid_to_vendor_at: null,
+        paid_to_vendor_by: null,
+        payment_method: null,
+        payment_reference: null,
+        payment_notes: null
       })
       .eq('id', invoiceId)
       .select(`
@@ -5437,11 +5496,49 @@ app.patch('/api/invoices/:id/unpay', async (req, res) => {
     if (updateError) throw updateError;
 
     // Log activity
-    await logActivity(invoiceId, 'unpaid', 'System', {});
+    await logActivity(invoiceId, 'payments_voided', voided_by || 'System', {
+      previous_paid_amount: invoice.paid_amount,
+      reason: reason || 'Payments voided'
+    });
 
     res.json(updated);
   } catch (err) {
-    console.error('Error unmarking invoice as paid:', err);
+    console.error('Error voiding vendor payments:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get payment history for an invoice
+app.get('/api/invoices/:id/payments', async (req, res) => {
+  try {
+    const invoiceId = req.params.id;
+
+    const { data: payments, error } = await supabase
+      .from('v2_invoice_payments')
+      .select('*')
+      .eq('invoice_id', invoiceId)
+      .order('payment_date', { ascending: false });
+
+    if (error) throw error;
+
+    // Also get invoice summary
+    const { data: invoice } = await supabase
+      .from('v2_invoices')
+      .select('amount, paid_amount, payment_status')
+      .eq('id', invoiceId)
+      .single();
+
+    res.json({
+      payments: payments || [],
+      summary: invoice ? {
+        invoice_amount: parseFloat(invoice.amount || 0),
+        total_paid: parseFloat(invoice.paid_amount || 0),
+        remaining: parseFloat(invoice.amount || 0) - parseFloat(invoice.paid_amount || 0),
+        payment_status: invoice.payment_status
+      } : null
+    });
+  } catch (err) {
+    console.error('Error fetching payment history:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -7686,11 +7783,12 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
           }
         }
 
-        // Mark invoice as paid and set fully_billed_at if applicable
+        // Mark invoice as billed (client paid us via funded draw)
+        // Note: This is separate from payment_status which tracks vendor payment
         const invoiceUpdate = {
-          status: 'paid',
-          paid_amount: newPaidAmount,
-          paid_at: new Date().toISOString()
+          status: 'billed',
+          billed_amount: newPaidAmount,
+          billed_at: new Date().toISOString()
         };
         if (isFullyBilled) {
           invoiceUpdate.fully_billed_at = now;
@@ -7701,16 +7799,16 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
           .update(invoiceUpdate)
           .eq('id', inv.id);
 
-        // Re-stamp with unified stampInvoice (applies approval + draw + paid stamps correctly)
+        // Re-stamp with unified stampInvoice (applies approval + draw + billed stamps correctly)
         restampInvoice(inv.id).catch(err => {
           console.error('Stamp failed for invoice:', inv.id, err.message);
         });
 
-        await logActivity(inv.id, 'paid', 'System', {
+        await logActivity(inv.id, 'billed', 'System', {
           draw_id: drawId,
           draw_number: draw.draw_number,
-          amount_paid_this_draw: billedThisDraw,
-          cumulative_paid: newPaidAmount,
+          amount_billed_this_draw: billedThisDraw,
+          cumulative_billed: newPaidAmount,
           fully_billed: isFullyBilled
         });
 

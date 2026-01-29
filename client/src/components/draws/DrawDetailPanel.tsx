@@ -80,37 +80,45 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
   const [lrDialogOpen, setLRDialogOpen] = useState(false);
   const [fundDialogOpen, setFundDialogOpen] = useState(false);
 
-  // Build G703 from budget lines with this period's invoice amounts by cost code
-  // Aggregate invoice amounts by cost code from invoice allocations
-  const invoicesByCostCode = useMemo(() => {
-    const map = new Map<string, number>();
-    
-    draw?.invoices?.forEach((invoice: any) => {
-      // Check for invoice_allocations (from Supabase join)
-      const allocations = invoice.invoice_allocations || invoice.allocations || [];
-      if (allocations.length > 0) {
-        allocations.forEach((alloc: any) => {
-          if (alloc.cost_code_id) {
-            const current = map.get(alloc.cost_code_id) || 0;
-            map.set(alloc.cost_code_id, current + (alloc.amount || 0));
-          }
-        });
-      }
-    });
-    
-    return map;
-  }, [draw?.invoices]);
-  
+  // Use scheduleOfValues from API response (already computed by backend)
   const g703Lines: G703LineItem[] = useMemo(() => {
+    // Use pre-computed scheduleOfValues from API if available
+    if (draw?.scheduleOfValues && draw.scheduleOfValues.length > 0) {
+      return draw.scheduleOfValues.map((sov: any) => ({
+        cost_code: sov.costCode || '—',
+        description: sov.description || 'Unknown',
+        scheduled_value: sov.scheduledValue || 0,
+        previous_applications: sov.previousBilled || 0,
+        this_period: sov.thisPeriod || 0,
+        materials_stored: sov.materialsStored || 0,
+        total_completed: sov.totalBilled || 0,
+        percent_complete: Math.min(Math.round(sov.percentComplete || 0), 100),
+        balance_to_finish: sov.balance || 0,
+      }));
+    }
+
+    // Fallback: compute from budget lines if scheduleOfValues not available
     if (!budgetLines) return [];
-    
+
+    // Build map of invoice amounts by cost code
+    const invoicesByCostCode = new Map<string, number>();
+    draw?.invoices?.forEach((invoice: any) => {
+      const allocations = invoice.invoice_allocations || invoice.allocations || [];
+      allocations.forEach((alloc: any) => {
+        if (alloc.cost_code_id) {
+          const current = invoicesByCostCode.get(alloc.cost_code_id) || 0;
+          invoicesByCostCode.set(alloc.cost_code_id, current + (alloc.amount || 0));
+        }
+      });
+    });
+
     return budgetLines.map(bl => {
       const thisPeriod = invoicesByCostCode.get(bl.cost_code_id) || 0;
-      const totalCompleted = thisPeriod; // In a full impl, add previous applications
-      const percentComplete = bl.budgeted_amount > 0 
-        ? Math.round((totalCompleted / bl.budgeted_amount) * 100) 
+      const totalCompleted = thisPeriod;
+      const percentComplete = bl.budgeted_amount > 0
+        ? Math.round((totalCompleted / bl.budgeted_amount) * 100)
         : 0;
-      
+
       return {
         cost_code: bl.cost_code || '—',
         description: bl.cost_code_name || 'Unknown',
@@ -123,7 +131,7 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
         balance_to_finish: (bl.budgeted_amount || 0) - totalCompleted,
       };
     });
-  }, [budgetLines, invoicesByCostCode]);
+  }, [draw?.scheduleOfValues, draw?.invoices, budgetLines]);
   
   // Early return AFTER all hooks
   if (!drawId) return null;

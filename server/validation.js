@@ -42,19 +42,23 @@ const VALIDATION_RULES = {
 // ============================================================
 
 // Invoice Pipeline Flow:
-// 1. needs_review    - Accountant reviews, full editing, job optional
+// 1. needs_review       - Accountant reviews, full editing, job optional
 // 2. ready_for_approval - PM reviews under specific job, read-only (can unlock)
-// 3. approved        - Ready for draws, read-only (can unlock)
-// 4. in_draw         - Added to a draw
-// 5. paid            - Draw funded, archived
+// 3. approved           - Ready for draws, read-only (can unlock)
+// 4. in_draw            - Added to a draw
+// 5. billed             - Draw funded (CLIENT paid us) - can still pay vendor
+//
+// Separate from workflow: payment_status tracks VENDOR payment (we pay them)
+//   unpaid → partial → paid
 
 const STATUS_TRANSITIONS = {
   needs_review: ['ready_for_approval', 'denied', 'deleted', 'split'],
   ready_for_approval: ['approved', 'needs_review', 'denied', 'split'],
   approved: ['in_draw', 'ready_for_approval', 'needs_review'],
   pm_approved: ['in_draw', 'ready_for_approval', 'needs_review'],  // Same as approved
-  in_draw: ['paid', 'approved'],
-  paid: [],     // Archived - read only
+  in_draw: ['billed', 'approved'],
+  billed: [],   // Client paid us via funded draw - workflow complete
+  paid: [],     // Legacy: treat same as billed
   split: [],    // Split parent - container only, children are processed
   denied: ['needs_review', 'deleted'],  // Can resubmit or delete
   // Legacy statuses - map to new flow
@@ -71,11 +75,12 @@ const PRE_TRANSITION_REQUIREMENTS = {
   ready_for_approval: ['job_id', 'vendor_id'],  // Must have job and vendor
   approved: ['job_id', 'vendor_id', 'allocations_balanced'],  // Must have allocations
   in_draw: ['draw_id'],
-  paid: ['funded_draw']
+  billed: ['funded_draw'],  // Client paid us via funded draw
+  paid: ['funded_draw']     // Legacy: same as billed
 };
 
 // Statuses where editing is locked by default (need unlock button)
-const LOCKED_STATUSES = ['ready_for_approval', 'approved', 'in_draw', 'paid', 'split'];
+const LOCKED_STATUSES = ['ready_for_approval', 'approved', 'in_draw', 'billed', 'paid', 'split'];
 
 // ============================================================
 // VALIDATION FUNCTIONS

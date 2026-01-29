@@ -6,7 +6,14 @@
 // =====================================================
 // INVOICE TYPES
 // =====================================================
-export type InvoiceStatus = 'received' | 'needs_review' | 'needs_approval' | 'approved' | 'denied' | 'in_draw' | 'paid';
+// Workflow status: tracks the invoice through the approval/billing process
+// Note: 'billed' means client paid us (draw funded), 'paid' is legacy alias for 'billed'
+export type InvoiceStatus = 'received' | 'needs_review' | 'needs_approval' | 'ready_for_approval' | 'approved' | 'denied' | 'in_draw' | 'billed' | 'paid';
+
+// Payment status: tracks whether we've paid the vendor (separate from workflow)
+export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
+
+export type PaymentMethod = 'check' | 'ach' | 'wire' | 'credit_card' | 'cash' | 'other';
 
 export type NonBillableReason = 'warranty' | 'overhead' | 'rework' | 'goodwill' | 'absorbed' | 'other';
 
@@ -37,8 +44,24 @@ export interface Invoice {
   review_flags: string[] | null;
   approved_at: string | null;
   approved_by: string | null;
-  paid_at: string | null;
+  // Client billing (draw funded)
+  billed_at: string | null;
+  billed_amount: number | null;
+  // Vendor payment tracking (we pay them)
+  payment_status: PaymentStatus;
+  paid_amount: number | null;
+  paid_to_vendor_at: string | null;
+  paid_to_vendor_by: string | null;
+  payment_method: PaymentMethod | null;
   payment_reference: string | null;
+  payment_notes: string | null;
+  // Legacy fields (for backwards compatibility)
+  paid_at: string | null;
+  // QuickBooks sync
+  qb_bill_id: string | null;
+  qb_payment_id: string | null;
+  qb_sync_status: 'pending' | 'synced' | 'error' | 'skipped';
+  // Other
   notes: string | null;
   is_credit: boolean;
   is_split_child: boolean;
@@ -90,6 +113,20 @@ export interface InvoiceAllocation {
   cost_code_name?: string;
   amount: number;
   description: string | null;
+}
+
+// Vendor payment history record
+export interface InvoicePayment {
+  id: string;
+  invoice_id: string;
+  amount: number;
+  payment_date: string;
+  payment_method: PaymentMethod | null;
+  reference_number: string | null;
+  notes: string | null;
+  recorded_by: string | null;
+  qb_payment_id: string | null;
+  created_at: string;
 }
 
 // =====================================================
