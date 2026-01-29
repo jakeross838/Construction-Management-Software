@@ -755,3 +755,48 @@ npm start       # Start fresh
 # The server writes its PID to server.pid on startup
 # npm run stop reads this file and kills only that process
 ```
+
+---
+
+## Browser Debugging (Chrome DevTools MCP)
+
+This project includes the Chrome DevTools MCP server for AI-assisted browser debugging.
+
+### What It Enables
+- **Console inspection**: View browser console errors and warnings
+- **Network monitoring**: Inspect API calls, responses, and failures
+- **Screenshot capture**: Take screenshots of the app state
+- **DOM inspection**: Access the accessibility tree and page snapshots
+- **Performance tracing**: Analyze page performance and Core Web Vitals
+
+### Available Tools
+```
+click, drag, fill, fill_form, hover, press_key      # Input automation
+list_pages, navigate_page, new_page, select_page    # Navigation
+list_console_messages, get_console_message          # Console debugging
+list_network_requests, get_network_request          # Network inspection
+take_screenshot, take_snapshot                      # Visual capture
+performance_start_trace, performance_stop_trace     # Performance
+evaluate_script                                     # Run JS in browser
+```
+
+### Configuration
+The MCP server is configured in `.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]
+    }
+  }
+}
+```
+
+### Usage
+When debugging frontend issues, Claude can:
+1. Open the app with `navigate_page`
+2. Check for errors with `list_console_messages`
+3. Inspect network calls with `list_network_requests`
+4. Take screenshots to see current state
+5. Evaluate JavaScript to inspect app state
