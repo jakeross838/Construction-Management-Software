@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
+const logger = require('../utils/logger');
 const { asyncHandler, AppError, notFoundError } = require('../errors');
 const { processDailyLogIntelligence } = require('../daily-log-intelligence');
 
@@ -78,14 +79,14 @@ async function geocodeAddress(address) {
 
     // Try extracting city name from job name or use Sarasota as default (Ross Built HQ)
     // Default to Sarasota, FL coordinates if geocoding fails
-    console.log('Geocoding failed, using Sarasota FL default');
+    logger.debug('Geocoding failed, using Sarasota FL default', { component: 'DailyLog' });
     return {
       lat: 27.3364,
       lon: -82.5307,
       name: 'Sarasota, FL (default)'
     };
   } catch (err) {
-    console.error('Geocoding error:', err);
+    logger.error('Geocoding error', { component: 'DailyLog', error: err.message });
     // Return Sarasota as fallback
     return {
       lat: 27.3364,
@@ -113,7 +114,7 @@ async function fetchWeatherForCoords(lat, lon) {
     }
     return null;
   } catch (err) {
-    console.error('Weather fetch error:', err);
+    logger.error('Weather fetch error', { component: 'DailyLog', error: err.message });
     return null;
   }
 }
@@ -128,7 +129,7 @@ async function logDailyLogActivity(dailyLogId, action, performedBy, details = {}
       details
     });
   } catch (err) {
-    console.error('Failed to log daily log activity:', err);
+    logger.error('Failed to log daily log activity', { component: 'DailyLog', dailyLogId, error: err.message });
   }
 }
 
@@ -186,7 +187,7 @@ async function updateScheduleTaskProgress(crewEntries) {
         .eq('id', taskId);
 
     } catch (err) {
-      console.error(`Failed to update schedule task ${taskId}:`, err);
+      logger.error('Failed to update schedule task', { component: 'DailyLog', taskId, error: err.message });
     }
   }
 }
@@ -887,9 +888,9 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
     let intelligenceResult = null;
     try {
       intelligenceResult = await processDailyLogIntelligence(id);
-      console.log(`Intelligence processed for daily log ${id}:`, intelligenceResult.summary);
+      logger.info('Intelligence processed for daily log', { component: 'DailyLog', dailyLogId: id, summary: intelligenceResult.summary });
     } catch (err) {
-      console.error('Intelligence processing error:', err);
+      logger.error('Intelligence processing error', { component: 'DailyLog', dailyLogId: id, error: err.message });
     }
 
     // Return updated log
@@ -1223,7 +1224,7 @@ router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req,
       });
 
     if (uploadError) {
-      console.error('Photo upload error:', uploadError);
+      logger.error('Photo upload error', { component: 'DailyLog', dailyLogId: id, error: uploadError.message });
       throw new Error(`Failed to upload photo: ${uploadError.message}`);
     }
 
@@ -1354,7 +1355,7 @@ router.delete('/:id/photos/:photoId', asyncHandler(async (req, res) => {
         await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);
       }
     } catch (storageErr) {
-      console.warn('Could not delete file from storage:', storageErr.message);
+      logger.warn('Could not delete file from storage', { component: 'DailyLog', error: storageErr.message });
     }
 
     // Delete the database record

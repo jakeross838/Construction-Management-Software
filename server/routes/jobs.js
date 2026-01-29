@@ -8,6 +8,7 @@ const router = express.Router();
 const { supabase } = require('../../config');
 const { extractSpecsFromPlans, extractSpecsFromMultipleDocuments } = require('../ai-document-processor');
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
+const { validate, schemas } = require('../middleware/validate');
 const {
   createValidationError,
   createValidationWarning,
@@ -16,9 +17,7 @@ const {
 } = require('../validation-errors');
 
 // Create a new job
-router.post('/', validateRequest({
-  body: { name: { required: true } }
-}), asyncHandler(async (req, res) => {
+router.post('/', validate(schemas.jobCreate), asyncHandler(async (req, res) => {
   const { name, address, client_name, contract_amount, status } = req.body;
 
   const { data, error } = await supabase
@@ -59,7 +58,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // Get single job
-router.get('/:id', validateRequest({ params: { id: { type: 'uuid' } } }), asyncHandler(async (req, res) => {
+router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_jobs')
     .select('*')
@@ -75,9 +74,7 @@ router.get('/:id', validateRequest({ params: { id: { type: 'uuid' } } }), asyncH
 }));
 
 // Update job (basic fields, not specs)
-router.patch('/:id', validateRequest({
-  params: { id: { type: 'uuid' } }
-}), asyncHandler(async (req, res) => {
+router.patch('/:id', validate(schemas.jobUpdate), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const allowedFields = ['name', 'address', 'client_name', 'contract_amount', 'status'];
 

@@ -9,6 +9,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const sharp = require('sharp');
 const path = require('path');
+const logger = require('./utils/logger').child({ module: 'ocr' });
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -55,7 +56,7 @@ async function convertPDFToImages(pdfBuffer) {
     const pdf = await loadingTask.promise;
     const numPages = Math.min(pdf.numPages, 5); // Limit to first 5 pages
 
-    console.log(`[OCR] Converting ${numPages} PDF page(s) to images...`);
+    logger.info('Converting PDF pages to images', { numPages });
 
     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
@@ -98,12 +99,12 @@ async function convertPDFToImages(pdfBuffer) {
                   base64,
                   mediaType: 'image/png'
                 });
-                console.log(`[OCR] Extracted image from page ${pageNum} (${width}x${height})`);
+                logger.debug('Extracted image from page', { pageNum, width, height });
               }
             }
           } catch (imgErr) {
             // Skip images that can't be extracted
-            console.log(`[OCR] Could not extract image ${imgName}: ${imgErr.message}`);
+            logger.debug('Could not extract image', { imgName, error: imgErr.message });
           }
         }
       }
@@ -114,7 +115,7 @@ async function convertPDFToImages(pdfBuffer) {
     await pdf.cleanup();
 
   } catch (err) {
-    console.error('[OCR] PDF conversion error:', err.message);
+    logger.error('PDF conversion error', { error: err.message });
   }
 
   return images;
@@ -163,7 +164,7 @@ async function extractEmbeddedImages(pdfBuffer) {
             width: metadata.width,
             height: metadata.height
           });
-          console.log(`[OCR] Found embedded JPEG (${metadata.width}x${metadata.height})`);
+          logger.debug('Found embedded JPEG', { width: metadata.width, height: metadata.height });
         }
       } catch (e) {
         // Not a valid image, skip
@@ -198,7 +199,7 @@ async function extractEmbeddedImages(pdfBuffer) {
             width: metadata.width,
             height: metadata.height
           });
-          console.log(`[OCR] Found embedded PNG (${metadata.width}x${metadata.height})`);
+          logger.debug('Found embedded PNG', { width: metadata.width, height: metadata.height });
         }
       } catch (e) {
         // Not a valid image, skip
@@ -276,7 +277,7 @@ async function extractFromImages(images, filename) {
     throw new Error('No images to process');
   }
 
-  console.log(`[OCR] Sending ${images.length} image(s) to Claude Vision...`);
+  logger.info('Sending images to Claude Vision', { imageCount: images.length });
 
   // Build message content with images
   const content = [];
@@ -322,9 +323,10 @@ async function extractFromImages(images, filename) {
 
     const extracted = JSON.parse(jsonStr);
 
-    console.log(`[OCR] Successfully extracted data via Vision API`);
-    console.log(`[OCR] Vendor: ${extracted.vendor?.companyName || 'unknown'}`);
-    console.log(`[OCR] Amount: $${extracted.totalAmount || 0}`);
+    logger.info('Vision API extraction successful', {
+      vendor: extracted.vendor?.companyName || 'unknown',
+      amount: extracted.totalAmount || 0
+    });
 
     return {
       ...extracted,
@@ -332,7 +334,7 @@ async function extractFromImages(images, filename) {
     };
 
   } catch (err) {
-    console.error('[OCR] Vision extraction error:', err.message);
+    logger.error('Vision extraction error', { error: err.message });
     throw new Error(`Vision OCR failed: ${err.message}`);
   }
 }
@@ -342,14 +344,14 @@ async function extractFromImages(images, filename) {
  * Called when text extraction fails or yields minimal results
  */
 async function processWithOCR(pdfBuffer, filename) {
-  console.log(`[OCR] Starting OCR processing for: ${filename}`);
+  logger.info('Starting OCR processing', { filename });
 
   // Try to extract embedded images from PDF
   let images = await extractEmbeddedImages(pdfBuffer);
 
   // If no embedded images found, try pdfjs extraction
   if (images.length === 0) {
-    console.log('[OCR] No embedded images found, trying pdfjs extraction...');
+    logger.debug('No embedded images found, trying pdfjs extraction');
     images = await convertPDFToImages(pdfBuffer);
   }
 

@@ -188,7 +188,7 @@ router.post('/', asyncHandler(async (req, res) => {
     submittal_id: data.id,
     action: 'created',
     new_status: 'draft',
-    performed_by: submitted_by || 'Jake Ross'
+    performed_by: submitted_by || req.headers['x-user-name'] || 'System'
   });
 
   res.status(201).json(data);
@@ -263,7 +263,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
     action: 'submitted',
     old_status: current?.status,
     new_status: 'pending_review',
-    performed_by: submitted_by || 'Jake Ross'
+    performed_by: submitted_by || req.headers['x-user-name'] || 'System'
   });
 
   res.json(data);

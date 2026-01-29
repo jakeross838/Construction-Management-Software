@@ -224,7 +224,7 @@ router.post('/', asyncHandler(async (req, res) => {
   await supabase.from('v2_contract_activity').insert({
     contract_id: data.id,
     action: 'created',
-    performed_by: created_by || 'User',
+    performed_by: created_by || req.headers['x-user-name'] || 'System',
     notes: `Contract "${name}" created`
   });
 
@@ -332,7 +332,7 @@ router.post('/:id/send-internal', asyncHandler(async (req, res) => {
   await supabase.from('v2_contract_activity').insert({
     contract_id: id,
     action: 'sent_for_internal_signature',
-    performed_by: sent_by || 'User'
+    performed_by: sent_by || req.headers['x-user-name'] || 'System'
   });
 
   res.json({ contract: data });
@@ -361,7 +361,7 @@ router.post('/:id/sign-internal', asyncHandler(async (req, res) => {
   await supabase.from('v2_contract_activity').insert({
     contract_id: id,
     action: 'signed_internal',
-    performed_by: signed_by || 'User'
+    performed_by: signed_by || req.headers['x-user-name'] || 'System'
   });
 
   res.json({ contract: data });
@@ -388,7 +388,7 @@ router.post('/:id/send-external', asyncHandler(async (req, res) => {
   await supabase.from('v2_contract_activity').insert({
     contract_id: id,
     action: 'sent_to_external',
-    performed_by: sent_by || 'User',
+    performed_by: sent_by || req.headers['x-user-name'] || 'System',
     notes: recipient_email ? `Sent to ${recipient_email}` : null
   });
 

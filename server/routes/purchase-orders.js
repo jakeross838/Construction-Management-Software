@@ -7,9 +7,11 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
+const logger = require('../utils/logger');
 const { AppError, asyncHandler } = require('../errors');
 const { broadcastInvoiceUpdate } = require('../realtime');
 const { logPOActivity } = require('../services/activityLogger');
+const { validate, schemas } = require('../middleware/validate');
 
 // Multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -46,7 +48,7 @@ function getPOWarnings(po, lineItems) {
 
 
 // Get all purchase orders
-router.get('/', async (req, res) => {
+router.get('/', validate(schemas.poQuery), async (req, res) => {
   try {
     const { job_id, vendor_id, status } = req.query;
 
@@ -191,7 +193,7 @@ router.post('/process-document', upload.single('file'), asyncHandler(async (req,
       needsReview: !results.po // True if auto-create failed
     });
   } catch (err) {
-    console.error('[PO Process Document] Error:', err);
+    logger.error('PO document processing error', { component: 'PO Process Document', error: err.message });
     throw new AppError('AI_PROCESSING_ERROR', `Document processing failed: ${err.message}`);
   }
 }));
@@ -311,7 +313,7 @@ router.get('/cost-code-mappings', asyncHandler(async (req, res) => {
 }));
 
 // Get single purchase order
-router.get('/:id', async (req, res) => {
+router.get('/:id', validate(schemas.idParam), async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('v2_purchase_orders')
@@ -335,7 +337,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create purchase order
-router.post('/', async (req, res) => {
+router.post('/', validate(schemas.poCreate), async (req, res) => {
   try {
     const { line_items, ...poData } = req.body;
 
@@ -389,7 +391,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update purchase order
-router.patch('/:id', asyncHandler(async (req, res) => {
+router.patch('/:id', validate(schemas.poUpdate), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { line_items, ...updates } = req.body;
 
@@ -630,7 +632,7 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
           p_amount: item.amount
         });
       } catch (rpcErr) {
-        console.error('Failed to increment committed for cost code', item.cost_code_id, ':', rpcErr.message);
+        logger.error('Failed to increment committed for cost code', { component: 'PO', costCodeId: item.cost_code_id, error: rpcErr.message });
         // Log but don't fail the entire approval
       }
     }
@@ -1112,7 +1114,7 @@ router.post('/:id/void', asyncHandler(async (req, res) => {
             p_amount: item.amount
           });
         } catch (rpcErr) {
-          console.error('Failed to decrement committed for cost code', item.cost_code_id, ':', rpcErr.message);
+          logger.error('Failed to decrement committed for cost code', { component: 'PO', costCodeId: item.cost_code_id, error: rpcErr.message });
           // Log but don't fail the void operation
         }
       }
@@ -1225,7 +1227,7 @@ router.post('/:poId/change-orders', asyncHandler(async (req, res) => {
       .from('v2_change_order_line_items')
       .insert(lineItemsToInsert);
 
-    if (liError) console.error('Error inserting CO line items:', liError);
+    if (liError) logger.error('Error inserting CO line items', { component: 'PO', changeOrderId: co.id, error: liError.message });
   }
 
   // Log activity
@@ -1300,7 +1302,7 @@ router.post('/:poId/change-orders/:coId/approve', asyncHandler(async (req, res) 
             p_amount: item.amount
           });
         } catch (rpcErr) {
-          console.error('Failed to increment committed for CO line item cost code', item.cost_code_id, ':', rpcErr.message);
+          logger.error('Failed to increment committed for CO line item cost code', { component: 'PO', costCodeId: item.cost_code_id, error: rpcErr.message });
           // Log but don't fail the CO approval
         }
       }
@@ -1566,7 +1568,7 @@ router.get('/:id/validate-totals', asyncHandler(async (req, res) => {
     .eq('status', 'approved');
 
   if (coError) {
-    console.error('Error fetching change orders:', coError);
+    logger.error('Error fetching change orders', { component: 'PO', poId: id, error: coError.message });
   }
 
   const approvedCOs = changeOrders || [];
@@ -1580,7 +1582,7 @@ router.get('/:id/validate-totals', asyncHandler(async (req, res) => {
     .eq('status', 'approved');
 
   if (vpoError) {
-    console.error('Error fetching VPOs:', vpoError);
+    logger.error('Error fetching VPOs', { component: 'PO', poId: id, error: vpoError.message });
   }
 
   const approvedVPOs = vpos || [];
@@ -1650,7 +1652,7 @@ router.get('/:id/validate-totals', asyncHandler(async (req, res) => {
       .in('change_order_id', approvedCOs.map(co => co.id));
 
     if (coliError) {
-      console.error('Error fetching CO line items:', coliError);
+      logger.error('Error fetching CO line items', { component: 'PO', poId: id, error: coliError.message });
     }
     coLineItems = coliData || [];
   }
@@ -1672,7 +1674,7 @@ router.get('/:id/validate-totals', asyncHandler(async (req, res) => {
       .in('cost_code_id', Object.keys(coByCostCode));
 
     if (blError) {
-      console.error('Error fetching budget lines:', blError);
+      logger.error('Error fetching budget lines', { component: 'PO', jobId: po.job_id, error: blError.message });
     }
 
     // Create a map of budget committed amounts by cost code

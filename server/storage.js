@@ -10,6 +10,7 @@
 
 const { supabase } = require('../config');
 const path = require('path');
+const logger = require('./utils/logger').child({ module: 'storage' });
 
 const BUCKET = 'invoices';
 
@@ -64,7 +65,7 @@ async function uploadStampedPDFById(fileBuffer, invoiceId, jobId) {
   const folder = jobId || 'unassigned';
   const stampedPath = `${folder}/${invoiceId}_stamped.pdf`;
 
-  console.log('[STAMP] Uploading to fixed path:', stampedPath);
+  logger.info('Uploading stamped PDF', { path: stampedPath });
 
   const { data, error } = await supabase.storage
     .from(BUCKET)
@@ -74,7 +75,7 @@ async function uploadStampedPDFById(fileBuffer, invoiceId, jobId) {
     });
 
   if (error) {
-    console.error('[STAMP] Upload error:', error);
+    logger.error('Stamp upload failed', { path: stampedPath, error: error.message });
     throw new Error(`Failed to upload stamped PDF: ${error.message}`);
   }
 
@@ -84,7 +85,7 @@ async function uploadStampedPDFById(fileBuffer, invoiceId, jobId) {
 
   // Add cache-busting timestamp to URL
   const urlWithCacheBust = `${urlData.publicUrl}?t=${Date.now()}`;
-  console.log('[STAMP] Success:', urlWithCacheBust);
+  logger.info('Stamp upload success', { url: urlWithCacheBust });
 
   return {
     url: urlWithCacheBust,
@@ -105,7 +106,7 @@ async function uploadStampedPDF(fileBuffer, originalPath) {
     cleanPath = cleanPath.replace('.pdf', '_stamped.pdf');
   }
 
-  console.log('[STAMP-LEGACY] Uploading to:', cleanPath);
+  logger.info('Legacy stamp upload', { path: cleanPath });
 
   const { data, error } = await supabase.storage
     .from(BUCKET)
@@ -115,7 +116,7 @@ async function uploadStampedPDF(fileBuffer, originalPath) {
     });
 
   if (error) {
-    console.error('[STAMP-LEGACY] Upload error:', error);
+    logger.error('Legacy stamp upload failed', { path: cleanPath, error: error.message });
     throw new Error(`Failed to upload stamped PDF: ${error.message}`);
   }
 
@@ -150,7 +151,7 @@ function extractStoragePath(url) {
 
     return null;
   } catch (err) {
-    console.error('[STORAGE] Failed to extract path from URL:', url, err.message);
+    logger.error('Failed to extract path from URL', { url, error: err.message });
     return null;
   }
 }
@@ -176,16 +177,16 @@ async function fileExists(storagePath) {
 async function deleteByUrl(url) {
   const storagePath = extractStoragePath(url);
   if (!storagePath) {
-    console.warn('[STORAGE] Could not extract path from URL:', url);
+    logger.warn('Could not extract path from URL', { url });
     return false;
   }
 
   try {
     await deletePDF(storagePath);
-    console.log('[STORAGE] Deleted:', storagePath);
+    logger.info('File deleted', { path: storagePath });
     return true;
   } catch (err) {
-    console.error('[STORAGE] Failed to delete:', storagePath, err.message);
+    logger.error('Failed to delete file', { path: storagePath, error: err.message });
     return false;
   }
 }
@@ -199,7 +200,7 @@ function acquireStampLock(invoiceId) {
     const lockTime = stampLocks.get(invoiceId);
     // If lock is older than 60 seconds, consider it stale
     if (Date.now() - lockTime < 60000) {
-      console.log('[STAMP-LOCK] Already locked:', invoiceId);
+      logger.debug('Stamp lock already held', { invoiceId });
       return false;
     }
   }

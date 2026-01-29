@@ -7,7 +7,9 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
+const logger = require('../utils/logger');
 const { AppError, asyncHandler, notFoundError, validationError, transitionError } = require('../errors');
+const { validate, schemas } = require('../middleware/validate');
 const { broadcastInvoiceUpdate, broadcast } = require('../realtime');
 const {
   logActivity,
@@ -81,7 +83,7 @@ const upload = multer({
 // ============================================================
 
 // List invoices (with optional filters)
-router.get('/', async (req, res) => {
+router.get('/', validate(schemas.invoiceQuery), async (req, res) => {
   try {
     const { job_id, status, vendor_id } = req.query;
 
@@ -175,7 +177,7 @@ router.get('/no-job', asyncHandler(async (req, res) => {
 // ============================================================
 
 // Get single invoice with full details
-router.get('/:id', async (req, res) => {
+router.get('/:id', validate(schemas.idParam), async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('v2_invoices')
@@ -214,7 +216,7 @@ router.get('/:id', async (req, res) => {
         const variance = await detectVariances(data);
         data.variance = variance;
       } catch (varErr) {
-        console.error('[Variance] Error detecting variances:', varErr.message);
+        logger.error('Error detecting variances', { component: 'Variance', error: varErr.message });
         data.variance = { error: varErr.message };
       }
     }
@@ -226,7 +228,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Get invoice activity log
-router.get('/:id/activity', async (req, res) => {
+router.get('/:id/activity', validate(schemas.idParam), async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('v2_invoice_activity')
@@ -242,7 +244,7 @@ router.get('/:id/activity', async (req, res) => {
 });
 
 // Get invoice allocations
-router.get('/:id/allocations', async (req, res) => {
+router.get('/:id/allocations', validate(schemas.idParam), async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('v2_invoice_allocations')
@@ -586,7 +588,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
     const fileBuffer = req.file.buffer;
     const mimetype = req.file.mimetype;
 
-    console.log(`[Upload] Processing: ${originalFilename} (${mimetype}, ${fileBuffer.length} bytes)`);
+    logger.info('Processing upload', { component: 'Upload', filename: originalFilename, mimetype, size: fileBuffer.length });
 
     const converted = await convertDocument(fileBuffer, originalFilename, mimetype);
 
@@ -607,7 +609,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
 
       // Fall back to original process if two-stage fails
       if (!twoStageResult.success) {
-        console.log('[TwoStage] Falling back to original processInvoice...');
+        logger.info('Falling back to original processInvoice', { component: 'TwoStage' });
         result = await processInvoice(fileBuffer, originalFilename);
       } else {
         // Build result from two-stage pipeline
@@ -902,7 +904,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
           }
         }
       } catch (stampErr) {
-        console.error('[STAMP] Initial needs review stamp error:', stampErr.message);
+        logger.error('Initial needs review stamp error', { component: 'STAMP', error: stampErr.message });
       }
     }
 
@@ -954,7 +956,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
       review_flags: reviewFlags
     });
   } catch (err) {
-    console.error('AI processing error:', err);
+    logger.error('AI processing error', { error: err.message, stack: err.stack });
     res.status(500).json({ error: err.message });
   }
 });
@@ -976,7 +978,7 @@ router.post('/analyze-multi', upload.single('file'), async (req, res) => {
     const originalFilename = req.file.originalname;
     const fileBuffer = req.file.buffer;
 
-    console.log(`[MultiInvoice] Analyzing: ${originalFilename}`);
+    logger.info('Analyzing multi-invoice PDF', { component: 'MultiInvoice', filename: originalFilename });
 
     const analysis = await analyzeMultiInvoicePDF(fileBuffer, originalFilename);
 
@@ -993,7 +995,7 @@ router.post('/analyze-multi', upload.single('file'), async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Multi-invoice analysis error:', err);
+    logger.error('Multi-invoice analysis error', { component: 'MultiInvoice', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -1011,7 +1013,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
     const originalFilename = req.file.originalname;
     const fileBuffer = req.file.buffer;
 
-    console.log(`[MultiInvoice] Batch processing: ${originalFilename}`);
+    logger.info('Batch processing multi-invoice PDF', { component: 'MultiInvoice', filename: originalFilename });
 
     // Process the multi-invoice PDF
     const batchResult = await processMultiInvoicePDF(fileBuffer, originalFilename);
@@ -1068,7 +1070,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
               pdf_url = uploadResult.url;
             }
           } catch (uploadErr) {
-            console.error(`[MultiInvoice] PDF upload failed for invoice ${processed.invoiceIndex}:`, uploadErr.message);
+            logger.error('PDF upload failed', { component: 'MultiInvoice', invoiceIndex: processed.invoiceIndex, error: uploadErr.message });
             // Continue without PDF - still save the invoice record
           }
         }
@@ -1120,7 +1122,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
         });
 
       } catch (saveErr) {
-        console.error(`[MultiInvoice] Failed to save invoice ${processed.invoiceIndex}:`, saveErr);
+        logger.error('Failed to save invoice', { component: 'MultiInvoice', invoiceIndex: processed.invoiceIndex, error: saveErr.message });
         failedSaves.push({
           invoiceIndex: processed.invoiceIndex,
           pageRange: processed.pageRange,
@@ -1143,7 +1145,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Batch processing error:', err);
+    logger.error('Batch processing error', { component: 'MultiInvoice', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -1153,7 +1155,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
 // ============================================================
 
 // Update invoice (partial)
-router.patch('/:id', asyncHandler(async (req, res) => {
+router.patch('/:id', validate(schemas.invoiceUpdate), asyncHandler(async (req, res) => {
   const invoiceId = req.params.id;
   const updates = req.body;
   const performedBy = updates.performed_by || updates.updated_by || 'System';
@@ -1187,7 +1189,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .single();
 
   if (updateError) {
-    console.error('[Invoice Update Error]', updateError);
+    logger.error('Invoice update error', { component: 'Invoice', invoiceId, error: updateError.message });
     throw new AppError('DATABASE_ERROR', `Failed to update invoice: ${updateError.message}`);
   }
 
@@ -1195,9 +1197,9 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const statusChanged = updateFields.status && updateFields.status !== existing.status;
   const stampableStatuses = ['needs_review', 'ready_for_approval', 'approved', 'in_draw', 'paid'];
   if (statusChanged && stampableStatuses.includes(updateFields.status)) {
-    console.log('[RESTAMP] Status changed to', updateFields.status, '- triggering restamp for invoice:', invoiceId);
+    logger.info('Status changed, triggering restamp', { component: 'RESTAMP', invoiceId, newStatus: updateFields.status });
     restampInvoice(invoiceId).catch(err => {
-      console.error('[RESTAMP] Background re-stamp failed:', err.message);
+      logger.error('Background re-stamp failed', { component: 'RESTAMP', invoiceId, error: err.message });
     });
   }
 
@@ -1208,7 +1210,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 }));
 
 // Allocate invoice to cost codes
-router.post('/:id/allocate', async (req, res) => {
+router.post('/:id/allocate', validate(schemas.invoiceAllocations), async (req, res) => {
   const invoiceId = req.params.id;
   let rollbackData = null;
 
@@ -1366,7 +1368,7 @@ router.post('/:id/allocate', async (req, res) => {
         .update({ billed_amount: newBilledAmount })
         .eq('id', invoiceId);
 
-      console.log(`[ALLOCATE] Updated invoice ${invoiceId} billed_amount to $${newBilledAmount.toFixed(2)}`);
+      logger.info('Updated invoice billed_amount', { component: 'ALLOCATE', invoiceId, billedAmount: newBilledAmount.toFixed(2) });
     }
 
     // PO-INT-01 & PO-INT-02: Full recalculation for approved+ invoices
@@ -1418,7 +1420,7 @@ router.post('/:id/allocate', async (req, res) => {
                 message: `CO has manual billing of $${parseFloat(mb.amount).toFixed(2)} in this draw - potential double-count`
               });
             }
-            console.warn(`[ALLOCATE] CO overlap warning:`, coOverlapWarnings);
+            logger.warn('CO overlap warning', { component: 'ALLOCATE', warnings: coOverlapWarnings });
           }
         }
       }
@@ -1429,7 +1431,7 @@ router.post('/:id/allocate', async (req, res) => {
       warnings: coOverlapWarnings.length > 0 ? { co_overlap: coOverlapWarnings } : undefined
     });
   } catch (err) {
-    console.error('[ALLOCATE] Error:', err.message);
+    logger.error('Allocation error', { component: 'ALLOCATE', invoiceId, error: err.message });
 
     // Attempt to restore old allocations on failure
     if (rollbackData?.oldAllocations?.length > 0) {
@@ -1438,9 +1440,9 @@ router.post('/:id/allocate', async (req, res) => {
         await supabase.from('v2_invoice_allocations').delete().eq('invoice_id', invoiceId);
         // Restore old allocations
         await supabase.from('v2_invoice_allocations').insert(rollbackData.oldAllocations);
-        console.log('[ALLOCATE] Rolled back allocations for invoice:', invoiceId);
+        logger.info('Rolled back allocations for invoice', { component: 'ALLOCATE', invoiceId });
       } catch (rollbackErr) {
-        console.error('[ALLOCATE] Rollback failed:', rollbackErr.message);
+        logger.error('Rollback failed', { component: 'ALLOCATE', invoiceId, error: rollbackErr.message });
       }
     }
 
@@ -1452,7 +1454,7 @@ router.post('/:id/allocate', async (req, res) => {
 // STATUS TRANSITION ENDPOINT
 // ============================================================
 
-router.post('/:id/transition', asyncHandler(async (req, res) => {
+router.post('/:id/transition', validate(schemas.invoiceTransition), asyncHandler(async (req, res) => {
   const invoiceId = req.params.id;
   const { new_status, performed_by: performedBy, reason, allocations, draw_id, overridePoOverage } = req.body;
 
@@ -1619,14 +1621,14 @@ router.post('/:id/transition', asyncHandler(async (req, res) => {
 
   // Restamp PDF in background
   restampInvoice(invoiceId).catch(err => {
-    console.error('[RESTAMP] Background re-stamp failed:', err.message);
+    logger.error('Background re-stamp failed', { component: 'RESTAMP', invoiceId, error: err.message });
   });
 
   await logActivity(invoiceId, `status_${new_status}`, performedBy, { reason, from: invoice.status });
   broadcastInvoiceUpdate(updated, 'status_changed', performedBy);
 
   if (invoice.parent_invoice_id) {
-    checkSplitReconciliation(invoice.parent_invoice_id).catch(console.error);
+    checkSplitReconciliation(invoice.parent_invoice_id).catch(err => logger.error('Split reconciliation failed', { error: err.message }));
   }
 
   res.json({ success: true, invoice: updated });
@@ -1660,7 +1662,7 @@ router.post('/:id/stamp', asyncHandler(async (req, res) => {
     throw validationError('Invoice has no PDF to stamp');
   }
 
-  console.log('[STAMP] Manual stamp requested for invoice:', invoiceId, 'status:', status || invoice.status);
+  logger.info('Manual stamp requested', { component: 'STAMP', invoiceId, status: status || invoice.status });
 
   // Trigger stamping
   const stampedUrl = await restampInvoice(invoiceId);
@@ -1788,7 +1790,7 @@ router.post('/:id/split', async (req, res) => {
           }
         }
       } catch (stampError) {
-        console.error(`[SPLIT] Error stamping split ${splitIndex}:`, stampError);
+        logger.error('Error stamping split', { component: 'SPLIT', splitIndex, error: stampError.message });
       }
 
       childInvoices.push(child);
@@ -1864,7 +1866,7 @@ router.post('/:id/unsplit', async (req, res) => {
         try {
           await deleteByUrl(child.pdf_stamped_url);
         } catch (err) {
-          console.error('[UNSPLIT] Failed to delete stamped PDF:', err.message);
+          logger.error('Failed to delete stamped PDF', { component: 'UNSPLIT', error: err.message });
         }
       }
     }
@@ -2296,7 +2298,7 @@ router.post('/:id/fix-allocation', asyncHandler(async (req, res) => {
 // DELETE ENDPOINT
 // ============================================================
 
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
   const invoiceId = req.params.id;
   const { performed_by: performedBy = 'System' } = req.body;
 
@@ -2344,7 +2346,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   await logActivity(invoiceId, 'deleted', performedBy, {});
 
   if (invoice.parent_invoice_id) {
-    checkSplitReconciliation(invoice.parent_invoice_id).catch(console.error);
+    checkSplitReconciliation(invoice.parent_invoice_id).catch(err => logger.error('Split reconciliation failed', { error: err.message }));
   }
 
   broadcastInvoiceUpdate({ id: invoiceId }, 'deleted', performedBy);

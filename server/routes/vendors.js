@@ -8,6 +8,7 @@ const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
 const { calculateVendorSimilarity } = require('../standards');
+const { validate, schemas } = require('../middleware/validate');
 
 // Check for similar vendors (used before create)
 router.get('/check-duplicate', asyncHandler(async (req, res) => {
@@ -79,7 +80,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // Create vendor (with duplicate warning)
-router.post('/', validateRequest({ body: { name: { required: true } } }), asyncHandler(async (req, res) => {
+router.post('/', validate(schemas.vendorCreate), asyncHandler(async (req, res) => {
   const { name, skip_duplicate_check } = req.body;
 
   // Check for duplicates unless explicitly skipped
@@ -120,7 +121,7 @@ router.post('/', validateRequest({ body: { name: { required: true } } }), asyncH
 }));
 
 // Update vendor
-router.patch('/:id', asyncHandler(async (req, res) => {
+router.patch('/:id', validate(schemas.vendorUpdate), asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const { data, error } = await supabase
@@ -135,7 +136,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 }));
 
 // Soft delete vendor
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   // Check vendor exists and not already deleted

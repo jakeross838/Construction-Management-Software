@@ -12,6 +12,7 @@
  */
 
 const { supabase } = require('../config');
+const logger = require('./utils/logger');
 
 /**
  * Normalize a string for matching
@@ -70,7 +71,7 @@ async function recordLearning(entityType, extractedValue, matchedId, matchedName
           .single();
 
         if (!error) {
-          console.log(`[AI Learning] Reinforced ${entityType} mapping: "${extractedValue}" → "${matchedName}" (${newTimesUsed}x, ${Math.round(newConfidence * 100)}%)`);
+          logger.info('Reinforced mapping', { component: 'ai-learning', entityType, extractedValue, matchedName, timesUsed: newTimesUsed, confidence: Math.round(newConfidence * 100) });
         }
         return updated;
       } else {
@@ -90,7 +91,7 @@ async function recordLearning(entityType, extractedValue, matchedId, matchedName
           .single();
 
         if (!error) {
-          console.log(`[AI Learning] Updated ${entityType} mapping: "${extractedValue}" → "${matchedName}" (was: ${existing.matched_name})`);
+          logger.info('Updated mapping', { component: 'ai-learning', entityType, extractedValue, matchedName, previousName: existing.matched_name });
         }
         return updated;
       }
@@ -115,18 +116,18 @@ async function recordLearning(entityType, extractedValue, matchedId, matchedName
     if (error) {
       // Unique constraint violation means concurrent insert - that's ok
       if (error.code === '23505') {
-        console.log(`[AI Learning] Concurrent insert for "${extractedValue}" - already learned`);
+        logger.debug('Concurrent insert - already learned', { component: 'ai-learning', extractedValue });
         return null;
       }
-      console.error('[AI Learning] Failed to record:', error.message);
+      logger.error('Failed to record learning', { component: 'ai-learning', error: error.message });
       return null;
     }
 
-    console.log(`[AI Learning] Learned new ${entityType} mapping: "${extractedValue}" → "${matchedName}"`);
+    logger.info('Learned new mapping', { component: 'ai-learning', entityType, extractedValue, matchedName });
     return newLearning;
 
   } catch (err) {
-    console.error('[AI Learning] Error recording learning:', err.message);
+    logger.error('Error recording learning', { component: 'ai-learning', error: err.message });
     return null;
   }
 }
@@ -181,7 +182,7 @@ async function findLearnedMapping(entityType, extractedValue) {
     };
 
   } catch (err) {
-    console.error('[AI Learning] Error finding mapping:', err.message);
+    logger.error('Error finding mapping', { component: 'ai-learning', error: err.message });
     return null;
   }
 }
@@ -296,7 +297,7 @@ async function getLearningStats() {
       }
     };
   } catch (err) {
-    console.error('[AI Learning] Error getting stats:', err.message);
+    logger.error('Error getting stats', { component: 'ai-learning', error: err.message });
     return { job: { count: 0 }, vendor: { count: 0 } };
   }
 }
@@ -332,11 +333,11 @@ async function recordFeedback({ invoiceId, fieldName, aiValue, userValue, entity
       .single();
 
     if (error) {
-      console.error('[AI Feedback] Failed to record:', error.message);
+      logger.error('Failed to record feedback', { component: 'ai-feedback', error: error.message });
       return null;
     }
 
-    console.log(`[AI Feedback] Recorded: ${fieldName} "${aiValue}" → "${userValue}"`);
+    logger.info('Feedback recorded', { component: 'ai-feedback', fieldName, aiValue, userValue });
 
     // Apply to learning system based on field type
     let learningApplied = false;
@@ -363,7 +364,7 @@ async function recordFeedback({ invoiceId, fieldName, aiValue, userValue, entity
 
     return feedback;
   } catch (err) {
-    console.error('[AI Feedback] Error:', err.message);
+    logger.error('AI Feedback error', { component: 'ai-feedback', error: err.message });
     return null;
   }
 }
@@ -396,9 +397,9 @@ async function recordVendorAlias(vendorId, alias, source = 'correction') {
           .from('v2_vendor_aliases')
           .update({ times_matched: existing.times_matched + 1 })
           .eq('id', existing.id);
-        console.log(`[Vendor Alias] Reinforced: "${alias}" → vendor ${vendorId}`);
+        logger.debug('Vendor alias reinforced', { component: 'vendor-alias', alias, vendorId });
       } else {
-        console.log(`[Vendor Alias] Conflict: "${alias}" already maps to different vendor`);
+        logger.warn('Vendor alias conflict', { component: 'vendor-alias', alias, existingVendorId: existing.vendor_id, newVendorId: vendorId });
       }
       return existing;
     }
@@ -417,14 +418,14 @@ async function recordVendorAlias(vendorId, alias, source = 'correction') {
 
     if (error) {
       if (error.code === '23505') return null; // Duplicate
-      console.error('[Vendor Alias] Failed to create:', error.message);
+      logger.error('Failed to create vendor alias', { component: 'vendor-alias', error: error.message });
       return null;
     }
 
-    console.log(`[Vendor Alias] Created: "${alias}" → vendor ${vendorId}`);
+    logger.info('Vendor alias created', { component: 'vendor-alias', alias, vendorId });
     return newAlias;
   } catch (err) {
-    console.error('[Vendor Alias] Error:', err.message);
+    logger.error('Vendor alias error', { component: 'vendor-alias', error: err.message });
     return null;
   }
 }
@@ -474,7 +475,7 @@ async function findVendorByAlias(name) {
       source: 'alias'
     };
   } catch (err) {
-    console.error('[Vendor Alias] Lookup error:', err.message);
+    logger.error('Vendor alias lookup error', { component: 'vendor-alias', error: err.message });
     return null;
   }
 }
@@ -525,7 +526,7 @@ async function findPotentialDuplicateVendors(threshold = 75) {
 
     return duplicates.sort((a, b) => b.similarity - a.similarity);
   } catch (err) {
-    console.error('[Vendor Duplicates] Error:', err.message);
+    logger.error('Vendor duplicates error', { component: 'vendor-duplicates', error: err.message });
     return [];
   }
 }
@@ -550,13 +551,13 @@ async function flagVendorDuplicate(vendorId1, vendorId2, similarity) {
       .single();
 
     if (error) {
-      console.error('[Vendor Duplicates] Flag error:', error.message);
+      logger.error('Vendor duplicates flag error', { component: 'vendor-duplicates', error: error.message });
       return null;
     }
 
     return data;
   } catch (err) {
-    console.error('[Vendor Duplicates] Error flagging:', err.message);
+    logger.error('Vendor duplicates flagging error', { component: 'vendor-duplicates', error: err.message });
     return null;
   }
 }
@@ -613,11 +614,11 @@ async function enrichVendorFromInvoice(vendorId, extractedData) {
         .eq('id', vendorId);
 
       if (!error && updated) {
-        console.log(`[Vendor Enrichment] Updated vendor ${vendor.name}:`, Object.keys(updates).filter(k => k !== 'last_invoice_date' && k !== 'invoice_count'));
+        logger.info('Vendor enriched', { component: 'vendor-enrichment', vendorName: vendor.name, fieldsUpdated: Object.keys(updates).filter(k => k !== 'last_invoice_date' && k !== 'invoice_count') });
       }
     }
   } catch (err) {
-    console.error('[Vendor Enrichment] Error:', err.message);
+    logger.error('Vendor enrichment error', { component: 'vendor-enrichment', error: err.message });
   }
 }
 
@@ -656,7 +657,7 @@ async function learnCostCodeMapping(vendorId, costCodeId) {
     if (existing) {
       if (existing.cost_code_id === costCodeId) {
         // Same mapping - already learned
-        console.log(`[AI Learning] Trade mapping confirmed: "${tradeType}" → cost code`);
+        logger.debug('Trade mapping confirmed', { component: 'ai-learning', tradeType });
         return existing;
       }
       // Different cost code - don't override existing mapping
@@ -680,15 +681,15 @@ async function learnCostCodeMapping(vendorId, costCodeId) {
 
     if (error) {
       if (error.code === '23505') return null; // Duplicate
-      console.error('[AI Learning] Failed to create trade mapping:', error.message);
+      logger.error('Failed to create trade mapping', { component: 'ai-learning', error: error.message });
       return null;
     }
 
-    console.log(`[AI Learning] Learned trade mapping: "${tradeType}" → ${newMapping.cost_code?.code} ${newMapping.cost_code?.name}`);
+    logger.info('Learned trade mapping', { component: 'ai-learning', tradeType, costCode: newMapping.cost_code?.code, costCodeName: newMapping.cost_code?.name });
     return newMapping;
 
   } catch (err) {
-    console.error('[AI Learning] Error learning cost code:', err.message);
+    logger.error('Error learning cost code', { component: 'ai-learning', error: err.message });
     return null;
   }
 }

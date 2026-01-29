@@ -9,6 +9,7 @@
  */
 
 const Anthropic = require('@anthropic-ai/sdk');
+const logger = require('./utils/logger').child({ module: 'spec-extractor' });
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -113,7 +114,7 @@ async function categorizeDocument(fileBuffer, mimeType, fileName) {
     // Default to 'other' with low confidence
     return { category: 'other', confidence: 0.5, suggestedName: null };
   } catch (err) {
-    console.error('Categorization error:', err);
+    logger.error('Categorization error', { error: err.message });
     return { category: 'other', confidence: 0.3, suggestedName: null };
   }
 }
@@ -375,7 +376,7 @@ COUNT: Piers on foundation plan, beams in schedules, trusses in roof framing. ES
  */
 async function analyzeDocumentWithVision(base64Data, mediaType, planType = 'architectural') {
   try {
-    console.log(`[SpecExtractor] Analyzing ${planType} plans...`);
+    logger.info('Analyzing plans', { planType });
 
     let apiMediaType = mediaType;
     if (mediaType.includes('pdf')) {
@@ -407,7 +408,7 @@ async function analyzeDocumentWithVision(base64Data, mediaType, planType = 'arch
     });
 
     const responseText = response.content[0].text;
-    console.log('[SpecExtractor] Raw response length:', responseText.length);
+    logger.debug('Received AI response', { length: responseText.length });
 
     // Extract JSON from response - try multiple approaches
     let specs;
@@ -421,7 +422,7 @@ async function analyzeDocumentWithVision(base64Data, mediaType, planType = 'arch
     try {
       specs = JSON.parse(jsonMatch[0]);
     } catch (parseErr) {
-      console.log('[SpecExtractor] Initial JSON parse failed, attempting cleanup...');
+      logger.debug('Initial JSON parse failed, attempting cleanup');
 
       // Clean up common JSON issues
       let cleanedJson = jsonMatch[0]
@@ -438,7 +439,7 @@ async function analyzeDocumentWithVision(base64Data, mediaType, planType = 'arch
       try {
         specs = JSON.parse(cleanedJson);
       } catch (cleanErr) {
-        console.log('[SpecExtractor] Cleaned JSON parse failed, extracting key-value pairs...');
+        logger.debug('Cleaned JSON parse failed, extracting key-value pairs');
 
         // Fall back to extracting individual values via regex
         specs = extractSpecsViaRegex(responseText);
@@ -457,11 +458,11 @@ async function analyzeDocumentWithVision(base64Data, mediaType, planType = 'arch
       }
     }
 
-    console.log('[SpecExtractor] Extracted', Object.keys(cleanSpecs).length, 'fields');
+    logger.info('Specs extraction complete', { fieldCount: Object.keys(cleanSpecs).length });
 
     return cleanSpecs;
   } catch (err) {
-    console.error('[SpecExtractor] Analysis error:', err);
+    logger.error('Analysis error', { error: err.message });
     return {
       _confidence: 0.2,
       _error: err.message,
@@ -475,7 +476,7 @@ async function analyzeDocumentWithVision(base64Data, mediaType, planType = 'arch
  */
 async function extractSpecsFromPlans(documentUrl, documentId, fileName = '') {
   try {
-    console.log('[SpecExtractor] Fetching document:', documentUrl);
+    logger.info('Fetching document', { url: documentUrl });
 
     const response = await fetch(documentUrl);
     if (!response.ok) {
@@ -486,11 +487,11 @@ async function extractSpecsFromPlans(documentUrl, documentId, fileName = '') {
     const contentType = response.headers.get('content-type') || 'application/pdf';
     const base64Data = buffer.toString('base64');
 
-    console.log(`[SpecExtractor] Document size: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
+    logger.debug('Document fetched', { sizeMB: (buffer.length / 1024 / 1024).toFixed(2) });
 
     // Detect plan type
     const planType = detectPlanType(fileName || documentUrl);
-    console.log(`[SpecExtractor] Detected plan type: ${planType}`);
+    logger.debug('Detected plan type', { planType });
 
     const specs = await analyzeDocumentWithVision(base64Data, contentType, planType);
 
@@ -501,7 +502,7 @@ async function extractSpecsFromPlans(documentUrl, documentId, fileName = '') {
       plan_type: planType
     };
   } catch (err) {
-    console.error('Spec extraction error:', err);
+    logger.error('Spec extraction error', { error: err.message });
     throw err;
   }
 }
@@ -570,7 +571,7 @@ async function extractSpecsFromMultipleDocuments(documents) {
 
     for (const doc of documents) {
       try {
-        console.log(`[SpecExtractor] Processing: ${doc.name}`);
+        logger.info('Processing document', { name: doc.name });
 
         const result = await extractSpecsFromPlans(doc.url, doc.id, doc.name);
         const planType = result.plan_type || 'architectural';
@@ -587,7 +588,7 @@ async function extractSpecsFromMultipleDocuments(documents) {
           allNotes.push(`[${planType.toUpperCase()}] ${doc.name}: ${result.specs._notes}`);
         }
       } catch (err) {
-        console.error(`Failed to process ${doc.name}:`, err);
+        logger.error('Failed to process document', { name: doc.name, error: err.message });
         allNotes.push(`[ERROR] ${doc.name}: ${err.message}`);
       }
     }
@@ -603,7 +604,7 @@ async function extractSpecsFromMultipleDocuments(documents) {
       plan_types: allSpecs._plan_types
     };
   } catch (err) {
-    console.error('Multi-document extraction error:', err);
+    logger.error('Multi-document extraction error', { error: err.message });
     throw err;
   }
 }
@@ -691,7 +692,7 @@ function extractSpecsViaRegex(text) {
     }
   }
 
-  console.log('[SpecExtractor] Regex fallback extracted', Object.keys(specs).length, 'fields');
+  logger.debug('Regex fallback extraction complete', { fieldCount: Object.keys(specs).length });
   return specs;
 }
 

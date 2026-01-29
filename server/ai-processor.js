@@ -20,6 +20,7 @@ const pdfParse = require('pdf-parse');
 const Anthropic = require('@anthropic-ai/sdk');
 const { supabase } = require('../config');
 const standards = require('./standards');
+const logger = require('./utils/logger');
 const aiLearning = require('./ai-learning');
 const ocrProcessor = require('./ocr-processor');
 const invoiceValidator = require('./invoice-validator');
@@ -74,7 +75,7 @@ async function loadMappingsFromDatabase() {
       .order('priority', { ascending: true });
 
     if (tradeError) {
-      console.error('[AI] Error loading trade mappings:', tradeError.message);
+      logger.error('Error loading trade mappings', { component: 'ai', error: tradeError.message });
     } else {
       TRADE_COST_CODE_MAP = {};
       for (const m of tradeMappings || []) {
@@ -85,7 +86,7 @@ async function loadMappingsFromDatabase() {
           TRADE_COST_CODE_MAP[m.trade_type].push(m.cost_code.code);
         }
       }
-      console.log('[AI] Loaded', Object.keys(TRADE_COST_CODE_MAP).length, 'trade mappings from database');
+      logger.info('Trade mappings loaded', { component: 'ai', count: Object.keys(TRADE_COST_CODE_MAP).length });
     }
 
     // Load description mappings
@@ -94,7 +95,7 @@ async function loadMappingsFromDatabase() {
       .select('keyword, cost_code:v2_cost_codes(code)');
 
     if (descError) {
-      console.error('[AI] Error loading description mappings:', descError.message);
+      logger.error('Error loading description mappings', { component: 'ai', error: descError.message });
     } else {
       DESCRIPTION_COST_CODE_MAP = {};
       for (const m of descMappings || []) {
@@ -102,12 +103,12 @@ async function loadMappingsFromDatabase() {
           DESCRIPTION_COST_CODE_MAP[m.keyword] = m.cost_code.code;
         }
       }
-      console.log('[AI] Loaded', Object.keys(DESCRIPTION_COST_CODE_MAP).length, 'description mappings from database');
+      logger.info('Description mappings loaded', { component: 'ai', count: Object.keys(DESCRIPTION_COST_CODE_MAP).length });
     }
 
     mappingsLoaded = true;
   } catch (err) {
-    console.error('[AI] Failed to load mappings:', err.message);
+    logger.error('Failed to load mappings', { component: 'ai', error: err.message });
   }
 }
 
@@ -207,7 +208,7 @@ async function extractTextFromPDF(pdfBuffer) {
     const data = await pdfParse(pdfBuffer);
     return data.text;
   } catch (err) {
-    console.error('PDF parse error:', err.message);
+    logger.error('PDF parse error', { component: 'ai', error: err.message });
     return null;
   }
 }
@@ -289,7 +290,7 @@ async function extractFromImage(base64Image, mediaType, schema, systemPrompt) {
  * Uses the existing text-based extraction with the extracted text
  */
 async function extractInvoiceFromText(documentText, filename, documentType) {
-  console.log(`[AI] Extracting invoice from ${documentType} text (${documentText.length} chars)`);
+  logger.info('Extracting invoice from text', { component: 'ai', documentType, chars: documentText.length });
   return await extractInvoiceData(documentText, filename);
 }
 
@@ -297,7 +298,7 @@ async function extractInvoiceFromText(documentText, filename, documentType) {
  * Extract invoice data from an image using Claude Vision
  */
 async function extractInvoiceFromImage(base64Image, mediaType, filename) {
-  console.log(`[AI] Extracting invoice from image: ${filename} (${mediaType})`);
+  logger.info('Extracting invoice from image', { component: 'ai', filename, mediaType });
 
   const systemPrompt = `You are an expert construction invoice processing assistant for Ross Built Custom Homes, a custom home builder in Florida.
 
@@ -870,7 +871,7 @@ async function findMatchingJob(jobData) {
       .single();
 
     if (learnedJob) {
-      console.log(`[AI Learning] Used learned job mapping: "${searchStrings[0]}" → "${learnedJob.name}" (${Math.round(learnedMatch.confidence * 100)}%, used ${learnedMatch.times_used}x)`);
+      logger.info('Used learned job mapping', { component: 'ai-learning', searchString: searchStrings[0], jobName: learnedJob.name, confidence: Math.round(learnedMatch.confidence * 100), timesUsed: learnedMatch.times_used });
       return {
         job: {
           id: learnedJob.id,
@@ -1123,16 +1124,16 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
       bestMatch = tradeCode;
       confidence = 0.85;
       matchType = 'trade';
-      console.log(`[AI] Using vendor trade "${tradeType}" → ${tradeCode} (description match was weak: "${description}")`);
+      logger.debug('Using vendor trade for cost code', { component: 'ai', tradeType, tradeCode, description });
     } else if (allTradeCodes.includes(bestMatch)) {
       // Trade and description agree (description matches one of vendor's trade codes) - boost confidence
       confidence = Math.min(confidence + 0.1, 0.95);
       matchType += '+trade';
-      console.log(`[AI] Trade/description agreement: "${tradeType}" + "${description}" → ${bestMatch} (boosted confidence: ${confidence.toFixed(2)})`);
+      logger.debug('Trade/description agreement', { component: 'ai', tradeType, description, costCode: bestMatch, confidence: confidence.toFixed(2) });
     } else if (isSpecializedTrade && bestScore < 15) {
       // Trade and description disagree, but vendor is specialized and description match isn't very strong
       // PREFER VENDOR TRADE - a cabinet vendor's "countertop supports" is cabinet work
-      console.log(`[AI] Overriding description match "${bestMatch}" with vendor trade "${tradeCode}" for specialized vendor "${tradeType}" (desc: "${description}")`);
+      logger.debug('Overriding description match with vendor trade', { component: 'ai', originalMatch: bestMatch, tradeCode, tradeType, description });
       bestMatch = tradeCode;
       confidence = 0.80;
       matchType = 'trade_override';
@@ -1150,7 +1151,7 @@ async function suggestCostCodeForDescription(description, tradeType = null) {
     .single();
 
   if (error || !costCode) {
-    console.log(`[AI] Cost code ${bestMatch} not found in database`);
+    logger.warn('Cost code not found in database', { component: 'ai', code: bestMatch });
     return null;
   }
 
@@ -1363,7 +1364,7 @@ async function findOrCreateVendor(vendorData) {
       .single();
 
     if (learnedVendor) {
-      console.log(`[AI Learning] Used learned vendor mapping: "${vendorData.companyName}" → "${learnedVendor.name}" (${Math.round(learnedMatch.confidence * 100)}%)`);
+      logger.info('Used learned vendor mapping', { component: 'ai-learning', input: vendorData.companyName, vendorName: learnedVendor.name, confidence: Math.round(learnedMatch.confidence * 100) });
       // Enrich vendor with any new info from this invoice
       await aiLearning.enrichVendorFromInvoice(learnedVendor.id, vendorData);
       return { vendor: learnedVendor, confidence: learnedMatch.confidence, isNew: false, matchType: 'learned_mapping' };
@@ -1380,7 +1381,7 @@ async function findOrCreateVendor(vendorData) {
       .single();
 
     if (aliasVendor) {
-      console.log(`[Vendor Alias] "${vendorData.companyName}" → "${aliasVendor.name}" (alias match)`);
+      logger.info('Vendor alias match', { component: 'vendor', input: vendorData.companyName, vendorName: aliasVendor.name });
       // Enrich vendor with any new info from this invoice
       await aiLearning.enrichVendorFromInvoice(aliasVendor.id, vendorData);
       return { vendor: aliasVendor, confidence: 0.95, isNew: false, matchType: 'alias_match' };
@@ -1398,7 +1399,7 @@ async function findOrCreateVendor(vendorData) {
     const match = standards.findBestVendorMatch(vendorData.companyName, vendors, 65);
 
     if (match) {
-      console.log(`[Vendor Match] "${vendorData.companyName}" → "${match.vendor.name}" (${match.score}% similarity)`);
+      logger.info('Vendor fuzzy match', { component: 'vendor', input: vendorData.companyName, vendorName: match.vendor.name, similarity: match.score });
       // Enrich vendor with any new info from this invoice
       await aiLearning.enrichVendorFromInvoice(match.vendor.id, vendorData);
       return {
@@ -1426,11 +1427,11 @@ async function findOrCreateVendor(vendorData) {
     .single();
 
   if (error) {
-    console.error('Failed to create vendor:', error.message);
+    logger.error('Failed to create vendor', { component: 'vendor', error: error.message });
     return { vendor: null, confidence: 0, isNew: false, error: error.message };
   }
 
-  console.log(`[Vendor Created] New vendor: "${canonicalName}" (from "${vendorData.companyName}")`);
+  logger.info('New vendor created', { component: 'vendor', vendorName: canonicalName, original: vendorData.companyName });
   return { vendor: newVendor, confidence: 1.0, isNew: true };
 }
 
@@ -1572,7 +1573,7 @@ Return ONLY valid JSON, no markdown code blocks.`;
   } catch (err) {
     result.success = false;
     result.messages.push(`Extraction error: ${err.message}`);
-    console.error('[Stage1] Extraction error:', err);
+    logger.error('Stage 1 extraction error', { component: 'ai', error: err.message, stack: err.stack });
   }
 
   return result;
@@ -1623,7 +1624,7 @@ async function validateAndEnrich(rawExtracted) {
   } catch (err) {
     result.issues.push(`Validation error: ${err.message}`);
     result.validationScore = 0.5; // Penalize for validation failure
-    console.error('[Stage2] Validation error:', err);
+    logger.error('Stage 2 validation error', { component: 'ai', error: err.message, stack: err.stack });
   }
 
   return result;
@@ -1745,7 +1746,7 @@ async function processInvoiceTwoStage(pdfBuffer, filename) {
   } catch (err) {
     result.success = false;
     result.messages.push(`Pipeline error: ${err.message}`);
-    console.error('[TwoStage] Pipeline error:', err);
+    logger.error('Two-stage pipeline error', { component: 'ai', error: err.message, stack: err.stack });
   }
 
   return result;
@@ -1836,7 +1837,7 @@ async function processInvoice(pdfBuffer, originalFilename) {
         results.ai_extracted_data.extraction_method = 'vision_ocr';
       } catch (ocrErr) {
         // OCR failed - fall back to standard extraction with whatever text we have
-        console.error('[OCR] Failed:', ocrErr.message);
+        logger.error('OCR failed', { component: 'ocr', error: ocrErr.message });
         results.messages.push(`OCR failed: ${ocrErr.message} - falling back to text extraction`);
         results.review_flags.push('low_text_quality');
         extracted = await extractInvoiceData(pdfText || '', originalFilename);
@@ -2181,7 +2182,7 @@ async function processInvoice(pdfBuffer, originalFilename) {
           results.messages.push(`${priceResults.unmatched.length} items not matched to master items`);
         }
       } catch (err) {
-        console.error('Price capture error:', err);
+        logger.error('Price capture error', { component: 'price-capture', error: err.message });
         // Non-fatal - don't fail invoice processing
       }
     }
@@ -2199,7 +2200,7 @@ async function processInvoice(pdfBuffer, originalFilename) {
     results.messages.push(`Error: ${err.message}`);
     results.review_flags.push('ai_extraction_failed');
     results.needs_review = true;
-    console.error('Invoice processing error:', err);
+    logger.error('Invoice processing error', { component: 'ai', error: err.message, stack: err.stack });
   }
 
   return results;
@@ -2537,7 +2538,7 @@ Return ONLY valid JSON, no markdown code blocks.`;
   } catch (err) {
     results.success = false;
     results.messages.push(`Processing error: ${err.message}`);
-    console.error('Lien release processing error:', err);
+    logger.error('Lien release processing error', { component: 'ai', error: err.message, stack: err.stack });
   }
 
   return results;
@@ -2622,7 +2623,7 @@ Return JSON only:
 
     return JSON.parse(jsonStr);
   } catch (err) {
-    console.error('Document classification error:', err);
+    logger.error('Document classification error', { component: 'ai', error: err.message });
     return {
       type: DOCUMENT_TYPES.UNKNOWN,
       confidence: 0,
@@ -2782,7 +2783,7 @@ async function processDocument(pdfBuffer, originalFilename, options = {}) {
     return result;
 
   } catch (err) {
-    console.error('Master document processor error:', err);
+    logger.error('Master document processor error', { component: 'ai', error: err.message, stack: err.stack });
     result.messages.push('Error: ' + err.message);
     result.success = false;
     return result;
@@ -2955,11 +2956,11 @@ async function analyzeMultiInvoicePDF(pdfBuffer, filename = 'document.pdf') {
   const pdfDoc = await PDFDocument.load(pdfBuffer);
   const totalPages = pdfDoc.getPageCount();
 
-  console.log(`[MultiInvoice] Analyzing ${totalPages} pages for invoice boundaries...`);
+  logger.info('Analyzing PDF for invoice boundaries', { component: 'multi-invoice', totalPages });
 
   // For small PDFs (≤3 pages), assume single invoice
   if (totalPages <= 3) {
-    console.log('[MultiInvoice] Small document, treating as single invoice');
+    logger.debug('Small document, treating as single invoice', { component: 'multi-invoice' });
     return {
       invoices: [{ startPage: 1, endPage: totalPages, invoiceNumber: null, vendor: null, amount: null }],
       totalPages,
@@ -2971,7 +2972,7 @@ async function analyzeMultiInvoicePDF(pdfBuffer, filename = 'document.pdf') {
   const pageImages = await convertPDFPagesToImages(pdfBuffer, totalPages);
 
   if (pageImages.length === 0) {
-    console.log('[MultiInvoice] Could not convert pages to images, treating as single invoice');
+    logger.warn('Could not convert pages to images, treating as single invoice', { component: 'multi-invoice' });
     return {
       invoices: [{ startPage: 1, endPage: totalPages, invoiceNumber: null, vendor: null, amount: null }],
       totalPages,
@@ -3052,14 +3053,14 @@ async function convertPDFPagesToImages(pdfBuffer, totalPages) {
           }
         }
       } catch (pageErr) {
-        console.log(`[MultiInvoice] Could not process page ${pageNum}: ${pageErr.message}`);
+        logger.debug('Could not process page', { component: 'multi-invoice', pageNum, error: pageErr.message });
       }
     }
 
-    console.log(`[MultiInvoice] Converted ${images.length} of ${maxPages} pages to images`);
+    logger.info('PDF pages converted to images', { component: 'multi-invoice', converted: images.length, total: maxPages });
 
   } catch (err) {
-    console.error('[MultiInvoice] PDF to image conversion failed:', err.message);
+    logger.error('PDF to image conversion failed', { component: 'multi-invoice', error: err.message });
   }
 
   return images;
@@ -3082,7 +3083,7 @@ async function detectInvoiceBoundaries(pageImages, filename) {
     // Sample every Nth page plus first and last
     const step = Math.ceil(pageImages.length / 12);
     samplesToAnalyze = pageImages.filter((_, i) => i === 0 || i === pageImages.length - 1 || i % step === 0);
-    console.log(`[MultiInvoice] Sampling ${samplesToAnalyze.length} of ${pageImages.length} pages for analysis`);
+    logger.info('Sampling pages for analysis', { component: 'multi-invoice', sampled: samplesToAnalyze.length, total: pageImages.length });
   }
 
   // Build the vision request with multiple images
@@ -3153,7 +3154,7 @@ Return ONLY the JSON object, no other text.`;
     }
 
     const result = JSON.parse(jsonStr);
-    console.log(`[MultiInvoice] Detected ${result.invoices?.length || 1} invoices (confidence: ${result.confidence || 'N/A'})`);
+    logger.info('Invoice boundaries detected', { component: 'multi-invoice', count: result.invoices?.length || 1, confidence: result.confidence || 'N/A' });
 
     // Validate and fill gaps in page ranges
     if (result.invoices && result.invoices.length > 0) {
@@ -3184,7 +3185,7 @@ Return ONLY the JSON object, no other text.`;
     return result;
 
   } catch (err) {
-    console.error('[MultiInvoice] Boundary detection failed:', err.message);
+    logger.error('Boundary detection failed', { component: 'multi-invoice', error: err.message });
     // Fall back to treating entire document as single invoice
     return {
       invoices: [{ startPage: 1, endPage: pageImages.length, invoiceNumber: null, vendor: null, amount: null }],
@@ -3231,7 +3232,7 @@ async function splitPDFByInvoices(pdfBuffer, invoiceBoundaries) {
     });
   }
 
-  console.log(`[MultiInvoice] Split PDF into ${splits.length} separate invoices`);
+  logger.info('PDF split into separate invoices', { component: 'multi-invoice', count: splits.length });
   return splits;
 }
 

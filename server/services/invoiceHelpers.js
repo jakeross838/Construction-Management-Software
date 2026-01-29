@@ -3,6 +3,7 @@
  */
 
 const { supabase } = require('../../config');
+const logger = require('../utils/logger');
 const {
   uploadPDF,
   uploadStampedPDF,
@@ -154,7 +155,7 @@ async function updateCOInvoicedAmounts(allocations) {
       .update({ invoiced_amount: totalInvoiced })
       .eq('id', coId);
 
-    console.log(`[CO-SYNC] Updated CO ${coId} invoiced_amount: $${totalInvoiced.toFixed(2)}`);
+    logger.debug('Updated CO invoiced amount', { component: 'co-sync', coId, invoicedAmount: totalInvoiced.toFixed(2) });
   }
 }
 
@@ -201,9 +202,9 @@ async function recalculatePOLineItemInvoiced(poId, costCodeId = null) {
       .eq('id', li.id);
 
     if (updateError) {
-      console.error(`[PO-SYNC] Failed to update PO line item ${li.id}:`, updateError.message);
+      logger.error('Failed to update PO line item', { component: 'po-sync', lineItemId: li.id, error: updateError.message });
     } else {
-      console.log(`[PO-SYNC] Updated PO line item ${li.id} invoiced_amount: $${totalInvoiced.toFixed(2)}`);
+      logger.debug('Updated PO line item invoiced amount', { component: 'po-sync', lineItemId: li.id, invoicedAmount: totalInvoiced.toFixed(2) });
     }
   }
 }
@@ -235,9 +236,9 @@ async function recalculateCOInvoiced(coId) {
     .eq('id', coId);
 
   if (updateError) {
-    console.error(`[CO-SYNC] Failed to update CO ${coId}:`, updateError.message);
+    logger.error('Failed to update CO', { component: 'co-sync', coId, error: updateError.message });
   } else {
-    console.log(`[CO-SYNC] Updated CO ${coId} invoiced_amount: $${totalInvoiced.toFixed(2)}`);
+    logger.debug('Updated CO invoiced amount', { component: 'co-sync', coId, invoicedAmount: totalInvoiced.toFixed(2) });
   }
 }
 
@@ -249,7 +250,7 @@ async function stampInvoice(invoiceId, options = {}) {
   const { force = false } = options;
 
   if (!force && !acquireStampLock(invoiceId)) {
-    console.log('[STAMP] Skipping - already being stamped:', invoiceId);
+    logger.debug('Skipping stamp - already being stamped', { component: 'stamp', invoiceId });
     return null;
   }
 
@@ -273,18 +274,18 @@ async function stampInvoice(invoiceId, options = {}) {
       .single();
 
     if (fetchError || !invoice) {
-      console.error('[STAMP] Invoice not found:', invoiceId);
+      logger.warn('Invoice not found for stamping', { component: 'stamp', invoiceId });
       return null;
     }
 
     if (!invoice.pdf_url) {
-      console.log('[STAMP] No PDF to stamp:', invoiceId);
+      logger.debug('No PDF to stamp', { component: 'stamp', invoiceId });
       return null;
     }
 
     const storagePath = extractStoragePath(invoice.pdf_url);
     if (!storagePath) {
-      console.error('[STAMP] Could not extract path from pdf_url:', invoice.pdf_url);
+      logger.error('Could not extract path from pdf_url', { component: 'stamp', pdfUrl: invoice.pdf_url });
       return null;
     }
 
@@ -292,7 +293,7 @@ async function stampInvoice(invoiceId, options = {}) {
     try {
       pdfBuffer = await downloadPDF(storagePath);
     } catch (downloadErr) {
-      console.error('[STAMP] Failed to download original PDF:', downloadErr.message);
+      logger.error('Failed to download original PDF', { component: 'stamp', error: downloadErr.message });
       return null;
     }
 
@@ -416,7 +417,7 @@ async function stampInvoice(invoiceId, options = {}) {
       }
 
       default:
-        console.log('[STAMP] No stamp for status:', invoice.status);
+        logger.debug('No stamp for status', { component: 'stamp', status: invoice.status });
         return null;
     }
 
@@ -434,13 +435,13 @@ async function stampInvoice(invoiceId, options = {}) {
         .update({ pdf_stamped_url: uploadResult.url })
         .eq('id', invoiceId);
 
-      console.log('[STAMP] Success:', invoiceId, '->', uploadResult.url);
+      logger.info('PDF stamped successfully', { component: 'stamp', invoiceId, url: uploadResult.url });
       return uploadResult.url;
     }
 
     return null;
   } catch (err) {
-    console.error('[STAMP] Error stamping invoice:', invoiceId, err.message);
+    logger.error('Error stamping invoice', { component: 'stamp', invoiceId, error: err.message });
     return null;
   } finally {
     releaseStampLock(invoiceId);
@@ -491,10 +492,10 @@ async function checkSplitReconciliation(parentInvoiceId) {
         })
         .eq('id', parentInvoiceId);
 
-      console.log('[SPLIT] Reconciled parent invoice:', parentInvoiceId, { paidCount, deniedCount, deletedCount });
+      logger.info('Reconciled parent invoice', { component: 'split', parentInvoiceId, paidCount, deniedCount, deletedCount });
     }
   } catch (err) {
-    console.error('[SPLIT] Reconciliation check failed:', parentInvoiceId, err.message);
+    logger.error('Reconciliation check failed', { component: 'split', parentInvoiceId, error: err.message });
   }
 }
 
@@ -512,7 +513,7 @@ async function cleanupInvoiceAllocations(invoiceId) {
     .eq('invoice_id', invoiceId);
 
   if (fetchError) {
-    console.error('[CLEANUP] Error fetching allocations:', fetchError.message);
+    logger.error('Error fetching allocations', { component: 'cleanup', error: fetchError.message });
     return { success: false, error: fetchError.message };
   }
 
@@ -557,11 +558,11 @@ async function cleanupInvoiceAllocations(invoiceId) {
     .eq('invoice_id', invoiceId);
 
   if (deleteError) {
-    console.error('[CLEANUP] Error deleting allocations:', deleteError.message);
+    logger.error('Error deleting allocations', { component: 'cleanup', error: deleteError.message });
     return { success: false, error: deleteError.message };
   }
 
-  console.log(`[CLEANUP] Removed ${allocations.length} allocations for invoice ${invoiceId}`);
+  logger.info('Removed allocations for invoice', { component: 'cleanup', invoiceId, count: allocations.length });
   return { success: true, allocations_removed: allocations.length };
 }
 
@@ -598,9 +599,9 @@ async function recalculateBilledAmounts(jobId, costCodeIds) {
       .eq('cost_code_id', costCodeId);
 
     if (error) {
-      console.warn(`[RECALC] Failed to update billed_amount for job=${jobId} cost_code=${costCodeId}:`, error.message);
+      logger.warn('Failed to update billed_amount', { component: 'recalc', jobId, costCodeId, error: error.message });
     } else {
-      console.log(`[RECALC] Updated billed_amount for job=${jobId} cost_code=${costCodeId}: $${totalBilled.toFixed(2)}`);
+      logger.debug('Updated billed_amount', { component: 'recalc', jobId, costCodeId, totalBilled: totalBilled.toFixed(2) });
     }
   }
 }
@@ -623,7 +624,7 @@ async function executeWithRollback(operations) {
     }
     return { success: true, results: completed.map(c => c.result) };
   } catch (error) {
-    console.error('[ROLLBACK] Operation failed, rolling back:', error.message);
+    logger.error('Operation failed, rolling back', { component: 'rollback', error: error.message });
 
     // Roll back in reverse order
     for (let i = completed.length - 1; i >= 0; i--) {
@@ -632,7 +633,7 @@ async function executeWithRollback(operations) {
           await completed[i].op.rollback(completed[i].result);
         }
       } catch (rollbackError) {
-        console.error('[ROLLBACK] Rollback operation failed:', rollbackError.message);
+        logger.error('Rollback operation failed', { component: 'rollback', error: rollbackError.message });
       }
     }
 
@@ -684,7 +685,7 @@ async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
 
   if (error) throw error;
 
-  console.log(`[DRAW] Created draft draw #${nextDrawNumber} for job ${jobId}`);
+  logger.info('Created draft draw', { component: 'draw', drawNumber: nextDrawNumber, jobId });
   return newDraw;
 }
 

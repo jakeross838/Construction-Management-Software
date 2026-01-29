@@ -4,6 +4,10 @@ const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const logger = require('./utils/logger');
+const rateLimit = require('express-rate-limit');
+const { requestLogger, defaultSkip } = require('./middleware/requestLogger');
+const { responseHelpers } = require('./utils/apiResponse');
 
 // PID file for safe server restarts (won't kill other node processes)
 const PID_FILE = path.join(__dirname, '..', 'server.pid');
@@ -89,12 +93,44 @@ const {
   getStats: getRealtimeStats
 } = require('./realtime');
 
+const { setupSwagger } = require('./swagger');
+
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(compression()); // Gzip compression for all responses
 app.use(express.json());
+
+// Request logging - logs all API requests with timing
+app.use(requestLogger({ skip: defaultSkip, slowThreshold: 2000 }));
+
+// API response helpers - adds res.apiSuccess, res.apiError, etc.
+app.use(responseHelpers);
+
+// Rate limiting - protect against abuse
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+  skip: (req) => req.path === '/api/health' // Don't rate limit health checks
+});
+
+// Stricter limit for AI processing (expensive operations)
+const aiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 10, // 10 AI requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'AI processing rate limit exceeded, please wait' }
+});
+
+// Apply rate limiting to API routes
+app.use('/api', apiLimiter);
+app.use('/api/invoices/process', aiLimiter);
+app.use('/api/ai', aiLimiter);
 
 // Disable caching for JS files during development
 app.use('/js', (req, res, next) => {
@@ -171,6 +207,51 @@ const pnlRoutes = require('./routes/pnl');
 const cashFlowRoutes = require('./routes/cash-flow');
 const businessPlanningRoutes = require('./routes/business-planning');
 const assemblyTemplatesRoutes = require('./routes/assembly-templates');
+
+// ============================================================
+// HEALTH CHECK ENDPOINT
+// ============================================================
+app.get('/api/health', async (req, res) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    checks: {}
+  };
+
+  // Check database connectivity
+  try {
+    const start = Date.now();
+    const { data, error } = await supabase.from('v2_jobs').select('id').limit(1);
+    health.checks.database = {
+      status: error ? 'error' : 'ok',
+      responseTime: Date.now() - start,
+      error: error?.message
+    };
+  } catch (err) {
+    health.checks.database = { status: 'error', error: err.message };
+  }
+
+  // Check storage connectivity
+  try {
+    const start = Date.now();
+    const { data, error } = await supabase.storage.listBuckets();
+    health.checks.storage = {
+      status: error ? 'error' : 'ok',
+      responseTime: Date.now() - start,
+      error: error?.message
+    };
+  } catch (err) {
+    health.checks.storage = { status: 'error', error: err.message };
+  }
+
+  // Overall status
+  const hasErrors = Object.values(health.checks).some(c => c.status === 'error');
+  health.status = hasErrors ? 'degraded' : 'ok';
+
+  res.status(hasErrors ? 503 : 200).json(health);
+});
 
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/invoices', invoiceRoutes);
@@ -290,50 +371,64 @@ async function logActivity(invoiceId, action, performedBy, details = {}) {
 
 /**
  * Update PO line items' invoiced_amount when allocations change.
+ * Optimized: Batches all queries instead of N+1 pattern.
  */
 async function updatePOLineItemsForAllocations(poId, allocations, add = true) {
   if (!poId || !allocations || allocations.length === 0) return;
+
+  // Fetch all PO line items for this PO in one query
+  const { data: allLineItems } = await supabase
+    .from('v2_po_line_items')
+    .select('id, invoiced_amount, cost_code_id')
+    .eq('po_id', poId);
+
+  if (!allLineItems || allLineItems.length === 0) return;
+
+  // Build a map for quick lookup
+  const lineItemsById = new Map(allLineItems.map(li => [li.id, li]));
+  const lineItemsByCostCode = new Map(allLineItems.map(li => [li.cost_code_id, li]));
+
+  // Calculate updates needed
+  const updates = new Map(); // lineItemId -> new amount
 
   for (const alloc of allocations) {
     let poLineItem = null;
 
     // Priority 1: Direct po_line_item_id link
     if (alloc.po_line_item_id) {
-      const { data } = await supabase
-        .from('v2_po_line_items')
-        .select('id, invoiced_amount')
-        .eq('id', alloc.po_line_item_id)
-        .eq('po_id', poId)
-        .single();
-      poLineItem = data;
+      poLineItem = lineItemsById.get(alloc.po_line_item_id);
     }
 
     // Priority 2: Fall back to cost code matching
     if (!poLineItem) {
       const costCodeId = alloc.cost_code_id || alloc.cost_code?.id;
       if (costCodeId) {
-        const { data } = await supabase
-          .from('v2_po_line_items')
-          .select('id, invoiced_amount')
-          .eq('po_id', poId)
-          .eq('cost_code_id', costCodeId)
-          .single();
-        poLineItem = data;
+        poLineItem = lineItemsByCostCode.get(costCodeId);
       }
     }
 
     if (poLineItem) {
-      const currentAmount = parseFloat(poLineItem.invoiced_amount) || 0;
+      const currentAmount = updates.has(poLineItem.id)
+        ? updates.get(poLineItem.id)
+        : (parseFloat(poLineItem.invoiced_amount) || 0);
       const allocAmount = parseFloat(alloc.amount) || 0;
       const newAmount = add
         ? currentAmount + allocAmount
         : Math.max(0, currentAmount - allocAmount);
-
-      await supabase
-        .from('v2_po_line_items')
-        .update({ invoiced_amount: newAmount })
-        .eq('id', poLineItem.id);
+      updates.set(poLineItem.id, newAmount);
     }
+  }
+
+  // Batch update all line items (use Promise.all for parallel execution)
+  if (updates.size > 0) {
+    await Promise.all(
+      Array.from(updates.entries()).map(([lineItemId, newAmount]) =>
+        supabase
+          .from('v2_po_line_items')
+          .update({ invoiced_amount: newAmount })
+          .eq('id', lineItemId)
+      )
+    );
   }
 }
 
@@ -382,32 +477,35 @@ async function updatePOInvoicedAmounts(allocations) {
 /**
  * Update CO invoiced amounts when allocations are linked to COs.
  * Groups allocations by CO and updates the CO's invoiced_amount.
+ * Optimized: Batches all queries instead of N+1 pattern.
  */
 async function updateCOInvoicedAmounts(allocations) {
-  // Group allocations by CO
-  const byCO = {};
-  for (const alloc of allocations) {
-    if (!alloc.change_order_id) continue;
-    if (!byCO[alloc.change_order_id]) byCO[alloc.change_order_id] = 0;
-    byCO[alloc.change_order_id] += parseFloat(alloc.amount) || 0;
+  // Get unique CO IDs
+  const coIds = [...new Set(allocations.filter(a => a.change_order_id).map(a => a.change_order_id))];
+  if (coIds.length === 0) return;
+
+  // Fetch all allocations for these COs in one query
+  const { data: allCOAllocations } = await supabase
+    .from('v2_invoice_allocations')
+    .select('change_order_id, amount')
+    .in('change_order_id', coIds);
+
+  // Group and sum allocations by CO
+  const totalsByCO = new Map();
+  for (const alloc of (allCOAllocations || [])) {
+    const current = totalsByCO.get(alloc.change_order_id) || 0;
+    totalsByCO.set(alloc.change_order_id, current + (parseFloat(alloc.amount) || 0));
   }
 
-  // Recalculate total invoiced for each CO from all allocations
-  for (const coId of Object.keys(byCO)) {
-    const { data: allCOAllocations } = await supabase
-      .from('v2_invoice_allocations')
-      .select('amount')
-      .eq('change_order_id', coId);
-
-    const totalInvoiced = (allCOAllocations || []).reduce(
-      (sum, a) => sum + (parseFloat(a.amount) || 0), 0
-    );
-
-    await supabase
-      .from('v2_job_change_orders')
-      .update({ invoiced_amount: totalInvoiced })
-      .eq('id', coId);
-  }
+  // Batch update all COs in parallel
+  await Promise.all(
+    coIds.map(coId =>
+      supabase
+        .from('v2_job_change_orders')
+        .update({ invoiced_amount: totalsByCO.get(coId) || 0 })
+        .eq('id', coId)
+    )
+  );
 }
 
 /**
@@ -429,7 +527,7 @@ async function stampInvoice(invoiceId, options = {}) {
 
   // Acquire lock to prevent concurrent stamping
   if (!force && !acquireStampLock(invoiceId)) {
-    console.log('[STAMP] Skipping - already being stamped:', invoiceId);
+    logger.debug('Skipping - already being stamped', { component: 'stamp', invoiceId });
     return null;
   }
 
@@ -454,19 +552,19 @@ async function stampInvoice(invoiceId, options = {}) {
       .single();
 
     if (fetchError || !invoice) {
-      console.error('[STAMP] Invoice not found:', invoiceId);
+      logger.warn('Invoice not found for stamping', { component: 'stamp', invoiceId });
       return null;
     }
 
     if (!invoice.pdf_url) {
-      console.log('[STAMP] No PDF to stamp:', invoiceId);
+      logger.debug('No PDF to stamp', { component: 'stamp', invoiceId });
       return null;
     }
 
     // Extract storage path from ORIGINAL pdf_url (never use pdf_stamped_url)
     const storagePath = extractStoragePath(invoice.pdf_url);
     if (!storagePath) {
-      console.error('[STAMP] Could not extract path from pdf_url:', invoice.pdf_url);
+      logger.error('Could not extract path from pdf_url', { component: 'stamp', invoiceId, pdfUrl: invoice.pdf_url });
       return null;
     }
 
@@ -475,7 +573,7 @@ async function stampInvoice(invoiceId, options = {}) {
     try {
       pdfBuffer = await downloadPDF(storagePath);
     } catch (downloadErr) {
-      console.error('[STAMP] Failed to download original PDF:', downloadErr.message);
+      logger.error('Failed to download original PDF', { component: 'stamp', invoiceId, error: downloadErr.message });
       return null;
     }
 
@@ -625,7 +723,7 @@ async function stampInvoice(invoiceId, options = {}) {
 
       default:
         // No stamp for other statuses (received, denied, split, etc.)
-        console.log('[STAMP] No stamp for status:', invoice.status);
+        logger.debug('No stamp for status', { component: 'stamp', invoiceId, status: invoice.status });
         return null;
     }
 
@@ -647,13 +745,13 @@ async function stampInvoice(invoiceId, options = {}) {
         .update({ pdf_stamped_url: uploadResult.url })
         .eq('id', invoiceId);
 
-      console.log('[STAMP] Success:', invoiceId, '->', uploadResult.url);
+      logger.info('Invoice stamped successfully', { component: 'stamp', invoiceId, url: uploadResult.url });
       return uploadResult.url;
     }
 
     return null;
   } catch (err) {
-    console.error('[STAMP] Error stamping invoice:', invoiceId, err.message);
+    logger.error('Error stamping invoice', { component: 'stamp', invoiceId, error: err.message });
     return null;
   } finally {
     // Always release lock
@@ -714,10 +812,10 @@ async function checkSplitReconciliation(parentInvoiceId) {
         })
         .eq('id', parentInvoiceId);
 
-      console.log('[SPLIT] Reconciled parent invoice:', parentInvoiceId, { paidCount, deniedCount, deletedCount });
+      logger.info('Reconciled parent invoice', { component: 'split', parentInvoiceId, paidCount, deniedCount, deletedCount });
     }
   } catch (err) {
-    console.error('[SPLIT] Reconciliation check failed:', parentInvoiceId, err.message);
+    logger.error('Reconciliation check failed', { component: 'split', parentInvoiceId, error: err.message });
   }
 }
 
@@ -847,52 +945,51 @@ app.get('/api/jobs/:id', async (req, res) => {
   }
 });
 
-// Delete a job (admin cleanup)
+// Delete a job (soft-delete to preserve audit trail)
 app.delete('/api/jobs/:id', async (req, res) => {
   try {
     const jobId = req.params.id;
+    const deletedAt = new Date().toISOString();
 
-    // Get related IDs first
+    // Soft-delete related records to preserve audit trail
+    // Get related IDs first (only active records)
     const { data: draws } = await supabase.from('v2_draws').select('id').eq('job_id', jobId);
-    const { data: invoices } = await supabase.from('v2_invoices').select('id').eq('job_id', jobId);
-    const { data: pos } = await supabase.from('v2_purchase_orders').select('id').eq('job_id', jobId);
+    const { data: invoices } = await supabase.from('v2_invoices').select('id').eq('job_id', jobId).is('deleted_at', null);
+    const { data: pos } = await supabase.from('v2_purchase_orders').select('id').eq('job_id', jobId).is('deleted_at', null);
 
     const drawIds = draws?.map(d => d.id) || [];
     const invoiceIds = invoices?.map(i => i.id) || [];
     const poIds = pos?.map(p => p.id) || [];
 
-    // Delete related data
-    await supabase.from('v2_budget_lines').delete().eq('job_id', jobId);
-
-    if (drawIds.length > 0) {
-      await supabase.from('v2_draw_allocations').delete().in('draw_id', drawIds);
-      await supabase.from('v2_draw_invoices').delete().in('draw_id', drawIds);
-      await supabase.from('v2_draw_activity').delete().in('draw_id', drawIds);
-      await supabase.from('v2_draws').delete().eq('job_id', jobId);
-    }
-
+    // Soft-delete invoices (they have deleted_at column)
     if (invoiceIds.length > 0) {
-      await supabase.from('v2_invoice_allocations').delete().in('invoice_id', invoiceIds);
-      await supabase.from('v2_invoice_activity').delete().in('invoice_id', invoiceIds);
-      await supabase.from('v2_invoices').delete().eq('job_id', jobId);
+      await supabase
+        .from('v2_invoices')
+        .update({ deleted_at: deletedAt })
+        .in('id', invoiceIds);
     }
 
+    // Soft-delete POs (they have deleted_at column)
     if (poIds.length > 0) {
-      await supabase.from('v2_po_line_items').delete().in('po_id', poIds);
-      await supabase.from('v2_po_activity').delete().in('po_id', poIds);
-      await supabase.from('v2_purchase_orders').delete().eq('job_id', jobId);
+      await supabase
+        .from('v2_purchase_orders')
+        .update({ deleted_at: deletedAt })
+        .in('id', poIds);
     }
 
-    // Delete the job
+    // Soft-delete vendors linked only to this job (they have deleted_at column)
+    // Note: We don't delete vendors as they may be used by other jobs
+
+    // Soft-delete the job itself
     const { error } = await supabase
       .from('v2_jobs')
-      .delete()
+      .update({ deleted_at: deletedAt, status: 'archived' })
       .eq('id', jobId);
 
     if (error) throw error;
-    res.json({ success: true });
+    res.json({ success: true, message: 'Job archived successfully' });
   } catch (err) {
-    console.error('Error deleting job:', err);
+    logger.error('Error archiving job', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -1082,7 +1179,7 @@ app.post('/api/vendors/merge', asyncHandler(async (req, res) => {
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', remove_vendor_id);
 
-  console.log(`[Vendor Merge] "${removeVendor?.name}" merged into "${keepVendor?.name}" - ${updatedCount} records updated`);
+  logger.info('Vendor merged', { component: 'vendor', from: removeVendor?.name, to: keepVendor?.name, recordsUpdated: updatedCount });
 
   res.json({
     success: true,
@@ -1201,7 +1298,7 @@ app.post('/api/vendors/:id/documents', asyncHandler(async (req, res) => {
     });
 
   if (uploadError) {
-    console.error('Upload error:', uploadError);
+    logger.error('Upload error', { error: uploadError.message });
     throw new Error('Failed to upload document');
   }
 
@@ -1237,7 +1334,7 @@ app.post('/api/vendors/:id/documents', asyncHandler(async (req, res) => {
     .single();
 
   if (docError) {
-    console.error('Document record error:', docError);
+    logger.error('Document record error', { error: docError.message });
     // Continue anyway - file is uploaded
   }
 
@@ -2555,7 +2652,7 @@ app.post('/api/purchase-orders/:poId/change-orders', asyncHandler(async (req, re
       .from('v2_change_order_line_items')
       .insert(lineItemsToInsert);
 
-    if (liError) console.error('Error inserting CO line items:', liError);
+    if (liError) logger.error('Error inserting CO line items', { error: liError.message });
   }
 
   // Log activity
@@ -2618,7 +2715,7 @@ app.post('/api/purchase-orders/:poId/change-orders/:coId/approve', asyncHandler(
   await supabase.from('v2_po_activity').insert({
     po_id: poId,
     action: 'change_order_approved',
-    performed_by: 'Jake Ross',
+    performed_by: req.body.performed_by || req.headers['x-user-name'] || 'System',
     details: { change_order_id: coId, amount: co.amount_change, new_total: newTotal }
   });
 
@@ -2644,7 +2741,7 @@ app.post('/api/purchase-orders/:poId/change-orders/:coId/reject', asyncHandler(a
   await supabase.from('v2_po_activity').insert({
     po_id: poId,
     action: 'change_order_rejected',
-    performed_by: 'Jake Ross',
+    performed_by: req.body.performed_by || req.headers['x-user-name'] || 'System',
     details: { change_order_id: coId, reason }
   });
 
@@ -2825,7 +2922,6 @@ app.get('/api/invoices', async (req, res) => {
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
       `)
       .is('deleted_at', null)  // Filter out soft-deleted invoices
-      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (job_id) query = query.eq('job_id', job_id);
@@ -2851,8 +2947,7 @@ app.get('/api/invoices/needs-review', asyncHandler(async (req, res) => {
     `)
     .eq('needs_review', true)
     .is('deleted_at', null)
-    .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
@@ -2869,8 +2964,7 @@ app.get('/api/invoices/low-confidence', asyncHandler(async (req, res) => {
     `)
     .eq('ai_processed', true)
     .is('deleted_at', null)
-    .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -2893,8 +2987,7 @@ app.get('/api/invoices/no-job', asyncHandler(async (req, res) => {
     `)
     .is('job_id', null)
     .is('deleted_at', null)
-    .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
@@ -2903,7 +2996,7 @@ app.get('/api/invoices/no-job', asyncHandler(async (req, res) => {
 // Get single invoice with full details
 app.get('/api/invoices/:id', async (req, res) => {
   try {
-    console.log('[DEBUG] Fetching invoice:', req.params.id);
+    logger.debug('Fetching invoice', { invoiceId: req.params.id });
     const { data, error } = await supabase
       .from('v2_invoices')
       .select(`
@@ -2920,9 +3013,10 @@ app.get('/api/invoices/:id', async (req, res) => {
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
       `)
       .eq('id', req.params.id)
+      .is('deleted_at', null)  // Filter out soft-deleted invoices
       .single();
 
-    console.log('[DEBUG] Vendor from query:', JSON.stringify(data?.vendor));
+    logger.debug('Vendor from query', { vendor: data?.vendor });
 
     if (error) {
       // PGRST116 = no rows found
@@ -3163,7 +3257,7 @@ app.get('/api/invoices/:id/approval-context', async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    console.error('Error getting approval context:', err);
+    logger.error('Error getting approval context', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -3244,7 +3338,7 @@ app.get('/api/jobs/:jobId/funding-sources', async (req, res) => {
       change_orders: cosWithRemaining
     });
   } catch (err) {
-    console.error('Error getting funding sources:', err);
+    logger.error('Error getting funding sources', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -3311,7 +3405,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
     const fileBuffer = req.file.buffer;
     const mimetype = req.file.mimetype;
 
-    console.log(`[Upload] Processing: ${originalFilename} (${mimetype}, ${fileBuffer.length} bytes)`);
+    logger.info('Processing upload', { component: 'upload', filename: originalFilename, mimetype, size: fileBuffer.length });
 
     // Convert document to processable format
     const converted = await convertDocument(fileBuffer, originalFilename, mimetype);
@@ -3324,7 +3418,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       });
     }
 
-    console.log(`[Upload] Converted: ${converted.fileType}`);
+    logger.debug('File converted', { component: 'upload', fileType: converted.fileType });
 
     // Process based on document type
     let result;
@@ -3334,7 +3428,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       result = await processInvoice(fileBuffer, originalFilename);
     } else if (converted.fileType === 'IMAGE') {
       // Image processing via Claude Vision
-      console.log(`[Upload] Using Claude Vision for image: ${converted.data.mediaType}`);
+      logger.debug('Using Claude Vision for image', { component: 'upload', mediaType: converted.data.mediaType });
 
       // Extract invoice data using vision
       const extracted = await extractInvoiceFromImage(
@@ -3419,7 +3513,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       }
     } else if (converted.fileType === 'WORD' || converted.fileType === 'EXCEL') {
       // Text-based document processing
-      console.log(`[Upload] Processing ${converted.fileType} document as text`);
+      logger.debug('Processing document as text', { component: 'upload', fileType: converted.fileType });
 
       const documentText = converted.data.text;
       const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
@@ -3651,7 +3745,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
           }
         }
       } catch (stampErr) {
-        console.error('[STAMP] Initial needs review stamp error:', stampErr.message);
+        logger.error('Initial needs review stamp error', { component: 'stamp', error: stampErr.message });
       }
     }
 
@@ -3681,7 +3775,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
     });
 
   } catch (err) {
-    console.error('AI processing error:', err);
+    logger.error('AI processing error', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -3708,7 +3802,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
     const mimetype = req.file.mimetype;
     const uploadedBy = req.body.uploaded_by || 'System';
 
-    console.log(`[Document Processor] Processing: ${originalFilename} (${mimetype})`);
+    logger.info('Processing document', { component: 'document-processor', filename: originalFilename, mimetype });
 
     // Convert document to processable format
     const converted = await convertDocument(fileBuffer, originalFilename, mimetype);
@@ -3732,7 +3826,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       result = await processDocument(pdfBuffer, originalFilename, { uploadedBy });
     } else if (converted.fileType === 'IMAGE') {
       // Image processing - extract invoice data using vision
-      console.log(`[Document Processor] Using Claude Vision for image`);
+      logger.debug('Using Claude Vision for image', { component: 'document-processor' });
 
       const extracted = await extractInvoiceFromImage(
         converted.data.base64,
@@ -3820,7 +3914,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       }
     } else if (converted.fileType === 'WORD' || converted.fileType === 'EXCEL') {
       // Text-based document processing
-      console.log(`[Document Processor] Processing ${converted.fileType} as text`);
+      logger.debug('Processing as text', { component: 'document-processor', fileType: converted.fileType });
 
       const documentText = converted.data.text;
       const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
@@ -3989,7 +4083,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       // Store PDF hash for duplicate detection
       if (pdfBuffer && invoice.id) {
         storePDFHash(invoice.id, pdfBuffer).catch(err => {
-          console.error('[HASH] Failed to store PDF hash:', err.message);
+          logger.error('Failed to store PDF hash', { component: 'hash', error: err.message });
         });
       }
 
@@ -4033,7 +4127,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
             }
           }
         } catch (stampErr) {
-          console.error('[STAMP] Initial needs review stamp error:', stampErr.message);
+          logger.error('Initial needs review stamp error', { component: 'stamp', error: stampErr.message });
         }
       }
 
@@ -4113,7 +4207,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Document processing error:', err);
+    logger.error('Document processing error', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -4132,7 +4226,7 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
     const pdfBuffer = req.file.buffer;
     const uploadedBy = req.body.uploaded_by || 'System';
 
-    console.log(`[Multi-Page Processor] Processing: ${originalFilename}`);
+    logger.info('Processing multi-page document', { component: 'multi-page', filename: originalFilename });
 
     // Process the combined document (extraction only)
     const result = await processMultiPageDocument(pdfBuffer, originalFilename, { uploadedBy });
@@ -4193,7 +4287,7 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
             .single();
 
           if (lienError) {
-            console.error(`Error saving lien release page ${page.pageNumber}:`, lienError);
+            logger.error('Error saving lien release page', { component: 'multi-page', pageNumber: page.pageNumber, error: lienError.message });
             page.saveError = lienError.message;
           } else {
             page.savedRecord = lienRelease;
@@ -4246,7 +4340,7 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
             .single();
 
           if (invError) {
-            console.error(`Error saving invoice page ${page.pageNumber}:`, invError);
+            logger.error('Error saving invoice page', { component: 'multi-page', pageNumber: page.pageNumber, error: invError.message });
             page.saveError = invError.message;
           } else {
             page.savedRecord = invoice;
@@ -4255,13 +4349,13 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
             // Store PDF hash for duplicate detection
             if (pageBuffer && invoice.id) {
               storePDFHash(invoice.id, pageBuffer).catch(err => {
-                console.error('[HASH] Failed to store PDF hash for page:', err.message);
+                logger.error('Failed to store PDF hash for page', { component: 'hash', error: err.message });
               });
             }
           }
         }
       } catch (saveErr) {
-        console.error(`Error saving page ${page.pageNumber}:`, saveErr);
+        logger.error('Error saving page', { component: 'multi-page', pageNumber: page.pageNumber, error: saveErr.message });
         page.saveError = saveErr.message;
       }
     }
@@ -4276,7 +4370,7 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
     });
 
   } catch (err) {
-    console.error('Multi-page document processing error:', err);
+    logger.error('Multi-page document processing error', { component: 'multi-page', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -4338,7 +4432,7 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
 
     // Re-stamp PDF with "Ready for Approval" (run in background)
     restampInvoice(invoiceId).catch(err => {
-      console.error('[RESTAMP] Background re-stamp failed:', err.message);
+      logger.error('Background re-stamp failed', { component: 'restamp', error: err.message });
     });
 
     res.json(invoice);
@@ -4428,7 +4522,7 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
         // If allow_partial flag is set, proceed with partial approval
         if (allowPartial) {
           isPartialApproval = true;
-          console.log(`[Approval] Partial approval: $${allocationTotal.toFixed(2)} of $${invoiceAmount.toFixed(2)} (remaining: $${remaining.toFixed(2)})`);
+          logger.info('Partial approval', { component: 'approval', allocationTotal, invoiceAmount, remaining });
         } else {
           return res.status(400).json({
             error: `Allocations ($${allocationTotal.toFixed(2)}) do not fully cover invoice amount ($${invoiceAmount.toFixed(2)}). $${remaining.toFixed(2)} remains unallocated.`,
@@ -4506,7 +4600,7 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
       try {
         draftDraw = await getOrCreateDraftDraw(invoice.job.id, approved_by);
       } catch (drawErr) {
-        console.error('Error getting/creating draft draw:', drawErr);
+        logger.error('Error getting/creating draft draw', { component: 'approval', error: drawErr.message });
         // Continue without draw assignment
       }
     }
@@ -4528,7 +4622,7 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
         }
 
         if (storagePath) {
-          console.log('[APPROVAL STAMP] Using PDF:', invoice.pdf_stamped_url ? 'pdf_stamped_url (progressive)' : 'pdf_url (original)');
+          logger.debug('Approval stamp source', { component: 'stamp', source: invoice.pdf_stamped_url ? 'pdf_stamped_url' : 'pdf_url' });
           const pdfBuffer = await downloadPDF(storagePath);
 
           // Get PO billing info if PO is linked
@@ -4621,7 +4715,7 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
           pdf_stamped_url = result.url;
         }
       } catch (stampErr) {
-        console.error('PDF stamping failed:', stampErr.message);
+        logger.error('PDF stamping failed', { component: 'stamp', error: stampErr.message });
         // Continue without stamping
       }
     }
@@ -4637,16 +4731,16 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
     const isNonBillable = effectiveBillableAmount === 0;
 
     if (isNonBillable) {
-      console.log(`[APPROVAL] Invoice ${invoiceId} is non-billable (absorbed) - skipping draw, marking as paid`);
+      logger.info('Invoice is non-billable - skipping draw', { component: 'approval', invoiceId });
     } else if (draftDraw) {
       try {
         // Add invoice to draw (creates draw_allocations)
         await addInvoiceToDraw(invoiceId, draftDraw.id, approved_by);
         addedToDraw = true;
 
-        console.log(`[APPROVAL] Invoice ${invoiceId} auto-added to Draw #${draftDraw.draw_number}`);
+        logger.info('Invoice auto-added to draw', { component: 'approval', invoiceId, drawNumber: draftDraw.draw_number });
       } catch (drawErr) {
-        console.error('Error adding invoice to draw:', drawErr);
+        logger.error('Error adding invoice to draw', { component: 'approval', error: drawErr.message });
         // Continue with approval even if draw add fails
       }
     }
@@ -4897,7 +4991,7 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
     // Check if this completes a split (all children in terminal state)
     if (invoice.parent_invoice_id) {
       checkSplitReconciliation(invoice.parent_invoice_id).catch(err => {
-        console.error('[RECONCILE] Check failed:', err.message);
+        logger.error('Reconcile check failed', { component: 'reconcile', error: err.message });
       });
     }
 
@@ -5026,7 +5120,7 @@ app.post('/api/invoices/:id/split', async (req, res) => {
         .single();
 
       if (insertError) {
-        console.error('Error creating split child:', insertError);
+        logger.error('Error creating split child', { component: 'split', error: insertError.message });
         return res.status(500).json({ error: `Failed to create split ${splitIndex}: ${insertError.message}` });
       }
 
@@ -5088,14 +5182,14 @@ app.post('/api/invoices/:id/split', async (req, res) => {
                 .eq('id', child.id);
 
               child.pdf_stamped_url = stampedUrl;
-              console.log(`[SPLIT] Stamped PDF for split ${splitIndex}: ${stampedUrl}`);
+              logger.debug('Stamped PDF for split', { component: 'split', splitIndex, url: stampedUrl });
             } else {
-              console.error(`[SPLIT] Failed to upload stamped PDF for split ${splitIndex}:`, uploadError);
+              logger.error('Failed to upload stamped PDF for split', { component: 'split', splitIndex, error: uploadError.message });
             }
           }
         }
       } catch (stampError) {
-        console.error(`[SPLIT] Error stamping split ${splitIndex}:`, stampError);
+        logger.error('Error stamping split', { component: 'split', splitIndex, error: stampError.message });
         // Continue even if stamping fails - invoice is still valid
       }
 
@@ -5115,7 +5209,7 @@ app.post('/api/invoices/:id/split', async (req, res) => {
       .eq('id', id);
 
     if (updateError) {
-      console.error('Error updating parent:', updateError);
+      logger.error('Error updating parent', { component: 'split', error: updateError.message });
     }
 
     // Log activity on parent
@@ -5140,7 +5234,7 @@ app.post('/api/invoices/:id/split', async (req, res) => {
       message: `Invoice split into ${childInvoices.length} parts`
     });
   } catch (err) {
-    console.error('Error splitting invoice:', err);
+    logger.error('Error splitting invoice', { component: 'split', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -5200,9 +5294,9 @@ app.post('/api/invoices/:id/unsplit', async (req, res) => {
         if (child.pdf_stamped_url) {
           try {
             await deleteByUrl(child.pdf_stamped_url);
-            console.log('[UNSPLIT] Deleted stamped PDF for child:', child.id);
+            logger.debug('Deleted stamped PDF for child', { component: 'unsplit', childId: child.id });
           } catch (err) {
-            console.error('[UNSPLIT] Failed to delete stamped PDF for child:', child.id, err.message);
+            logger.error('Failed to delete stamped PDF for child', { component: 'unsplit', childId: child.id, error: err.message });
             // Continue even if delete fails
           }
         }
@@ -5215,7 +5309,7 @@ app.post('/api/invoices/:id/unsplit', async (req, res) => {
         .in('id', childIds);
 
       if (deleteError) {
-        console.error('Error deleting children:', deleteError);
+        logger.error('Error deleting children', { component: 'unsplit', error: deleteError.message });
         return res.status(500).json({ error: 'Failed to delete child invoices' });
       }
 
@@ -5239,7 +5333,7 @@ app.post('/api/invoices/:id/unsplit', async (req, res) => {
       .eq('id', id);
 
     if (updateError) {
-      console.error('Error restoring parent:', updateError);
+      logger.error('Error restoring parent', { component: 'unsplit', error: updateError.message });
       return res.status(500).json({ error: 'Failed to restore parent invoice' });
     }
 
@@ -5263,7 +5357,7 @@ app.post('/api/invoices/:id/unsplit', async (req, res) => {
       message: `Invoice unsplit - ${childIds.length} child invoice(s) removed`
     });
   } catch (err) {
-    console.error('Error unsplitting invoice:', err);
+    logger.error('Error unsplitting invoice', { component: 'unsplit', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -5329,7 +5423,7 @@ app.get('/api/invoices/:id/family', async (req, res) => {
       children: children || []
     });
   } catch (err) {
-    console.error('Error fetching invoice family:', err);
+    logger.error('Error fetching invoice family', { component: 'invoice', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -5441,7 +5535,7 @@ app.patch('/api/invoices/:id/pay', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Error recording vendor payment:', err);
+    logger.error('Error recording vendor payment', { component: 'payment', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -5503,7 +5597,7 @@ app.patch('/api/invoices/:id/unpay', async (req, res) => {
 
     res.json(updated);
   } catch (err) {
-    console.error('Error voiding vendor payments:', err);
+    logger.error('Error voiding vendor payments', { component: 'payment', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -5538,7 +5632,7 @@ app.get('/api/invoices/:id/payments', async (req, res) => {
       } : null
     });
   } catch (err) {
-    console.error('Error fetching payment history:', err);
+    logger.error('Error fetching payment history', { component: 'payment', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -5591,26 +5685,46 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
       .select('id, amount, po_id, po_line_item_id, change_order_id')
       .eq('invoice_id', invoiceId);
 
-    // Subtract old PO amounts
+    // Subtract old PO amounts (group by PO for efficient batching)
     const oldPoAllocations = (oldAllocations || []).filter(a => a.po_id);
-    for (const alloc of oldPoAllocations) {
-      await updatePOLineItemsForAllocations(alloc.po_id, [alloc], false);
-    }
+    const oldPoIds = [...new Set(oldPoAllocations.map(a => a.po_id))];
+    await Promise.all(
+      oldPoIds.map(poId => {
+        const allocsForPo = oldPoAllocations.filter(a => a.po_id === poId);
+        return updatePOLineItemsForAllocations(poId, allocsForPo, false);
+      })
+    );
 
-    // Subtract old CO amounts
+    // Subtract old CO amounts (batched query instead of N+1)
     const oldCoAllocations = (oldAllocations || []).filter(a => a.change_order_id);
-    for (const alloc of oldCoAllocations) {
+    if (oldCoAllocations.length > 0) {
+      const coIds = [...new Set(oldCoAllocations.map(a => a.change_order_id))];
+
+      // Fetch all COs in one query
       const { data: coData } = await supabase
         .from('v2_job_change_orders')
-        .select('invoiced_amount')
-        .eq('id', alloc.change_order_id)
-        .single();
-      if (coData) {
-        const newAmount = Math.max(0, (parseFloat(coData.invoiced_amount) || 0) - (parseFloat(alloc.amount) || 0));
-        await supabase
-          .from('v2_job_change_orders')
-          .update({ invoiced_amount: newAmount })
-          .eq('id', alloc.change_order_id);
+        .select('id, invoiced_amount')
+        .in('id', coIds);
+
+      if (coData && coData.length > 0) {
+        // Calculate amount to subtract per CO
+        const subtractByCO = new Map();
+        for (const alloc of oldCoAllocations) {
+          const current = subtractByCO.get(alloc.change_order_id) || 0;
+          subtractByCO.set(alloc.change_order_id, current + (parseFloat(alloc.amount) || 0));
+        }
+
+        // Update all COs in parallel
+        await Promise.all(
+          coData.map(co => {
+            const subtractAmount = subtractByCO.get(co.id) || 0;
+            const newAmount = Math.max(0, (parseFloat(co.invoiced_amount) || 0) - subtractAmount);
+            return supabase
+              .from('v2_job_change_orders')
+              .update({ invoiced_amount: newAmount })
+              .eq('id', co.id);
+          })
+        );
       }
     }
 
@@ -5669,7 +5783,7 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
         const primaryAlloc = allocations.find(a => a.cost_code_id);
         if (primaryAlloc) {
           aiLearning.learnCostCodeMapping(invForLearning.vendor_id, primaryAlloc.cost_code_id)
-            .catch(err => console.error('[AI Learning] Error:', err.message));
+            .catch(err => logger.error('AI Learning error', { component: 'ai-learning', error: err.message }));
         }
       }
     }
@@ -6032,7 +6146,7 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
       jobChangeOrders: jobChangeOrders || []
     });
   } catch (err) {
-    console.error('Budget summary error:', err);
+    logger.error('Budget summary error', { component: 'budget', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -6193,7 +6307,7 @@ app.get('/api/jobs/:jobId/cost-code/:costCodeId/details', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Cost code details error:', err);
+    logger.error('Cost code details error', { component: 'budget', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -6236,7 +6350,7 @@ app.post('/api/jobs/:jobId/budget/:costCodeId/close', async (req, res) => {
 
     res.json({ success: true, budgetLine: data });
   } catch (err) {
-    console.error('Close budget line error:', err);
+    logger.error('Close budget line error', { component: 'budget', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -6277,7 +6391,7 @@ app.post('/api/jobs/:jobId/budget/:costCodeId/reopen', async (req, res) => {
 
     res.json({ success: true, budgetLine: data });
   } catch (err) {
-    console.error('Reopen budget line error:', err);
+    logger.error('Reopen budget line error', { component: 'budget', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -6361,7 +6475,7 @@ app.post('/api/jobs/:id/budget/import', async (req, res) => {
 
     res.json({ success: true, imported, costCodesCreated: created });
   } catch (err) {
-    console.error('Budget import error:', err);
+    logger.error('Budget import error', { component: 'budget', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -6450,7 +6564,7 @@ app.get('/api/jobs/:id/budget/export', async (req, res) => {
     await workbook.xlsx.write(res);
     res.end();
   } catch (err) {
-    console.error('Budget export error:', err);
+    logger.error('Budget export error', { component: 'budget', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -6882,7 +6996,7 @@ app.get('/api/draws/:id', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Error fetching draw:', err);
+    logger.error('Error fetching draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -6962,7 +7076,7 @@ app.get('/api/jobs/:id/approved-unbilled-invoices', async (req, res) => {
       existing_draft: draftDraw || null
     });
   } catch (err) {
-    console.error('Error fetching approved unbilled invoices:', err);
+    logger.error('Error fetching approved unbilled invoices', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7051,7 +7165,7 @@ app.post('/api/jobs/:id/auto-generate-draw', async (req, res) => {
         .insert({ draw_id: draw.id, invoice_id: invoiceId });
 
       if (linkError) {
-        console.error('Error linking invoice to draw:', linkError);
+        logger.error('Error linking invoice to draw', { component: 'draw', error: linkError.message });
         continue;
       }
 
@@ -7062,7 +7176,7 @@ app.post('/api/jobs/:id/auto-generate-draw', async (req, res) => {
         .eq('id', invoiceId);
 
       if (statusError) {
-        console.error('Error updating invoice status:', statusError);
+        logger.error('Error updating invoice status', { component: 'draw', error: statusError.message });
       }
 
       // Calculate amount (use allocation sum if available)
@@ -7081,7 +7195,7 @@ app.post('/api/jobs/:id/auto-generate-draw', async (req, res) => {
       .eq('id', draw.id);
 
     if (updateError) {
-      console.error('Error updating draw total:', updateError);
+      logger.error('Error updating draw total', { component: 'draw', error: updateError.message });
     }
 
     res.json({
@@ -7092,7 +7206,7 @@ app.post('/api/jobs/:id/auto-generate-draw', async (req, res) => {
       created_new: !use_existing_draft || !draw.id
     });
   } catch (err) {
-    console.error('Error auto-generating draw:', err);
+    logger.error('Error auto-generating draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7120,7 +7234,7 @@ app.patch('/api/draws/:id', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    console.error('Error updating draw:', err);
+    logger.error('Error updating draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7229,7 +7343,7 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
 
       // Re-stamp with unified stampInvoice (applies approval + in_draw stamps correctly)
       restampInvoice(inv.id).catch(err => {
-        console.error('Stamp failed for invoice:', inv.id, err.message);
+        logger.error('Stamp failed for invoice', { component: 'stamp', invoiceId: inv.id, error: err.message });
       });
     }
 
@@ -7374,7 +7488,7 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
           newStampedUrl = result.url;
         }
       } catch (stampErr) {
-        console.error('Re-stamping failed when removing from draw:', stampErr.message);
+        logger.error('Re-stamping failed when removing from draw', { component: 'stamp', error: stampErr.message });
       }
     }
 
@@ -7418,7 +7532,7 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
 
     res.json({ success: true, new_total: newTotal, draw_number: draw.draw_number });
   } catch (err) {
-    console.error('Error removing invoice from draw:', err);
+    logger.error('Error removing invoice from draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7456,7 +7570,7 @@ app.delete('/api/draws/:id', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Error deleting draw:', err);
+    logger.error('Error deleting draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7493,7 +7607,7 @@ app.post('/api/draws/:id/recalculate', async (req, res) => {
 
     res.json({ success: true, new_total: newTotal });
   } catch (err) {
-    console.error('Error recalculating draw:', err);
+    logger.error('Error recalculating draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7592,10 +7706,10 @@ app.patch('/api/draws/:id/submit', async (req, res) => {
       }
     }
 
-    console.log(`[DRAW] Draw #${draw.draw_number} submitted and locked`);
+    logger.info('Draw submitted and locked', { component: 'draw', drawNumber: draw.draw_number });
     res.json(draw);
   } catch (err) {
-    console.error('Error submitting draw:', err);
+    logger.error('Error submitting draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7651,10 +7765,10 @@ app.post('/api/draws/:id/unsubmit', async (req, res) => {
     // Note: We don't need to revert billed_amount on invoices because
     // the billing tracking is cumulative and useful for partial billing
 
-    console.log(`[DRAW] Draw #${draw.draw_number} unsubmitted - returned to draft`);
+    logger.info('Draw unsubmitted - returned to draft', { component: 'draw', drawNumber: draw.draw_number });
     res.json(draw);
   } catch (err) {
-    console.error('Error unsubmitting draw:', err);
+    logger.error('Error unsubmitting draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7722,7 +7836,7 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
 
     // Log funding difference if applicable
     if (Math.abs(fundingDifference) > 0.01) {
-      console.log(`Draw ${draw.draw_number} funding: billed=${billedAmount}, funded=${actualFunded}, diff=${fundingDifference} (${status})`);
+      logger.debug('Draw funding details', { component: 'draw', drawNumber: draw.draw_number, billedAmount, actualFunded, fundingDifference, status });
     }
 
     // Get draw allocations for this draw (using new v2_draw_allocations table)
@@ -7801,7 +7915,7 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
 
         // Re-stamp with unified stampInvoice (applies approval + draw + billed stamps correctly)
         restampInvoice(inv.id).catch(err => {
-          console.error('Stamp failed for invoice:', inv.id, err.message);
+          logger.error('Stamp failed for invoice', { component: 'stamp', invoiceId: inv.id, error: err.message });
         });
 
         await logActivity(inv.id, 'billed', 'System', {
@@ -7815,16 +7929,16 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
         // Check if this completes a split (all children in terminal state)
         if (inv.parent_invoice_id) {
           checkSplitReconciliation(inv.parent_invoice_id).catch(err => {
-            console.error('[RECONCILE] Check failed:', err.message);
+            logger.error('Reconcile check failed', { component: 'reconcile', error: err.message });
           });
         }
       }
     }
 
-    console.log(`[DRAW] Draw #${draw.draw_number} funded - status: ${status}, amount: $${actualFunded}`);
+    logger.info('Draw funded', { component: 'draw', drawNumber: draw.draw_number, status, amount: actualFunded });
     res.json(draw);
   } catch (err) {
-    console.error('Error funding draw:', err);
+    logger.error('Error funding draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7842,7 +7956,7 @@ app.post('/api/draws/fix-legacy-status', async (req, res) => {
     if (error) throw error;
     res.json({ message: 'Legacy statuses fixed', updated: data?.length || 0, draws: data });
   } catch (err) {
-    console.error('Error fixing legacy statuses:', err);
+    logger.error('Error fixing legacy statuses', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7866,7 +7980,7 @@ async function logCOActivity(changeOrderId, action, performedBy, details = {}) {
         details
       });
   } catch (err) {
-    console.error('Failed to log CO activity:', err);
+    logger.error('Failed to log CO activity', { component: 'change-order', error: err.message });
   }
 }
 
@@ -7891,7 +8005,7 @@ app.get('/api/jobs/:jobId/change-orders', async (req, res) => {
 
     res.json(data || []);
   } catch (err) {
-    console.error('Error fetching job change orders:', err);
+    logger.error('Error fetching job change orders', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7926,7 +8040,7 @@ app.get('/api/change-orders/:id', async (req, res) => {
 
     res.json({ ...co, activity: activity || [] });
   } catch (err) {
-    console.error('Error fetching change order:', err);
+    logger.error('Error fetching change order', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -7996,7 +8110,7 @@ app.post('/api/jobs/:jobId/change-orders', async (req, res) => {
 
     res.status(201).json(co);
   } catch (err) {
-    console.error('Error creating change order:', err);
+    logger.error('Error creating change order', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8053,7 +8167,7 @@ app.patch('/api/change-orders/:id', async (req, res) => {
     await logCOActivity(id, 'updated', updated_by, updates);
     res.json(co);
   } catch (err) {
-    console.error('Error updating change order:', err);
+    logger.error('Error updating change order', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8087,7 +8201,7 @@ app.delete('/api/change-orders/:id', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Error deleting change order:', err);
+    logger.error('Error deleting change order', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8113,7 +8227,7 @@ app.post('/api/change-orders/:id/submit', async (req, res) => {
     await logCOActivity(id, 'submitted', submitted_by);
     res.json(co);
   } catch (err) {
-    console.error('Error submitting change order:', err);
+    logger.error('Error submitting change order', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8139,7 +8253,7 @@ app.post('/api/change-orders/:id/approve', async (req, res) => {
     await logCOActivity(id, 'approved', approved_by);
     res.json(co);
   } catch (err) {
-    console.error('Error approving change order:', err);
+    logger.error('Error approving change order', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8165,7 +8279,7 @@ app.post('/api/change-orders/:id/client-approve', async (req, res) => {
     await logCOActivity(id, 'client_approved', recorded_by || 'System', { client_approved_by });
     res.json(co);
   } catch (err) {
-    console.error('Error recording client approval:', err);
+    logger.error('Error recording client approval', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8193,7 +8307,7 @@ app.post('/api/change-orders/:id/bypass-client', async (req, res) => {
     await logCOActivity(id, 'client_bypassed', bypassed_by, { bypass_reason });
     res.json(co);
   } catch (err) {
-    console.error('Error bypassing client approval:', err);
+    logger.error('Error bypassing client approval', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8219,7 +8333,7 @@ app.post('/api/change-orders/:id/reject', async (req, res) => {
     await logCOActivity(id, 'rejected', rejected_by, { rejection_reason });
     res.json(co);
   } catch (err) {
-    console.error('Error rejecting change order:', err);
+    logger.error('Error rejecting change order', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8245,7 +8359,7 @@ app.get('/api/change-orders/:id/invoices', async (req, res) => {
     if (error) throw error;
     res.json(links || []);
   } catch (err) {
-    console.error('Error fetching CO invoices:', err);
+    logger.error('Error fetching CO invoices', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8292,7 +8406,7 @@ app.post('/api/change-orders/:id/link-invoice', async (req, res) => {
 
     res.status(201).json(link);
   } catch (err) {
-    console.error('Error linking invoice to CO:', err);
+    logger.error('Error linking invoice to CO', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8314,7 +8428,7 @@ app.delete('/api/change-orders/:id/unlink-invoice/:invoiceId', async (req, res) 
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Error unlinking invoice from CO:', err);
+    logger.error('Error unlinking invoice from CO', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8337,7 +8451,7 @@ app.get('/api/change-orders/:id/cost-codes', async (req, res) => {
     if (error) throw error;
     res.json(data || []);
   } catch (err) {
-    console.error('Error fetching CO cost codes:', err);
+    logger.error('Error fetching CO cost codes', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8368,7 +8482,7 @@ app.put('/api/change-orders/:id/cost-codes', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Error saving CO cost codes:', err);
+    logger.error('Error saving CO cost codes', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8400,7 +8514,7 @@ app.get('/api/draws/:id/available-cos', async (req, res) => {
 
     res.json(available);
   } catch (err) {
-    console.error('Error fetching available COs:', err);
+    logger.error('Error fetching available COs', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8417,7 +8531,7 @@ app.get('/api/draws/:id/co-billings', async (req, res) => {
     if (error) throw error;
     res.json(billings || []);
   } catch (err) {
-    console.error('Error fetching CO billings:', err);
+    logger.error('Error fetching CO billings', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8477,7 +8591,7 @@ app.post('/api/draws/:id/add-co-billing', async (req, res) => {
     await updateDrawTotal(drawId);
     res.status(201).json(billing);
   } catch (err) {
-    console.error('Error adding CO billing:', err);
+    logger.error('Error adding CO billing', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8501,7 +8615,7 @@ app.delete('/api/draws/:id/remove-co-billing/:coId', async (req, res) => {
     await updateDrawTotal(drawId);
     res.json({ success: true });
   } catch (err) {
-    console.error('Error removing CO billing:', err);
+    logger.error('Error removing CO billing', { component: 'change-order', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8527,7 +8641,7 @@ app.get('/api/draws/:id/attachments', async (req, res) => {
     if (error) throw error;
     res.json(attachments || []);
   } catch (err) {
-    console.error('Error fetching draw attachments:', err);
+    logger.error('Error fetching draw attachments', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8587,7 +8701,7 @@ app.post('/api/draws/:id/attachments', async (req, res) => {
 
     res.json(attachment);
   } catch (err) {
-    console.error('Error adding draw attachment:', err);
+    logger.error('Error adding draw attachment', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8643,7 +8757,7 @@ app.delete('/api/draws/:id/attachments/:attachmentId', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Error deleting draw attachment:', err);
+    logger.error('Error deleting draw attachment', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8666,7 +8780,7 @@ app.get('/api/draws/:id/activity', async (req, res) => {
     if (error) throw error;
     res.json(activities || []);
   } catch (err) {
-    console.error('Error fetching draw activity:', err);
+    logger.error('Error fetching draw activity', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8704,7 +8818,7 @@ app.get('/api/jobs/:jobId/current-draw', async (req, res) => {
 
     res.json(draftDraw || null);
   } catch (err) {
-    console.error('Error getting current draw:', err);
+    logger.error('Error getting current draw', { component: 'draw', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -8731,7 +8845,7 @@ async function updateDrawTotal(drawId) {
 
     await supabase.from('v2_draws').update({ total_amount: invoiceTotal + coTotal }).eq('id', drawId);
   } catch (err) {
-    console.error('Error updating draw total:', err);
+    logger.error('Error updating draw total', { component: 'draw', error: err.message });
   }
 }
 
@@ -8779,10 +8893,10 @@ async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
     // Log activity
     await logDrawActivity(newDraw.id, 'created', createdBy, { auto_created: true });
 
-    console.log(`[DRAW] Auto-created Draw #${nextNumber} for job ${jobId}`);
+    logger.info('Auto-created draw', { component: 'draw', drawNumber: nextNumber, jobId });
     return newDraw;
   } catch (err) {
-    console.error('Error getting/creating draft draw:', err);
+    logger.error('Error getting/creating draft draw', { component: 'draw', error: err.message });
     throw err;
   }
 }
@@ -8797,7 +8911,7 @@ async function logDrawActivity(drawId, action, performedBy, details = {}) {
       details
     });
   } catch (err) {
-    console.error('Error logging draw activity:', err);
+    logger.error('Error logging draw activity', { component: 'draw', error: err.message });
   }
 }
 
@@ -8837,7 +8951,7 @@ async function addInvoiceToDraw(invoiceId, drawId, performedBy = 'System') {
         }, { onConflict: 'draw_id,invoice_id,cost_code_id' });
 
       if (allocError) {
-        console.error('Error creating draw allocation:', allocError);
+        logger.error('Error creating draw allocation', { component: 'draw', error: allocError.message });
       }
     }
 
@@ -8853,7 +8967,7 @@ async function addInvoiceToDraw(invoiceId, drawId, performedBy = 'System') {
 
     return true;
   } catch (err) {
-    console.error('Error adding invoice to draw:', err);
+    logger.error('Error adding invoice to draw', { component: 'draw', error: err.message });
     throw err;
   }
 }
@@ -8895,7 +9009,7 @@ async function removeInvoiceFromDraw(invoiceId, drawId, performedBy = 'System') 
 
     return true;
   } catch (err) {
-    console.error('Error removing invoice from draw:', err);
+    logger.error('Error removing invoice from draw', { component: 'draw', error: err.message });
     throw err;
   }
 }
@@ -9214,7 +9328,7 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
     await workbook.xlsx.write(res);
     res.end();
   } catch (err) {
-    console.error('Error exporting Excel:', err);
+    logger.error('Error exporting Excel', { component: 'export', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -9554,7 +9668,7 @@ app.get('/api/draws/:id/export/pdf', async (req, res) => {
             pages.forEach(page => mergedPdf.addPage(page));
           }
         } catch (pdfErr) {
-          console.error(`Failed to fetch PDF for invoice ${inv.id}:`, pdfErr.message);
+          logger.error('Failed to fetch PDF for invoice', { component: 'export', invoiceId: inv.id, error: pdfErr.message });
         }
       }
     }
@@ -9565,7 +9679,7 @@ app.get('/api/draws/:id/export/pdf', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=Draw_${draw.draw_number}_${draw.job?.name?.replace(/\s+/g, '_') || 'Job'}_G702_G703.pdf`);
     res.send(Buffer.from(pdfBytes));
   } catch (err) {
-    console.error('Error exporting PDF:', err);
+    logger.error('Error exporting PDF', { component: 'export', error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -9725,9 +9839,9 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
   }
 
   // Append partial approval note to invoice notes and add flag
-  console.log('[PATCH] partial_approval_note:', updates.partial_approval_note);
+  logger.debug('PATCH partial_approval_note', { partialApprovalNote: updates.partial_approval_note });
   if (updates.partial_approval_note) {
-    console.log('[PATCH] Adding partial_approval flag');
+    logger.debug('Adding partial_approval flag');
     const existingNotes = existing.notes || '';
     const separator = existingNotes ? '\n\n' : '';
     updateFields.notes = existingNotes + separator + updates.partial_approval_note;
@@ -9736,7 +9850,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     const existingFlags = existing.review_flags || [];
     if (!existingFlags.includes('partial_approval')) {
       updateFields.review_flags = [...existingFlags, 'partial_approval'];
-      console.log('[PATCH] New review_flags:', updateFields.review_flags);
+      logger.debug('New review_flags', { reviewFlags: updateFields.review_flags });
     }
   }
 
@@ -9754,7 +9868,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         await aiLearning.recordInvoiceLearning(existing, assignedJob.id, assignedJob);
       }
     } catch (learnErr) {
-      console.error('[AI Learning] Error recording learning:', learnErr.message);
+      logger.error('AI Learning error recording learning', { component: 'ai-learning', error: learnErr.message });
       // Don't fail the update if learning fails
     }
   }
@@ -9790,7 +9904,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         }
       }
     } catch (learnErr) {
-      console.error('[AI Learning] Error recording vendor learning:', learnErr.message);
+      logger.error('AI Learning error recording vendor learning', { component: 'ai-learning', error: learnErr.message });
       // Don't fail the update if learning fails
     }
   }
@@ -9915,7 +10029,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         .single();
 
       if (findError && findError.code !== 'PGRST116') { // PGRST116 = not found
-        console.error('[TRANSITION] Error finding draw link:', findError);
+        logger.error('TRANSITION Error finding draw link', { error: findError.message });
       }
 
       if (drawInvoice) {
@@ -9925,7 +10039,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
           .eq('invoice_id', invoiceId);
 
         if (deleteError) {
-          console.error('[TRANSITION] Error deleting draw link:', deleteError);
+          logger.error('TRANSITION Error deleting draw link', { error: deleteError.message });
           throw new AppError('DATABASE_ERROR', 'Failed to remove invoice from draw');
         }
 
@@ -9944,7 +10058,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
           new_status: updates.status
         });
 
-        console.log(`[TRANSITION] Removed invoice ${invoiceId} from draw ${drawInvoice.draw_id}`);
+        logger.info('Removed invoice from draw', { component: 'transition', invoiceId, drawId: drawInvoice.draw_id });
       }
     }
 
@@ -9990,7 +10104,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
           .single();
 
         if (createDrawError) {
-          console.error('Failed to create draw:', createDrawError);
+          logger.error('Failed to create draw', { error: createDrawError.message });
           throw new Error('Failed to create draw for invoice');
         }
 
@@ -10003,7 +10117,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
         .insert({ draw_id: drawId, invoice_id: invoiceId });
 
       if (linkError && !linkError.message?.includes('duplicate')) {
-        console.error('Failed to link invoice to draw:', linkError);
+        logger.error('Failed to link invoice to draw', { error: linkError.message });
       }
 
       // Update draw total
@@ -10146,7 +10260,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
           }
         }
       } catch (stampErr) {
-        console.error('PDF stamping failed during PATCH:', stampErr.message);
+        logger.error('PDF stamping failed during PATCH', { error: stampErr.message });
         // Continue without stamping
       }
     }
@@ -10256,7 +10370,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
           }
         }
       } catch (stampErr) {
-        console.error('Re-stamping failed when removing from draw:', stampErr.message);
+        logger.error('Re-stamping failed when removing from draw', { component: 'stamp', error: stampErr.message });
       }
     }
   }
@@ -10302,7 +10416,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     if (allocsToInsert.length > 0) {
       const { error: allocError } = await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
       if (allocError) {
-        console.error('Failed to save allocations:', allocError);
+        logger.error('Failed to save allocations', { error: allocError.message });
       }
     }
 
@@ -10324,7 +10438,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
   if ((hasStampAffectingChanges && !statusAlreadyStampedInline && !statusAlreadyStampedInlineApproved) || statusNeedsRestamp) {
     // Re-stamp in background using unified stampInvoice (don't block response)
     restampInvoice(invoiceId).catch(err => {
-      console.error('[RESTAMP] Background re-stamp failed:', err.message);
+      logger.error('Background re-stamp failed', { component: 'restamp', error: err.message });
     });
   }
 
@@ -10461,7 +10575,7 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
 
   // Re-stamp PDF with updated information (run in background)
   restampInvoice(invoiceId).catch(err => {
-    console.error('[RESTAMP] Background re-stamp failed:', err.message);
+    logger.error('Background re-stamp failed', { component: 'restamp', error: err.message });
   });
 
   await logActivity(invoiceId, 'full_edit', performedBy, { updates });
@@ -10604,7 +10718,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
               }
             }
           } catch (stampErr) {
-            console.error('[STAMP] Ready for approval stamp error:', stampErr.message);
+            logger.error('Ready for approval stamp error', { component: 'stamp', error: stampErr.message });
           }
         }
       }
@@ -10794,7 +10908,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
               updateData.pdf_stamped_url = pdf_stamped_url;
             }
           } catch (stampErr) {
-            console.error('PDF stamping failed:', stampErr.message);
+            logger.error('PDF stamping failed', { component: 'stamp', error: stampErr.message });
             // Continue without stamp but flag it
           }
         }
@@ -10907,7 +11021,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
               }
             }
           } catch (stampErr) {
-            console.error('[STAMP] Needs review stamp error:', stampErr.message);
+            logger.error('Needs review stamp error', { component: 'stamp', error: stampErr.message });
           }
         }
       }
@@ -10937,7 +11051,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
   // Check if this completes a split (terminal states: paid, denied)
   if (invoice.parent_invoice_id && ['paid', 'denied'].includes(new_status)) {
     checkSplitReconciliation(invoice.parent_invoice_id).catch(err => {
-      console.error('[RECONCILE] Check failed:', err.message);
+      logger.error('Reconcile check failed', { component: 'reconcile', error: err.message });
     });
   }
 
@@ -10982,7 +11096,7 @@ app.post('/api/invoices/:id/stamp', asyncHandler(async (req, res) => {
       status: statusToStamp
     });
   } catch (error) {
-    console.error('[STAMP] Error:', error);
+    logger.error('Stamp error', { component: 'stamp', error: error.message });
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to stamp invoice'
@@ -11155,12 +11269,12 @@ app.post('/api/invoices/batch-restamp', asyncHandler(async (req, res) => {
         .eq('id', invoice.id);
 
       results.stamped++;
-      console.log('[BATCH-STAMP] Stamped:', invoice.id);
+      logger.debug('Batch stamp completed', { component: 'batch-stamp', invoiceId: invoice.id });
 
     } catch (err) {
       results.failed++;
       results.errors.push({ id: invoice.id, error: err.message });
-      console.error('[BATCH-STAMP] Failed:', invoice.id, err.message);
+      logger.error('Batch stamp failed', { component: 'batch-stamp', invoiceId: invoice.id, error: err.message });
     }
   }
 
@@ -11681,7 +11795,7 @@ app.delete('/api/invoices/:id', asyncHandler(async (req, res) => {
   // Check if this completes a split (deleted is a terminal state)
   if (invoice.parent_invoice_id) {
     checkSplitReconciliation(invoice.parent_invoice_id).catch(err => {
-      console.error('[RECONCILE] Check failed:', err.message);
+      logger.error('Reconcile check failed', { component: 'reconcile', error: err.message });
     });
   }
 
@@ -12019,7 +12133,7 @@ app.post('/api/budgets/sync-totals', asyncHandler(async (req, res) => {
       .eq('cost_code_id', bl.cost_code_id);
 
     if (allocError) {
-      console.error(`Error getting allocations for budget line ${bl.id}:`, allocError);
+      logger.error('Error getting allocations for budget line', { component: 'budget', budgetLineId: bl.id, error: allocError.message });
       continue;
     }
 
@@ -12843,6 +12957,9 @@ app.get('/api/jobs/:id/integrity', asyncHandler(async (req, res) => {
   res.json(checks);
 }));
 
+// Setup Swagger API documentation (must be before catch-all)
+setupSwagger(app);
+
 // Catch-all: serve React app for any non-API routes
 app.get('*', (req, res) => {
   // Don't serve index.html for API routes
@@ -12858,11 +12975,13 @@ app.listen(port, () => {
   console.log('ROSS BUILT CONSTRUCTION MANAGEMENT');
   console.log('='.repeat(50));
   console.log(`App running at http://localhost:${port}`);
+  console.log(`API Docs: http://localhost:${port}/api/docs`);
   console.log(`PID: ${process.pid} (use 'npm run stop' to safely stop)`);
   console.log('');
   console.log('Open http://localhost:' + port + ' in your browser');
   console.log('');
   console.log('API Endpoints:');
+  console.log('  GET  /api/health                - Health check (DB, storage)');
   console.log('  GET  /api/dashboard/stats       - Owner dashboard');
   console.log('  GET  /api/invoices              - List invoices');
   console.log('  POST /api/invoices/upload       - Upload invoice PDF');

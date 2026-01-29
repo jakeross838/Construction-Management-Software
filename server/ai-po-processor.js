@@ -17,6 +17,7 @@ const pdfParse = require('pdf-parse');
 const Anthropic = require('@anthropic-ai/sdk');
 const { supabase } = require('../config');
 const standards = require('./standards');
+const logger = require('./utils/logger').child({ module: 'ai-po' });
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -87,7 +88,7 @@ async function extractTextFromPDF(pdfBuffer) {
     const data = await pdfParse(pdfBuffer);
     return data.text;
   } catch (err) {
-    console.error('[AI-PO] PDF parse error:', err.message);
+    logger.error('PDF parse error', { error: err.message });
     return null;
   }
 }
@@ -552,7 +553,7 @@ async function findOrCreateVendor(vendorData, autoCreate = true) {
     .single();
 
   if (createError) {
-    console.error('[AI-PO] Failed to create vendor:', createError.message);
+    logger.error('Failed to create vendor', { error: createError.message });
     return { vendor: null, isNew: false, confidence: 0 };
   }
 
@@ -581,11 +582,11 @@ async function suggestCostCodes(lineItems, tradeType, jobId = null) {
     .select('id, code, name, category, keywords, trade_types');
 
   if (error || !costCodes?.length) {
-    console.log('[AI-PO] No cost codes loaded');
+    logger.warn('No cost codes loaded');
     return lineItems;
   }
 
-  console.log(`[AI-PO] Loaded ${costCodes.length} cost codes, trade: ${tradeType}`);
+  logger.debug('Loaded cost codes', { count: costCodes.length, trade: tradeType });
 
   // 2. Load learned mappings for this trade (highest confidence first)
   const { data: mappings } = await supabase
@@ -594,7 +595,7 @@ async function suggestCostCodes(lineItems, tradeType, jobId = null) {
     .or(`vendor_trade.eq.${tradeType || 'general'},vendor_trade.is.null`)
     .order('confidence', { ascending: false });
 
-  console.log(`[AI-PO] Loaded ${mappings?.length || 0} learned mappings`);
+  logger.debug('Loaded learned mappings', { count: mappings?.length || 0 });
 
   // 3. For each line item, find best match
   return lineItems.map(item => {
@@ -652,7 +653,7 @@ async function suggestCostCodes(lineItems, tradeType, jobId = null) {
     }
 
     if (matchedCode) {
-      console.log(`[AI-PO] Line "${item.description}" -> ${matchedCode.code} ${matchedCode.name} (${matchReason}, ${Math.round(matchConfidence * 100)}%)`);
+      logger.debug('Cost code matched', { description: item.description, code: matchedCode.code, name: matchedCode.name, reason: matchReason, confidence: Math.round(matchConfidence * 100) });
     }
 
     return {
@@ -677,14 +678,14 @@ async function suggestCostCodes(lineItems, tradeType, jobId = null) {
  */
 async function learnCostCodeMapping(description, costCodeId, vendorTrade = null) {
   if (!description || !costCodeId) {
-    console.log('[AI-PO] Cannot learn mapping: missing description or costCodeId');
+    logger.debug('Cannot learn mapping: missing description or costCodeId');
     return false;
   }
 
   // Extract key phrase from description (first 50 chars, normalized)
   const pattern = description.toLowerCase().trim().substring(0, 50);
 
-  console.log(`[AI-PO] Learning mapping: "${pattern}" -> ${costCodeId} (trade: ${vendorTrade})`);
+  logger.info('Learning cost code mapping', { pattern, costCodeId, trade: vendorTrade });
 
   // Try to upsert mapping
   const { data: existing } = await supabase
@@ -707,10 +708,10 @@ async function learnCostCodeMapping(description, costCodeId, vendorTrade = null)
       .eq('id', existing.id);
 
     if (error) {
-      console.error('[AI-PO] Failed to update mapping:', error.message);
+      logger.error('Failed to update mapping', { error: error.message });
       return false;
     }
-    console.log(`[AI-PO] Updated existing mapping (usage: ${existing.usage_count + 1})`);
+    logger.debug('Updated existing mapping', { usageCount: existing.usage_count + 1 });
   } else {
     // Create new mapping
     const { error } = await supabase
@@ -724,10 +725,10 @@ async function learnCostCodeMapping(description, costCodeId, vendorTrade = null)
       });
 
     if (error) {
-      console.error('[AI-PO] Failed to create mapping:', error.message);
+      logger.error('Failed to create mapping', { error: error.message });
       return false;
     }
-    console.log('[AI-PO] Created new mapping');
+    logger.debug('Created new cost code mapping');
   }
 
   return true;
@@ -846,7 +847,7 @@ async function processPODocument(fileBuffer, filename, mimeType = 'application/p
 
     results.success = true;
   } catch (err) {
-    console.error('[AI-PO] Processing error:', err);
+    logger.error('PO processing error', { error: err.message });
     results.messages.push(`Error: ${err.message}`);
   }
 
@@ -913,7 +914,7 @@ async function createDraftPO(data) {
         .insert(poLineItems);
 
       if (liError) {
-        console.error('[AI-PO] Failed to create line items:', liError.message);
+        logger.error('Failed to create line items', { error: liError.message });
       }
     }
 
@@ -930,7 +931,7 @@ async function createDraftPO(data) {
 
     return { success: true, po };
   } catch (err) {
-    console.error('[AI-PO] Create PO error:', err);
+    logger.error('Create PO error', { error: err.message });
     return { success: false, error: err.message };
   }
 }

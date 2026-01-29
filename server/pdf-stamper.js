@@ -6,6 +6,7 @@
 const { PDFDocument, rgb, StandardFonts, degrees } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
+const logger = require('./utils/logger').child({ module: 'pdf-stamper' });
 
 // Brand colors (Ross Built slate/teal)
 const BRAND_COLOR = rgb(0.29, 0.4, 0.45); // #4A6672 slate teal
@@ -29,7 +30,7 @@ async function loadLogo() {
     logoImageCache = logoBytes;
     return logoBytes;
   } catch (err) {
-    console.warn('Could not load logo:', err.message);
+    logger.warn('Could not load logo', { error: err.message });
     return null;
   }
 }
@@ -90,7 +91,7 @@ async function stampApproval(pdfBuffer, stampData) {
     try {
       logoImage = await pdfDoc.embedPng(logoBytes);
     } catch (err) {
-      console.warn('Could not embed logo:', err.message);
+      logger.warn('Could not embed logo', { error: err.message });
     }
   }
 
@@ -451,7 +452,7 @@ async function stampPaid(pdfBuffer, paidDate) {
         opacity: 0.08
       });
     } catch (err) {
-      console.warn('Could not embed logo for PAID stamp:', err.message);
+      logger.warn('Could not embed logo for PAID stamp', { error: err.message });
     }
   }
 

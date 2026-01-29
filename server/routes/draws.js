@@ -6,8 +6,10 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const logger = require('../utils/logger');
 const { logActivity, checkSplitReconciliation, stampInvoice } = require('../services/invoiceHelpers');
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
+const { validate, schemas } = require('../middleware/validate');
 // Storage and pdf-stamper functions removed - using unified stampInvoice instead
 
 // Helper: Log draw activity
@@ -20,7 +22,7 @@ async function logDrawActivity(drawId, action, performedBy, details = {}) {
       details
     });
   } catch (err) {
-    console.error('Failed to log draw activity:', err);
+    logger.error('Failed to log draw activity', { component: 'Draw', drawId, error: err.message });
   }
 }
 
@@ -204,7 +206,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // Get single draw with G702/G703 data
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
 
     const { data: draw, error: drawError } = await supabase
@@ -240,7 +242,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
     // Log if stored differs from calculated (data integrity check)
     if (Math.abs(parseFloat(draw.total_amount || 0) - calculatedTotalAmount) > 0.01) {
-      console.warn(`[DRAW ${drawId}] Stored total (${draw.total_amount}) differs from calculated (${calculatedTotalAmount})`);
+      logger.warn('Stored total differs from calculated', { component: 'Draw', drawId, storedTotal: draw.total_amount, calculatedTotal: calculatedTotalAmount });
     }
 
     // Get invoices in this draw
@@ -499,15 +501,13 @@ router.get('/:id', asyncHandler(async (req, res) => {
     // DRW-INT-03: Validate allocations match source invoices
     const allocationMismatches = await validateDrawAllocations(drawId);
     if (allocationMismatches.length > 0) {
-      console.warn(`[DRAW ${drawId}] Found ${allocationMismatches.length} allocation mismatches:`,
-        allocationMismatches.slice(0, 3)); // Log first 3
+      logger.warn('Found allocation mismatches', { component: 'Draw', drawId, count: allocationMismatches.length, sample: allocationMismatches.slice(0, 3) });
     }
 
     // PO-INT-04: Detect CO billing overlap
     const coBillingOverlap = await detectCOBillingOverlap(drawId, draw.job_id);
     if (coBillingOverlap.length > 0) {
-      console.warn(`[DRAW ${drawId}] Found ${coBillingOverlap.length} CO billing overlaps:`,
-        coBillingOverlap);
+      logger.warn('Found CO billing overlaps', { component: 'Draw', drawId, count: coBillingOverlap.length, overlaps: coBillingOverlap });
     }
 
     res.json({
@@ -572,7 +572,7 @@ router.get('/:id/activity', asyncHandler(async (req, res) => {
 // ============================================================
 
 // Update draw
-router.patch('/:id', asyncHandler(async (req, res) => {
+router.patch('/:id', validate(schemas.drawUpdate), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { draw_number, period_end, notes, g702_overrides } = req.body;
 
@@ -731,7 +731,7 @@ router.post('/:id/add-invoices', validateRequest({
       try {
         await stampInvoice(inv.id, { force: true });
       } catch (stampErr) {
-        console.error('IN DRAW stamp failed:', inv.id, stampErr.message);
+        logger.error('IN DRAW stamp failed', { component: 'Draw', invoiceId: inv.id, error: stampErr.message });
       }
 
       const cappedBilledTotal = isCredit
@@ -791,7 +791,7 @@ router.post('/:id/add-invoices', validateRequest({
           } else {
             // Budget line must exist before invoicing
             // Log warning but don't fail the operation
-            console.warn(`[DRAW] No budget line found for job=${inv.job_id} cost_code=${alloc.cost_code_id}. Skipping billed_amount update.`);
+            logger.warn('No budget line found', { component: 'Draw', jobId: inv.job_id, costCodeId: alloc.cost_code_id });
             // Collect for response so user knows
             if (!missingBudgetLines) missingBudgetLines = [];
             missingBudgetLines.push({
@@ -825,7 +825,7 @@ router.post('/:id/add-invoices', validateRequest({
     });
 
     } catch (err) {
-      console.error('[ADD-TO-DRAW] Error:', err.message);
+      logger.error('Add to draw error', { component: 'ADD-TO-DRAW', drawId, error: err.message });
 
       // Rollback: Remove all inserted draw_invoices and draw_allocations
       if (processedInvoices.length > 0 || invoice_ids.length > 0) {
@@ -840,9 +840,9 @@ router.post('/:id/add-invoices', validateRequest({
             .eq('draw_id', drawId)
             .in('invoice_id', invoice_ids);
 
-          console.log('[ADD-TO-DRAW] Rolled back draw_invoices and draw_allocations');
+          logger.info('Rolled back draw_invoices and draw_allocations', { component: 'ADD-TO-DRAW', drawId });
         } catch (rollbackErr) {
-          console.error('[ADD-TO-DRAW] Rollback failed:', rollbackErr.message);
+          logger.error('Rollback failed', { component: 'ADD-TO-DRAW', drawId, error: rollbackErr.message });
         }
       }
 
@@ -910,7 +910,7 @@ router.post('/:id/remove-invoice', asyncHandler(async (req, res) => {
             .eq('id', budgetLine.id);
         } else {
           // This shouldn't happen if add-invoices worked correctly
-          console.warn(`[DRAW] No budget line found when removing invoice allocation job=${invoice.job.id} cost_code=${alloc.cost_code_id}`);
+          logger.warn('No budget line found when removing invoice allocation', { component: 'Draw', jobId: invoice.job.id, costCodeId: alloc.cost_code_id });
         }
       }
     }
@@ -925,7 +925,7 @@ router.post('/:id/remove-invoice', asyncHandler(async (req, res) => {
     try {
       await stampInvoice(invoice_id, { force: true });
     } catch (stampErr) {
-      console.error('Re-stamping failed:', stampErr.message);
+      logger.error('Re-stamping failed', { component: 'Draw', invoiceId: invoice_id, error: stampErr.message });
     }
     await logActivity(invoice_id, 'removed_from_draw', performed_by, { draw_number: draw.draw_number });
     await logDrawActivity(drawId, 'invoice_removed', performed_by, { invoice_id, invoice_number: invoice?.invoice_number });
@@ -1249,7 +1249,7 @@ router.patch('/:id/fund', asyncHandler(async (req, res) => {
               const newBudgetPaid = (parseFloat(budgetLine.paid_amount) || 0) + parseFloat(alloc.amount || 0);
               await supabase.from('v2_budget_lines').update({ paid_amount: newBudgetPaid }).eq('id', budgetLine.id);
             } else {
-              console.warn(`[DRAW FUND] No budget line found for job=${inv.job_id} cost_code=${alloc.cost_code_id}. Skipping paid_amount update.`);
+              logger.warn('No budget line found for paid_amount update', { component: 'DRAW FUND', jobId: inv.job_id, costCodeId: alloc.cost_code_id });
             }
           }
         }
@@ -1259,21 +1259,21 @@ router.patch('/:id/fund', asyncHandler(async (req, res) => {
         if (isFullyBilled) invoiceUpdate.fully_billed_at = now;
         const { error: invUpdateErr } = await supabase.from('v2_invoices').update(invoiceUpdate).eq('id', inv.id);
         if (invUpdateErr) {
-          console.error('Invoice update failed:', inv.id, invUpdateErr);
+          logger.error('Invoice update failed', { component: 'FUND', invoiceId: inv.id, error: invUpdateErr.message });
         } else {
-          console.log('[FUND] Invoice', inv.id.substring(0,8), 'updated to paid, amount:', newPaidAmount);
+          logger.info('Invoice updated to paid', { component: 'FUND', invoiceId: inv.id.substring(0,8), paidAmount: newPaidAmount });
         }
 
         // Stamp with full chain (approval + in_draw + paid)
         try {
           await stampInvoice(inv.id, { force: true });
         } catch (stampErr) {
-          console.error('PAID stamp failed:', inv.id, stampErr.message);
+          logger.error('PAID stamp failed', { component: 'FUND', invoiceId: inv.id, error: stampErr.message });
         }
         await logActivity(inv.id, 'paid', 'System', { draw_id: drawId, amount_paid_this_draw: billedThisDraw });
 
         if (inv.parent_invoice_id) {
-          checkSplitReconciliation(inv.parent_invoice_id).catch(console.error);
+          checkSplitReconciliation(inv.parent_invoice_id).catch(err => logger.error('Split reconciliation failed', { error: err.message }));
         }
       }
     }

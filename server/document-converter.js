@@ -14,6 +14,7 @@ const mammoth = require('mammoth');
 const XLSX = require('xlsx');
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
+const logger = require('./utils/logger').child({ module: 'converter' });
 
 // Supported file types and their categories
 const FILE_TYPES = {
@@ -82,7 +83,7 @@ async function processImageForVision(buffer, filename) {
   try {
     // Get image metadata
     const metadata = await sharp(buffer).metadata();
-    console.log(`[Converter] Image: ${filename}, Format: ${metadata.format}, Size: ${metadata.width}x${metadata.height}`);
+    logger.debug('Processing image', { filename, format: metadata.format, width: metadata.width, height: metadata.height });
 
     let processedBuffer = buffer;
     let outputFormat = metadata.format;
@@ -90,7 +91,7 @@ async function processImageForVision(buffer, filename) {
 
     // Convert HEIC/HEIF to JPEG (not supported by Claude directly)
     if (['heic', 'heif'].includes(metadata.format)) {
-      console.log('[Converter] Converting HEIC/HEIF to JPEG...');
+      logger.debug('Converting HEIC/HEIF to JPEG');
       processedBuffer = await sharp(buffer).jpeg({ quality: 95 }).toBuffer();
       outputFormat = 'jpeg';
       mediaType = 'image/jpeg';
@@ -98,7 +99,7 @@ async function processImageForVision(buffer, filename) {
 
     // Convert BMP/TIFF to PNG for better compatibility
     if (['bmp', 'tiff', 'tif'].includes(metadata.format)) {
-      console.log(`[Converter] Converting ${metadata.format} to PNG...`);
+      logger.debug('Converting to PNG', { format: metadata.format });
       processedBuffer = await sharp(buffer).png().toBuffer();
       outputFormat = 'png';
       mediaType = 'image/png';
@@ -107,7 +108,7 @@ async function processImageForVision(buffer, filename) {
     // Resize if image is very large (> 4000px in either dimension)
     // Claude handles up to ~20MB but smaller is faster
     if (metadata.width > 4000 || metadata.height > 4000) {
-      console.log('[Converter] Resizing large image...');
+      logger.debug('Resizing large image');
       processedBuffer = await sharp(processedBuffer)
         .resize(4000, 4000, { fit: 'inside', withoutEnlargement: true })
         .toBuffer();
@@ -115,7 +116,7 @@ async function processImageForVision(buffer, filename) {
 
     // Check final size - if still > 10MB, compress more
     if (processedBuffer.length > 10 * 1024 * 1024) {
-      console.log('[Converter] Compressing large image...');
+      logger.debug('Compressing large image');
       processedBuffer = await sharp(processedBuffer)
         .jpeg({ quality: 80 })
         .toBuffer();
@@ -131,7 +132,7 @@ async function processImageForVision(buffer, filename) {
       height: metadata.height
     };
   } catch (err) {
-    console.error('[Converter] Image processing error:', err.message);
+    logger.error('Image processing error', { error: err.message });
     throw new Error(`Failed to process image: ${err.message}`);
   }
 }
@@ -189,7 +190,7 @@ async function convertImageToPDF(imageBuffer, filename) {
     const pdfBytes = await pdfDoc.save();
     return Buffer.from(pdfBytes);
   } catch (err) {
-    console.error('[Converter] Image to PDF conversion error:', err.message);
+    logger.error('Image to PDF conversion error', { error: err.message });
     throw new Error(`Failed to convert image to PDF: ${err.message}`);
   }
 }
@@ -202,13 +203,13 @@ async function convertImageToPDF(imageBuffer, filename) {
  */
 async function extractTextFromWord(buffer, filename) {
   try {
-    console.log(`[Converter] Extracting text from Word doc: ${filename}`);
+    logger.debug('Extracting text from Word doc', { filename });
 
     // mammoth extracts text and HTML from .docx files
     const result = await mammoth.extractRawText({ buffer });
     const htmlResult = await mammoth.convertToHtml({ buffer });
 
-    console.log(`[Converter] Extracted ${result.value.length} characters from Word doc`);
+    logger.debug('Word extraction complete', { filename, charCount: result.value.length });
 
     return {
       text: result.value,
@@ -216,7 +217,7 @@ async function extractTextFromWord(buffer, filename) {
       messages: result.messages.concat(htmlResult.messages)
     };
   } catch (err) {
-    console.error('[Converter] Word extraction error:', err.message);
+    logger.error('Word extraction error', { error: err.message });
     throw new Error(`Failed to extract text from Word document: ${err.message}`);
   }
 }
@@ -229,7 +230,7 @@ async function extractTextFromWord(buffer, filename) {
  */
 async function extractTextFromExcel(buffer, filename) {
   try {
-    console.log(`[Converter] Extracting data from Excel: ${filename}`);
+    logger.debug('Extracting data from Excel', { filename });
 
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheets = [];
@@ -253,7 +254,7 @@ async function extractTextFromExcel(buffer, filename) {
       fullText += `\n=== Sheet: ${sheetName} ===\n${textData}\n`;
     }
 
-    console.log(`[Converter] Extracted ${sheets.length} sheets, ${fullText.length} characters`);
+    logger.debug('Excel extraction complete', { sheetCount: sheets.length, charCount: fullText.length });
 
     return {
       text: fullText.trim(),
@@ -261,7 +262,7 @@ async function extractTextFromExcel(buffer, filename) {
       sheetCount: sheets.length
     };
   } catch (err) {
-    console.error('[Converter] Excel extraction error:', err.message);
+    logger.error('Excel extraction error', { error: err.message });
     throw new Error(`Failed to extract data from Excel: ${err.message}`);
   }
 }
@@ -276,7 +277,7 @@ async function extractTextFromExcel(buffer, filename) {
 async function convertDocument(buffer, filename, mimetype) {
   const fileType = detectFileType(filename, mimetype);
 
-  console.log(`[Converter] Processing ${filename} (${mimetype}) -> Type: ${fileType}`);
+  logger.info('Processing document', { filename, mimetype, fileType });
 
   const result = {
     originalFilename: filename,

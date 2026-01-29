@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { supabase } = require('../../config');
+const logger = require('../utils/logger');
 const { generateProposalPDF } = require('../proposal-generator');
 
 // Async handler wrapper
@@ -34,7 +35,7 @@ router.get('/', asyncHandler(async (req, res) => {
   const { data, error } = await query;
 
   if (error) {
-    console.error('Error fetching proposals:', error);
+    logger.error('Error fetching proposals', { component: 'Proposal', error: error.message });
     return res.status(500).json({ error: error.message });
   }
 
@@ -63,7 +64,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .single();
 
   if (error) {
-    console.error('Error fetching proposal:', error);
+    logger.error('Error fetching proposal', { component: 'Proposal', id, error: error.message });
     return res.status(404).json({ error: 'Proposal not found' });
   }
 
@@ -126,7 +127,7 @@ router.post('/', asyncHandler(async (req, res) => {
     .single();
 
   if (error) {
-    console.error('Error creating proposal:', error);
+    logger.error('Error creating proposal', { component: 'Proposal', error: error.message });
     return res.status(500).json({ error: error.message });
   }
 
@@ -237,7 +238,7 @@ router.post('/:id/generate', asyncHandler(async (req, res) => {
         upsert: true
       });
     } else {
-      console.error('Error uploading PDF:', uploadError);
+      logger.error('Error uploading PDF', { component: 'Proposal', id, error: uploadError.message });
       return res.status(500).json({ error: 'Failed to upload PDF' });
     }
   }
@@ -257,7 +258,7 @@ router.post('/:id/generate', asyncHandler(async (req, res) => {
     .single();
 
   if (updateError) {
-    console.error('Error updating proposal:', updateError);
+    logger.error('Error updating proposal', { component: 'Proposal', id, error: updateError.message });
   }
 
   res.json({
@@ -292,7 +293,7 @@ router.post('/:id/share', asyncHandler(async (req, res) => {
     .single();
 
   if (error) {
-    console.error('Error creating share link:', error);
+    logger.error('Error creating share link', { component: 'Proposal', id, error: error.message });
     return res.status(500).json({ error: error.message });
   }
 
@@ -327,7 +328,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .single();
 
   if (error) {
-    console.error('Error updating proposal:', error);
+    logger.error('Error updating proposal', { component: 'Proposal', id, error: error.message });
     return res.status(500).json({ error: error.message });
   }
 
@@ -350,7 +351,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     .eq('id', id);
 
   if (error) {
-    console.error('Error deleting proposal:', error);
+    logger.error('Error deleting proposal', { component: 'Proposal', id, error: error.message });
     return res.status(500).json({ error: error.message });
   }
 
@@ -398,7 +399,7 @@ router.get('/public/:token', asyncHandler(async (req, res) => {
     })
     .eq('id', proposal.id)
     .then(() => {})
-    .catch(err => console.warn('Failed to update view count:', err));
+    .catch(err => logger.warn('Failed to update view count', { component: 'Proposal', proposalId: proposal.id, error: err.message }));
 
   res.json(proposal);
 }));
@@ -457,7 +458,7 @@ router.post('/public/:token/accept', asyncHandler(async (req, res) => {
     .eq('id', proposal.id);
 
   if (updateError) {
-    console.error('Error updating proposal:', updateError);
+    logger.error('Error updating proposal', { component: 'Proposal', proposalId: proposal.id, error: updateError.message });
     return res.status(500).json({ error: 'Failed to accept proposal' });
   }
 
@@ -472,7 +473,7 @@ router.post('/public/:token/accept', asyncHandler(async (req, res) => {
     .eq('id', proposal.estimate_id);
 
   if (estError) {
-    console.error('Error updating estimate status:', estError);
+    logger.error('Error updating estimate status', { component: 'Proposal', estimateId: proposal.estimate_id, error: estError.message });
     // Don't fail - proposal was accepted, estimate update is secondary
   }
 
@@ -490,7 +491,7 @@ router.post('/public/:token/accept', asyncHandler(async (req, res) => {
         via: 'secure_link'
       }
     })
-    .catch(err => console.warn('Failed to log activity:', err));
+    .catch(err => logger.warn('Failed to log activity', { component: 'Proposal', error: err.message }));
 
   res.json({
     success: true,

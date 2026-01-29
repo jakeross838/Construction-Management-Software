@@ -4,6 +4,7 @@
  */
 
 const { supabase, SSE_HEARTBEAT_MS } = require('../config');
+const logger = require('./utils/logger');
 
 // Store active subscriptions
 const subscriptions = new Map();
@@ -39,7 +40,7 @@ function sseHandler(req, res) {
     lastPing: new Date()
   });
 
-  console.log(`[SSE] Client connected: ${clientId} (Total: ${clients.size})`);
+  logger.info('SSE client connected', { component: 'sse', clientId, totalClients: clients.size });
 
   // Send initial connection event
   sendToClient(clientId, 'connected', { clientId, timestamp: new Date().toISOString() });
@@ -56,7 +57,7 @@ function sseHandler(req, res) {
   req.on('close', () => {
     clearInterval(heartbeat);
     clients.delete(clientId);
-    console.log(`[SSE] Client disconnected: ${clientId} (Total: ${clients.size})`);
+    logger.info('SSE client disconnected', { component: 'sse', clientId, totalClients: clients.size });
   });
 }
 
@@ -81,7 +82,7 @@ function broadcast(event, data) {
       client.res.write(`event: ${event}\n`);
       client.res.write(`data: ${payload}\n\n`);
     } catch (err) {
-      console.error(`[SSE] Failed to send to ${clientId}:`, err.message);
+      logger.error('Failed to send SSE event', { component: 'sse', clientId, error: err.message });
       clients.delete(clientId);
     }
   });
@@ -98,7 +99,7 @@ function broadcastExcept(event, data, excludeClientId) {
       client.res.write(`event: ${event}\n`);
       client.res.write(`data: ${payload}\n\n`);
     } catch (err) {
-      console.error(`[SSE] Failed to send to ${clientId}:`, err.message);
+      logger.error('Failed to send SSE event', { component: 'sse', clientId, error: err.message });
       clients.delete(clientId);
     }
   });
@@ -112,7 +113,7 @@ function broadcastExcept(event, data, excludeClientId) {
  * Initialize Supabase Realtime subscriptions
  */
 function initializeRealtimeSubscriptions() {
-  console.log('[Realtime] Initializing Supabase subscriptions...');
+  logger.info('Initializing Supabase realtime subscriptions', { component: 'realtime' });
 
   // Subscribe to invoice changes
   const invoiceChannel = supabase
@@ -127,7 +128,7 @@ function initializeRealtimeSubscriptions() {
       (payload) => handleInvoiceChange(payload)
     )
     .subscribe((status) => {
-      console.log(`[Realtime] Invoice subscription status: ${status}`);
+      logger.info('Invoice subscription status', { component: 'realtime', status });
     });
 
   subscriptions.set('invoices', invoiceChannel);
@@ -145,7 +146,7 @@ function initializeRealtimeSubscriptions() {
       (payload) => handleActivityLog(payload)
     )
     .subscribe((status) => {
-      console.log(`[Realtime] Activity subscription status: ${status}`);
+      logger.info('Activity subscription status', { component: 'realtime', status });
     });
 
   subscriptions.set('activity', activityChannel);
@@ -163,7 +164,7 @@ function initializeRealtimeSubscriptions() {
       (payload) => handleDrawChange(payload)
     )
     .subscribe((status) => {
-      console.log(`[Realtime] Draw subscription status: ${status}`);
+      logger.info('Draw subscription status', { component: 'realtime', status });
     });
 
   subscriptions.set('draws', drawChannel);
@@ -181,12 +182,12 @@ function initializeRealtimeSubscriptions() {
       (payload) => handleLockChange(payload)
     )
     .subscribe((status) => {
-      console.log(`[Realtime] Lock subscription status: ${status}`);
+      logger.info('Lock subscription status', { component: 'realtime', status });
     });
 
   subscriptions.set('locks', lockChannel);
 
-  console.log('[Realtime] All subscriptions initialized');
+  logger.info('All realtime subscriptions initialized', { component: 'realtime' });
 }
 
 /**
@@ -195,7 +196,7 @@ function initializeRealtimeSubscriptions() {
 function handleInvoiceChange(payload) {
   const { eventType, new: newRecord, old: oldRecord } = payload;
 
-  console.log(`[Realtime] Invoice ${eventType}:`, newRecord?.id || oldRecord?.id);
+  logger.debug('Invoice change event', { component: 'realtime', eventType, invoiceId: newRecord?.id || oldRecord?.id });
 
   broadcast('invoice_change', {
     type: eventType,
@@ -211,7 +212,7 @@ function handleInvoiceChange(payload) {
 function handleActivityLog(payload) {
   const { new: activity } = payload;
 
-  console.log(`[Realtime] Activity logged: ${activity.action} on ${activity.invoice_id}`);
+  logger.debug('Activity logged', { component: 'realtime', action: activity.action, invoiceId: activity.invoice_id });
 
   broadcast('activity_log', {
     activity,
@@ -225,7 +226,7 @@ function handleActivityLog(payload) {
 function handleDrawChange(payload) {
   const { eventType, new: newRecord, old: oldRecord } = payload;
 
-  console.log(`[Realtime] Draw ${eventType}:`, newRecord?.id || oldRecord?.id);
+  logger.debug('Draw change event', { component: 'realtime', eventType, drawId: newRecord?.id || oldRecord?.id });
 
   broadcast('draw_change', {
     type: eventType,
@@ -242,7 +243,7 @@ function handleLockChange(payload) {
   const { eventType, new: newRecord, old: oldRecord } = payload;
   const lock = newRecord || oldRecord;
 
-  console.log(`[Realtime] Lock ${eventType}: ${lock.entity_type}/${lock.entity_id}`);
+  logger.debug('Lock change event', { component: 'realtime', eventType, entityType: lock.entity_type, entityId: lock.entity_id });
 
   broadcast('lock_change', {
     type: eventType,
@@ -302,14 +303,14 @@ function broadcastNotification(type, message, details = {}) {
  * Cleanup all subscriptions (for graceful shutdown)
  */
 async function cleanup() {
-  console.log('[Realtime] Cleaning up subscriptions...');
+  logger.info('Cleaning up realtime subscriptions', { component: 'realtime' });
 
   for (const [name, channel] of subscriptions) {
     try {
       await supabase.removeChannel(channel);
-      console.log(`[Realtime] Removed channel: ${name}`);
+      logger.debug('Removed channel', { component: 'realtime', channel: name });
     } catch (err) {
-      console.error(`[Realtime] Failed to remove channel ${name}:`, err.message);
+      logger.error('Failed to remove channel', { component: 'realtime', channel: name, error: err.message });
     }
   }
 
@@ -325,7 +326,7 @@ async function cleanup() {
   });
   clients.clear();
 
-  console.log('[Realtime] Cleanup complete');
+  logger.info('Realtime cleanup complete', { component: 'realtime' });
 }
 
 /**
