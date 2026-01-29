@@ -57,19 +57,23 @@ export function useBudgetSummary(jobId?: string) {
     queryKey: ['budget-summary', jobId],
     queryFn: async (): Promise<BudgetCategory[]> => {
       if (!jobId) return [];
-      const data = await api<{ budget_lines: any[] }>(`/jobs/${jobId}/budget`);
+      // Use budget-summary endpoint which calculates actuals from invoices/POs
+      const data = await api<{ lines: any[]; totals: any }>(`/jobs/${jobId}/budget-summary`);
 
-      // Transform budget_lines to BudgetCategory format
-      return (data.budget_lines || []).map((bl: any) => ({
-        code: bl.cost_code?.code || '',
-        name: bl.cost_code?.name || 'Unknown',
-        category: bl.cost_code?.category || '',
-        cost_code_id: bl.cost_code_id,
-        budget: bl.budgeted_amount || 0,
-        committed: bl.committed_amount || 0,
-        actual: bl.billed_amount || 0,
-        forecast: Math.max(bl.committed_amount || 0, bl.billed_amount || 0),
-      }));
+      // Transform lines to BudgetCategory format
+      // API returns: costCode, description, category, budgeted, committed, billed, projected, variance
+      return (data.lines || [])
+        .filter((line: any) => line.budgeted > 0 || line.committed > 0 || line.billed > 0)
+        .map((line: any) => ({
+          code: line.costCode || '',
+          name: line.description || 'Unknown',
+          category: line.category || '',
+          cost_code_id: line.costCodeId,
+          budget: line.budgeted || 0,
+          committed: line.committed || 0,
+          actual: line.billed || 0,
+          forecast: line.projected || Math.max(line.committed || 0, line.billed || 0),
+        }));
     },
     enabled: !!jobId,
   });
