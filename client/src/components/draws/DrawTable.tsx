@@ -34,7 +34,7 @@ export function DrawTable({ draws, selectedDrawId, onSelectDraw }: DrawTableProp
           <TableRow>
             <TableHead className="w-24">Draw #</TableHead>
             <TableHead>Job</TableHead>
-            <TableHead>Period</TableHead>
+            <TableHead>Period End</TableHead>
             <TableHead className="text-right">Payment Due</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Funded</TableHead>
@@ -55,12 +55,12 @@ export function DrawTable({ draws, selectedDrawId, onSelectDraw }: DrawTableProp
                 onClick={() => onSelectDraw(draw)}
               >
                 <TableCell className="font-medium">Draw #{draw.draw_number}</TableCell>
-                <TableCell className="text-muted-foreground">{draw.job_name || '—'}</TableCell>
+                <TableCell className="text-muted-foreground">{draw.job?.name || draw.job_name || '—'}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {formatDate(draw.period_start)} – {formatDate(draw.period_end)}
+                  {draw.period_end ? formatDate(draw.period_end) : '—'}
                 </TableCell>
                 <TableCell className="text-right font-medium">
-                  {formatCurrency(draw.current_payment_due || 0)}
+                  {formatCurrency(draw.total_amount || 0)}
                 </TableCell>
                 <TableCell>
                   <Badge 
