@@ -125,10 +125,13 @@ export function BidPackageDetailPanel({
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {bidPackage.package_number} • {bidPackage.trade_category}
+                {bidPackage.package_number && `${bidPackage.package_number} • `}
+                {bidPackage.trade_category || (bidPackage as any).trade_type || 'General'}
               </p>
-              {bidPackage.job_name && (
-                <p className="text-sm text-muted-foreground">{bidPackage.job_name}</p>
+              {(bidPackage.job_name || (bidPackage as any).job?.name) && (
+                <p className="text-sm text-muted-foreground">
+                  {bidPackage.job_name || (bidPackage as any).job?.name}
+                </p>
               )}
             </div>
             <div className="flex items-center gap-1">
@@ -144,23 +147,51 @@ export function BidPackageDetailPanel({
 
         <ScrollArea className="flex-1">
           <CardContent className="space-y-6">
+            {/* Vendor & Amount Info (for v2_bids) */}
+            {(bidPackage as any).vendor && (
+              <Card className="border-blue-200 bg-blue-50/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Vendor</p>
+                      <p className="font-semibold text-lg">{(bidPackage as any).vendor.name}</p>
+                    </div>
+                    {(bidPackage as any).bid_amount && (
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Bid Amount</p>
+                        <p className="font-bold text-2xl text-green-600">
+                          {formatCurrency((bidPackage as any).bid_amount)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Key Info */}
             <div className="grid grid-cols-3 gap-4">
               <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-xs text-muted-foreground">Due Date</p>
                 <p className="font-semibold">
-                  {format(new Date(bidPackage.due_date), 'MMM d, yyyy')}
+                  {bidPackage.due_date
+                    ? format(new Date(bidPackage.due_date), 'MMM d, yyyy')
+                    : '—'}
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Square Footage</p>
+                <p className="text-xs text-muted-foreground">Received Date</p>
                 <p className="font-semibold">
-                  {bidPackage.square_footage?.toLocaleString() || '—'} SF
+                  {(bidPackage as any).received_date
+                    ? format(new Date((bidPackage as any).received_date), 'MMM d, yyyy')
+                    : (bidPackage as any).created_at
+                    ? format(new Date((bidPackage as any).created_at), 'MMM d, yyyy')
+                    : '—'}
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Bids Received</p>
-                <p className="font-semibold">{bids.length}</p>
+                <p className="text-xs text-muted-foreground">Documents</p>
+                <p className="font-semibold">{(bidPackage as any).documents?.length || documents.length || 0}</p>
               </div>
             </div>
 

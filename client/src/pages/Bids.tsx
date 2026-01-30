@@ -42,7 +42,7 @@ import {
   TRADE_CATEGORIES,
 } from '@/hooks/useBidPackages';
 import { BidPackageFormDialog } from '@/components/bids/BidPackageFormDialog';
-import { BidPackageDetailPanel } from '@/components/bids/BidPackageDetailPanel';
+import { BidPackageDetailDialog } from '@/components/bids/BidPackageDetailDialog';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -95,7 +95,8 @@ const Bids = () => {
         isBefore(new Date(p.due_date), nextWeek) &&
         isAfter(new Date(p.due_date), today)
     );
-    const totalBids = packages.reduce((sum, p) => sum + (p.bid_count || 0), 0);
+    // Count items that have a bid_amount as actual bids received
+    const totalBids = packages.filter((p) => p.bid_amount && p.bid_amount > 0).length;
 
     return {
       active: activePackages.length,
@@ -112,14 +113,7 @@ const Bids = () => {
 
   return (
     <AppLayout>
-      <div className="flex h-full">
-        {/* Main Content */}
-        <div
-          className={cn(
-            'flex-1 space-y-6 animate-fade-in transition-all duration-300',
-            selectedPackage ? 'pr-4' : ''
-          )}
-        >
+      <div className="space-y-6 animate-fade-in">
           {/* Header */}
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
@@ -369,19 +363,15 @@ const Bids = () => {
               )}
             </CardContent>
           </Card>
-        </div>
-
-        {/* Detail Panel */}
-        {selectedPackage && (
-          <div className="w-[500px] flex-shrink-0 border-l pl-4">
-            <BidPackageDetailPanel
-              bidPackage={selectedPackage}
-              onClose={() => setSelectedPackage(null)}
-              onEdit={() => handleEdit(selectedPackage)}
-            />
-          </div>
-        )}
       </div>
+
+      {/* Detail Dialog */}
+      <BidPackageDetailDialog
+        bidPackage={selectedPackage}
+        open={!!selectedPackage}
+        onOpenChange={(open) => !open && setSelectedPackage(null)}
+        onEdit={() => selectedPackage && handleEdit(selectedPackage)}
+      />
 
       {/* Form Dialog */}
       <BidPackageFormDialog
