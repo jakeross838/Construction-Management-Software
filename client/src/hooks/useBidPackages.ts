@@ -19,27 +19,33 @@ async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
 export interface BidPackage {
   id: string;
   job_id: string | null;
-  package_number: string;
+  package_number?: string;
   title: string;
   description: string | null;
-  trade_category: string;
+  trade_category?: string;
+  trade_type?: string; // from v2_bids
   scope_of_work: string | null;
   issue_date: string | null;
-  due_date: string;
+  due_date: string | null;
+  received_date?: string | null; // from v2_bids
   site_visit_date: string | null;
   site_visit_time: string | null;
-  status: 'draft' | 'issued' | 'receiving' | 'evaluating' | 'awarded' | 'cancelled';
+  status: 'draft' | 'issued' | 'receiving' | 'evaluating' | 'awarded' | 'cancelled' | 'received' | 'in_review' | 'accepted' | 'rejected' | 'withdrawn';
   square_footage: number | null;
   specs_summary: string | null;
   special_requirements: string | null;
   awarded_vendor_id: string | null;
   awarded_at: string | null;
   awarded_amount: number | null;
+  bid_amount?: number | null; // from v2_bids
   created_at: string;
   updated_at: string;
   // Joined fields
   job_name?: string;
+  job?: { id: string; name: string }; // from v2_bids
   awarded_vendor_name?: string;
+  vendor?: { id: string; name: string }; // from v2_bids
+  vendor_id?: string; // from v2_bids
   invite_count?: number;
   bid_count?: number;
 }
@@ -139,6 +145,12 @@ export const BID_PACKAGE_STATUS_OPTIONS = [
   { value: 'evaluating', label: 'Evaluating', color: 'bg-purple-100 text-purple-700' },
   { value: 'awarded', label: 'Awarded', color: 'bg-green-100 text-green-700' },
   { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-700' },
+  // v2_bids statuses for backward compatibility
+  { value: 'received', label: 'Received', color: 'bg-blue-100 text-blue-700' },
+  { value: 'in_review', label: 'In Review', color: 'bg-amber-100 text-amber-700' },
+  { value: 'accepted', label: 'Accepted', color: 'bg-green-100 text-green-700' },
+  { value: 'rejected', label: 'Rejected', color: 'bg-red-100 text-red-700' },
+  { value: 'withdrawn', label: 'Withdrawn', color: 'bg-gray-100 text-gray-700' },
 ];
 
 export const SUBCONTRACTOR_BID_STATUS_OPTIONS = [

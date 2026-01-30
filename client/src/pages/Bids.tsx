@@ -69,9 +69,12 @@ const Bids = () => {
       const matchesSearch = !searchQuery.trim() ||
         pkg.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pkg.package_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        pkg.trade_category?.toLowerCase().includes(searchQuery.toLowerCase());
+        pkg.trade_category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pkg.vendor?.name?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || pkg.status === statusFilter;
-      const matchesTrade = tradeFilter === 'all' || pkg.trade_category === tradeFilter;
+      const matchesTrade = tradeFilter === 'all' ||
+        pkg.trade_category === tradeFilter ||
+        pkg.trade_type === tradeFilter;
       return matchesSearch && matchesStatus && matchesTrade;
     });
   }, [packages, searchQuery, statusFilter, tradeFilter]);
@@ -82,11 +85,12 @@ const Bids = () => {
     const nextWeek = addDays(today, 7);
 
     const activePackages = packages.filter((p) =>
-      ['draft', 'issued', 'receiving', 'evaluating'].includes(p.status)
+      ['draft', 'issued', 'receiving', 'evaluating', 'received', 'in_review'].includes(p.status)
     );
-    const awardedPackages = packages.filter((p) => p.status === 'awarded');
+    const awardedPackages = packages.filter((p) => ['awarded', 'accepted'].includes(p.status));
     const dueSoon = packages.filter(
       (p) =>
+        p.due_date &&
         ['issued', 'receiving'].includes(p.status) &&
         isBefore(new Date(p.due_date), nextWeek) &&
         isAfter(new Date(p.due_date), today)
@@ -269,9 +273,11 @@ const Bids = () => {
                         (s) => s.value === pkg.status
                       );
                       const isOverdue =
+                        pkg.due_date &&
                         new Date(pkg.due_date) < new Date() &&
                         ['issued', 'receiving'].includes(pkg.status);
                       const isDueSoon =
+                        pkg.due_date &&
                         !isOverdue &&
                         isBefore(new Date(pkg.due_date), addDays(new Date(), 3)) &&
                         ['issued', 'receiving'].includes(pkg.status);
@@ -295,23 +301,27 @@ const Bids = () => {
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs">
-                              {pkg.trade_category}
+                              {pkg.trade_category || pkg.trade_type || '—'}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-sm">
-                            {pkg.job_name || '—'}
+                            {pkg.job_name || pkg.job?.name || '—'}
                           </TableCell>
                           <TableCell>
-                            <div
-                              className={cn(
-                                'flex items-center gap-1',
-                                isOverdue && 'text-red-600 font-medium',
-                                isDueSoon && 'text-amber-600'
-                              )}
-                            >
-                              <Calendar className="h-3 w-3" />
-                              {format(new Date(pkg.due_date), 'MMM d, yyyy')}
-                            </div>
+                            {pkg.due_date ? (
+                              <div
+                                className={cn(
+                                  'flex items-center gap-1',
+                                  isOverdue && 'text-red-600 font-medium',
+                                  isDueSoon && 'text-amber-600'
+                                )}
+                              >
+                                <Calendar className="h-3 w-3" />
+                                {format(new Date(pkg.due_date), 'MMM d, yyyy')}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">—</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex items-center justify-center gap-1">
@@ -334,15 +344,19 @@ const Bids = () => {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            {pkg.awarded_amount ? (
+                            {(pkg.awarded_amount || pkg.bid_amount) ? (
                               <div>
                                 <p className="font-semibold text-green-600">
-                                  {formatCurrency(pkg.awarded_amount)}
+                                  {formatCurrency(pkg.awarded_amount || pkg.bid_amount || 0)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {pkg.awarded_vendor_name}
+                                  {pkg.awarded_vendor_name || pkg.vendor?.name}
                                 </p>
                               </div>
+                            ) : pkg.vendor?.name ? (
+                              <p className="text-xs text-muted-foreground">
+                                {pkg.vendor.name}
+                              </p>
                             ) : (
                               '—'
                             )}
