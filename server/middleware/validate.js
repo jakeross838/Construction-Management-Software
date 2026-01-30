@@ -68,11 +68,20 @@ function validate(schemas) {
  * Format Zod errors into user-friendly messages
  */
 function formatZodErrors(error, location) {
+  // Guard against undefined or malformed error objects
+  if (!error || !error.errors || !Array.isArray(error.errors)) {
+    return [{
+      location,
+      path: '',
+      message: error?.message || 'Unknown validation error',
+      code: 'VALIDATION_ERROR'
+    }];
+  }
   return error.errors.map(err => ({
     location,
-    path: err.path.join('.'),
-    message: err.message,
-    code: err.code
+    path: err.path?.join('.') || '',
+    message: err.message || 'Invalid value',
+    code: err.code || 'unknown'
   }));
 }
 
@@ -95,9 +104,12 @@ const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM
 // Money amount (positive, 2 decimal places)
 const moneySchema = z.coerce.number().nonnegative('Amount must be non-negative');
 
-// Status enums
+// Status enums - matches STATUS_TRANSITIONS in core/validation.js
 const invoiceStatusSchema = z.enum([
-  'received', 'needs_approval', 'approved', 'in_draw', 'paid', 'denied', 'archived'
+  'needs_review', 'ready_for_approval', 'approved', 'in_draw', 'billed', 'paid',
+  'denied', 'split', 'deleted',
+  // Legacy statuses (still accepted for backwards compatibility)
+  'received', 'needs_approval', 'archived'
 ]);
 
 const poStatusSchema = z.enum(['draft', 'pending', 'approved', 'active', 'closed', 'cancelled']);

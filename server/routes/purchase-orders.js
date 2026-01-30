@@ -56,8 +56,8 @@ router.get('/', validate(schemas.poQuery), async (req, res) => {
       .from('v2_purchase_orders')
       .select(`
         *,
-        vendor:v2_vendors(id, name),
-        job:v2_jobs(id, name),
+        vendor:v2_vendors(id, name, address, phone, email, contact_name),
+        job:v2_jobs(id, name, address, client_name),
         line_items:v2_po_line_items(
           id, description, amount, invoiced_amount,
           cost_code:v2_cost_codes(id, code, name)
@@ -72,7 +72,21 @@ router.get('/', validate(schemas.poQuery), async (req, res) => {
 
     const { data, error } = await query;
     if (error) throw error;
-    res.json(data);
+
+    // Flatten vendor and job data for frontend compatibility
+    const flattened = (data || []).map(po => ({
+      ...po,
+      vendor_name: po.vendor?.name || null,
+      vendor_address: po.vendor?.address || null,
+      vendor_phone: po.vendor?.phone || null,
+      vendor_email: po.vendor?.email || null,
+      vendor_contact: po.vendor?.contact_name || null,
+      job_name: po.job?.name || null,
+      job_address: po.job?.address || null,
+      job_client: po.job?.client_name || null,
+    }));
+
+    res.json(flattened);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

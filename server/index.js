@@ -3660,26 +3660,62 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       }
 
       if (allocations.length > 0) {
-        await supabase.from('v2_invoice_allocations').insert(allocations);
-        allocationsCreated = true;
+        const { error: explicitAllocError } = await supabase.from('v2_invoice_allocations').insert(allocations);
+        if (explicitAllocError) {
+          logger.error('Failed to insert explicit allocations', { component: 'process', invoiceId: invoice.id, error: explicitAllocError.message });
+        } else {
+          logger.info('Created explicit allocations from line items', { component: 'process', invoiceId: invoice.id, count: allocations.length });
+          allocationsCreated = true;
+        }
       }
     }
 
-    // Fallback: If no allocations created, use suggested allocations from trade type
+    // Fallback: If no allocations created, use suggested allocations from AI
     if (!allocationsCreated && result.suggested_allocations?.length > 0) {
+      // Use invoice amount for allocation, not sum of line items (which may include full contract amounts)
+      const invoiceAmount = parseFloat(result.extracted.totalAmount || 0);
+
       const suggestedAllocs = result.suggested_allocations.map(sa => ({
         invoice_id: invoice.id,
         job_id: result.matchedJob?.id || null,
         cost_code_id: sa.cost_code_id,
-        amount: sa.amount,
-        po_id: sa.po_id || null, // AI-linked PO
+        // Use proportional amount if multiple cost codes, otherwise use invoice total
+        amount: result.suggested_allocations.length === 1
+          ? invoiceAmount
+          : sa.amount,
+        po_id: sa.po_id || null,
         notes: sa._aiLinked
           ? `Auto-suggested (AI-linked to PO)`
           : `Auto-suggested based on ${result.extracted.vendor?.tradeType || 'detected'} trade type`
       }));
 
-      await supabase.from('v2_invoice_allocations').insert(suggestedAllocs);
-      allocationsCreated = true;
+      logger.info('Creating suggested allocations', {
+        component: 'process',
+        invoiceId: invoice.id,
+        count: suggestedAllocs.length,
+        costCodes: suggestedAllocs.map(a => a.cost_code_id),
+        totalAmount: invoiceAmount
+      });
+
+      const { error: suggestedAllocError } = await supabase.from('v2_invoice_allocations').insert(suggestedAllocs);
+      if (suggestedAllocError) {
+        logger.error('Failed to insert suggested allocations', {
+          component: 'process',
+          invoiceId: invoice.id,
+          error: suggestedAllocError.message,
+          allocations: suggestedAllocs
+        });
+      } else {
+        logger.info('Created suggested allocations', { component: 'process', invoiceId: invoice.id, count: suggestedAllocs.length });
+        allocationsCreated = true;
+      }
+    } else if (!allocationsCreated) {
+      logger.warn('No allocations created for invoice', {
+        component: 'process',
+        invoiceId: invoice.id,
+        hasSuggestedAllocations: !!result.suggested_allocations,
+        suggestedCount: result.suggested_allocations?.length || 0
+      });
     }
 
     // Stamp PDF with "Needs Review" for new invoice
