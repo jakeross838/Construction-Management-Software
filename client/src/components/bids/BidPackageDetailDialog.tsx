@@ -56,6 +56,7 @@ import {
   useSubcontractorBids,
   useUpdateBidPackage,
   useUpdateSubcontractorBid,
+  useAwardBidPackage,
 } from '@/hooks/useBidPackages';
 import { SubcontractorBidFormDialog } from './SubcontractorBidFormDialog';
 import { BidPackageDocumentsSection } from './BidPackageDocumentsSection';
@@ -92,6 +93,7 @@ export function BidPackageDetailDialog({
 
   const updatePackage = useUpdateBidPackage();
   const updateBid = useUpdateSubcontractorBid();
+  const awardPackage = useAwardBidPackage();
 
   if (!bidPackage) return null;
 
@@ -106,22 +108,13 @@ export function BidPackageDetailDialog({
       : null;
 
   const handleSelectBid = (bidId: string) => {
-    bids.forEach((bid) => {
-      if (bid.id === bidId) {
-        updateBid.mutate({ id: bid.id, status: 'selected', is_lowest_bid: true });
-      } else if (bid.status !== 'withdrawn') {
-        updateBid.mutate({ id: bid.id, status: 'rejected' });
-      }
-    });
-
     const selectedBid = bids.find((b) => b.id === bidId);
     if (selectedBid) {
-      updatePackage.mutate({
+      awardPackage.mutate({
         id: bidPackage.id,
-        status: 'awarded',
-        awarded_vendor_id: selectedBid.vendor_id,
-        awarded_amount: selectedBid.bid_amount,
-        awarded_at: new Date().toISOString(),
+        vendor_id: selectedBid.vendor_id,
+        amount: selectedBid.bid_amount,
+        submission_id: selectedBid.id,
       });
     }
   };

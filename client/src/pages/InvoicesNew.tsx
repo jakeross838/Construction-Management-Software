@@ -49,7 +49,6 @@ import { Combobox } from '@/components/ui/combobox';
 import {
   Search,
   Plus,
-  Upload,
   FileText,
   Clock,
   CheckCircle,
@@ -89,7 +88,8 @@ import {
 } from '@/types/financial';
 import { toast } from 'sonner';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
-import { InvoiceUploadDialog } from '@/components/invoices/InvoiceUploadDialog';
+import { UnifiedAIUpload } from '@/components/ai/UnifiedAIUpload';
+import { Sparkles } from 'lucide-react';
 
 const InvoicesPage = () => {
   const { selectedJobId } = useJob();
@@ -98,7 +98,6 @@ const InvoicesPage = () => {
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
   const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
@@ -357,10 +356,16 @@ const InvoicesPage = () => {
               <Plus className="h-4 w-4" />
               Create Invoice
             </Button>
-            <Button className="gap-2" onClick={() => setUploadDialogOpen(true)}>
-              <Upload className="h-4 w-4" />
-              Upload Invoice
-            </Button>
+            <UnifiedAIUpload
+              contextHint="invoice"
+              jobId={selectedJobId || undefined}
+              trigger={
+                <Button className="gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Upload Document
+                </Button>
+              }
+            />
           </div>
         </div>
 
@@ -547,14 +552,16 @@ const InvoicesPage = () => {
                   <TableCell colSpan={8} className="text-center py-12">
                     <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <p className="text-muted-foreground">No invoices found</p>
-                    <Button 
-                      variant="outline" 
-                      className="mt-4"
-                      onClick={() => setUploadDialogOpen(true)}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Upload Invoice
-                    </Button>
+                    <UnifiedAIUpload
+                      contextHint="invoice"
+                      jobId={selectedJobId || undefined}
+                      trigger={
+                        <Button variant="outline" className="mt-4 gap-2">
+                          <Sparkles className="h-4 w-4" />
+                          Upload Document
+                        </Button>
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               ) : (
@@ -665,14 +672,6 @@ const InvoicesPage = () => {
         invoiceId={detailInvoiceId}
         open={!!detailInvoiceId}
         onOpenChange={(open) => !open && setDetailInvoiceId(null)}
-      />
-
-      {/* Upload Dialog */}
-      <InvoiceUploadDialog
-        open={uploadDialogOpen}
-        onOpenChange={setUploadDialogOpen}
-        vendors={vendors}
-        selectedJobId={selectedJobId}
       />
 
       {/* Create Invoice Dialog */}

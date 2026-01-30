@@ -82,18 +82,19 @@ router.get('/stats', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
-// LIST BIDS
+// LIST BIDS (BID PACKAGES)
 // ============================================================
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { job_id, vendor_id, status, search } = req.query;
+  const { job_id, vendor_id, status, search, trade_category } = req.query;
 
   let query = supabase
     .from('v2_bids')
     .select(`
       *,
       job:v2_jobs(id, name),
-      vendor:v2_vendors(id, name),
+      vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name),
+      awarded_vendor:v2_vendors!v2_bids_awarded_vendor_id_fkey(id, name),
       documents:v2_bid_documents(id, file_name, file_url)
     `)
     .is('deleted_at', null)
@@ -102,17 +103,46 @@ router.get('/', asyncHandler(async (req, res) => {
   if (job_id) query = query.eq('job_id', job_id);
   if (vendor_id) query = query.eq('vendor_id', vendor_id);
   if (status) query = query.eq('status', status);
+  if (trade_category) query = query.eq('trade_category', trade_category);
   if (search) {
-    query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+    query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,package_number.ilike.%${search}%`);
   }
 
   const { data, error } = await query;
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  // Add document count
+  // Get invite and bid counts for all packages
+  const packageIds = (data || []).map(b => b.id);
+
+  // Get invite counts
+  const { data: inviteCounts } = await supabase
+    .from('v2_bid_package_invites')
+    .select('bid_package_id')
+    .in('bid_package_id', packageIds);
+
+  // Get subcontractor bid counts
+  const { data: bidCounts } = await supabase
+    .from('v2_subcontractor_bids')
+    .select('bid_package_id')
+    .in('bid_package_id', packageIds);
+
+  // Build count maps
+  const inviteCountMap = {};
+  const bidCountMap = {};
+  (inviteCounts || []).forEach(inv => {
+    inviteCountMap[inv.bid_package_id] = (inviteCountMap[inv.bid_package_id] || 0) + 1;
+  });
+  (bidCounts || []).forEach(bid => {
+    bidCountMap[bid.bid_package_id] = (bidCountMap[bid.bid_package_id] || 0) + 1;
+  });
+
+  // Add counts and document count
   const result = (data || []).map(bid => ({
     ...bid,
-    document_count: bid.documents?.length || 0
+    document_count: bid.documents?.length || 0,
+    invite_count: inviteCountMap[bid.id] || 0,
+    bid_count: bidCountMap[bid.id] || 0,
+    awarded_vendor_name: bid.awarded_vendor?.name || null
   }));
 
   res.json(result);
@@ -130,7 +160,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .select(`
       *,
       job:v2_jobs(id, name, address),
-      vendor:v2_vendors(id, name, email, phone)
+      vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name, email, phone),
+      awarded_vendor:v2_vendors!v2_bids_awarded_vendor_id_fkey(id, name, email, phone)
     `)
     .eq('id', id)
     .is('deleted_at', null)
@@ -206,7 +237,7 @@ router.post('/', asyncHandler(async (req, res) => {
     .select(`
       *,
       job:v2_jobs(id, name),
-      vendor:v2_vendors(id, name)
+      vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name)
     `)
     .single();
 
@@ -254,7 +285,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .select(`
       *,
       job:v2_jobs(id, name),
-      vendor:v2_vendors(id, name)
+      vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name)
     `)
     .single();
 
@@ -337,7 +368,7 @@ router.post('/:id/status', asyncHandler(async (req, res) => {
     .select(`
       *,
       job:v2_jobs(id, name),
-      vendor:v2_vendors(id, name)
+      vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name)
     `)
     .single();
 
@@ -527,7 +558,7 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .select(`
       *,
-      vendor:v2_vendors(id, name),
+      vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name),
       job:v2_jobs(id, name)
     `)
     .eq('id', id)
@@ -913,6 +944,568 @@ async function updateBudgetFromAcceptedBid(bidId, jobId) {
     }
   }
 }
+
+// ============================================================
+// BID PACKAGE INVITES
+// ============================================================
+
+// Get all invites for a bid package
+router.get('/:id/invites', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: invites, error } = await supabase
+    .from('v2_bid_package_invites')
+    .select(`
+      *,
+      vendor:v2_vendors(id, name, email, phone)
+    `)
+    .eq('bid_package_id', id)
+    .order('invited_at', { ascending: false });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Flatten vendor info
+  const result = (invites || []).map(inv => ({
+    ...inv,
+    vendor_name: inv.vendor?.name,
+    vendor_email: inv.vendor?.email,
+    vendor_phone: inv.vendor?.phone
+  }));
+
+  res.json(result);
+}));
+
+// Add invite to bid package
+router.post('/:id/invites', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { vendor_id, invited_by } = req.body;
+
+  if (!vendor_id) throw new AppError('VALIDATION_ERROR', 'Vendor ID is required');
+
+  // Verify bid exists
+  const { data: bid, error: bidError } = await supabase
+    .from('v2_bids')
+    .select('id, title')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (bidError || !bid) throw new AppError('NOT_FOUND', 'Bid package not found');
+
+  // Check if already invited
+  const { data: existing } = await supabase
+    .from('v2_bid_package_invites')
+    .select('id')
+    .eq('bid_package_id', id)
+    .eq('vendor_id', vendor_id)
+    .single();
+
+  if (existing) throw new AppError('VALIDATION_ERROR', 'Vendor already invited');
+
+  const { data: invite, error } = await supabase
+    .from('v2_bid_package_invites')
+    .insert({
+      bid_package_id: id,
+      vendor_id,
+      invited_at: new Date().toISOString(),
+      invite_sent: false,
+      declined: false
+    })
+    .select(`
+      *,
+      vendor:v2_vendors(id, name, email, phone)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logBidActivity(id, 'vendor_invited', invited_by || 'System', {
+    vendor_id,
+    vendor_name: invite.vendor?.name
+  });
+
+  res.status(201).json({
+    ...invite,
+    vendor_name: invite.vendor?.name,
+    vendor_email: invite.vendor?.email,
+    vendor_phone: invite.vendor?.phone
+  });
+}));
+
+// Remove invite from bid package
+router.delete('/:id/invites/:inviteId', asyncHandler(async (req, res) => {
+  const { id, inviteId } = req.params;
+  const { removed_by } = req.body;
+
+  const { data: invite, error } = await supabase
+    .from('v2_bid_package_invites')
+    .delete()
+    .eq('id', inviteId)
+    .eq('bid_package_id', id)
+    .select(`*, vendor:v2_vendors(name)`)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!invite) throw new AppError('NOT_FOUND', 'Invite not found');
+
+  await logBidActivity(id, 'invite_removed', removed_by || 'System', {
+    vendor_name: invite.vendor?.name
+  });
+
+  res.json({ success: true, message: 'Invite removed' });
+}));
+
+// ============================================================
+// SUBCONTRACTOR BIDS (SUBMISSIONS)
+// ============================================================
+
+// Get all submissions for a bid package
+router.get('/:id/submissions', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: bids, error } = await supabase
+    .from('v2_subcontractor_bids')
+    .select(`
+      *,
+      vendor:v2_vendors(id, name, email, phone)
+    `)
+    .eq('bid_package_id', id)
+    .order('bid_amount', { ascending: true });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Get document counts for all submissions
+  const submissionIds = (bids || []).map(b => b.id);
+  const { data: docCounts } = await supabase
+    .from('v2_subcontractor_bid_documents')
+    .select('subcontractor_bid_id')
+    .in('subcontractor_bid_id', submissionIds);
+
+  const docCountMap = {};
+  (docCounts || []).forEach(doc => {
+    docCountMap[doc.subcontractor_bid_id] = (docCountMap[doc.subcontractor_bid_id] || 0) + 1;
+  });
+
+  // Calculate lowest bid flag and flatten vendor info
+  const lowestAmount = bids?.length > 0 ? Math.min(...bids.map(b => parseFloat(b.bid_amount))) : null;
+  const result = (bids || []).map(bid => ({
+    ...bid,
+    vendor_name: bid.vendor?.name,
+    vendor_email: bid.vendor?.email,
+    is_lowest_bid: parseFloat(bid.bid_amount) === lowestAmount,
+    document_count: docCountMap[bid.id] || 0
+  }));
+
+  res.json(result);
+}));
+
+// Get single submission with documents
+router.get('/submissions/:submissionId', asyncHandler(async (req, res) => {
+  const { submissionId } = req.params;
+
+  const { data: bid, error } = await supabase
+    .from('v2_subcontractor_bids')
+    .select(`
+      *,
+      vendor:v2_vendors(id, name, email, phone),
+      package:v2_bids(id, title, job_id)
+    `)
+    .eq('id', submissionId)
+    .single();
+
+  if (error || !bid) throw new AppError('NOT_FOUND', 'Submission not found');
+
+  // Get documents for this submission
+  const { data: documents } = await supabase
+    .from('v2_subcontractor_bid_documents')
+    .select('*')
+    .eq('subcontractor_bid_id', submissionId)
+    .order('uploaded_at', { ascending: false });
+
+  res.json({
+    ...bid,
+    vendor_name: bid.vendor?.name,
+    vendor_email: bid.vendor?.email,
+    package_title: bid.package?.title,
+    documents: documents || []
+  });
+}));
+
+// Record a new subcontractor bid
+router.post('/:id/submissions', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    vendor_id,
+    bid_amount,
+    unit_price_per_sf,
+    inclusions,
+    exclusions,
+    clarifications,
+    alternate_amounts,
+    proposed_start_date,
+    proposed_duration_days,
+    payment_terms,
+    warranty_terms,
+    bond_included,
+    insurance_verified,
+    valid_until,
+    notes,
+    submitted_by
+  } = req.body;
+
+  if (!vendor_id) throw new AppError('VALIDATION_ERROR', 'Vendor ID is required');
+  if (!bid_amount) throw new AppError('VALIDATION_ERROR', 'Bid amount is required');
+
+  // Verify bid package exists
+  const { data: pkg, error: pkgError } = await supabase
+    .from('v2_bids')
+    .select('id, title, square_footage')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (pkgError || !pkg) throw new AppError('NOT_FOUND', 'Bid package not found');
+
+  // Calculate unit price per SF if square footage is available
+  let calculatedUnitPrice = unit_price_per_sf;
+  if (!calculatedUnitPrice && pkg.square_footage) {
+    calculatedUnitPrice = parseFloat(bid_amount) / pkg.square_footage;
+  }
+
+  const { data: submission, error } = await supabase
+    .from('v2_subcontractor_bids')
+    .insert({
+      bid_package_id: id,
+      vendor_id,
+      bid_amount: parseFloat(bid_amount),
+      unit_price_per_sf: calculatedUnitPrice,
+      inclusions: inclusions || [],
+      exclusions: exclusions || [],
+      clarifications: clarifications || [],
+      alternate_amounts: alternate_amounts || [],
+      proposed_start_date: proposed_start_date || null,
+      proposed_duration_days: proposed_duration_days || null,
+      payment_terms: payment_terms || null,
+      warranty_terms: warranty_terms || null,
+      bond_included: bond_included || false,
+      insurance_verified: insurance_verified || false,
+      valid_until: valid_until || null,
+      notes: notes || null,
+      status: 'submitted',
+      submitted_at: new Date().toISOString()
+    })
+    .select(`
+      *,
+      vendor:v2_vendors(id, name, email)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await logBidActivity(id, 'bid_received', submitted_by || 'System', {
+    vendor_id,
+    vendor_name: submission.vendor?.name,
+    bid_amount: parseFloat(bid_amount)
+  });
+
+  res.status(201).json({
+    ...submission,
+    vendor_name: submission.vendor?.name,
+    vendor_email: submission.vendor?.email
+  });
+}));
+
+// Update a subcontractor bid
+router.patch('/submissions/:submissionId', asyncHandler(async (req, res) => {
+  const { submissionId } = req.params;
+  const {
+    bid_amount,
+    unit_price_per_sf,
+    inclusions,
+    exclusions,
+    clarifications,
+    alternate_amounts,
+    proposed_start_date,
+    proposed_duration_days,
+    payment_terms,
+    warranty_terms,
+    bond_included,
+    insurance_verified,
+    valid_until,
+    notes,
+    status,
+    is_lowest_bid,
+    ranking,
+    evaluation_score,
+    evaluation_notes,
+    updated_by
+  } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+
+  if (bid_amount !== undefined) updates.bid_amount = parseFloat(bid_amount);
+  if (unit_price_per_sf !== undefined) updates.unit_price_per_sf = unit_price_per_sf;
+  if (inclusions !== undefined) updates.inclusions = inclusions;
+  if (exclusions !== undefined) updates.exclusions = exclusions;
+  if (clarifications !== undefined) updates.clarifications = clarifications;
+  if (alternate_amounts !== undefined) updates.alternate_amounts = alternate_amounts;
+  if (proposed_start_date !== undefined) updates.proposed_start_date = proposed_start_date;
+  if (proposed_duration_days !== undefined) updates.proposed_duration_days = proposed_duration_days;
+  if (payment_terms !== undefined) updates.payment_terms = payment_terms;
+  if (warranty_terms !== undefined) updates.warranty_terms = warranty_terms;
+  if (bond_included !== undefined) updates.bond_included = bond_included;
+  if (insurance_verified !== undefined) updates.insurance_verified = insurance_verified;
+  if (valid_until !== undefined) updates.valid_until = valid_until;
+  if (notes !== undefined) updates.notes = notes;
+  if (status !== undefined) updates.status = status;
+  if (is_lowest_bid !== undefined) updates.is_lowest_bid = is_lowest_bid;
+  if (ranking !== undefined) updates.ranking = ranking;
+  if (evaluation_score !== undefined) updates.evaluation_score = evaluation_score;
+  if (evaluation_notes !== undefined) updates.evaluation_notes = evaluation_notes;
+
+  const { data: submission, error } = await supabase
+    .from('v2_subcontractor_bids')
+    .update(updates)
+    .eq('id', submissionId)
+    .select(`
+      *,
+      vendor:v2_vendors(id, name, email)
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!submission) throw new AppError('NOT_FOUND', 'Submission not found');
+
+  // Log activity on the bid package
+  await logBidActivity(submission.bid_package_id, 'bid_updated', updated_by || 'System', {
+    submission_id: submissionId,
+    vendor_name: submission.vendor?.name,
+    updates
+  });
+
+  res.json({
+    ...submission,
+    vendor_name: submission.vendor?.name,
+    vendor_email: submission.vendor?.email
+  });
+}));
+
+// Delete a subcontractor bid
+router.delete('/submissions/:submissionId', asyncHandler(async (req, res) => {
+  const { submissionId } = req.params;
+  const { deleted_by } = req.body;
+
+  const { data: submission, error } = await supabase
+    .from('v2_subcontractor_bids')
+    .delete()
+    .eq('id', submissionId)
+    .select(`*, vendor:v2_vendors(name)`)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!submission) throw new AppError('NOT_FOUND', 'Submission not found');
+
+  await logBidActivity(submission.bid_package_id, 'bid_deleted', deleted_by || 'System', {
+    vendor_name: submission.vendor?.name,
+    bid_amount: submission.bid_amount
+  });
+
+  res.json({ success: true, message: 'Submission deleted' });
+}));
+
+// ============================================================
+// SUBCONTRACTOR BID DOCUMENTS (Vendor Proposals)
+// ============================================================
+
+// Get documents for a subcontractor bid
+router.get('/submissions/:submissionId/documents', asyncHandler(async (req, res) => {
+  const { submissionId } = req.params;
+
+  const { data: docs, error } = await supabase
+    .from('v2_subcontractor_bid_documents')
+    .select('*')
+    .eq('subcontractor_bid_id', submissionId)
+    .order('uploaded_at', { ascending: false });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(docs || []);
+}));
+
+// Upload document to subcontractor bid
+router.post('/submissions/:submissionId/documents', upload.single('document'), asyncHandler(async (req, res) => {
+  const { submissionId } = req.params;
+  const { uploaded_by, document_type } = req.body;
+
+  if (!req.file) throw new AppError('VALIDATION_ERROR', 'No file uploaded');
+
+  // Verify submission exists and get package id for logging
+  const { data: submission, error: subError } = await supabase
+    .from('v2_subcontractor_bids')
+    .select('id, bid_package_id, vendor:v2_vendors(name)')
+    .eq('id', submissionId)
+    .single();
+
+  if (subError || !submission) throw new AppError('NOT_FOUND', 'Submission not found');
+
+  // Upload to storage
+  const fileName = `${BID_PREFIX}/submissions/${submissionId}/${Date.now()}-${req.file.originalname}`;
+  const { error: uploadError } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(fileName, req.file.buffer, {
+      contentType: req.file.mimetype
+    });
+
+  if (uploadError) throw new AppError('STORAGE_ERROR', uploadError.message);
+
+  // Get public URL
+  const { data: { publicUrl } } = supabase.storage
+    .from(STORAGE_BUCKET)
+    .getPublicUrl(fileName);
+
+  // Save document record
+  const { data: doc, error: docError } = await supabase
+    .from('v2_subcontractor_bid_documents')
+    .insert({
+      subcontractor_bid_id: submissionId,
+      file_url: publicUrl,
+      file_name: req.file.originalname,
+      file_size: req.file.size,
+      document_type: document_type || 'proposal',
+      uploaded_by: uploaded_by || 'System'
+    })
+    .select()
+    .single();
+
+  if (docError) throw new AppError('DATABASE_ERROR', docError.message);
+
+  await logBidActivity(submission.bid_package_id, 'submission_document_uploaded', uploaded_by || 'System', {
+    vendor_name: submission.vendor?.name,
+    file_name: req.file.originalname
+  });
+
+  res.status(201).json(doc);
+}));
+
+// Delete document from subcontractor bid
+router.delete('/submissions/:submissionId/documents/:docId', asyncHandler(async (req, res) => {
+  const { submissionId, docId } = req.params;
+  const { deleted_by } = req.body;
+
+  // Get document and submission info
+  const { data: doc, error: fetchError } = await supabase
+    .from('v2_subcontractor_bid_documents')
+    .select('*')
+    .eq('id', docId)
+    .eq('subcontractor_bid_id', submissionId)
+    .single();
+
+  if (fetchError || !doc) throw new AppError('NOT_FOUND', 'Document not found');
+
+  // Get submission for logging
+  const { data: submission } = await supabase
+    .from('v2_subcontractor_bids')
+    .select('bid_package_id, vendor:v2_vendors(name)')
+    .eq('id', submissionId)
+    .single();
+
+  // Delete from storage
+  const urlParts = doc.file_url.split('/');
+  const storagePath = urlParts.slice(urlParts.indexOf(BID_PREFIX)).join('/');
+  await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
+
+  // Delete record
+  const { error: deleteError } = await supabase
+    .from('v2_subcontractor_bid_documents')
+    .delete()
+    .eq('id', docId);
+
+  if (deleteError) throw new AppError('DATABASE_ERROR', deleteError.message);
+
+  if (submission) {
+    await logBidActivity(submission.bid_package_id, 'submission_document_deleted', deleted_by || 'System', {
+      vendor_name: submission.vendor?.name,
+      file_name: doc.file_name
+    });
+  }
+
+  res.json({ success: true, message: 'Document deleted' });
+}));
+
+// ============================================================
+// AWARD BID PACKAGE
+// ============================================================
+
+router.post('/:id/award', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { vendor_id, amount, submission_id, awarded_by, notes } = req.body;
+
+  if (!vendor_id) throw new AppError('VALIDATION_ERROR', 'Vendor ID is required');
+  if (!amount) throw new AppError('VALIDATION_ERROR', 'Award amount is required');
+
+  // Verify bid package exists
+  const { data: pkg, error: pkgError } = await supabase
+    .from('v2_bids')
+    .select('id, title, status')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (pkgError || !pkg) throw new AppError('NOT_FOUND', 'Bid package not found');
+
+  // Update the bid package
+  const { data: updatedPkg, error: updateError } = await supabase
+    .from('v2_bids')
+    .update({
+      status: 'awarded',
+      awarded_vendor_id: vendor_id,
+      awarded_amount: parseFloat(amount),
+      awarded_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select(`
+      *,
+      awarded_vendor:v2_vendors!v2_bids_awarded_vendor_id_fkey(id, name)
+    `)
+    .single();
+
+  if (updateError) throw new AppError('DATABASE_ERROR', updateError.message);
+
+  // If there's a submission_id, mark it as selected and others as rejected
+  if (submission_id) {
+    await supabase
+      .from('v2_subcontractor_bids')
+      .update({ status: 'selected', is_lowest_bid: true })
+      .eq('id', submission_id);
+
+    await supabase
+      .from('v2_subcontractor_bids')
+      .update({ status: 'rejected' })
+      .eq('bid_package_id', id)
+      .neq('id', submission_id)
+      .not('status', 'in', '("withdrawn")');
+  }
+
+  // Get vendor name for logging
+  const { data: vendor } = await supabase
+    .from('v2_vendors')
+    .select('name')
+    .eq('id', vendor_id)
+    .single();
+
+  await logBidActivity(id, 'awarded', awarded_by || 'System', {
+    vendor_id,
+    vendor_name: vendor?.name,
+    amount: parseFloat(amount),
+    notes: notes || null
+  });
+
+  res.json({
+    ...updatedPkg,
+    awarded_vendor_name: updatedPkg.awarded_vendor?.name
+  });
+}));
 
 // Export the helper for use in status change
 module.exports = router;

@@ -13,6 +13,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Upload, FileText, CheckCircle, Loader2, AlertCircle, Sparkles, AlertTriangle, Building2, Briefcase, FileWarning } from 'lucide-react';
+import { AIProcessingAnimation } from '@/components/ai/AIProcessingAnimation';
 import { Vendor } from '@/types/financial';
 import { useCreateInvoice, useUpdateInvoice, usePurchaseOrders } from '@/hooks/useFinancialData';
 import { useDBJobs } from '@/hooks/useFinancialData';
@@ -44,6 +45,7 @@ export function InvoiceUploadDialog({
   const [file, setFile] = useState<File | null>(null);
   const [createdInvoiceId, setCreatedInvoiceId] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<AIExtractionResult | null>(null);
+  const [currentProcessingStep, setCurrentProcessingStep] = useState(0);
   const [processingSteps, setProcessingSteps] = useState<ProcessingStep[]>([
     { id: 'upload', label: 'Uploading file', status: 'pending' },
     { id: 'extract', label: 'Extracting invoice data with AI', status: 'pending' },
@@ -93,9 +95,16 @@ export function InvoiceUploadDialog({
   }));
 
   const updateStep = (stepId: string, status: ProcessingStep['status']) => {
-    setProcessingSteps(prev => 
+    setProcessingSteps(prev =>
       prev.map(s => s.id === stepId ? { ...s, status } : s)
     );
+    // Update current step index for animation
+    const stepIndex = processingSteps.findIndex(s => s.id === stepId);
+    if (status === 'active' && stepIndex >= 0) {
+      setCurrentProcessingStep(stepIndex);
+    } else if (status === 'complete' && stepIndex >= 0) {
+      setCurrentProcessingStep(stepIndex + 1);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,8 +123,9 @@ export function InvoiceUploadDialog({
 
     setFile(selectedFile);
     setStep('processing');
-    
+
     // Reset processing steps
+    setCurrentProcessingStep(0);
     setProcessingSteps(prev => prev.map(s => ({ ...s, status: 'pending' })));
 
     try {
@@ -294,6 +304,7 @@ export function InvoiceUploadDialog({
     setFile(null);
     setCreatedInvoiceId(null);
     setAiResult(null);
+    setCurrentProcessingStep(0);
     setProcessingSteps(prev => prev.map(s => ({ ...s, status: 'pending' })));
     setFormData({
       invoice_number: '',
@@ -367,33 +378,13 @@ export function InvoiceUploadDialog({
         )}
 
         {step === 'processing' && (
-          <div className="py-8 text-center">
-            <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
-            <p className="text-lg font-medium mb-6">
-              {processingStep || 'Processing invoice...'}
-            </p>
-            <div className="space-y-3 text-left max-w-sm mx-auto">
-              {processingSteps.map((s) => (
-                <div key={s.id} className="flex items-center gap-3 text-sm">
-                  {s.status === 'complete' && (
-                    <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
-                  )}
-                  {s.status === 'active' && (
-                    <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
-                  )}
-                  {s.status === 'pending' && (
-                    <div className="h-5 w-5 rounded-full border-2 border-muted shrink-0" />
-                  )}
-                  {s.status === 'error' && (
-                    <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-                  )}
-                  <span className={s.status === 'pending' ? 'text-muted-foreground' : ''}>
-                    {s.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <AIProcessingAnimation
+            statusMessage={processingStep || 'Analyzing invoice...'}
+            documentType="Invoice"
+            currentStep={currentProcessingStep}
+            classificationComplete={currentProcessingStep >= 1}
+            processingComplete={currentProcessingStep >= 4}
+          />
         )}
 
         {step === 'review' && (

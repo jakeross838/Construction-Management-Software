@@ -126,6 +126,25 @@ npm run dev
    - Verify state changes happen in correct order
    - Check error handling paths
    - Verify UI reflects the expected state
+
+8. INTEGRATION VERIFICATION (CRITICAL - Prevents "Built But Not Connected")
+   [ ] Every new component is IMPORTED and RENDERED somewhere
+   [ ] Every new hook is CALLED by at least one component
+   [ ] Every new API endpoint is CALLED by frontend code
+   [ ] Every new database table/column is USED by API routes
+   [ ] Trace the FULL path: User Action → Component → Hook → API → Database
+
+   Common "Built But Not Connected" Failures:
+   - Created component but never imported it
+   - Created hook but never called it
+   - Created API endpoint but frontend still uses old endpoint
+   - Added database column but API doesn't select/return it
+   - Built animation/loading state but hardcoded simple spinner
+
+   Quick Verification Commands:
+   - Find component usage: grep -r "ComponentName" client/src/
+   - Find hook usage: grep -r "useHookName" client/src/
+   - Find API calls: grep -r "/api/endpoint" client/src/
 ```
 
 ### Testing Commands
@@ -658,6 +677,15 @@ Status badge colors:
 
 ## Recent Changes (Jan 2026)
 
+### Bid System Restructure & Integration Verification (Jan 30)
+- **Bid Packages**: v2_bids now represents "Bid Packages" (trade categories with specs/documents)
+- **Subcontractor Bids**: v2_subcontractor_bids holds vendor submissions for each package
+- **New columns on v2_bids**: package_number, issue_date, trade_category, awarded_vendor_id, awarded_at, awarded_amount
+- **Subcontractor Bid Documents**: New v2_subcontractor_bid_documents table for vendor proposals
+- **Integration Verification Checklist**: Added to CLAUDE.md to prevent "built but not connected" issues
+- **AIProcessingAnimation**: Integrated into InvoiceUploadDialog (was built but never used)
+- **API Updates**: Explicit FK naming for ambiguous Supabase relationships
+
 ### OCR, AI Learning, and Bug Fixes (Jan 15)
 - **OCR Processing**: Scanned PDFs now auto-detected and processed via Claude Vision
 - **AI Learning System**: Records corrections to improve future matching (90%+ confidence)
@@ -699,6 +727,57 @@ Status badge colors:
 ---
 
 ## Known Patterns
+
+### New Feature Integration Checklist (CRITICAL)
+When building any new feature, follow this checklist to avoid "built but not connected" issues:
+
+**1. Database Layer**
+```
+[ ] Migration file created: database/migration-XXX-feature.sql
+[ ] Run migration: npm run migrate
+[ ] Verify columns exist: Check Supabase dashboard or run SELECT query
+```
+
+**2. API Layer**
+```
+[ ] Route file updated: server/routes/feature.js
+[ ] Route mounted in server/index.js (if new file)
+[ ] Test endpoint with curl: curl http://localhost:3001/api/endpoint
+[ ] Verify response includes new fields
+```
+
+**3. Frontend Hooks Layer**
+```
+[ ] Hook created/updated: client/src/hooks/useFeature.ts
+[ ] Hook EXPORTED from the file
+[ ] Types updated to include new fields
+```
+
+**4. Frontend Component Layer**
+```
+[ ] Component created/updated: client/src/components/feature/Component.tsx
+[ ] Hook IMPORTED and CALLED in component
+[ ] Component IMPORTED and RENDERED in parent page/dialog
+[ ] New data actually DISPLAYED in the UI
+```
+
+**5. Integration Test**
+```
+[ ] Click through the UI flow manually
+[ ] Check browser console for errors
+[ ] Check Network tab - verify API calls are made
+[ ] Verify data appears correctly in the UI
+[ ] Create/update/delete test record and verify it persists
+```
+
+**Example: Adding a new "notes" field**
+```
+1. Migration: ALTER TABLE v2_invoices ADD COLUMN notes TEXT;
+2. API: Update GET/PATCH to include 'notes' in select/update
+3. Hook: Add 'notes: string' to Invoice type
+4. Component: Add <textarea value={invoice.notes}> and bind onChange
+5. Test: Edit notes, save, refresh - notes should persist
+```
 
 ### Modal Pattern (CRITICAL)
 Fullscreen modals use class `modal-fullscreen-dark`:

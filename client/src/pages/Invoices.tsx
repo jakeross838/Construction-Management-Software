@@ -20,13 +20,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { 
-  Search, 
+import {
+  Search,
   FileText,
   Clock,
   CheckCircle,
   AlertCircle,
-  Upload,
   ThumbsUp,
   AlertTriangle,
   Sparkles,
@@ -34,7 +33,7 @@ import {
 import { useJob } from '@/contexts/JobContext';
 import { useInvoices, useVendors, useJobs, usePurchaseOrders, useUpdateInvoice, useCostCodes } from '@/hooks/useFinancialData';
 import { formatCurrency, formatDate, invoiceStatusConfig } from '@/types/financial';
-import { InvoiceUploadDialog } from '@/components/invoices/InvoiceUploadDialog';
+import { UnifiedAIUpload } from '@/components/ai/UnifiedAIUpload';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 import { ReviewFlagsList } from '@/components/invoices/ReviewFlagsBadges';
 import { AIConfidenceBadge } from '@/components/invoices/AIConfidenceBadge';
@@ -66,7 +65,6 @@ const Invoices = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const filteredInvoices = useMemo(() => {
@@ -190,10 +188,16 @@ const Invoices = () => {
             <h1 className="text-2xl font-semibold text-foreground">Invoices</h1>
             <p className="text-sm text-muted-foreground">Review and approve vendor invoices</p>
           </div>
-          <Button className="gap-2" onClick={() => setUploadDialogOpen(true)}>
-            <Upload className="h-4 w-4" />
-            Upload Invoice
-          </Button>
+          <UnifiedAIUpload
+            contextHint="invoice"
+            jobId={selectedJobId || undefined}
+            trigger={
+              <Button className="gap-2">
+                <Sparkles className="h-4 w-4" />
+                Upload Document
+              </Button>
+            }
+          />
         </div>
 
         {/* Stats */}
@@ -403,13 +407,6 @@ const Invoices = () => {
           </Card>
         )}
       </div>
-
-      <InvoiceUploadDialog 
-        open={uploadDialogOpen} 
-        onOpenChange={setUploadDialogOpen}
-        vendors={vendors}
-        selectedJobId={selectedJobId}
-      />
 
       <InvoiceDetailDialog
         invoiceId={selectedInvoiceId}

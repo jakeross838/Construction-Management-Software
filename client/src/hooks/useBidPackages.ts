@@ -23,31 +23,36 @@ export interface BidPackage {
   title: string;
   description: string | null;
   trade_category?: string;
-  trade_type?: string; // from v2_bids
+  trade_type?: string; // legacy field
   scope_of_work: string | null;
   issue_date: string | null;
   due_date: string | null;
-  received_date?: string | null; // from v2_bids
-  site_visit_date: string | null;
-  site_visit_time: string | null;
-  status: 'draft' | 'issued' | 'receiving' | 'evaluating' | 'awarded' | 'cancelled' | 'received' | 'in_review' | 'accepted' | 'rejected' | 'withdrawn';
-  square_footage: number | null;
-  specs_summary: string | null;
-  special_requirements: string | null;
+  received_date?: string | null;
+  site_visit_date?: string | null;
+  site_visit_time?: string | null;
+  status: 'draft' | 'issued' | 'receiving' | 'evaluating' | 'awarded' | 'cancelled' | 'received' | 'under_review' | 'accepted' | 'rejected' | 'withdrawn';
+  square_footage?: number | null;
+  specs_summary?: string | null;
+  special_requirements?: string | null;
+  notes?: string | null;
+  // Award fields
   awarded_vendor_id: string | null;
   awarded_at: string | null;
   awarded_amount: number | null;
-  bid_amount?: number | null; // from v2_bids
+  // Legacy fields from v2_bids
+  bid_amount?: number | null;
+  vendor_id?: string | null;
   created_at: string;
   updated_at: string;
-  // Joined fields
+  // Joined/computed fields
   job_name?: string;
-  job?: { id: string; name: string }; // from v2_bids
+  job?: { id: string; name: string };
   awarded_vendor_name?: string;
-  vendor?: { id: string; name: string }; // from v2_bids
-  vendor_id?: string; // from v2_bids
+  awarded_vendor?: { id: string; name: string };
+  vendor?: { id: string; name: string };
   invite_count?: number;
   bid_count?: number;
+  document_count?: number;
 }
 
 export interface BidPackageDocument {
@@ -77,6 +82,17 @@ export interface BidPackageInvite {
   vendor_name?: string;
   vendor_email?: string;
   vendor_phone?: string;
+}
+
+export interface SubcontractorBidDocument {
+  id: string;
+  subcontractor_bid_id: string;
+  file_url: string;
+  file_name: string;
+  file_size: number | null;
+  document_type: 'proposal' | 'quote' | 'schedule' | 'insurance' | 'other';
+  uploaded_by: string | null;
+  uploaded_at: string;
 }
 
 export interface SubcontractorBid {
@@ -110,6 +126,8 @@ export interface SubcontractorBid {
   vendor_name?: string;
   vendor_email?: string;
   package_title?: string;
+  document_count?: number;
+  documents?: SubcontractorBidDocument[];
 }
 
 export interface SubcontractorBidItem {
@@ -218,6 +236,35 @@ export function useDeleteBidPackage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
       toast.success('Bid package deleted');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useAwardBidPackage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      id: string;
+      vendor_id: string;
+      amount: number;
+      submission_id?: string;
+      notes?: string;
+    }) =>
+      api<BidPackage>(`/bids/${data.id}/award`, {
+        method: 'POST',
+        body: JSON.stringify({
+          vendor_id: data.vendor_id,
+          amount: data.amount,
+          submission_id: data.submission_id,
+          notes: data.notes,
+        }),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
+      queryClient.invalidateQueries({ queryKey: ['bid-package', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['subcontractor-bids', variables.id] });
+      toast.success('Bid package awarded');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -515,6 +562,81 @@ export function useCreateSubcontractorBidItem() {
       }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['subcontractor-bid-items', variables.subcontractor_bid_id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ==================== SUBCONTRACTOR BID DOCUMENTS ====================
+
+export function useSubcontractorBidDocuments(submissionId: string) {
+  return useQuery({
+    queryKey: ['subcontractor-bid-documents', submissionId],
+    queryFn: () => api<SubcontractorBidDocument[]>(`/bids/submissions/${submissionId}/documents`),
+    enabled: !!submissionId,
+  });
+}
+
+export function useUploadSubcontractorBidDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      submissionId,
+      file,
+      documentType = 'proposal',
+    }: {
+      submissionId: string;
+      file: File;
+      documentType?: string;
+    }) => {
+      const formData = new FormData();
+      formData.append('document', file);
+      formData.append('uploaded_by', 'User');
+      formData.append('document_type', documentType);
+
+      const response = await fetch(`/api/bids/submissions/${submissionId}/documents`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['subcontractor-bid-documents', variables.submissionId] });
+      queryClient.invalidateQueries({ queryKey: ['subcontractor-bids'] });
+      queryClient.invalidateQueries({ queryKey: ['subcontractor-bid', variables.submissionId] });
+      toast.success('Document uploaded');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useDeleteSubcontractorBidDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ docId, submissionId }: { docId: string; submissionId: string }) => {
+      const response = await fetch(`/api/bids/submissions/${submissionId}/documents/${docId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleted_by: 'User' }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+
+      return submissionId;
+    },
+    onSuccess: (submissionId) => {
+      queryClient.invalidateQueries({ queryKey: ['subcontractor-bid-documents', submissionId] });
+      queryClient.invalidateQueries({ queryKey: ['subcontractor-bids'] });
+      toast.success('Document deleted');
     },
     onError: (e: Error) => toast.error(e.message),
   });
