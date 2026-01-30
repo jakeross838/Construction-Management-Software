@@ -95,7 +95,7 @@ router.get('/', validate(schemas.invoiceQuery), async (req, res) => {
         job:v2_jobs(id, name),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
-          id, amount, notes, job_id, change_order_id, po_id,
+          id, amount, notes, job_id, change_order_id, po_id, cost_code_id,
           cost_code:v2_cost_codes(id, code, name),
           purchase_order:v2_purchase_orders(id, po_number)
         ),
@@ -187,7 +187,7 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
         job:v2_jobs(id, name, address),
         po:v2_purchase_orders(id, po_number, total_amount),
         allocations:v2_invoice_allocations(
-          id, amount, notes, job_id, po_id, po_line_item_id, change_order_id, pending_co,
+          id, amount, notes, job_id, po_id, po_line_item_id, change_order_id, pending_co, cost_code_id,
           cost_code:v2_cost_codes(id, code, name, category),
           purchase_order:v2_purchase_orders(id, po_number),
           change_order:v2_job_change_orders(id, change_order_number, title)
@@ -858,8 +858,56 @@ router.post('/process', upload.single('file'), async (req, res) => {
 
     if (invError) throw invError;
 
-    // Create allocations from line items
-    if (result.extracted.lineItems?.length > 0) {
+    // Create allocations from AI suggestions or line items
+    let allocationsCreated = false;
+    const invoiceAmount = invoice.amount || result.extracted?.totalAmount || 0;
+
+    // First priority: Use AI suggested_allocations (generated from trade type + line item analysis)
+    if (result.suggested_allocations?.length > 0) {
+      // Calculate total of suggested allocations
+      const suggestedTotal = result.suggested_allocations.reduce((sum, a) => sum + (a.amount || 0), 0);
+
+      // If suggested total differs from invoice amount, normalize proportionally
+      // This handles cases like "40% Delivery Invoice" where line items show full amounts
+      const needsNormalization = suggestedTotal > 0 && Math.abs(suggestedTotal - invoiceAmount) > 1;
+      const scaleFactor = needsNormalization ? invoiceAmount / suggestedTotal : 1;
+
+      const allocations = result.suggested_allocations.map(alloc => ({
+        invoice_id: invoice.id,
+        job_id: invoice.job_id,
+        cost_code_id: alloc.cost_code_id,
+        amount: Math.round((alloc.amount || 0) * scaleFactor * 100) / 100, // Scale and round to cents
+        notes: alloc.line_item_descriptions?.join('; ') || alloc.name || null
+      }));
+
+      // Adjust for rounding errors - ensure total matches invoice amount exactly
+      if (allocations.length > 0 && needsNormalization) {
+        const allocTotal = allocations.reduce((sum, a) => sum + a.amount, 0);
+        const diff = invoiceAmount - allocTotal;
+        if (Math.abs(diff) > 0.001) {
+          allocations[0].amount = Math.round((allocations[0].amount + diff) * 100) / 100;
+        }
+      }
+
+      if (allocations.length > 0) {
+        const { error: allocError } = await supabase.from('v2_invoice_allocations').insert(allocations);
+        if (!allocError) {
+          allocationsCreated = true;
+          logger.info('Created allocations from AI suggestions', {
+            component: 'Invoices',
+            invoiceId: invoice.id,
+            count: allocations.length,
+            codes: result.suggested_allocations.map(a => a.code).join(', '),
+            normalized: needsNormalization,
+            originalTotal: suggestedTotal,
+            invoiceAmount
+          });
+        }
+      }
+    }
+
+    // Fallback: Try line items with explicit cost codes (rare, but handle it)
+    if (!allocationsCreated && result.extracted.lineItems?.length > 0) {
       const allocations = [];
       for (const item of result.extracted.lineItems) {
         if (item.costCode) {
@@ -873,6 +921,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
           if (costCode) {
             allocations.push({
               invoice_id: invoice.id,
+              job_id: invoice.job_id,
               cost_code_id: costCode.id,
               amount: item.amount || 0,
               notes: item.description
@@ -883,6 +932,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
 
       if (allocations.length > 0) {
         await supabase.from('v2_invoice_allocations').insert(allocations);
+        allocationsCreated = true;
       }
     }
 
