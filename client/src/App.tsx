@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { JobProvider } from "@/contexts/JobContext";
 import { UserProvider } from "@/contexts/UserContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import Dashboard from "./pages/Dashboard";
 import JobDetails from "./pages/JobDetails";
 import Jobs from "./pages/Jobs";
@@ -42,6 +43,7 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => (
+  <ErrorBoundary>
   <UserProvider>
   <JobProvider>
   <QueryClientProvider client={queryClient}>
@@ -105,6 +107,7 @@ const App = () => (
   </QueryClientProvider>
   </JobProvider>
   </UserProvider>
+  </ErrorBoundary>
 );
 
 export default App;

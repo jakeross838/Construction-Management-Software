@@ -11,6 +11,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const { supabase } = require('../config');
+const logger = require('./utils/logger');
 const sharp = require('sharp');
 const pdfParse = require('pdf-parse');
 const { createCanvas } = require('canvas');
@@ -22,7 +23,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
  * - PDFs: extract text OR images depending on content
  */
 async function prepareDocumentForVision(fileUrl, mimeType) {
-  console.log('[AI Hub] Preparing document for vision:', mimeType);
+  logger.info('Preparing document for vision', { component: 'ai-hub', mimeType });
 
   const response = await fetch(fileUrl);
   if (!response.ok) {
@@ -32,7 +33,7 @@ async function prepareDocumentForVision(fileUrl, mimeType) {
 
   // Handle images directly
   if (mimeType && mimeType.startsWith('image/')) {
-    console.log('[AI Hub] Processing image directly');
+    logger.debug('Processing image directly', { component: 'ai-hub' });
     const base64 = buffer.toString('base64');
     return [{
       type: 'image',
@@ -46,12 +47,12 @@ async function prepareDocumentForVision(fileUrl, mimeType) {
 
   // Handle PDFs - try text extraction first, then images
   if (mimeType === 'application/pdf') {
-    console.log('[AI Hub] Processing PDF...');
+    logger.debug('Processing PDF', { component: 'ai-hub' });
     return await processPDF(buffer);
   }
 
   // Fallback
-  console.log('[AI Hub] Unknown type, attempting as image');
+  logger.debug('Unknown type, attempting as image', { component: 'ai-hub' });
   const base64 = buffer.toString('base64');
   return [{
     type: 'image',
@@ -78,16 +79,16 @@ async function processPDF(pdfBuffer) {
       const pdfData = await pdfParse(pdfBuffer);
       extractedText = pdfData.text.trim();
       numPages = pdfData.numpages;
-      console.log('[AI Hub] Extracted ' + extractedText.length + ' chars of text from PDF (' + numPages + ' pages)');
+      logger.info('Extracted text from PDF', { component: 'ai-hub', chars: extractedText.length, pages: numPages });
     } catch (textErr) {
-      console.log('[AI Hub] Text extraction failed:', textErr.message);
+      logger.debug('Text extraction failed', { component: 'ai-hub', error: textErr.message });
     }
 
     // Step 2: Render PDF pages as images
     const renderedImages = await renderPDFPages(pdfBuffer);
 
     if (renderedImages.length > 0) {
-      console.log('[AI Hub] Rendered ' + renderedImages.length + ' page(s) as images');
+      logger.info('Rendered PDF pages as images', { component: 'ai-hub', pages: renderedImages.length });
       content.push(...renderedImages);
     }
 
@@ -101,14 +102,14 @@ async function processPDF(pdfBuffer) {
 
     // If we got nothing, try embedded image extraction as fallback
     if (content.length === 0) {
-      console.log('[AI Hub] No rendered content, trying embedded image extraction...');
+      logger.debug('No rendered content, trying embedded image extraction', { component: 'ai-hub' });
       return await extractPDFImages(pdfBuffer);
     }
 
     return content;
 
   } catch (err) {
-    console.error('[AI Hub] PDF processing error:', err.message);
+    logger.error('PDF processing error', { component: 'ai-hub', error: err.message });
     // Last resort fallback
     return await extractPDFImages(pdfBuffer);
   }
@@ -163,15 +164,15 @@ async function renderPDFPages(pdfBuffer) {
           }
         });
 
-        console.log('[AI Hub] Rendered page ' + pageNum + ': ' + Math.round(viewport.width) + 'x' + Math.round(viewport.height));
+        logger.debug('Rendered page', { component: 'ai-hub', pageNum, width: Math.round(viewport.width), height: Math.round(viewport.height) });
 
       } catch (pageErr) {
-        console.log('[AI Hub] Could not render page ' + pageNum + ':', pageErr.message);
+        logger.debug('Could not render page', { component: 'ai-hub', pageNum, error: pageErr.message });
       }
     }
 
   } catch (err) {
-    console.error('[AI Hub] PDF render error:', err.message);
+    logger.error('PDF render error', { component: 'ai-hub', error: err.message });
   }
 
   return images;
@@ -194,7 +195,7 @@ async function extractPDFImages(pdfBuffer) {
 
     const pdf = await loadingTask.promise;
     const numPages = Math.min(pdf.numPages, 5);
-    console.log('[AI Hub] PDF has ' + pdf.numPages + ' pages, checking for images...');
+    logger.info('Checking PDF for images', { component: 'ai-hub', totalPages: pdf.numPages });
 
     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
@@ -223,7 +224,7 @@ async function extractPDFImages(pdfBuffer) {
                     data: imageBuffer.toString('base64')
                   }
                 });
-                console.log('[AI Hub] Extracted image from page ' + pageNum + ': ' + width + 'x' + height);
+                logger.debug('Extracted image from page', { component: 'ai-hub', pageNum, width, height });
               }
             }
           } catch (imgErr) {
@@ -234,16 +235,16 @@ async function extractPDFImages(pdfBuffer) {
     }
 
     if (images.length > 0) {
-      console.log('[AI Hub] Extracted ' + images.length + ' image(s) from PDF');
+      logger.info('Extracted images from PDF', { component: 'ai-hub', count: images.length });
       return images;
     }
 
     // If no images found, return a message about the PDF
-    console.log('[AI Hub] No extractable content from PDF');
+    logger.warn('No extractable content from PDF', { component: 'ai-hub' });
     throw new Error('Could not extract content from PDF. The file may be empty or corrupted.');
 
   } catch (err) {
-    console.error('[AI Hub] PDF image extraction error:', err.message);
+    logger.error('PDF image extraction error', { component: 'ai-hub', error: err.message });
     throw new Error('PDF processing failed: ' + err.message);
   }
 }
@@ -422,7 +423,7 @@ async function determineRouting(documentType, extractedData, routingRules) {
  * Process a document through the full pipeline
  */
 async function processDocument(documentId) {
-  console.log(`[AI Hub] Processing document: ${documentId}`);
+  logger.info('Processing document', { component: 'ai-hub', documentId });
   const startTime = Date.now();
 
   try {
@@ -448,7 +449,7 @@ async function processDocument(documentId) {
     let confidence = doc.ai_confidence;
 
     if (!docType || docType === 'unknown') {
-      console.log(`[AI Hub] Classifying document...`);
+      logger.debug('Classifying document', { component: 'ai-hub' });
       const classification = await classifyDocument(doc.file_url, doc.file_name, doc.mime_type);
       docType = classification.document_type;
       confidence = classification.confidence;
@@ -472,7 +473,7 @@ async function processDocument(documentId) {
       .single();
 
     // Step 2: Extract data
-    console.log(`[AI Hub] Extracting data from ${docType}...`);
+    logger.debug('Extracting data from document', { component: 'ai-hub', docType });
     const extractedData = await extractDocumentData(doc.file_url, doc.mime_type, docType, template);
 
     // Step 3: Determine routing
@@ -507,7 +508,7 @@ async function processDocument(documentId) {
     // Step 6: Auto-route if applicable
     const autoRouteResults = await autoRouteExtractedData(documentId, extraction.id, routingDestinations);
 
-    console.log(`[AI Hub] Document processed in ${extractionTime}ms. Destinations: ${routingDestinations.length}`);
+    logger.info('Document processed', { component: 'ai-hub', extractionTime, destinations: routingDestinations.length });
 
     return {
       success: true,
@@ -521,7 +522,7 @@ async function processDocument(documentId) {
     };
 
   } catch (err) {
-    console.error(`[AI Hub] Error processing document:`, err);
+    logger.error('Error processing document', { component: 'ai-hub', error: err.message, stack: err.stack });
 
     await supabase
       .from('v2_document_queue')
@@ -566,7 +567,7 @@ async function autoRouteExtractedData(documentId, extractionId, destinations) {
  * Route extracted data to a specific destination
  */
 async function routeToDestination(documentId, extractionId, destination, data) {
-  console.log(`[AI Hub] Routing to ${destination}...`);
+  logger.debug('Routing to destination', { component: 'ai-hub', destination });
 
   let result = { success: false };
 
