@@ -755,7 +755,7 @@ export function InvoiceDetailDialog({
                   )}
                 </div>
 
-                {/* PO Balance */}
+                {/* PO Balance - updates live as allocations change */}
                 {invoice.po_id && (() => {
                   const po = purchaseOrders.find(p => p.id === invoice.po_id);
                   if (!po) return null;
@@ -765,7 +765,10 @@ export function InvoiceDetailDialog({
                   const remaining = committed - invoiced;
                   const percentUsed = committed > 0 ? (invoiced / committed) * 100 : 0;
                   const isOverBudget = invoiced > committed;
-                  const willExceed = (invoiced + invoice.amount) > committed;
+                  // Use totalAllocated for live updates as user changes allocations
+                  const currentAllocationTotal = totalAllocated > 0 ? totalAllocated : invoice.amount;
+                  const willExceed = (invoiced + currentAllocationTotal) > committed;
+                  const afterThisInvoice = remaining - currentAllocationTotal;
 
                   return (
                     <div className={`mt-3 p-3 rounded-lg border ${isOverBudget ? 'bg-red-50 border-red-200' : willExceed ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
@@ -779,7 +782,7 @@ export function InvoiceDetailDialog({
                           <Badge className="bg-green-100 text-green-700 border-0 text-xs">Within PO</Badge>
                         )}
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className="grid grid-cols-4 gap-2 text-sm">
                         <div>
                           <p className="text-muted-foreground text-xs">PO Amount</p>
                           <p className="font-medium">{formatCurrency(committed)}</p>
@@ -794,21 +797,40 @@ export function InvoiceDetailDialog({
                         </div>
                         <div>
                           <p className="text-muted-foreground text-xs">PO Remaining</p>
-                          <p className={`font-medium ${remaining < 0 ? 'text-red-600' : remaining < invoice.amount ? 'text-amber-600' : 'text-green-600'}`}>
+                          <p className={`font-medium ${remaining < 0 ? 'text-red-600' : remaining < currentAllocationTotal ? 'text-amber-600' : 'text-green-600'}`}>
                             {formatCurrency(remaining)}
                           </p>
-                          {remaining < invoice.amount && remaining >= 0 && (
-                            <p className="text-xs text-amber-600">Less than this invoice</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">After This</p>
+                          <p className={`font-medium ${afterThisInvoice < 0 ? 'text-red-600' : afterThisInvoice < committed * 0.1 ? 'text-amber-600' : 'text-green-600'}`}>
+                            {formatCurrency(afterThisInvoice)}
+                          </p>
+                          {afterThisInvoice < 0 && (
+                            <p className="text-xs text-red-600">Exceeds PO</p>
                           )}
                         </div>
                       </div>
-                      {/* Progress bar */}
+                      {/* Progress bar showing current + this invoice */}
                       <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all ${isOverBudget ? 'bg-red-500' : percentUsed > 80 ? 'bg-amber-500' : 'bg-green-500'}`}
-                          style={{ width: `${Math.min(percentUsed, 100)}%` }}
-                        />
+                        <div className="h-full flex">
+                          <div
+                            className={`h-full ${isOverBudget ? 'bg-red-500' : percentUsed > 80 ? 'bg-amber-500' : 'bg-green-500'}`}
+                            style={{ width: `${Math.min(percentUsed, 100)}%` }}
+                          />
+                          {!isOverBudget && currentAllocationTotal > 0 && (
+                            <div
+                              className={`h-full ${willExceed ? 'bg-red-300' : 'bg-blue-400'} opacity-60`}
+                              style={{ width: `${Math.min((currentAllocationTotal / committed) * 100, 100 - percentUsed)}%` }}
+                            />
+                          )}
+                        </div>
                       </div>
+                      {currentAllocationTotal > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          This invoice: {formatCurrency(currentAllocationTotal)}
+                        </p>
+                      )}
                     </div>
                   );
                 })()}
