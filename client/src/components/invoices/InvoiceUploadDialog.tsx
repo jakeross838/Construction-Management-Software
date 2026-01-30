@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Upload, FileText, CheckCircle, Loader2, AlertCircle, Sparkles, AlertTriangle, Building2, Briefcase, FileWarning } from 'lucide-react';
 import { Vendor } from '@/types/financial';
-import { useCreateInvoice, useUpdateInvoice } from '@/hooks/useFinancialData';
+import { useCreateInvoice, useUpdateInvoice, usePurchaseOrders } from '@/hooks/useFinancialData';
 import { useDBJobs } from '@/hooks/useFinancialData';
 import { useStampInvoice } from '@/hooks/useInvoiceStamping';
 import { useRecordCorrection } from '@/hooks/useAILearning';
@@ -63,6 +63,7 @@ export function InvoiceUploadDialog({
   });
 
   const { data: jobs = [] } = useDBJobs();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
   const createInvoice = useCreateInvoice();
   const updateInvoice = useUpdateInvoice();
   const stampInvoice = useStampInvoice();
@@ -78,6 +79,17 @@ export function InvoiceUploadDialog({
     value: j.id,
     label: j.name,
     description: j.address || undefined,
+  }));
+
+  // Filter POs by selected job if job is selected
+  const filteredPOs = formData.job_id
+    ? purchaseOrders.filter(po => po.job_id === formData.job_id)
+    : purchaseOrders;
+
+  const poOptions = filteredPOs.map(po => ({
+    value: po.id,
+    label: po.po_number,
+    description: po.description || po.vendor_name || undefined,
   }));
 
   const updateStep = (stepId: string, status: ProcessingStep['status']) => {
@@ -598,6 +610,35 @@ export function InvoiceUploadDialog({
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* PO Selector */}
+            <div className="space-y-2">
+              <Label>Purchase Order</Label>
+              <Combobox
+                options={poOptions}
+                value={formData.po_id}
+                onValueChange={(poId) => setFormData({ ...formData, po_id: poId })}
+                placeholder="Select PO (optional)..."
+                searchPlaceholder="Search POs..."
+              />
+              {formData.job_id && poOptions.length === 0 && (
+                <p className="text-xs text-muted-foreground">No POs found for this job</p>
+              )}
+              {/* PO suggestion from AI */}
+              {!formData.po_id && aiResult?.matchedPO && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-muted-foreground">AI Matched:</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 px-1 text-xs"
+                    onClick={() => setFormData({ ...formData, po_id: aiResult.matchedPO!.id })}
+                  >
+                    {aiResult.matchedPO.po_number} ({Math.round(aiResult.matchedPO.confidence * 100)}%)
+                  </Button>
                 </div>
               )}
             </div>

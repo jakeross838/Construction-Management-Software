@@ -530,7 +530,15 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
                                     <span className="text-xs">{line.percent_complete}%</span>
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-right">{formatCurrency(line.balance_to_finish)}</TableCell>
+                                <TableCell className={cn(
+                                  "text-right",
+                                  line.balance_to_finish < 0 && "text-destructive font-semibold"
+                                )}>
+                                  {formatCurrency(line.balance_to_finish)}
+                                  {line.balance_to_finish < 0 && (
+                                    <AlertTriangle className="inline-block h-3 w-3 ml-1" />
+                                  )}
+                                </TableCell>
                               </TableRow>
                             ))}
                           </TableBody>

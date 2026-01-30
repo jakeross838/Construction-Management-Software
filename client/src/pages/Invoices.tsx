@@ -254,6 +254,8 @@ const Invoices = () => {
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
+                id="invoice-search"
+                name="invoice-search"
                 placeholder="Search invoices..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -270,6 +272,7 @@ const Invoices = () => {
                 <SelectItem value="needs_approval">Needs Approval</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="in_draw">In Draw</SelectItem>
+                <SelectItem value="billed">Billed</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
                 <SelectItem value="denied">Denied</SelectItem>
               </SelectContent>
@@ -278,7 +281,7 @@ const Invoices = () => {
         </div>
 
         {/* Invoice Sections by Status */}
-        {['needs_review', 'needs_approval', 'approved', 'in_draw', 'paid', 'denied', 'received'].map((status) => {
+        {['needs_review', 'needs_approval', 'ready_for_approval', 'approved', 'in_draw', 'billed', 'paid', 'denied', 'received'].map((status) => {
           const statusInvoices = filteredInvoices.filter(inv => inv.status === status);
           if (statusInvoices.length === 0) return null;
           

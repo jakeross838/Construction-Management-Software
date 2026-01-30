@@ -198,8 +198,23 @@ const ERROR_CODES = {
 
 /**
  * Create validation error with field details
+ * @param {string|Array|Object} errors - Error message, array of errors, or field errors object
  */
 function validationError(errors) {
+  // If errors is a string, use it as the message
+  if (typeof errors === 'string') {
+    return new AppError('VALIDATION_FAILED', errors, {
+      fields: [{ message: errors }]
+    });
+  }
+  // If errors is an array, join messages for main message
+  if (Array.isArray(errors)) {
+    const messages = errors.map(e => e.message || e.path || String(e)).join(', ');
+    return new AppError('VALIDATION_FAILED', messages || 'Validation failed', {
+      fields: errors
+    });
+  }
+  // Default object format
   return new AppError('VALIDATION_FAILED', 'Validation failed', {
     fields: errors
   });

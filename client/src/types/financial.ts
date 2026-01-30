@@ -419,9 +419,11 @@ export const invoiceStatusConfig: Record<InvoiceStatus, { label: string; color: 
   received: { label: 'Received', color: 'text-gray-600', bgColor: 'bg-gray-100' },
   needs_review: { label: 'Needs Review', color: 'text-orange-600', bgColor: 'bg-orange-100' },
   needs_approval: { label: 'Needs Approval', color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  ready_for_approval: { label: 'Ready for Approval', color: 'text-amber-600', bgColor: 'bg-amber-100' },
   approved: { label: 'Approved', color: 'text-green-600', bgColor: 'bg-green-100' },
   denied: { label: 'Denied', color: 'text-red-600', bgColor: 'bg-red-100' },
   in_draw: { label: 'In Draw', color: 'text-purple-600', bgColor: 'bg-purple-100' },
+  billed: { label: 'Billed', color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
   paid: { label: 'Paid', color: 'text-blue-600', bgColor: 'bg-blue-100' },
 };
 

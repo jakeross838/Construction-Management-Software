@@ -328,7 +328,11 @@ router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
     let thisPeriodCOByAlloc = {};
     let thisPeriodUnlinkedCO = { amount: 0, allocations: [] };
 
-    const invoices = drawInvoices?.map(di => di.invoice).filter(Boolean) || [];
+    const invoices = drawInvoices?.map(di => di.invoice).filter(Boolean).map(inv => ({
+      ...inv,
+      vendor_name: inv.vendor?.name || null,
+      invoice_allocations: inv.allocations
+    })) || [];
     invoices.forEach(inv => {
       if (inv.allocations) {
         inv.allocations.forEach(alloc => {
