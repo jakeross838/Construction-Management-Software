@@ -52,6 +52,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { AIProcessingAnimation } from './AIProcessingAnimation';
 
 // Document type definitions
 type DocumentType =
@@ -247,11 +248,20 @@ export function UnifiedAIUpload({
       f.id === uploadFile.id ? { ...f, status: 'classifying' } : f
     ));
 
+    // Minimum animation time for visual feedback
+    const minAnimationTime = 1500;
+    const startTime = Date.now();
+
     try {
       // Check if it's an image (likely photo)
       if (uploadFile.file.type.startsWith('image/') && !uploadFile.file.name.toLowerCase().includes('invoice')) {
         // Quick check - if pure image and on photos page, assume it's a photo
         if (effectiveContextHint === 'photo') {
+          // Ensure minimum animation time
+          const elapsed = Date.now() - startTime;
+          if (elapsed < minAnimationTime) {
+            await new Promise(resolve => setTimeout(resolve, minAnimationTime - elapsed));
+          }
           setFiles(prev => prev.map(f =>
             f.id === uploadFile.id ? {
               ...f,
@@ -298,6 +308,12 @@ export function UnifiedAIUpload({
         }
       }
 
+      // Ensure minimum animation time for visual feedback
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minAnimationTime) {
+        await new Promise(resolve => setTimeout(resolve, minAnimationTime - elapsed));
+      }
+
       setFiles(prev => prev.map(f =>
         f.id === uploadFile.id ? {
           ...f,
@@ -311,6 +327,12 @@ export function UnifiedAIUpload({
 
     } catch (err: any) {
       console.error('Classification error:', err);
+
+      // Ensure minimum animation time even on error
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minAnimationTime) {
+        await new Promise(resolve => setTimeout(resolve, minAnimationTime - elapsed));
+      }
 
       // Fallback to context hint or filename-based classification
       let fallbackType: DocumentType = effectiveContextHint || 'unknown';
@@ -557,35 +579,56 @@ export function UnifiedAIUpload({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4">
-          {/* Drop Zone */}
-          <div
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            className={cn(
-              "border-2 border-dashed rounded-lg p-6 text-center transition-colors",
-              isDragging
-                ? "border-primary bg-primary/5"
-                : "border-muted-foreground/25 hover:border-muted-foreground/50"
-            )}
-          >
-            <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground mb-1">
-              Drag & drop invoices, quotes, POs, contracts, or photos
-            </p>
-            <label className="cursor-pointer">
-              <span className="text-sm text-primary hover:underline">
-                Or click to browse files
-              </span>
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handleFileSelect}
-                accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
-              />
-            </label>
-          </div>
+          {/* AI Processing Animation - shown when actively processing */}
+          {(pendingCount > 0 || processingCount > 0) && files.length > 0 && (
+            <AIProcessingAnimation
+              statusMessage={
+                processingCount > 0
+                  ? `Processing ${processingCount} document${processingCount > 1 ? 's' : ''}...`
+                  : `Analyzing ${pendingCount} document${pendingCount > 1 ? 's' : ''}...`
+              }
+              documentType={
+                files.find(f => f.status === 'classifying' || f.status === 'processing')?.selectedType
+                  ? DOCUMENT_TYPES[files.find(f => f.status === 'classifying' || f.status === 'processing')?.selectedType || 'unknown']?.label
+                  : undefined
+              }
+              currentStep={processingCount > 0 ? 3 : pendingCount > 0 ? 1 : 0}
+              classificationComplete={pendingCount === 0}
+              processingComplete={allDone && completedCount > 0}
+            />
+          )}
+
+          {/* Drop Zone - hidden when processing */}
+          {pendingCount === 0 && processingCount === 0 && (
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              className={cn(
+                "border-2 border-dashed rounded-lg p-6 text-center transition-colors",
+                isDragging
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/25 hover:border-muted-foreground/50"
+              )}
+            >
+              <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground mb-1">
+                Drag & drop invoices, quotes, POs, contracts, or photos
+              </p>
+              <label className="cursor-pointer">
+                <span className="text-sm text-primary hover:underline">
+                  Or click to browse files
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
+                />
+              </label>
+            </div>
+          )}
 
           {/* File List */}
           {files.length > 0 && (
