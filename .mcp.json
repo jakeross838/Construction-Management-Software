@@ -1,5 +1,17 @@
 {
   "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--project-ref",
+        "sorghqcpeamdfbvysafj"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_b47c9b88f4f7fc1a0eede1cc6b42e4fa916bbc96"
+      }
+    },
     "chrome-devtools": {
       "command": "npx",
       "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]

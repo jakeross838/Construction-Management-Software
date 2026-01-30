@@ -1,5 +1,49 @@
 # Ross Built Construction Management Software
 
+## ⚡ QUICK REFERENCE (READ FIRST)
+
+### Environment Setup
+| Setting | Value |
+|---------|-------|
+| **Local Path** | `P:\Claude Projects\Construction Management Software` |
+| **GitHub Repo** | https://github.com/jakeross838/Construction-Management-Software |
+| **Server URL** | http://localhost:3001 |
+| **Supabase Project** | `sorghqcpeamdfbvysafj` |
+| **Supabase URL** | https://sorghqcpeamdfbvysafj.supabase.co |
+
+### Start the Application
+```bash
+cd "P:\Claude Projects\Construction Management Software"
+npm start
+# Server runs on http://localhost:3001
+```
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `.env` | Server environment (Supabase keys, Anthropic API) |
+| `client/.env` | React client environment (VITE_SUPABASE_*) |
+| `.mcp.json` | Claude Code MCP server config (Supabase + Chrome DevTools) |
+| `CLAUDE.md` | This documentation |
+
+### Environment Variables (.env)
+```
+SUPABASE_URL=https://sorghqcpeamdfbvysafj.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
+DATABASE_URL=postgresql://postgres:<password>@db.sorghqcpeamdfbvysafj.supabase.co:5432/postgres
+PORT=3001
+ANTHROPIC_API_KEY=<anthropic_key>
+SUPABASE_ACCESS_TOKEN=<access_token>
+```
+
+### Client Environment (client/.env)
+```
+VITE_SUPABASE_URL=https://sorghqcpeamdfbvysafj.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<anon_key>
+```
+
+---
+
 ## Overview
 Full-featured construction management system for Ross Built Custom Homes. Handles invoices, POs, draws, estimates, schedules, and more.
 
