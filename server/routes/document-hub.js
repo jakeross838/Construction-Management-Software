@@ -47,6 +47,177 @@ router.get('/types', (req, res) => {
 
 
 /**
+ * POST /api/document-hub/classify
+ * Classify a document without storing or processing it
+ * Used by the unified upload UI to determine document type
+ */
+router.post('/classify', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file provided' });
+    }
+
+    const { context_hint } = req.body;
+    const fileName = req.file.originalname;
+    const mimeType = req.file.mimetype;
+
+    // Quick classification for obvious cases
+    const fileNameLower = fileName.toLowerCase();
+
+    // Check for obvious image/photo
+    if (mimeType.startsWith('image/') && !fileNameLower.includes('invoice') && !fileNameLower.includes('receipt')) {
+      // Check context hint
+      if (context_hint === 'photo') {
+        return res.json({
+          success: true,
+          document_type: 'photo',
+          confidence: 0.95,
+          reasoning: 'Image file with photo context hint'
+        });
+      }
+    }
+
+    // Filename-based quick classification
+    let quickType = null;
+    let quickConfidence = 0.8;
+
+    if (fileNameLower.includes('invoice') || fileNameLower.includes('inv_')) {
+      quickType = 'invoice';
+    } else if (fileNameLower.includes('quote') || fileNameLower.includes('estimate')) {
+      quickType = 'quote';
+    } else if (fileNameLower.includes('proposal')) {
+      quickType = 'proposal';
+    } else if (fileNameLower.includes('po_') || fileNameLower.includes('purchase_order') || fileNameLower.includes('purchaseorder')) {
+      quickType = 'purchase_order';
+    } else if (fileNameLower.includes('change_order') || fileNameLower.includes('co_') || fileNameLower.includes('changeorder')) {
+      quickType = 'change_order';
+    } else if (fileNameLower.includes('contract') || fileNameLower.includes('agreement')) {
+      quickType = 'contract';
+    } else if (fileNameLower.includes('spec') || fileNameLower.includes('specification')) {
+      quickType = 'spec_sheet';
+    } else if (fileNameLower.includes('delivery') || fileNameLower.includes('receipt')) {
+      quickType = 'delivery_receipt';
+    } else if (fileNameLower.includes('warranty')) {
+      quickType = 'warranty_doc';
+    }
+
+    // If we have a quick match with good confidence, return it
+    if (quickType) {
+      return res.json({
+        success: true,
+        document_type: quickType,
+        confidence: quickConfidence,
+        reasoning: `Classified by filename pattern: ${fileName}`
+      });
+    }
+
+    // For PDFs and uncertain cases, use AI classification
+    // Store temporarily for AI analysis
+    const tempPath = `temp/${Date.now()}-${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('uploads')
+      .upload(tempPath, req.file.buffer, {
+        contentType: mimeType
+      });
+
+    if (uploadError) {
+      // Fall back to context hint if upload fails
+      if (context_hint) {
+        return res.json({
+          success: true,
+          document_type: context_hint,
+          confidence: 0.5,
+          reasoning: 'Using context hint (storage unavailable)'
+        });
+      }
+      throw new Error(`Storage upload failed: ${uploadError.message}`);
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('uploads')
+      .getPublicUrl(tempPath);
+
+    const fileUrl = urlData.publicUrl;
+
+    try {
+      // Use AI classification
+      const { classifyDocument } = require('../ai/document-hub');
+      const classification = await classifyDocument(fileUrl, fileName, mimeType);
+
+      // Clean up temp file
+      await supabase.storage.from('uploads').remove([tempPath]);
+
+      // If AI confidence is low and we have context hint, consider it
+      if (classification.confidence < 0.6 && context_hint) {
+        // Check if context hint is reasonable
+        const contextTypes = {
+          'invoice': ['invoice'],
+          'quote': ['quote', 'proposal'],
+          'proposal': ['quote', 'proposal'],
+          'purchase_order': ['quote', 'proposal', 'purchase_order'],
+          'photo': ['photo'],
+        };
+
+        const validForContext = contextTypes[context_hint] || [];
+        if (!validForContext.includes(classification.document_type)) {
+          // AI type doesn't match context, boost context hint
+          return res.json({
+            success: true,
+            document_type: context_hint,
+            confidence: 0.6,
+            reasoning: `Context-adjusted: AI detected ${classification.document_type} (${Math.round(classification.confidence * 100)}%) but page context suggests ${context_hint}`
+          });
+        }
+      }
+
+      return res.json({
+        success: true,
+        document_type: classification.document_type,
+        confidence: classification.confidence,
+        reasoning: classification.reasoning
+      });
+
+    } catch (aiError) {
+      // Clean up temp file on error
+      await supabase.storage.from('uploads').remove([tempPath]).catch(() => {});
+
+      // Fall back to context hint
+      if (context_hint) {
+        return res.json({
+          success: true,
+          document_type: context_hint,
+          confidence: 0.5,
+          reasoning: 'Using context hint (AI classification failed)'
+        });
+      }
+
+      // Last resort: guess from mime type
+      if (mimeType.startsWith('image/')) {
+        return res.json({
+          success: true,
+          document_type: 'photo',
+          confidence: 0.4,
+          reasoning: 'Default image classification'
+        });
+      }
+
+      return res.json({
+        success: true,
+        document_type: 'unknown',
+        confidence: 0.3,
+        reasoning: 'Could not classify document'
+      });
+    }
+
+  } catch (err) {
+    console.error('Classification error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+/**
  * POST /api/document-hub/upload
  * Upload a document for processing
  */
