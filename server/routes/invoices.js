@@ -624,7 +624,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
         };
 
         // Apply auto-corrections from two-stage pipeline
-        if (twoStageResult.extracted) {
+        if (twoStageResult.extracted && result.extracted) {
           if (twoStageResult.extracted.invoiceNumber) {
             result.extracted.invoiceNumber = twoStageResult.extracted.invoiceNumber;
           }
@@ -637,11 +637,13 @@ router.post('/process', upload.single('file'), async (req, res) => {
         }
 
         // Update confidence with combined score
-        if (twoStageResult.confidence) {
+        if (twoStageResult.confidence && result.ai_confidence) {
           result.ai_confidence.combined = twoStageResult.confidence;
         }
 
-        result.messages.push(...twoStageResult.messages);
+        if (result.messages && twoStageResult.messages) {
+          result.messages.push(...twoStageResult.messages);
+        }
       }
     } else if (converted.fileType === 'IMAGE') {
       const extracted = await extractInvoiceFromImage(

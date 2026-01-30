@@ -67,6 +67,7 @@ import { CostCodeSuggestions, CostCodeSuggestion } from './CostCodeSuggestions';
 import { PaymentStatusBadge } from './PaymentStatusBadge';
 import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { usePaymentHistory } from '@/hooks/useVendorPayments';
+import { useBudgetSummary } from '@/hooks/useBudget';
 
 interface InvoiceDetailDialogProps {
   invoiceId: string | null;
@@ -86,6 +87,7 @@ export function InvoiceDetailDialog({
   const { data: purchaseOrders = [] } = usePurchaseOrders(invoice?.job_id || undefined);
   const { data: vendors = [] } = useVendors();
   const { data: jobs = [] } = useDBJobs();
+  const { data: budgetSummary = [] } = useBudgetSummary(invoice?.job_id || undefined);
   
   const approveAndStamp = useApproveAndStampInvoice();
   const stampInvoice = useStampInvoice();
@@ -753,7 +755,7 @@ export function InvoiceDetailDialog({
                   )}
                 </div>
 
-                {/* Budget Standing */}
+                {/* PO Balance */}
                 {invoice.po_id && (() => {
                   const po = purchaseOrders.find(p => p.id === invoice.po_id);
                   if (!po) return null;
@@ -768,13 +770,13 @@ export function InvoiceDetailDialog({
                   return (
                     <div className={`mt-3 p-3 rounded-lg border ${isOverBudget ? 'bg-red-50 border-red-200' : willExceed ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Budget Standing</span>
+                        <span className="text-sm font-medium">PO Balance</span>
                         {isOverBudget ? (
-                          <Badge variant="destructive" className="text-xs">Over Budget</Badge>
+                          <Badge variant="destructive" className="text-xs">Over PO</Badge>
                         ) : willExceed ? (
-                          <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">Will Exceed</Badge>
+                          <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">Will Exceed PO</Badge>
                         ) : (
-                          <Badge className="bg-green-100 text-green-700 border-0 text-xs">Within Budget</Badge>
+                          <Badge className="bg-green-100 text-green-700 border-0 text-xs">Within PO</Badge>
                         )}
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-sm">
@@ -791,7 +793,7 @@ export function InvoiceDetailDialog({
                           <p className="text-xs text-muted-foreground">{percentUsed.toFixed(0)}% used</p>
                         </div>
                         <div>
-                          <p className="text-muted-foreground text-xs">Remaining</p>
+                          <p className="text-muted-foreground text-xs">PO Remaining</p>
                           <p className={`font-medium ${remaining < 0 ? 'text-red-600' : remaining < invoice.amount ? 'text-amber-600' : 'text-green-600'}`}>
                             {formatCurrency(remaining)}
                           </p>
@@ -806,6 +808,88 @@ export function InvoiceDetailDialog({
                           className={`h-full transition-all ${isOverBudget ? 'bg-red-500' : percentUsed > 80 ? 'bg-amber-500' : 'bg-green-500'}`}
                           style={{ width: `${Math.min(percentUsed, 100)}%` }}
                         />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Budget Balance - per cost code */}
+                {budgetSummary.length > 0 && allocations.length > 0 && (() => {
+                  // Get budget info for allocated cost codes
+                  const allocatedCostCodes = allocations
+                    .filter(a => a.cost_code_id)
+                    .map(a => {
+                      const budget = budgetSummary.find(b => b.cost_code_id === a.cost_code_id);
+                      const costCode = costCodes.find(c => c.id === a.cost_code_id);
+                      return {
+                        costCode: costCode?.code || '',
+                        name: costCode?.name || budget?.name || 'Unknown',
+                        budgeted: budget?.budget || 0,
+                        actual: budget?.actual || 0,
+                        committed: budget?.committed || 0,
+                        allocAmount: parseFloat(a.amount as any) || 0,
+                      };
+                    })
+                    .filter(a => a.budgeted > 0 || a.committed > 0);
+
+                  if (allocatedCostCodes.length === 0) return null;
+
+                  return (
+                    <div className="mt-3 p-3 rounded-lg border bg-blue-50 border-blue-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Budget Balance by Cost Code</span>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        {allocatedCostCodes.map((cc, idx) => {
+                          const budgetRemaining = cc.budgeted - cc.actual;
+                          const afterThisInvoice = budgetRemaining - cc.allocAmount;
+                          const willExceedBudget = afterThisInvoice < 0;
+                          const budgetPercent = cc.budgeted > 0 ? (cc.actual / cc.budgeted) * 100 : 0;
+
+                          return (
+                            <div key={idx} className="p-2 bg-white/50 rounded border border-blue-100">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="font-medium text-xs">{cc.costCode} - {cc.name}</span>
+                                {willExceedBudget ? (
+                                  <Badge variant="destructive" className="text-xs">Over Budget</Badge>
+                                ) : budgetRemaining < cc.allocAmount ? (
+                                  <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">Tight</Badge>
+                                ) : (
+                                  <Badge className="bg-green-100 text-green-700 border-0 text-xs">OK</Badge>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-4 gap-1 text-xs">
+                                <div>
+                                  <p className="text-muted-foreground">Budget</p>
+                                  <p className="font-medium">{formatCurrency(cc.budgeted)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Spent</p>
+                                  <p className="font-medium">{formatCurrency(cc.actual)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Remaining</p>
+                                  <p className={`font-medium ${budgetRemaining < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                    {formatCurrency(budgetRemaining)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">After This</p>
+                                  <p className={`font-medium ${afterThisInvoice < 0 ? 'text-red-600' : afterThisInvoice < cc.budgeted * 0.1 ? 'text-amber-600' : 'text-green-600'}`}>
+                                    {formatCurrency(afterThisInvoice)}
+                                  </p>
+                                </div>
+                              </div>
+                              {/* Budget progress bar */}
+                              <div className="mt-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all ${budgetPercent > 100 ? 'bg-red-500' : budgetPercent > 80 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                                  style={{ width: `${Math.min(budgetPercent, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
