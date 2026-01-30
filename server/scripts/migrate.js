@@ -15,7 +15,7 @@ require('dotenv').config();
 
 const PROJECT_REF = 'sorghqcpeamdfbvysafj';
 const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
-const MIGRATIONS_DIR = path.join(__dirname, '..', 'database');
+const MIGRATIONS_DIR = path.join(__dirname, '..', '..', 'database');
 
 async function runSQL(sql) {
   if (!ACCESS_TOKEN) {
