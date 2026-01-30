@@ -8,6 +8,8 @@ import {
   File,
   Image,
   Loader2,
+  Eye,
+  Settings2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -16,9 +18,12 @@ import {
   useUploadBidDocument,
   useDeleteBidDocument,
 } from '@/hooks/useBidPackages';
+import { DocumentPreviewModal } from './DocumentPreviewModal';
+import { DocumentManagementDialog } from './DocumentManagementDialog';
 
 interface BidPackageDocumentsSectionProps {
   bidPackageId: string;
+  bidTitle?: string;
   documents: BidDocument[];
 }
 
@@ -36,11 +41,19 @@ const formatFileSize = (bytes: number | null) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const canPreview = (fileName: string) => {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  return ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '');
+};
+
 export function BidPackageDocumentsSection({
   bidPackageId,
+  bidTitle = 'Bid',
   documents,
 }: BidPackageDocumentsSectionProps) {
   const [uploading, setUploading] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<BidDocument | null>(null);
+  const [showManageDialog, setShowManageDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadDocument = useUploadBidDocument();
@@ -90,24 +103,36 @@ export function BidPackageDocumentsSection({
             accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp"
             multiple
           />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4 mr-2" />
-                Choose Files
-              </>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Choose Files
+                </>
+              )}
+            </Button>
+            {documents.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowManageDialog(true)}
+              >
+                <Settings2 className="h-4 w-4 mr-2" />
+                Manage
+              </Button>
             )}
-          </Button>
+          </div>
         </div>
       </div>
 
@@ -122,10 +147,12 @@ export function BidPackageDocumentsSection({
         <div className="space-y-2">
           {documents.map((doc) => {
             const Icon = getFileIcon(doc.file_name);
+            const previewable = canPreview(doc.file_name);
             return (
               <div
                 key={doc.id}
-                className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
+                className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
+                onClick={() => previewable && setPreviewDoc(doc)}
               >
                 <div className="flex items-center gap-3">
                   <Icon className="h-5 w-5 text-muted-foreground" />
@@ -137,12 +164,24 @@ export function BidPackageDocumentsSection({
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  {previewable && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => setPreviewDoc(doc)}
+                      title="Preview"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
                     className="h-7 w-7"
                     asChild
+                    title="Open in new tab"
                   >
                     <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-4 w-4" />
@@ -153,6 +192,7 @@ export function BidPackageDocumentsSection({
                     variant="ghost"
                     className="h-7 w-7 text-red-500"
                     onClick={() => handleDelete(doc.id)}
+                    title="Delete"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -162,6 +202,24 @@ export function BidPackageDocumentsSection({
           })}
         </div>
       )}
+
+      {/* Preview Modal */}
+      <DocumentPreviewModal
+        document={previewDoc}
+        documents={documents.filter((d) => canPreview(d.file_name))}
+        open={!!previewDoc}
+        onOpenChange={(open) => !open && setPreviewDoc(null)}
+        onNavigate={setPreviewDoc}
+      />
+
+      {/* Management Dialog */}
+      <DocumentManagementDialog
+        bidPackageId={bidPackageId}
+        bidTitle={bidTitle}
+        documents={documents}
+        open={showManageDialog}
+        onOpenChange={setShowManageDialog}
+      />
     </div>
   );
 }

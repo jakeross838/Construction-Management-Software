@@ -19,6 +19,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { X, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { useVendors } from '@/hooks/useVendors';
 import {
   useCreateSubcontractorBid,
@@ -145,6 +146,12 @@ export function SubcontractorBidFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validate required fields
+    if (!formData.proposed_duration_days || parseInt(formData.proposed_duration_days) < 1) {
+      toast.error('Duration is required - please enter the estimated days to complete');
+      return;
+    }
+
     const payload = {
       bid_package_id: bidPackage.id,
       vendor_id: formData.vendor_id,
@@ -252,15 +259,17 @@ export function SubcontractorBidFormDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="proposed_duration_days">Duration (days)</Label>
+              <Label htmlFor="proposed_duration_days">Duration (days) *</Label>
               <Input
                 id="proposed_duration_days"
                 type="number"
+                min="1"
                 value={formData.proposed_duration_days}
                 onChange={(e) =>
                   setFormData((p) => ({ ...p, proposed_duration_days: e.target.value }))
                 }
                 placeholder="14"
+                required
               />
             </div>
             <div className="space-y-2">

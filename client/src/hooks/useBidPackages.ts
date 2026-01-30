@@ -302,6 +302,41 @@ export function useDeleteBidDocument() {
   });
 }
 
+export function useMoveDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      docId,
+      fromBidId,
+      toBidId,
+    }: {
+      docId: string;
+      fromBidId: string;
+      toBidId: string;
+    }) => {
+      const response = await fetch(`/api/bids/documents/${docId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bid_id: toBidId, moved_by: 'User' }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+
+      return { fromBidId, toBidId };
+    },
+    onSuccess: ({ fromBidId, toBidId }) => {
+      queryClient.invalidateQueries({ queryKey: ['bid-documents', fromBidId] });
+      queryClient.invalidateQueries({ queryKey: ['bid-documents', toBidId] });
+      queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
+      toast.success('Document moved');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
 // Legacy hooks for backward compatibility with bid packages
 export function useBidPackageDocuments(bidPackageId: string) {
   return useBidDocuments(bidPackageId);

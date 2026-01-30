@@ -460,6 +460,61 @@ router.delete('/documents/:docId', asyncHandler(async (req, res) => {
 }));
 
 // ============================================================
+// MOVE DOCUMENT TO ANOTHER BID
+// ============================================================
+
+router.patch('/documents/:docId', asyncHandler(async (req, res) => {
+  const { docId } = req.params;
+  const { bid_id: newBidId, moved_by } = req.body;
+
+  if (!newBidId) throw new AppError('VALIDATION_ERROR', 'New bid_id is required');
+
+  // Get current document
+  const { data: doc, error: fetchError } = await supabase
+    .from('v2_bid_documents')
+    .select('*, bid:v2_bids(id, title, job_id)')
+    .eq('id', docId)
+    .single();
+
+  if (fetchError || !doc) throw new AppError('NOT_FOUND', 'Document not found');
+
+  // Verify target bid exists
+  const { data: targetBid, error: targetError } = await supabase
+    .from('v2_bids')
+    .select('id, title, job_id')
+    .eq('id', newBidId)
+    .is('deleted_at', null)
+    .single();
+
+  if (targetError || !targetBid) throw new AppError('NOT_FOUND', 'Target bid not found');
+
+  // Update document's bid_id
+  const { data: updated, error: updateError } = await supabase
+    .from('v2_bid_documents')
+    .update({ bid_id: newBidId })
+    .eq('id', docId)
+    .select()
+    .single();
+
+  if (updateError) throw new AppError('DATABASE_ERROR', updateError.message);
+
+  // Log activity on both bids
+  await logBidActivity(doc.bid_id, 'document_moved_out', moved_by || 'System', {
+    file_name: doc.file_name,
+    moved_to_bid_id: newBidId,
+    moved_to_bid_title: targetBid.title
+  });
+
+  await logBidActivity(newBidId, 'document_moved_in', moved_by || 'System', {
+    file_name: doc.file_name,
+    moved_from_bid_id: doc.bid_id,
+    moved_from_bid_title: doc.bid?.title
+  });
+
+  res.json(updated);
+}));
+
+// ============================================================
 // CONVERT BID TO PURCHASE ORDER
 // ============================================================
 

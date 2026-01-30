@@ -505,6 +505,7 @@ export function BidPackageDetailDialog({
                 <TabsContent value="documents" className="mt-4">
                   <BidPackageDocumentsSection
                     bidPackageId={bidPackage.id}
+                    bidTitle={bidPackage.title}
                     documents={documents}
                   />
                 </TabsContent>
