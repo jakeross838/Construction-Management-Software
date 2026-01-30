@@ -8,7 +8,7 @@ const {
   validateAllocations,
   generateInvoiceHash,
   STATUS_TRANSITIONS
-} = require('../../server/validation');
+} = require('../../server/core/validation');
 
 describe('validateInvoice', () => {
   describe('amount validation', () => {

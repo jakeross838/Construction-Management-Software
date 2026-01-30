@@ -12,7 +12,7 @@ const {
   getClientName,
   generateInvoiceFilename,
   generatePONumber
-} = require('../../server/standards');
+} = require('../../server/services/standards');
 
 describe('toTitleCase', () => {
   test('converts lowercase to title case', () => {
