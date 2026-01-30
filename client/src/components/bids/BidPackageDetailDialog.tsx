@@ -48,9 +48,10 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
   BidPackage,
+  BidDocument,
   BID_PACKAGE_STATUS_OPTIONS,
   SUBCONTRACTOR_BID_STATUS_OPTIONS,
-  useBidPackageDocuments,
+  useBidDocuments,
   useBidPackageInvites,
   useSubcontractorBids,
   useUpdateBidPackage,
@@ -85,7 +86,7 @@ export function BidPackageDetailDialog({
   const [showBidForm, setShowBidForm] = useState(false);
   const [editingBid, setEditingBid] = useState<any>(null);
 
-  const { data: documents = [] } = useBidPackageDocuments(bidPackage?.id || '');
+  const { data: documents = [] } = useBidDocuments(bidPackage?.id || '');
   const { data: invites = [] } = useBidPackageInvites(bidPackage?.id || '');
   const { data: bids = [] } = useSubcontractorBids(bidPackage?.id);
 

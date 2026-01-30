@@ -223,14 +223,88 @@ export function useDeleteBidPackage() {
   });
 }
 
-// ==================== BID PACKAGE DOCUMENTS ====================
+// ==================== BID DOCUMENTS ====================
 
-export function useBidPackageDocuments(bidPackageId: string) {
+export interface BidDocument {
+  id: string;
+  bid_id: string;
+  file_url: string;
+  file_name: string;
+  file_size: number | null;
+  uploaded_by: string | null;
+  uploaded_at: string;
+}
+
+export function useBidDocuments(bidId: string) {
   return useQuery({
-    queryKey: ['bid-package-documents', bidPackageId],
-    queryFn: () => api<BidPackageDocument[]>(`/bids/${bidPackageId}/documents`),
-    enabled: !!bidPackageId,
+    queryKey: ['bid-documents', bidId],
+    queryFn: async () => {
+      // Get documents from the bid's documents array in the main response
+      const bid = await api<BidPackage & { documents: BidDocument[] }>(`/bids/${bidId}`);
+      return bid.documents || [];
+    },
+    enabled: !!bidId,
   });
+}
+
+export function useUploadBidDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ bidId, file }: { bidId: string; file: File }) => {
+      const formData = new FormData();
+      formData.append('document', file);
+      formData.append('uploaded_by', 'User');
+
+      const response = await fetch(`/api/bids/${bidId}/documents`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['bid-documents', variables.bidId] });
+      queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
+      toast.success('Document uploaded');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useDeleteBidDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ docId, bidId }: { docId: string; bidId: string }) => {
+      const response = await fetch(`/api/bids/documents/${docId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleted_by: 'User' }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+
+      return bidId;
+    },
+    onSuccess: (bidId) => {
+      queryClient.invalidateQueries({ queryKey: ['bid-documents', bidId] });
+      queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
+      toast.success('Document deleted');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// Legacy hooks for backward compatibility with bid packages
+export function useBidPackageDocuments(bidPackageId: string) {
+  return useBidDocuments(bidPackageId);
 }
 
 export function useAddBidPackageDocument() {
@@ -242,7 +316,7 @@ export function useAddBidPackageDocument() {
         body: JSON.stringify(data),
       }),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['bid-package-documents', variables.bid_package_id] });
+      queryClient.invalidateQueries({ queryKey: ['bid-documents', variables.bid_package_id] });
       toast.success('Document added');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -253,9 +327,9 @@ export function useDeleteBidPackageDocument() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, bidPackageId }: { id: string; bidPackageId: string }) =>
-      api(`/bids/${bidPackageId}/documents/${id}`, { method: 'DELETE' }).then(() => bidPackageId),
+      api(`/bids/documents/${id}`, { method: 'DELETE' }).then(() => bidPackageId),
     onSuccess: (bidPackageId) => {
-      queryClient.invalidateQueries({ queryKey: ['bid-package-documents', bidPackageId] });
+      queryClient.invalidateQueries({ queryKey: ['bid-documents', bidPackageId] });
       toast.success('Document removed');
     },
     onError: (e: Error) => toast.error(e.message),
