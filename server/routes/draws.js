@@ -1105,10 +1105,16 @@ router.patch('/:id/submit', asyncHandler(async (req, res) => {
     }
 
     const now = new Date().toISOString();
+    const applicationDate = new Date().toISOString().split('T')[0];
 
     const { data: updatedDraw, error } = await supabase
       .from('v2_draws')
-      .update({ status: 'submitted', submitted_at: now, locked_at: now })
+      .update({
+        status: 'submitted',
+        submitted_at: now,
+        locked_at: now,
+        application_date: applicationDate
+      })
       .eq('id', drawId)
       .select()
       .single();

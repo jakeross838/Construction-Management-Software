@@ -467,12 +467,17 @@ export function useUnassignedApprovedInvoices(jobId?: string) {
 export function useCreateDraw() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (draw: Partial<Draw>) => api<Draw>('/draws', {
-      method: 'POST',
-      body: JSON.stringify(draw),
-    }),
+    mutationFn: (draw: Partial<Draw> & { job_id: string; invoiceIds?: string[] }) => {
+      const { job_id, ...drawData } = draw;
+      return api<Draw>(`/jobs/${job_id}/draws`, {
+        method: 'POST',
+        body: JSON.stringify(drawData),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['draws'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['unassigned-invoices'] });
       toast.success('Draw created');
     },
     onError: (error: Error) => toast.error(`Failed to create draw: ${error.message}`),

@@ -19,9 +19,10 @@ export function useRemoveInvoiceFromDraw() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (invoiceId: string) => {
-      return api(`/draws/invoices/${invoiceId}/remove`, {
+    mutationFn: async ({ drawId, invoiceId }: { drawId: string; invoiceId: string }) => {
+      return api(`/draws/${drawId}/remove-invoice`, {
         method: 'POST',
+        body: JSON.stringify({ invoice_id: invoiceId }),
       });
     },
     onSuccess: () => {
@@ -37,15 +38,14 @@ export function useRemoveInvoiceFromDraw() {
   });
 }
 
-// Remove change order from draw
+// Remove change order billing from draw
 export function useRemoveChangeOrderFromDraw() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (coId: string) => {
-      return api(`/change-orders/${coId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ draw_id: null }),
+    mutationFn: async ({ drawId, coId }: { drawId: string; coId: string }) => {
+      return api(`/draws/${drawId}/remove-co-billing/${coId}`, {
+        method: 'DELETE',
       });
     },
     onSuccess: () => {
@@ -60,20 +60,69 @@ export function useRemoveChangeOrderFromDraw() {
   });
 }
 
-// Remove lien release from draw
-export function useRemoveLienReleaseFromDraw() {
+// Add change order billing to draw
+export function useAddChangeOrderToDraw() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (lrId: string) => {
-      return api(`/lien-releases/${lrId}`, {
-        method: 'DELETE',
+    mutationFn: async ({ drawId, changeOrderId, amount }: { drawId: string; changeOrderId: string; amount: number }) => {
+      return api(`/draws/${drawId}/add-co-billing`, {
+        method: 'POST',
+        body: JSON.stringify({ change_order_id: changeOrderId, amount }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      queryClient.invalidateQueries({ queryKey: ['draw'] });
+      queryClient.invalidateQueries({ queryKey: ['change-orders-by-draw'] });
+      queryClient.invalidateQueries({ queryKey: ['change-orders'] });
+      toast.success('PCCO added to draw');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to add PCCO: ${error.message}`);
+    },
+  });
+}
+
+// Attach lien release to draw
+export function useAddLienReleaseToDraw() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ lienReleaseId, drawId }: { lienReleaseId: string; drawId: string }) => {
+      return api(`/lien-releases/${lienReleaseId}/attach-to-draw`, {
+        method: 'POST',
+        body: JSON.stringify({ draw_id: drawId }),
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['draws'] });
       queryClient.invalidateQueries({ queryKey: ['draw'] });
       queryClient.invalidateQueries({ queryKey: ['lien-releases-by-draw'] });
+      queryClient.invalidateQueries({ queryKey: ['lien-releases'] });
+      toast.success('Lien release added to draw');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to add lien release: ${error.message}`);
+    },
+  });
+}
+
+// Remove lien release from draw (detach, not delete)
+export function useRemoveLienReleaseFromDraw() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (lrId: string) => {
+      return api(`/lien-releases/${lrId}/detach-from-draw`, {
+        method: 'POST',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      queryClient.invalidateQueries({ queryKey: ['draw'] });
+      queryClient.invalidateQueries({ queryKey: ['lien-releases-by-draw'] });
+      queryClient.invalidateQueries({ queryKey: ['lien-releases'] });
       toast.success('Lien release removed from draw');
     },
     onError: (error: Error) => {
@@ -89,7 +138,7 @@ export function useSubmitDraw() {
   return useMutation({
     mutationFn: async ({ drawId, submittedBy }: { drawId: string; submittedBy: string }) => {
       return api(`/draws/${drawId}/submit`, {
-        method: 'POST',
+        method: 'PATCH',
         body: JSON.stringify({ submitted_by: submittedBy }),
       });
     },
@@ -142,7 +191,7 @@ export function useFundDraw() {
       fundingStatus: FundingStatus;
     }) => {
       return api(`/draws/${drawId}/fund`, {
-        method: 'POST',
+        method: 'PATCH',
         body: JSON.stringify({
           funded_amount: fundedAmount,
           funding_status: fundingStatus,
@@ -174,9 +223,9 @@ export function useAddInvoiceToExistingDraw() {
 
   return useMutation({
     mutationFn: async ({ invoiceId, drawId }: { invoiceId: string; drawId: string }) => {
-      return api(`/draws/${drawId}/invoices`, {
+      return api(`/draws/${drawId}/add-invoices`, {
         method: 'POST',
-        body: JSON.stringify({ invoice_id: invoiceId }),
+        body: JSON.stringify({ invoice_ids: [invoiceId] }),
       });
     },
     onSuccess: () => {

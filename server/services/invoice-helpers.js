@@ -659,16 +659,24 @@ async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
     return existingDraw;
   }
 
-  // Get next draw number for job
+  // Get next draw number for job and previous draw's period_end
   const { data: lastDraw } = await supabase
     .from('v2_draws')
-    .select('draw_number')
+    .select('draw_number, period_end')
     .eq('job_id', jobId)
     .order('draw_number', { ascending: false })
     .limit(1)
     .single();
 
   const nextDrawNumber = (lastDraw?.draw_number || 0) + 1;
+
+  // Calculate period_start: day after previous draw's period_end, or today if first draw
+  let periodStart = new Date().toISOString().split('T')[0];
+  if (lastDraw?.period_end) {
+    const prevEnd = new Date(lastDraw.period_end);
+    prevEnd.setDate(prevEnd.getDate() + 1);
+    periodStart = prevEnd.toISOString().split('T')[0];
+  }
 
   // Create new draft draw
   const { data: newDraw, error } = await supabase
@@ -677,6 +685,7 @@ async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
       job_id: jobId,
       draw_number: nextDrawNumber,
       status: 'draft',
+      period_start: periodStart,
       period_end: new Date().toISOString().split('T')[0],
       total_amount: 0
     })

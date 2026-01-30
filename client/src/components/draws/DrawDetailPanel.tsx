@@ -11,6 +11,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Table,
   TableBody,
   TableCell,
@@ -18,13 +24,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { 
-  Download, 
-  Send, 
-  CheckCircle, 
-  Clock, 
+import {
+  Download,
+  Send,
+  CheckCircle,
+  Clock,
   DollarSign,
   FileText,
+  FileSpreadsheet,
   Calendar,
   Receipt,
   FileEdit,
@@ -34,6 +41,7 @@ import {
   Eye,
   AlertTriangle,
   TrendingUp,
+  ChevronDown,
 } from 'lucide-react';
 import { formatCurrency, formatDate, drawStatusConfig } from '@/types/financial';
 import type { G703LineItem, LienRelease, ChangeOrder, Invoice } from '@/types/financial';
@@ -92,7 +100,7 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
         this_period: sov.thisPeriod || 0,
         materials_stored: sov.materialsStored || 0,
         total_completed: sov.totalBilled || 0,
-        percent_complete: Math.min(Math.round(sov.percentComplete || 0), 100),
+        percent_complete: Math.round(sov.percentComplete || 0),
         balance_to_finish: sov.balance || 0,
       }));
     }
@@ -145,29 +153,23 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
   const invoiceTotal = draw?.invoices?.reduce((sum, inv: any) => sum + (inv.amount || 0), 0) || 0;
   const pccoTotal = pccos.reduce((sum, co) => sum + (co.total_amount || 0), 0);
   
-  const g702 = draw ? {
-    contractAmount: 0,
-    changeOrdersAmount: pccoTotal,
-    totalContract: 0,
-    completedPrevious: 0,
-    completedThisPeriod: draw.current_payment_due || 0,
-    totalCompleted: draw.total_completed || 0,
-    percentComplete: 0,
-    currentPaymentDue: draw.current_payment_due || 0,
-  } : null;
+  // Use server-computed g702 data
+  const g702 = draw?.g702 || null;
   
   // Filter to only show lines affected this period (have activity)
   const activeG703Lines = g703Lines.filter(line => line.this_period > 0);
   const g703Total = activeG703Lines.reduce((sum, l) => sum + l.this_period, 0);
   
   // Validation: all invoices must have cost code allocations
+  // Check for both cost_code_id and cost_code.id formats (API returns nested cost_code object)
+  const hasCostCode = (a: any) => a.cost_code_id || a.cost_code?.id;
   const invoicesWithAllocations = draw?.invoices?.filter((inv: any) => {
     const allocations = inv.invoice_allocations || inv.allocations || [];
-    return allocations.length > 0 && allocations.some((a: any) => a.cost_code_id);
+    return allocations.length > 0 && allocations.some(hasCostCode);
   }) || [];
   const invoicesWithoutAllocations = (draw?.invoices || []).filter((inv: any) => {
     const allocations = inv.invoice_allocations || inv.allocations || [];
-    return allocations.length === 0 || !allocations.some((a: any) => a.cost_code_id);
+    return allocations.length === 0 || !allocations.some(hasCostCode);
   });
   const allInvoicesHaveAllocations = draw?.invoices?.length ? invoicesWithoutAllocations.length === 0 : true;
   
@@ -192,7 +194,11 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
       toast.error('Can only remove invoices from draft draws');
       return;
     }
-    await removeInvoice.mutateAsync(invoiceId);
+    if (!draw?.id) {
+      toast.error('Draw ID not available');
+      return;
+    }
+    await removeInvoice.mutateAsync({ drawId: draw.id, invoiceId });
   };
   
   const handleRemoveCO = async (coId: string, e: React.MouseEvent) => {
@@ -201,7 +207,11 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
       toast.error('Can only remove PCCOs from draft draws');
       return;
     }
-    await removeCO.mutateAsync(coId);
+    if (!draw?.id) {
+      toast.error('Draw ID not available');
+      return;
+    }
+    await removeCO.mutateAsync({ drawId: draw.id, coId });
   };
   
   const handleRemoveLR = async (lrId: string, e: React.MouseEvent) => {
@@ -240,6 +250,49 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
   };
   
   const fundingStatus = getFundingStatus();
+
+  // Export handlers
+  const handleExportExcel = async () => {
+    if (!draw) return;
+    try {
+      toast.info('Generating Excel export...');
+      const response = await fetch(`/api/draws/${draw.id}/export/excel`);
+      if (!response.ok) throw new Error('Export failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Draw-${draw.draw_number}-G702-G703.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('Excel exported successfully');
+    } catch (error) {
+      toast.error('Failed to export Excel');
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!draw) return;
+    try {
+      toast.info('Generating PDF export...');
+      const response = await fetch(`/api/draws/${draw.id}/export/pdf`);
+      if (!response.ok) throw new Error('Export failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Draw-${draw.draw_number}-G702-G703.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('PDF exported successfully');
+    } catch (error) {
+      toast.error('Failed to export PDF');
+    }
+  };
 
   return (
     <>
@@ -283,10 +336,25 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
                 
                 {/* Quick Actions */}
                 <div className="flex gap-2 mt-4">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Download className="h-4 w-4" />
-                    Export G702/G703
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <Download className="h-4 w-4" />
+                        Export G702/G703
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={handleExportExcel} className="gap-2">
+                        <FileSpreadsheet className="h-4 w-4" />
+                        Export as Excel
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleExportPDF} className="gap-2">
+                        <FileText className="h-4 w-4" />
+                        Export as PDF
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   
                   {isDraft && (
                     <>
@@ -524,10 +592,21 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
                                 <TableCell className="text-right font-semibold text-primary">
                                   {formatCurrency(line.this_period)}
                                 </TableCell>
-                                <TableCell className="text-right">
+                                <TableCell className={cn(
+                                "text-right",
+                                line.percent_complete > 100 && "text-destructive"
+                              )}>
                                   <div className="flex items-center justify-end gap-2">
-                                    <Progress value={line.percent_complete} className="h-1.5 w-12" />
-                                    <span className="text-xs">{line.percent_complete}%</span>
+                                    <Progress value={Math.min(line.percent_complete, 100)} className="h-1.5 w-12" />
+                                    <span className={cn(
+                                      "text-xs",
+                                      line.percent_complete > 100 && "font-semibold"
+                                    )}>
+                                      {line.percent_complete}%
+                                      {line.percent_complete > 100 && (
+                                        <AlertTriangle className="inline-block h-3 w-3 ml-1" />
+                                      )}
+                                    </span>
                                   </div>
                                 </TableCell>
                                 <TableCell className={cn(

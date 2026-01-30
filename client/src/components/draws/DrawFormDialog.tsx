@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+// Using native checkbox instead of Radix Checkbox to avoid infinite loop issues
 import { Badge } from '@/components/ui/badge';
 import { useJob } from '@/contexts/JobContext';
 import { useDBJobs, useCreateDraw, useUnassignedApprovedInvoices } from '@/hooks/useFinancialData';
@@ -71,11 +72,15 @@ export function DrawFormDialog({ open, onOpenChange }: DrawFormDialogProps) {
   };
 
   const selectAll = () => {
-    setSelectedInvoiceIds(availableInvoices.map(inv => inv.id));
+    flushSync(() => {
+      setSelectedInvoiceIds(availableInvoices.map(inv => inv.id));
+    });
   };
 
   const deselectAll = () => {
-    setSelectedInvoiceIds([]);
+    flushSync(() => {
+      setSelectedInvoiceIds([]);
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -177,12 +182,28 @@ export function DrawFormDialog({ open, onOpenChange }: DrawFormDialogProps) {
                 <Label className="text-base font-medium">Approved Invoices</Label>
                 {availableInvoices.length > 0 && (
                   <div className="flex gap-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={selectAll}>
+                    <button
+                      type="button"
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        selectAll();
+                      }}
+                    >
                       Select All
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={deselectAll}>
+                    </button>
+                    <button
+                      type="button"
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        deselectAll();
+                      }}
+                    >
                       Clear
-                    </Button>
+                    </button>
                   </div>
                 )}
               </div>
@@ -215,16 +236,21 @@ export function DrawFormDialog({ open, onOpenChange }: DrawFormDialogProps) {
                         }`}
                         onClick={() => toggleInvoice(invoice.id)}
                       >
-                        <Checkbox
+                        <input
+                          type="checkbox"
                           checked={selectedInvoiceIds.includes(invoice.id)}
-                          onCheckedChange={() => toggleInvoice(invoice.id)}
-                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => {}}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleInvoice(invoice.id);
+                          }}
+                          className="h-4 w-4 rounded border-gray-300"
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-sm">{invoice.invoice_number}</span>
                             <Badge variant="outline" className="text-xs">
-                              {invoice.vendor_name || 'Unknown Vendor'}
+                              {invoice.vendor_name || (invoice as any).vendor?.name || 'Unknown Vendor'}
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground truncate">

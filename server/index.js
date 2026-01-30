@@ -6967,29 +6967,102 @@ app.post('/api/jobs/:id/draws', validateRequest({
   params: { id: { type: 'uuid' } }
 }), asyncHandler(async (req, res) => {
   const jobId = req.params.id;
+  const { invoiceIds, period_start, period_end, application_date, notes, current_payment_due, total_completed } = req.body;
 
-    const { data: existing } = await supabase
-      .from('v2_draws')
-      .select('draw_number')
-      .eq('job_id', jobId)
-      .order('draw_number', { ascending: false })
-      .limit(1);
+  const { data: existing } = await supabase
+    .from('v2_draws')
+    .select('draw_number, period_end')
+    .eq('job_id', jobId)
+    .order('draw_number', { ascending: false })
+    .limit(1);
 
-    const nextNumber = existing && existing.length > 0 ? existing[0].draw_number + 1 : 1;
+  const nextNumber = existing && existing.length > 0 ? existing[0].draw_number + 1 : 1;
 
-    const { data, error } = await supabase
-      .from('v2_draws')
-      .insert({
-        job_id: jobId,
-        draw_number: nextNumber,
-        period_end: req.body.period_end || new Date().toISOString().split('T')[0],
-        status: 'draft'
-      })
-      .select()
-      .single();
+  // Calculate period_start: day after previous draw's period_end, or today if first draw
+  let defaultPeriodStart = new Date().toISOString().split('T')[0];
+  if (existing && existing.length > 0 && existing[0].period_end) {
+    const prevEnd = new Date(existing[0].period_end);
+    prevEnd.setDate(prevEnd.getDate() + 1);
+    defaultPeriodStart = prevEnd.toISOString().split('T')[0];
+  }
+
+  // Create the draw (current_payment_due and total_completed are computed from invoices, not stored)
+  const { data: draw, error } = await supabase
+    .from('v2_draws')
+    .insert({
+      job_id: jobId,
+      draw_number: nextNumber,
+      period_start: period_start || defaultPeriodStart,
+      period_end: period_end || new Date().toISOString().split('T')[0],
+      application_date: application_date || null,
+      notes: notes || null,
+      status: 'draft'
+    })
+    .select()
+    .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
-  res.json(data);
+
+  // Add invoices to the draw if provided
+  if (invoiceIds && invoiceIds.length > 0) {
+    // Insert draw_invoices junction records
+    const drawInvoices = invoiceIds.map(invoiceId => ({
+      draw_id: draw.id,
+      invoice_id: invoiceId
+    }));
+
+    const { error: diError } = await supabase
+      .from('v2_draw_invoices')
+      .insert(drawInvoices);
+
+    if (diError) {
+      logger.error('Error adding invoices to draw', { error: diError.message });
+    }
+
+    // Copy invoice allocations to draw_allocations for funding tracking
+    let totalAmount = 0;
+    for (const invoiceId of invoiceIds) {
+      const { data: allocations } = await supabase
+        .from('v2_invoice_allocations')
+        .select('cost_code_id, amount, notes')
+        .eq('invoice_id', invoiceId);
+
+      for (const alloc of allocations || []) {
+        await supabase
+          .from('v2_draw_allocations')
+          .upsert({
+            draw_id: draw.id,
+            invoice_id: invoiceId,
+            cost_code_id: alloc.cost_code_id,
+            amount: alloc.amount,
+            notes: alloc.notes,
+            created_by: 'System'
+          }, { onConflict: 'draw_id,invoice_id,cost_code_id' });
+        totalAmount += parseFloat(alloc.amount || 0);
+      }
+    }
+
+    // Update draw total amount
+    if (totalAmount > 0) {
+      await supabase
+        .from('v2_draws')
+        .update({ total_amount: totalAmount })
+        .eq('id', draw.id);
+      draw.total_amount = totalAmount;
+    }
+
+    // Update invoice status to 'in_draw'
+    const { error: invError } = await supabase
+      .from('v2_invoices')
+      .update({ status: 'in_draw' })
+      .in('id', invoiceIds);
+
+    if (invError) {
+      logger.error('Error updating invoice status', { error: invError.message });
+    }
+  }
+
+  res.json(draw);
 }));
 
 // Get approved invoices that haven't been added to a draw yet
@@ -8828,15 +8901,23 @@ async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
     }
 
     // No draft exists, create a new one
-    // Get next draw number for this job
+    // Get next draw number for this job and previous draw's period_end
     const { data: draws } = await supabase
       .from('v2_draws')
-      .select('draw_number')
+      .select('draw_number, period_end')
       .eq('job_id', jobId)
       .order('draw_number', { ascending: false })
       .limit(1);
 
     const nextNumber = (draws?.[0]?.draw_number || 0) + 1;
+
+    // Calculate period_start: day after previous draw's period_end, or today if first draw
+    let periodStart = new Date().toISOString().split('T')[0];
+    if (draws?.[0]?.period_end) {
+      const prevEnd = new Date(draws[0].period_end);
+      prevEnd.setDate(prevEnd.getDate() + 1);
+      periodStart = prevEnd.toISOString().split('T')[0];
+    }
 
     // Create new draft draw
     const { data: newDraw, error } = await supabase
@@ -8845,6 +8926,8 @@ async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
         job_id: jobId,
         draw_number: nextNumber,
         status: 'draft',
+        period_start: periodStart,
+        period_end: new Date().toISOString().split('T')[0],
         total_amount: 0
       })
       .select()
