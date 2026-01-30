@@ -4,7 +4,7 @@
  * Feeds data into the Price Intelligence system
  */
 
-const { supabase, PRICE_CACHE_TTL_MS } = require('../config');
+const { supabase, PRICE_CACHE_TTL_MS } = require('../../config');
 const priceMatcher = require('./price-matcher');
 
 // Cache naming conventions

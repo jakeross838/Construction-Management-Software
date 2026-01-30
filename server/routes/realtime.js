@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { sseHandler, getStats: getRealtimeStats } = require('../realtime');
+const { sseHandler, getStats: getRealtimeStats } = require('../core/realtime');
 
 // SSE endpoint for real-time events
 router.get('/events', sseHandler);

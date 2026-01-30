@@ -6,11 +6,11 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { asyncHandler, AppError } = require('../errors');
+const { asyncHandler, AppError } = require('../core/errors');
 const {
   processDailyLogIntelligence,
   getCatalogUpdateSuggestions
-} = require('../daily-log-intelligence');
+} = require('../services/daily-log-intelligence');
 
 // ============================================================
 // PROCESS DAILY LOG INTELLIGENCE

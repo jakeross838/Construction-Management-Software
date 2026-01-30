@@ -7,8 +7,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
-const { AppError, asyncHandler } = require('../errors');
-const { broadcastInvoiceUpdate } = require('../realtime');
+const { AppError, asyncHandler } = require('../core/errors');
+const { broadcastInvoiceUpdate } = require('../core/realtime');
 
 // Multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });

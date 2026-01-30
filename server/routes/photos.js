@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
-const { AppError, asyncHandler } = require('../errors');
+const { AppError, asyncHandler } = require('../core/errors');
 
 // Multer for photo uploads
 const upload = multer({

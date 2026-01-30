@@ -8,9 +8,9 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
-const { AppError, asyncHandler } = require('../errors');
-const { broadcastInvoiceUpdate } = require('../realtime');
-const { logPOActivity } = require('../services/activityLogger');
+const { AppError, asyncHandler } = require('../core/errors');
+const { broadcastInvoiceUpdate } = require('../core/realtime');
+const { logPOActivity } = require('../services/activity-logger');
 const { validate, schemas } = require('../middleware/validate');
 
 // Multer for file uploads (memory storage)
@@ -155,7 +155,7 @@ router.post('/process-document', upload.single('file'), asyncHandler(async (req,
   }
 
   const previewOnly = req.query.preview === 'true';
-  const { processPODocument } = require('../ai-po-processor');
+  const { processPODocument } = require('../ai/po-processor');
 
   try {
     // Process the document
@@ -207,7 +207,7 @@ router.post('/price-check', asyncHandler(async (req, res) => {
     return res.json({ warnings: [] });
   }
 
-  const priceMatcher = require('../price-matcher');
+  const priceMatcher = require('../matching/price-matcher');
   const warnings = [];
 
   for (const item of items) {
@@ -274,7 +274,7 @@ router.post('/learn-cost-code', asyncHandler(async (req, res) => {
     throw new AppError('VALIDATION_FAILED', 'description and cost_code_id are required');
   }
 
-  const { learnCostCodeMapping } = require('../ai-po-processor');
+  const { learnCostCodeMapping } = require('../ai/po-processor');
   const success = await learnCostCodeMapping(description, cost_code_id, vendor_trade || null);
 
   if (!success) {

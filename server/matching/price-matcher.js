@@ -3,7 +3,7 @@
  * Handles matching vendor descriptions to master items and price normalization
  */
 
-const { supabase } = require('../config');
+const { supabase } = require('../../config');
 
 // Common unit conversions
 const UNIT_CONVERSIONS = {

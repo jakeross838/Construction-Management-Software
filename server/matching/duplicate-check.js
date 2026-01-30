@@ -4,7 +4,7 @@
  */
 
 const crypto = require('crypto');
-const { supabase } = require('../config');
+const { supabase } = require('../../config');
 
 // ============================================================================
 // UTILITY FUNCTIONS

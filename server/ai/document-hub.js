@@ -10,8 +10,8 @@
  */
 
 const Anthropic = require('@anthropic-ai/sdk');
-const { supabase } = require('../config');
-const logger = require('./utils/logger');
+const { supabase } = require('../../config');
+const logger = require('../utils/logger');
 const sharp = require('sharp');
 const pdfParse = require('pdf-parse');
 const { createCanvas } = require('canvas');

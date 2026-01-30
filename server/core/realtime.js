@@ -3,8 +3,8 @@
  * Handles Supabase Realtime subscriptions and broadcasts
  */
 
-const { supabase, SSE_HEARTBEAT_MS } = require('../config');
-const logger = require('./utils/logger');
+const { supabase, SSE_HEARTBEAT_MS } = require('../../config');
+const logger = require('../utils/logger');
 
 // Store active subscriptions
 const subscriptions = new Map();

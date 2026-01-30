@@ -3,7 +3,7 @@
  * Comprehensive validation for invoices, status transitions, and data integrity
  */
 
-const { supabase } = require('../config');
+const { supabase } = require('../../config');
 
 // ============================================================
 // VALIDATION RULES

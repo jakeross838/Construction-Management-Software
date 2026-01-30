@@ -6,7 +6,7 @@
 const { PDFDocument, rgb, StandardFonts, degrees } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
-const logger = require('./utils/logger').child({ module: 'pdf-stamper' });
+const logger = require('../utils/logger').child({ module: 'pdf-stamper' });
 
 // Brand colors (Ross Built slate/teal)
 const BRAND_COLOR = rgb(0.29, 0.4, 0.45); // #4A6672 slate teal

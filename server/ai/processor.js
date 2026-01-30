@@ -18,14 +18,14 @@
 
 const pdfParse = require('pdf-parse');
 const Anthropic = require('@anthropic-ai/sdk');
-const { supabase } = require('../config');
-const standards = require('./standards');
-const logger = require('./utils/logger');
-const aiLearning = require('./ai-learning');
+const { supabase } = require('../../config');
+const standards = require('../services/standards');
+const logger = require('../utils/logger');
+const aiLearning = require('./learning');
 const ocrProcessor = require('./ocr-processor');
-const invoiceValidator = require('./invoice-validator');
-const poMatcher = require('./po-matcher');
-const priceCapture = require('./price-capture');
+const invoiceValidator = require('../matching/invoice-validator');
+const poMatcher = require('../matching/po-matcher');
+const priceCapture = require('../matching/price-capture');
 
 // Consolidated duplicate detection
 const {
@@ -33,7 +33,7 @@ const {
   storePDFHash,
   generatePDFHash,
   normalizeInvoiceNumber
-} = require('./duplicate-check');
+} = require('../matching/duplicate-check');
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

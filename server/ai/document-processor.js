@@ -9,7 +9,7 @@
  */
 
 const Anthropic = require('@anthropic-ai/sdk');
-const logger = require('./utils/logger').child({ module: 'spec-extractor' });
+const logger = require('../utils/logger').child({ module: 'spec-extractor' });
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

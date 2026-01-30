@@ -12,7 +12,7 @@ const {
   extractStoragePath,
   acquireStampLock,
   releaseStampLock
-} = require('../storage');
+} = require('../core/storage');
 const {
   stampApproval,
   stampInDraw,
@@ -22,7 +22,7 @@ const {
   stampSplit,
   stampNeedsReview,
   stampReadyForApproval
-} = require('../pdf-stamper');
+} = require('../documents/pdf-stamper');
 
 /**
  * Log activity for an invoice

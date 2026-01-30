@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { AppError, asyncHandler } = require('../errors');
+const { AppError, asyncHandler } = require('../core/errors');
 
 // ============================================================
 // SAVINGS SUMMARY

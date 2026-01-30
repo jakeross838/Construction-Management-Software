@@ -14,7 +14,7 @@ const {
   getDocumentsPendingReview,
   getProcessingStats,
   DOCUMENT_TYPES
-} = require('../ai-document-hub');
+} = require('../ai/document-hub');
 
 // Configure multer for file uploads
 const upload = multer({

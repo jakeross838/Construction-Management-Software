@@ -14,7 +14,7 @@ const mammoth = require('mammoth');
 const XLSX = require('xlsx');
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
-const logger = require('./utils/logger').child({ module: 'converter' });
+const logger = require('../utils/logger').child({ module: 'converter' });
 
 // Supported file types and their categories
 const FILE_TYPES = {

@@ -6,15 +6,15 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { extractSpecsFromPlans, extractSpecsFromMultipleDocuments } = require('../ai-document-processor');
-const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
+const { extractSpecsFromPlans, extractSpecsFromMultipleDocuments } = require('../ai/document-processor');
+const { asyncHandler, AppError, notFoundError, validateRequest } = require('../core/errors');
 const { validate, schemas } = require('../middleware/validate');
 const {
   createValidationError,
   createValidationWarning,
   createDetailedFixHint,
   formatAmount
-} = require('../validation-errors');
+} = require('../matching/validation-errors');
 
 // Create a new job
 router.post('/', validate(schemas.jobCreate), asyncHandler(async (req, res) => {

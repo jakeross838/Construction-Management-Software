@@ -6,8 +6,8 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
-const { calculateVendorSimilarity } = require('../standards');
+const { asyncHandler, AppError, notFoundError, validateRequest } = require('../core/errors');
+const { calculateVendorSimilarity } = require('../services/standards');
 const { validate, schemas } = require('../middleware/validate');
 
 // Check for similar vendors (used before create)

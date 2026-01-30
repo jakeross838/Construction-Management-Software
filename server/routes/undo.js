@@ -6,9 +6,9 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { AppError, asyncHandler, notFoundError } = require('../errors');
-const { getAvailableUndo, executeUndo } = require('../undo');
-const { broadcastInvoiceUpdate } = require('../realtime');
+const { AppError, asyncHandler, notFoundError } = require('../core/errors');
+const { getAvailableUndo, executeUndo } = require('../core/undo');
+const { broadcastInvoiceUpdate } = require('../core/realtime');
 
 // Check if undo is available
 router.get('/available/:entityType/:entityId', asyncHandler(async (req, res) => {

@@ -162,39 +162,75 @@ Construction-Management-Software/
 ├── config/
 │   └── index.js              # Supabase client, port config
 ├── server/
-│   ├── index.js              # Express server, all API endpoints
-│   ├── ai-processor.js       # AI invoice extraction & matching
-│   ├── ai-learning.js        # AI learning from corrections
-│   ├── ocr-processor.js      # OCR for scanned PDFs (Claude Vision)
-│   ├── document-converter.js # PDF to image conversion
-│   ├── duplicate-check.js    # Duplicate invoice detection
-│   ├── standards.js          # Naming conventions, normalization
-│   ├── storage.js            # Supabase storage helpers
-│   ├── pdf-stamper.js        # PDF approval stamping
-│   ├── validation.js         # Invoice/PO validation rules
-│   ├── errors.js             # AppError class, error codes
-│   ├── locking.js            # Entity locking system (5-min locks)
-│   ├── undo.js               # Undo system (30-sec window)
-│   ├── realtime.js           # SSE handler, Supabase realtime
-│   └── migrate.js            # Database migration runner
-├── public/
-│   ├── index.html            # Invoice approval dashboard (main page)
-│   ├── draws.html            # Draws management (G702/G703 Pay Applications)
-│   ├── pos.html              # Purchase Orders management
-│   ├── css/
-│   │   └── styles.css        # Dark theme styling (~7200 lines)
-│   └── js/
-│       ├── modals.js         # Invoice edit modal, job selection, add to draw
-│       ├── po-modals.js      # PO detail modal, create/edit PO
-│       ├── toasts.js         # Toast notification system
-│       └── realtime.js       # SSE client, offline queue
+│   ├── index.js              # Express server entry point, route mounting
+│   ├── app.js                # Express app configuration
+│   ├── swagger.js            # API documentation setup
+│   │
+│   ├── ai/                   # AI processing modules
+│   │   ├── processor.js      # Main AI invoice extraction
+│   │   ├── learning.js       # AI learning from corrections
+│   │   ├── ocr-processor.js  # OCR for scanned PDFs (Claude Vision)
+│   │   ├── document-hub.js   # Document intelligence hub
+│   │   ├── document-processor.js # Generic doc processing
+│   │   └── po-processor.js   # PO-specific AI extraction
+│   │
+│   ├── documents/            # PDF & document processing
+│   │   ├── pdf-stamper.js    # PDF approval stamping
+│   │   ├── converter.js      # PDF to image conversion
+│   │   └── restamp.js        # Invoice restamping script
+│   │
+│   ├── core/                 # Core infrastructure
+│   │   ├── errors.js         # AppError class, error codes
+│   │   ├── locking.js        # Entity locking (5-min locks)
+│   │   ├── undo.js           # Undo system (30-sec window)
+│   │   ├── realtime.js       # SSE handler, Supabase realtime
+│   │   ├── storage.js        # Supabase storage helpers
+│   │   └── validation.js     # Invoice/PO validation rules
+│   │
+│   ├── matching/             # Matching & detection logic
+│   │   ├── po-matcher.js     # PO matching algorithms
+│   │   ├── price-matcher.js  # Price matching service
+│   │   ├── price-capture.js  # Price capture from invoices
+│   │   ├── duplicate-check.js # Duplicate detection
+│   │   ├── invoice-validator.js # Invoice validation
+│   │   └── validation-errors.js # Validation error helpers
+│   │
+│   ├── services/             # Business services
+│   │   ├── standards.js      # Naming conventions, normalization
+│   │   ├── reconciliation.js # Financial reconciliation
+│   │   ├── invoice-helpers.js # Invoice utility functions
+│   │   ├── activity-logger.js # Activity logging
+│   │   ├── variance-detector.js # Variance detection
+│   │   ├── proposal-generator.js # PDF proposal generation
+│   │   └── daily-log-intelligence.js # AI daily log analysis
+│   │
+│   ├── middleware/           # Express middleware
+│   │   ├── request-logger.js # Request logging with timing
+│   │   ├── validate.js       # Request validation
+│   │   ├── rate-limit.js     # Rate limiting
+│   │   └── deprecation.js    # Route deprecation headers
+│   │
+│   ├── utils/                # Pure utilities
+│   │   ├── api-response.js   # API response formatting
+│   │   ├── logger.js         # Logging utility
+│   │   └── shared.js         # Shared utilities
+│   │
+│   ├── routes/               # API route handlers (60+ files)
+│   │   ├── invoices.js       # Invoice management
+│   │   ├── draws.js          # Draw management
+│   │   ├── purchase-orders.js # PO management
+│   │   ├── jobs.js           # Job management
+│   │   └── ...               # Other feature routes
+│   │
+│   └── scripts/              # Operational scripts
+│       ├── migrate.js        # Database migration runner
+│       └── stop.js           # Safe server shutdown
+│
+├── client/                   # React frontend (Vite)
+│   └── dist/                 # Built React app
 ├── database/
 │   ├── schema.sql            # Base schema (v2_ tables)
-│   ├── migration-001-*.sql   # PO and enhanced invoices
-│   ├── migration-002-*.sql   # Invoice system enhancements
-│   ├── migration-003-*.sql   # Allocation job_id
-│   ├── migration-004-*.sql   # Payment tracking
-│   └── migration-005-*.sql   # PO enhancements (change orders, attachments)
+│   └── migration-*.sql       # 120+ migration files
 ├── tests/
 │   └── *.spec.js             # Playwright E2E tests
 ├── package.json

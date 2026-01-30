@@ -7,8 +7,8 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
-const { logActivity, checkSplitReconciliation, stampInvoice } = require('../services/invoiceHelpers');
-const { asyncHandler, AppError, notFoundError, validateRequest } = require('../errors');
+const { logActivity, checkSplitReconciliation, stampInvoice } = require('../services/invoice-helpers');
+const { asyncHandler, AppError, notFoundError, validateRequest } = require('../core/errors');
 const { validate, schemas } = require('../middleware/validate');
 // Storage and pdf-stamper functions removed - using unified stampInvoice instead
 

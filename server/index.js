@@ -5,9 +5,9 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const logger = require('./utils/logger');
-const rateLimit = require('express-rate-limit');
-const { requestLogger, defaultSkip } = require('./middleware/requestLogger');
-const { responseHelpers } = require('./utils/apiResponse');
+const { requestLogger, defaultSkip } = require('./middleware/request-logger');
+const { responseHelpers } = require('./utils/api-response');
+const { apiLimiter, aiLimiter } = require('./middleware/rate-limit');
 
 // PID file for safe server restarts (won't kill other node processes)
 const PID_FILE = path.join(__dirname, '..', 'server.pid');
@@ -21,12 +21,12 @@ const {
   extractStoragePath,
   acquireStampLock,
   releaseStampLock
-} = require('./storage');
-const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid, stampPartiallyBilled, stampSplit, stampNeedsReview, stampReadyForApproval } = require('./pdf-stamper');
-const { processInvoice, processDocument, processLienRelease, processMultiPageDocument, splitPDF, DOCUMENT_TYPES, extractInvoiceFromImage, extractInvoiceFromText } = require('./ai-processor');
-const { convertDocument, isSupported, getSupportedExtensions, FILE_TYPES } = require('./document-converter');
-const standards = require('./standards');
-const aiLearning = require('./ai-learning');
+} = require('./core/storage');
+const { stampApproval, stampInDraw, stampPaid, stampPartiallyPaid, stampPartiallyBilled, stampSplit, stampNeedsReview, stampReadyForApproval } = require('./documents/pdf-stamper');
+const { processInvoice, processDocument, processLienRelease, processMultiPageDocument, splitPDF, DOCUMENT_TYPES, extractInvoiceFromImage, extractInvoiceFromText } = require('./ai/processor');
+const { convertDocument, isSupported, getSupportedExtensions, FILE_TYPES } = require('./documents/converter');
+const standards = require('./services/standards');
+const aiLearning = require('./ai/learning');
 const ExcelJS = require('exceljs');
 const { PDFDocument } = require('pdf-lib');
 
@@ -39,14 +39,14 @@ const {
   validateCostCodesExist,
   validatePOCapacity,
   STATUS_TRANSITIONS
-} = require('./validation');
+} = require('./core/validation');
 
 // Consolidated duplicate detection
 const {
   checkDuplicate,
   checkForDuplicates,
   storePDFHash
-} = require('./duplicate-check');
+} = require('./matching/duplicate-check');
 
 const {
   AppError,
@@ -58,7 +58,7 @@ const {
   lockedError,
   versionConflictError,
   validateRequest
-} = require('./errors');
+} = require('./core/errors');
 
 const {
   acquireLock,
@@ -68,21 +68,21 @@ const {
   forceReleaseLock,
   cleanupExpiredLocks,
   getAllLocks
-} = require('./locking');
+} = require('./core/locking');
 
 const {
   createUndoSnapshot,
   getAvailableUndo,
   executeUndo,
   UNDO_WINDOW_SECONDS
-} = require('./undo');
+} = require('./core/undo');
 
 const {
   reconcileJob,
   reconcileAll,
   getExternalSyncStatus,
   recordExternalSync
-} = require('./reconciliation');
+} = require('./services/reconciliation');
 
 const {
   sseHandler,
@@ -91,7 +91,7 @@ const {
   broadcastDrawUpdate,
   initializeRealtimeSubscriptions,
   getStats: getRealtimeStats
-} = require('./realtime');
+} = require('./core/realtime');
 
 const { setupSwagger } = require('./swagger');
 
@@ -107,25 +107,6 @@ app.use(requestLogger({ skip: defaultSkip, slowThreshold: 2000 }));
 
 // API response helpers - adds res.apiSuccess, res.apiError, etc.
 app.use(responseHelpers);
-
-// Rate limiting - protect against abuse
-const apiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // 100 requests per minute per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later' },
-  skip: (req) => req.path === '/api/health' // Don't rate limit health checks
-});
-
-// Stricter limit for AI processing (expensive operations)
-const aiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 10, // 10 AI requests per minute per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'AI processing rate limit exceeded, please wait' }
-});
 
 // Apply rate limiting to API routes
 app.use('/api', apiLimiter);
@@ -207,6 +188,7 @@ const pnlRoutes = require('./routes/pnl');
 const cashFlowRoutes = require('./routes/cash-flow');
 const businessPlanningRoutes = require('./routes/business-planning');
 const assemblyTemplatesRoutes = require('./routes/assembly-templates');
+const { deprecatedRoutes } = require('./middleware/deprecation');
 
 // ============================================================
 // HEALTH CHECK ENDPOINT
@@ -279,8 +261,12 @@ app.use('/api/price-intelligence', priceIntelligenceRoutes);
 app.use('/api/labor-bids', laborBidsRoutes);
 app.use('/api/order-optimizer', orderOptimizerRoutes);
 app.use('/api/photos', photoRoutes);
-app.use('/api/savings', savingsTrackerRoutes);
-app.use('/api/spend', spendAnalyticsRoutes);
+// Canonical routes (preferred)
+app.use('/api/savings-tracker', savingsTrackerRoutes);
+app.use('/api/spend-analytics', spendAnalyticsRoutes);
+// Deprecated aliases (will be removed in future)
+app.use('/api/savings', deprecatedRoutes.savings, savingsTrackerRoutes);
+app.use('/api/spend', deprecatedRoutes.spend, spendAnalyticsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/leads', leadsRoutes);
@@ -288,7 +274,10 @@ app.use('/api/selections', selectionsRoutes);
 app.use('/api/rfis', rfisRoutes);
 app.use('/api/submittals', submittalsRoutes);
 app.use('/api/tasks', tasksRoutes);
-app.use('/api/messages', messagingRoutes);
+// Canonical route (preferred)
+app.use('/api/messaging', messagingRoutes);
+// Deprecated alias (will be removed in future)
+app.use('/api/messages', deprecatedRoutes.messages, messagingRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/warranties', warrantiesRoutes);
 app.use('/api/closeout', closeoutRoutes);
@@ -310,8 +299,12 @@ app.use('/api/timesheets', timesheetRoutes);
 app.use('/api/overhead', overheadRoutes);
 app.use('/api/profitability', profitabilityRoutes);
 app.use('/api/proposals', proposalsRoutes);
-app.use('/api/wip', wipRoutes);
-app.use('/api/pnl', pnlRoutes);
+// Canonical routes (preferred)
+app.use('/api/work-in-progress', wipRoutes);
+app.use('/api/profit-loss', pnlRoutes);
+// Deprecated aliases (will be removed in future)
+app.use('/api/wip', deprecatedRoutes.wip, wipRoutes);
+app.use('/api/pnl', deprecatedRoutes.pnl, pnlRoutes);
 app.use('/api/cash-flow', cashFlowRoutes);
 app.use('/api/business-planning', businessPlanningRoutes);
 app.use('/api/assembly-templates', assemblyTemplatesRoutes);
@@ -3466,7 +3459,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       };
 
       // Run matching logic (vendor, job, PO)
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai/processor');
 
       if (extracted.vendor?.companyName) {
         result.vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
@@ -3547,7 +3540,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       };
 
       // Run matching logic
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai/processor');
 
       if (extracted.vendor?.companyName) {
         result.vendor = await findOrCreateVendor(extracted.vendor, extracted.vendor?.tradeType);
@@ -3835,7 +3828,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       );
 
       // Build result similar to processDocument output
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai/processor');
 
       let vendor = null;
       let matchedJob = null;
@@ -3919,7 +3912,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       const documentText = converted.data.text;
       const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
 
-      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai-processor');
+      const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai/processor');
 
       let vendor = null;
       let matchedJob = null;
@@ -12373,7 +12366,7 @@ app.post('/api/lien-releases/process', upload.single('pdf'), asyncHandler(async 
   const originalFilename = req.file.originalname;
 
   // Import and use the lien release processor
-  const { processLienRelease } = require('./ai-processor');
+  const { processLienRelease } = require('./ai/processor');
   const result = await processLienRelease(pdfBuffer, originalFilename);
 
   if (!result.success) {

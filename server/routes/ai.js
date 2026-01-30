@@ -6,8 +6,8 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { asyncHandler } = require('../errors');
-const aiLearning = require('../ai-learning');
+const { asyncHandler } = require('../core/errors');
+const aiLearning = require('../ai/learning');
 
 // Submit AI feedback for learning
 router.post('/feedback', asyncHandler(async (req, res) => {

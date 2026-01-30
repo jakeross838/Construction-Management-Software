@@ -8,8 +8,8 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
-const { asyncHandler, AppError, notFoundError } = require('../errors');
-const { processDailyLogIntelligence } = require('../daily-log-intelligence');
+const { asyncHandler, AppError, notFoundError } = require('../core/errors');
+const { processDailyLogIntelligence } = require('../services/daily-log-intelligence');
 
 // Configure multer for photo uploads
 const photoUpload = multer({

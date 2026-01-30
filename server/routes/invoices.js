@@ -8,9 +8,9 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
-const { AppError, asyncHandler, notFoundError, validationError, transitionError } = require('../errors');
+const { AppError, asyncHandler, notFoundError, validationError, transitionError } = require('../core/errors');
 const { validate, schemas } = require('../middleware/validate');
-const { broadcastInvoiceUpdate, broadcast } = require('../realtime');
+const { broadcastInvoiceUpdate, broadcast } = require('../core/realtime');
 const {
   logActivity,
   updatePOLineItemsForAllocations,
@@ -25,15 +25,15 @@ const {
   recalculateBilledAmounts,
   recalculatePOLineItemInvoiced,
   recalculateCOInvoiced
-} = require('../services/invoiceHelpers');
-const { detectVariances, quickVarianceCheck } = require('../services/varianceDetector');
+} = require('../services/invoice-helpers');
+const { detectVariances, quickVarianceCheck } = require('../services/variance-detector');
 const {
   uploadPDF,
   uploadStampedPDFById,
   downloadPDF,
   deleteByUrl,
   extractStoragePath
-} = require('../storage');
+} = require('../core/storage');
 const {
   stampApproval,
   stampInDraw,
@@ -41,21 +41,21 @@ const {
   stampNeedsReview,
   stampReadyForApproval,
   stampSplit
-} = require('../pdf-stamper');
+} = require('../documents/pdf-stamper');
 const {
   validateInvoice,
   validateStatusTransition,
   validatePreTransition,
   validateAllocations,
   validateCostCodesExist
-} = require('../validation');
-const { createUndoSnapshot, UNDO_WINDOW_SECONDS } = require('../undo');
+} = require('../core/validation');
+const { createUndoSnapshot, UNDO_WINDOW_SECONDS } = require('../core/undo');
 const {
   createValidationError,
   createValidationWarning,
   createDetailedFixHint,
   formatAmount
-} = require('../validation-errors');
+} = require('../matching/validation-errors');
 const {
   processInvoice,
   processInvoiceTwoStage,
@@ -67,10 +67,10 @@ const {
   analyzeMultiInvoicePDF,
   processMultiInvoicePDF,
   CONFIDENCE_THRESHOLDS
-} = require('../ai-processor');
-const { convertDocument, getSupportedExtensions } = require('../document-converter');
-const { checkForDuplicates } = require('../duplicate-check');
-const standards = require('../standards');
+} = require('../ai/processor');
+const { convertDocument, getSupportedExtensions } = require('../documents/converter');
+const { checkForDuplicates } = require('../matching/duplicate-check');
+const standards = require('../services/standards');
 
 // Multer for file uploads
 const upload = multer({

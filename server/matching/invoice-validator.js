@@ -13,7 +13,7 @@
  * - OCR error auto-corrections
  */
 
-const { supabase } = require('../config');
+const { supabase } = require('../../config');
 
 // ============================================================
 // OCR ERROR CORRECTION PATTERNS

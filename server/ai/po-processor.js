@@ -15,9 +15,9 @@
 
 const pdfParse = require('pdf-parse');
 const Anthropic = require('@anthropic-ai/sdk');
-const { supabase } = require('../config');
-const standards = require('./standards');
-const logger = require('./utils/logger').child({ module: 'ai-po' });
+const { supabase } = require('../../config');
+const standards = require('../services/standards');
+const logger = require('../utils/logger').child({ module: 'ai-po' });
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

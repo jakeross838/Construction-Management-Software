@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { asyncHandler, AppError } = require('../errors');
+const { asyncHandler, AppError } = require('../core/errors');
 
 // Get all cost codes
 router.get('/', asyncHandler(async (req, res) => {

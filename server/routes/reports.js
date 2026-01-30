@@ -10,7 +10,7 @@ const pdfMake = require('pdfmake/build/pdfmake');
 const pdfFonts = require('pdfmake/build/vfs_fonts');
 pdfMake.vfs = pdfFonts.vfs;
 const { supabase } = require('../../config');
-const { asyncHandler, AppError } = require('../errors');
+const { asyncHandler, AppError } = require('../core/errors');
 
 // ============================================================
 // JOB COST REPORT

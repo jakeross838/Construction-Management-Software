@@ -12,7 +12,7 @@
  */
 
 const Anthropic = require('@anthropic-ai/sdk');
-const { supabase } = require('../config');
+const { supabase } = require('../../config');
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

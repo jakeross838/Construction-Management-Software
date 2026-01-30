@@ -9,7 +9,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const sharp = require('sharp');
 const path = require('path');
-const logger = require('./utils/logger').child({ module: 'ocr' });
+const logger = require('../utils/logger').child({ module: 'ocr' });
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

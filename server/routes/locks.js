@@ -5,13 +5,13 @@
 
 const express = require('express');
 const router = express.Router();
-const { AppError, asyncHandler } = require('../errors');
+const { AppError, asyncHandler } = require('../core/errors');
 const {
   acquireLock,
   releaseLock,
   releaseLockByEntity,
   checkLock
-} = require('../locking');
+} = require('../core/locking');
 
 // Acquire lock
 router.post('/acquire', asyncHandler(async (req, res) => {

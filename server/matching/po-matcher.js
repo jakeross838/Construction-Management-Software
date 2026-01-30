@@ -10,7 +10,7 @@
  * - Line item match (10%)
  */
 
-const { supabase } = require('../config');
+const { supabase } = require('../../config');
 
 // Match thresholds
 const MATCH_THRESHOLDS = {

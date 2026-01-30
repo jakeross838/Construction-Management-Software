@@ -11,8 +11,8 @@
  * - times_used tracks how reliable the mapping is
  */
 
-const { supabase } = require('../config');
-const logger = require('./utils/logger');
+const { supabase } = require('../../config');
+const logger = require('../utils/logger');
 
 /**
  * Normalize a string for matching
@@ -487,7 +487,7 @@ async function findVendorByAlias(name) {
  * @returns {Array} - Array of potential duplicate pairs
  */
 async function findPotentialDuplicateVendors(threshold = 75) {
-  const standards = require('./standards');
+  const standards = require('../services/standards');
 
   try {
     // Get all vendors

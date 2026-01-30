@@ -7,8 +7,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
-const { categorizeDocument } = require('../ai-document-processor');
-const { asyncHandler, AppError, notFoundError } = require('../errors');
+const { categorizeDocument } = require('../ai/document-processor');
+const { asyncHandler, AppError, notFoundError } = require('../core/errors');
 
 // Configure multer for document uploads
 const upload = multer({

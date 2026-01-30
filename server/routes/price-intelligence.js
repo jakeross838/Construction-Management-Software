@@ -6,9 +6,9 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { AppError, asyncHandler } = require('../errors');
-const priceMatcher = require('../price-matcher');
-const priceCapture = require('../price-capture');
+const { AppError, asyncHandler } = require('../core/errors');
+const priceMatcher = require('../matching/price-matcher');
+const priceCapture = require('../matching/price-capture');
 
 // ============================================================
 // STATS & OVERVIEW

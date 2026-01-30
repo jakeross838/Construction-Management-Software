@@ -8,7 +8,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
-const { generateProposalPDF } = require('../proposal-generator');
+const { generateProposalPDF } = require('../services/proposal-generator');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);

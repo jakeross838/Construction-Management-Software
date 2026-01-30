@@ -3,7 +3,7 @@
  * Provides timed undo capability for invoice operations
  */
 
-const { supabase, UNDO_WINDOW_SECONDS } = require('../config');
+const { supabase, UNDO_WINDOW_SECONDS } = require('../../config');
 const { AppError } = require('./errors');
 
 // ============================================================

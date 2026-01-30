@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { asyncHandler, AppError, notFoundError } = require('../errors');
+const { asyncHandler, AppError, notFoundError } = require('../core/errors');
 
 // Helper: Map database status to frontend status
 function mapTaskStatus(dbStatus) {

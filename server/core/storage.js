@@ -8,9 +8,9 @@
  * - All stamps are applied fresh from original, never accumulated
  */
 
-const { supabase } = require('../config');
+const { supabase } = require('../../config');
 const path = require('path');
-const logger = require('./utils/logger').child({ module: 'storage' });
+const logger = require('../utils/logger').child({ module: 'storage' });
 
 const BUCKET = 'invoices';
 

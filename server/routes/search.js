@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { asyncHandler } = require('../errors');
+const { asyncHandler } = require('../core/errors');
 
 // Global search endpoint
 router.get('/', asyncHandler(async (req, res) => {

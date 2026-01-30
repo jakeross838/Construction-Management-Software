@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
-const { asyncHandler, AppError } = require('../errors');
+const { asyncHandler, AppError } = require('../core/errors');
 
 // =====================================================
 // RECONCILIATION & BALANCE INTEGRITY
@@ -171,7 +171,7 @@ router.get('/jobs/:id/integrity', asyncHandler(async (req, res) => {
 
 // Get all entity locks (admin debugging)
 router.get('/locks', asyncHandler(async (req, res) => {
-  const locking = require('../locking');
+  const locking = require('../core/locking');
   const locks = await locking.getAllLocks();
   res.json({ locks, count: locks.length });
 }));
@@ -181,7 +181,7 @@ router.delete('/locks/:entityType/:entityId', asyncHandler(async (req, res) => {
   const { entityType, entityId } = req.params;
   const { admin_user = 'admin' } = req.body;
 
-  const locking = require('../locking');
+  const locking = require('../core/locking');
   const result = await locking.forceReleaseLock(entityType, entityId, admin_user);
 
   if (!result.success) {
