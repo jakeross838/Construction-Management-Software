@@ -31,6 +31,15 @@ import {
   X,
   ChevronDown,
   DollarSign,
+  Clock,
+  Upload,
+  FileCheck,
+  Ban,
+  Banknote,
+  FolderPlus,
+  MessageSquare,
+  Bot,
+  ChevronRight,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -49,7 +58,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useInvoice, useUpdateInvoice, useDeleteInvoice, useChangeInvoiceStatus, useCostCodes, usePurchaseOrders, useVendors, useDBJobs } from '@/hooks/useFinancialData';
+import { useInvoice, useUpdateInvoice, useDeleteInvoice, useChangeInvoiceStatus, useCostCodes, usePurchaseOrders, useVendors, useDBJobs, useInvoiceActivity, InvoiceActivity } from '@/hooks/useFinancialData';
 import { useApproveAndStampInvoice, useStampInvoice } from '@/hooks/useInvoiceStamping';
 import { useRecordCorrection } from '@/hooks/useAILearning';
 import {
@@ -68,6 +77,113 @@ import { PaymentStatusBadge } from './PaymentStatusBadge';
 import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { usePaymentHistory } from '@/hooks/useVendorPayments';
 import { useBudgetSummary } from '@/hooks/useBudget';
+
+// Activity action icons and labels
+const activityConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
+  uploaded: { icon: <Upload className="h-3.5 w-3.5" />, label: 'Uploaded', color: 'text-blue-600' },
+  processed: { icon: <Bot className="h-3.5 w-3.5" />, label: 'AI Processed', color: 'text-purple-600' },
+  coded: { icon: <FileCheck className="h-3.5 w-3.5" />, label: 'Cost Coded', color: 'text-indigo-600' },
+  approved: { icon: <CheckCircle className="h-3.5 w-3.5" />, label: 'Approved', color: 'text-green-600' },
+  status_approved: { icon: <CheckCircle className="h-3.5 w-3.5" />, label: 'Approved', color: 'text-green-600' },
+  denied: { icon: <Ban className="h-3.5 w-3.5" />, label: 'Denied', color: 'text-red-600' },
+  status_denied: { icon: <Ban className="h-3.5 w-3.5" />, label: 'Denied', color: 'text-red-600' },
+  status_needs_approval: { icon: <AlertTriangle className="h-3.5 w-3.5" />, label: 'Needs Approval', color: 'text-amber-600' },
+  status_needs_review: { icon: <AlertTriangle className="h-3.5 w-3.5" />, label: 'Needs Review', color: 'text-amber-600' },
+  status_in_draw: { icon: <FolderPlus className="h-3.5 w-3.5" />, label: 'Added to Draw', color: 'text-cyan-600' },
+  status_billed: { icon: <FileCheck className="h-3.5 w-3.5" />, label: 'Billed', color: 'text-teal-600' },
+  status_paid: { icon: <Banknote className="h-3.5 w-3.5" />, label: 'Paid', color: 'text-emerald-600' },
+  stamped: { icon: <Stamp className="h-3.5 w-3.5" />, label: 'Stamped', color: 'text-orange-600' },
+  added_to_draw: { icon: <FolderPlus className="h-3.5 w-3.5" />, label: 'Added to Draw', color: 'text-cyan-600' },
+  removed_from_draw: { icon: <Trash2 className="h-3.5 w-3.5" />, label: 'Removed from Draw', color: 'text-amber-600' },
+  paid: { icon: <Banknote className="h-3.5 w-3.5" />, label: 'Paid', color: 'text-emerald-600' },
+  paid_to_vendor: { icon: <Banknote className="h-3.5 w-3.5" />, label: 'Payment Recorded', color: 'text-emerald-600' },
+  unpaid: { icon: <X className="h-3.5 w-3.5" />, label: 'Payment Reversed', color: 'text-red-600' },
+  updated: { icon: <Pencil className="h-3.5 w-3.5" />, label: 'Updated', color: 'text-gray-600' },
+  split: { icon: <Plus className="h-3.5 w-3.5" />, label: 'Split', color: 'text-purple-600' },
+  created_from_split: { icon: <Plus className="h-3.5 w-3.5" />, label: 'Created from Split', color: 'text-purple-600' },
+  unsplit: { icon: <Trash2 className="h-3.5 w-3.5" />, label: 'Unsplit', color: 'text-amber-600' },
+  deleted: { icon: <Trash2 className="h-3.5 w-3.5" />, label: 'Deleted', color: 'text-red-600' },
+  allocation_removed: { icon: <Trash2 className="h-3.5 w-3.5" />, label: 'Allocation Removed', color: 'text-amber-600' },
+  allocation_reassigned: { icon: <Pencil className="h-3.5 w-3.5" />, label: 'Allocation Reassigned', color: 'text-blue-600' },
+  co_auto_linked: { icon: <FileCheck className="h-3.5 w-3.5" />, label: 'Linked to CO', color: 'text-indigo-600' },
+  created: { icon: <Plus className="h-3.5 w-3.5" />, label: 'Created', color: 'text-blue-600' },
+};
+
+function ActivityItem({ activity }: { activity: InvoiceActivity }) {
+  const config = activityConfig[activity.action] || {
+    icon: <Clock className="h-3.5 w-3.5" />,
+    label: activity.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+    color: 'text-gray-500'
+  };
+
+  const timeAgo = (date: string) => {
+    const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(date).toLocaleDateString();
+  };
+
+  // Format activity details for display
+  const getDetailsSummary = () => {
+    if (!activity.details) return null;
+    const d = activity.details;
+
+    // AI Processing details
+    if (activity.action === 'processed' || activity.action === 'uploaded') {
+      const parts: string[] = [];
+      if (d.vendorName) parts.push(`Vendor: ${d.vendorName}`);
+      if (d.jobName) parts.push(`Job: ${d.jobName}`);
+      if (d.poNumber) parts.push(`PO: ${d.poNumber}`);
+      if (d.confidence) parts.push(`${Math.round(d.confidence * 100)}% confidence`);
+      return parts.length > 0 ? parts.join(' · ') : null;
+    }
+
+    // Status change details
+    if (d.from && d.to) return `${d.from} → ${d.to}`;
+    if (d.from) return `from ${d.from}`;
+
+    // Payment details
+    if (d.amount) return formatCurrency(d.amount);
+    if (d.payment_method) return `via ${d.payment_method}`;
+
+    // Generic note/message
+    if (d.note) return d.note;
+    if (d.message) return d.message;
+    if (d.reason) return d.reason;
+
+    // Fields updated
+    if (d.fields && Array.isArray(d.fields)) return `Updated: ${d.fields.join(', ')}`;
+
+    return null;
+  };
+
+  const detailsSummary = getDetailsSummary();
+
+  return (
+    <div className="flex items-start gap-3 py-2 px-2 rounded hover:bg-muted/50 transition-colors">
+      <div className={`mt-0.5 ${config.color}`}>
+        {config.icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{config.label}</span>
+          <span className="text-xs text-muted-foreground">{timeAgo(activity.created_at)}</span>
+        </div>
+        {activity.performed_by && (
+          <p className="text-xs text-muted-foreground">by {activity.performed_by}</p>
+        )}
+        {detailsSummary && (
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">{detailsSummary}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface InvoiceDetailDialogProps {
   invoiceId: string | null;
@@ -88,7 +204,8 @@ export function InvoiceDetailDialog({
   const { data: vendors = [] } = useVendors();
   const { data: jobs = [] } = useDBJobs();
   const { data: budgetSummary = [] } = useBudgetSummary(invoice?.job_id || undefined);
-  
+  const { data: activityLog = [] } = useInvoiceActivity(invoiceId || '');
+
   const approveAndStamp = useApproveAndStampInvoice();
   const stampInvoice = useStampInvoice();
   const updateInvoice = useUpdateInvoice();
@@ -998,26 +1115,14 @@ export function InvoiceDetailDialog({
 
               <Separator />
 
-              {/* Notes */}
-              <div className="space-y-2">
-                <Label>Notes</Label>
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add notes..."
-                  rows={2}
-                  disabled={!canEdit}
-                />
-              </div>
-
-              {/* Review Flags */}
+              {/* Review Flags - Show prominently if present */}
               {invoice.review_flags && (invoice.review_flags as string[]).length > 0 && (
                 <Alert>
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">Review Required</span>
-                      <ReviewStatusSummary 
+                      <ReviewStatusSummary
                         needsReview={invoice.needs_review ?? false}
                         flags={invoice.review_flags as string[]}
                       />
@@ -1027,23 +1132,67 @@ export function InvoiceDetailDialog({
                 </Alert>
               )}
 
-              {/* AI Confidence (if available) */}
-              {invoice.ai_confidence && (
-                <div className="p-3 bg-primary/5 border border-primary/10 rounded-lg">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    <h5 className="font-medium text-sm">AI Extraction Confidence</h5>
-                  </div>
-                  <div className="space-y-2">
-                    {Object.entries(invoice.ai_confidence).map(([key, value]) => (
-                      <AIConfidenceBar 
-                        key={key} 
-                        confidence={value as number} 
-                        label={key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} 
-                      />
-                    ))}
-                  </div>
+              {/* Notes - Clean section for human input */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                  <Label>Notes</Label>
                 </div>
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add internal notes about this invoice..."
+                  rows={2}
+                  disabled={!canEdit}
+                  className="resize-none"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Activity Log */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <h4 className="font-medium">Activity</h4>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {activityLog.length > 0 ? (
+                    activityLog.map((activity) => (
+                      <ActivityItem key={activity.id} activity={activity} />
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground py-2">No activity recorded yet</p>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Processing Info - Collapsible */}
+              {(invoice.ai_processed || invoice.ai_confidence) && (
+                <details className="group">
+                  <summary className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                    <ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />
+                    <Bot className="h-4 w-4" />
+                    <span>AI Processing Details</span>
+                    {invoice.ai_processed && (
+                      <Badge variant="outline" className="text-xs ml-auto">AI Processed</Badge>
+                    )}
+                  </summary>
+                  <div className="mt-2 pl-6 space-y-2">
+                    {invoice.ai_confidence && (
+                      <div className="space-y-1">
+                        {Object.entries(invoice.ai_confidence).map(([key, value]) => (
+                          <AIConfidenceBar
+                            key={key}
+                            confidence={value as number}
+                            label={key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </details>
               )}
 
               {/* Cost Code Suggestions (if available from AI) */}

@@ -832,7 +832,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
       pdf_url = uploadResult.url;
     }
 
-    // Create invoice record
+    // Create invoice record (notes left empty for human input - AI log goes to activity)
     const { data: invoice, error: invError } = await supabase
       .from('v2_invoices')
       .insert({
@@ -846,7 +846,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
         invoice_type: result.extracted.invoiceType || (parseFloat(result.extracted.totalAmount) < 0 ? 'credit_memo' : 'standard'),
         pdf_url,
         status: 'needs_review',
-        notes: result.messages.join('\n'),
+        notes: null, // Reserved for human notes - AI log goes to activity
         ai_processed: result.ai_processed || false,
         ai_confidence: result.ai_confidence || null,
         ai_extracted_data: result.ai_extracted_data || null,
@@ -960,13 +960,17 @@ router.post('/process', upload.single('file'), async (req, res) => {
       }
     }
 
-    await logActivity(invoice.id, 'uploaded', 'AI Processor', {
+    await logActivity(invoice.id, 'processed', 'AI Processor', {
       originalFilename,
       standardizedFilename: result.standardizedFilename,
-      aiExtracted: true,
       vendorMatched: !!result.vendor,
+      vendorName: result.vendor?.name || null,
       jobMatched: !!result.matchedJob,
-      poMatched: !!result.po
+      jobName: result.matchedJob?.name || null,
+      poMatched: !!result.po,
+      poNumber: result.po?.po_number || null,
+      confidence: result.ai_confidence?.overall || null,
+      processingLog: result.messages || []
     });
 
     // Determine needs_review based on new thresholds
@@ -1131,7 +1135,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
         const invoiceDate = validateDate(result.extracted?.invoiceDate);
         const dueDate = validateDate(result.extracted?.dueDate);
 
-        // Create invoice record
+        // Create invoice record (notes left empty for human input - AI log goes to activity)
         const { data: invoice, error: invError } = await supabase
           .from('v2_invoices')
           .insert({
@@ -1145,7 +1149,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
             invoice_type: result.extracted?.invoiceType || 'standard',
             pdf_url,
             status: 'needs_review',
-            notes: `Batch processed from: ${originalFilename}\nPages: ${processed.pageRange}\n${result.messages?.join('\n') || ''}`,
+            notes: null, // Reserved for human notes - AI log goes to activity
             ai_processed: true,
             ai_confidence: result.ai_confidence || null,
             ai_extracted_data: result.ai_extracted_data || null,
@@ -1157,12 +1161,13 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
 
         if (invError) throw invError;
 
-        // Log activity
-        await logActivity(invoice.id, 'uploaded', 'Batch Processor', {
+        // Log activity with processing details
+        await logActivity(invoice.id, 'processed', 'Batch Processor', {
           originalFilename,
           pageRange: processed.pageRange,
           batchIndex: processed.invoiceIndex,
-          detectedVendor: processed.detectedMetadata?.vendor
+          detectedVendor: processed.detectedMetadata?.vendor,
+          processingLog: result.messages || []
         });
 
         savedInvoices.push({

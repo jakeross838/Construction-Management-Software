@@ -154,6 +154,24 @@ export function useInvoice(id: string) {
   });
 }
 
+// Invoice activity log
+export interface InvoiceActivity {
+  id: string;
+  invoice_id: string;
+  action: string;
+  performed_by: string | null;
+  details: Record<string, any> | null;
+  created_at: string;
+}
+
+export function useInvoiceActivity(invoiceId: string) {
+  return useQuery({
+    queryKey: ['invoice-activity', invoiceId],
+    queryFn: () => api<InvoiceActivity[]>(`/invoices/${invoiceId}/activity`),
+    enabled: !!invoiceId,
+  });
+}
+
 export function useCreateInvoice() {
   const queryClient = useQueryClient();
   return useMutation({
