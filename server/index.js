@@ -157,6 +157,8 @@ const pnlRoutes = require('./routes/pnl');
 const cashFlowRoutes = require('./routes/cash-flow');
 const businessPlanningRoutes = require('./routes/business-planning');
 const assemblyTemplatesRoutes = require('./routes/assembly-templates');
+const scopeCategoriesRoutes = require('./routes/scope-categories');
+const benchmarksRoutes = require('./routes/benchmarks');
 const { deprecatedRoutes } = require('./middleware/deprecation');
 
 // ============================================================
@@ -277,6 +279,8 @@ app.use('/api/pnl', deprecatedRoutes.pnl, pnlRoutes);
 app.use('/api/cash-flow', cashFlowRoutes);
 app.use('/api/business-planning', businessPlanningRoutes);
 app.use('/api/assembly-templates', assemblyTemplatesRoutes);
+app.use('/api/scope-categories', scopeCategoriesRoutes);
+app.use('/api/benchmarks', benchmarksRoutes);
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete

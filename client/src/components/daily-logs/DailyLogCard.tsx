@@ -30,7 +30,7 @@ import {
   X,
   Copy,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { 
   DailyLog, 
   WeatherCondition, 
@@ -162,7 +162,7 @@ export function DailyLogCard({ log, onClick, onEdit, onDuplicate }: DailyLogCard
             {/* Date and Job */}
             <div className="flex items-center gap-3 flex-wrap">
               <h3 className="text-lg font-semibold text-foreground">
-                {format(new Date(log.log_date), 'EEEE, MMM d, yyyy')}
+                {format(parseISO(log.log_date), 'EEEE, MMM d, yyyy')}
               </h3>
               <Badge variant="outline" className="font-medium">{log.jobs?.name}</Badge>
               {phaseLabel && (

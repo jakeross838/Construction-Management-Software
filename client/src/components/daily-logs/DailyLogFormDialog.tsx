@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import { useJobs } from '@/hooks/useJobs';
 import { useVendors } from '@/hooks/useVendors';
+import { useScopeCategories, getUnitLabel } from '@/hooks/useScopeTracking';
 import { toast } from 'sonner';
 import { useJob } from '@/contexts/JobContext';
 import { useUserName } from '@/contexts/UserContext';
@@ -144,6 +145,11 @@ interface CrewEntry {
   po_id: string | null;
   schedule_task_id: string | null;
   notes: string | null;
+  // Scope tracking fields
+  scope_category_id: string | null;
+  quantity_completed: number | null;
+  work_quality: 'poor' | 'acceptable' | 'good' | 'excellent' | null;
+  ready_for_next_trade: boolean;
 }
 
 interface DeliveryEntry {
@@ -188,6 +194,7 @@ export function DailyLogFormDialog({
   const userName = useUserName();
   const { data: jobs = [] } = useJobs();
   const { data: vendors = [] } = useVendors();
+  const { data: scopeCategories = [] } = useScopeCategories();
   const createLog = useCreateDailyLog();
   const updateLog = useUpdateDailyLog();
   const uploadPhoto = useUploadDailyLogPhoto();
@@ -313,6 +320,10 @@ export function DailyLogFormDialog({
           po_id: c.po_id,
           schedule_task_id: c.schedule_task_id,
           notes: c.notes,
+          scope_category_id: c.scope_category_id || null,
+          quantity_completed: c.quantity_completed ?? null,
+          work_quality: c.work_quality || null,
+          ready_for_next_trade: c.ready_for_next_trade || false,
         })) || []);
         setDeliveryEntries(log.deliveries?.map(d => ({
           id: d.id,
@@ -366,6 +377,10 @@ export function DailyLogFormDialog({
           po_id: c.po_id,
           schedule_task_id: c.schedule_task_id,
           notes: null, // Reset notes
+          scope_category_id: c.scope_category_id || null, // Keep scope category
+          quantity_completed: null, // Reset quantity
+          work_quality: null, // Reset quality
+          ready_for_next_trade: false, // Reset ready state
         })) || []);
         // Don't copy deliveries - they're day-specific
         setDeliveryEntries([]);
@@ -414,6 +429,10 @@ export function DailyLogFormDialog({
       po_id: null,
       schedule_task_id: null,
       notes: null,
+      scope_category_id: null,
+      quantity_completed: null,
+      work_quality: null,
+      ready_for_next_trade: false,
     }]);
   };
 
@@ -554,7 +573,7 @@ export function DailyLogFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+      <DialogContent className="max-w-6xl max-h-[95vh] p-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
@@ -855,6 +874,76 @@ export function DailyLogFormDialog({
                           onChange={(e) => updateCrewEntry(index, { notes: e.target.value || null })}
                           placeholder="Additional notes"
                         />
+                      </div>
+                    </div>
+                    {/* Scope Tracking Section */}
+                    <div className="border-t pt-3 mt-3">
+                      <Label className="text-xs text-muted-foreground mb-2 block">Performance Tracking (Optional)</Label>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <Label className="text-xs">Scope Category</Label>
+                          <Select
+                            value={crew.scope_category_id || ''}
+                            onValueChange={(v) => updateCrewEntry(index, { scope_category_id: v || null })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Select scope" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {scopeCategories.map(cat => (
+                                <SelectItem key={cat.id} value={cat.id}>
+                                  {cat.name} ({cat.trade})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">
+                            Qty Completed {crew.scope_category_id && (() => {
+                              const cat = scopeCategories.find(c => c.id === crew.scope_category_id);
+                              return cat ? `(${getUnitLabel(cat)})` : '';
+                            })()}
+                          </Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            className="h-9"
+                            value={crew.quantity_completed ?? ''}
+                            onChange={(e) => updateCrewEntry(index, { quantity_completed: e.target.value ? Number(e.target.value) : null })}
+                            placeholder="Amount"
+                            disabled={!crew.scope_category_id}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Work Quality</Label>
+                          <Select
+                            value={crew.work_quality || ''}
+                            onValueChange={(v) => updateCrewEntry(index, { work_quality: (v || null) as any })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Rate quality" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="excellent">⭐ Excellent</SelectItem>
+                              <SelectItem value="good">👍 Good</SelectItem>
+                              <SelectItem value="acceptable">✓ Acceptable</SelectItem>
+                              <SelectItem value="poor">⚠️ Poor</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-end pb-1">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={`ready-${index}`}
+                              checked={crew.ready_for_next_trade}
+                              onCheckedChange={(checked) => updateCrewEntry(index, { ready_for_next_trade: !!checked })}
+                            />
+                            <Label htmlFor={`ready-${index}`} className="text-xs cursor-pointer">
+                              Ready for next trade
+                            </Label>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

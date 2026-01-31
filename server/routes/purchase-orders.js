@@ -333,8 +333,9 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
       .from('v2_purchase_orders')
       .select(`
         *,
-        vendor:v2_vendors(id, name, email, phone),
-        job:v2_jobs(id, name, address),
+        vendor:v2_vendors(id, name, email, phone, address, contact_name),
+        job:v2_jobs(id, name, address, client_name),
+        scope_category:v2_scope_categories(id, code, name, trade, primary_unit, baseline_days_per_unit),
         line_items:v2_po_line_items(
           id, description, amount, invoiced_amount,
           cost_code:v2_cost_codes(id, code, name, category)
@@ -344,7 +345,45 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
       .single();
 
     if (error) throw error;
-    res.json(data);
+
+    // Get linked invoices
+    const { data: invoices } = await supabase
+      .from('v2_invoices')
+      .select('id, invoice_number, invoice_date, amount, status')
+      .eq('po_id', req.params.id)
+      .is('deleted_at', null)
+      .order('invoice_date', { ascending: false });
+
+    // Get change orders
+    const { data: changeOrders } = await supabase
+      .from('v2_change_orders')
+      .select('id, co_number, description, total_amount, status')
+      .eq('po_id', req.params.id)
+      .is('deleted_at', null)
+      .order('co_number', { ascending: true });
+
+    // Flatten vendor and job data for frontend compatibility (matches list endpoint)
+    const flattened = {
+      ...data,
+      vendor_name: data.vendor?.name || null,
+      vendor_address: data.vendor?.address || null,
+      vendor_phone: data.vendor?.phone || null,
+      vendor_email: data.vendor?.email || null,
+      vendor_contact: data.vendor?.contact_name || null,
+      job_name: data.job?.name || null,
+      job_address: data.job?.address || null,
+      job_client: data.job?.client_name || null,
+      // Flatten line items cost codes
+      line_items: (data.line_items || []).map(item => ({
+        ...item,
+        cost_code: item.cost_code?.code || null,
+        cost_code_name: item.cost_code?.name || null,
+      })),
+      invoices: invoices || [],
+      change_orders: changeOrders || [],
+    };
+
+    res.json(flattened);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1066,14 +1105,18 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
     }
   }
 
+  // Set actual_end_date for scope tracking
+  const updateData = {
+    status: 'closed',
+    status_detail: 'completed',
+    closed_at: new Date().toISOString(),
+    closed_by: completed_by || 'system',
+    actual_end_date: new Date().toISOString().split('T')[0]
+  };
+
   const { data: updated, error } = await supabase
     .from('v2_purchase_orders')
-    .update({
-      status: 'closed',
-      status_detail: 'completed',
-      closed_at: new Date().toISOString(),
-      closed_by: completed_by || 'system'
-    })
+    .update(updateData)
     .eq('id', id)
     .select()
     .single();
@@ -1082,6 +1125,29 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
 
   // Log activity
   await logPOActivity(id, 'completed', completed_by || 'system', {});
+
+  // Calculate scope performance if scope tracking data exists
+  if (updated.scope_category_id && updated.scope_quantity) {
+    try {
+      const { error: perfError } = await supabase.rpc('calculate_scope_performance', {
+        p_po_id: id
+      });
+      if (perfError) {
+        console.error(`Failed to calculate scope performance for PO ${id}:`, perfError.message);
+      } else {
+        console.log(`Scope performance calculated for PO ${id}`);
+        // Recalculate benchmarks
+        await supabase.rpc('recalculate_category_benchmarks', {
+          p_scope_category_id: updated.scope_category_id
+        });
+        await supabase.rpc('recalculate_vendor_benchmarks', {
+          p_vendor_id: updated.vendor_id
+        });
+      }
+    } catch (perfErr) {
+      console.error(`Error calculating performance for PO ${id}:`, perfErr.message);
+    }
+  }
 
   broadcastInvoiceUpdate(id, 'po_completed', { po: updated });
   res.json({ success: true, po: updated });
@@ -1949,6 +2015,206 @@ router.get('/:id/vpos', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   res.json(data || []);
+}));
+
+// ============================================================
+// SCOPE TRACKING & PERFORMANCE
+// ============================================================
+
+// Get estimated days for a PO based on scope category and quantity
+router.get('/:id/scope-estimate', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: po, error } = await supabase
+    .from('v2_purchase_orders')
+    .select(`
+      id, vendor_id, scope_category_id, scope_quantity, scope_unit,
+      scope_category:v2_scope_categories(id, code, name, primary_unit, baseline_days_per_unit)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  if (!po.scope_category_id || !po.scope_quantity) {
+    return res.json({
+      po_id: id,
+      has_scope_data: false,
+      message: 'No scope tracking data set for this PO'
+    });
+  }
+
+  // Get category benchmark
+  const { data: categoryBench } = await supabase
+    .from('v2_category_benchmarks')
+    .select('*')
+    .eq('scope_category_id', po.scope_category_id)
+    .single();
+
+  // Get vendor benchmark if exists
+  const { data: vendorBench } = await supabase
+    .from('v2_vendor_benchmarks')
+    .select('*')
+    .eq('vendor_id', po.vendor_id)
+    .eq('scope_category_id', po.scope_category_id)
+    .single();
+
+  const baselineRate = po.scope_category?.baseline_days_per_unit || 0.01;
+  const categoryRate = categoryBench?.p50_days_per_unit || baselineRate;
+  const vendorRate = vendorBench?.avg_days_per_unit;
+
+  const quantity = parseFloat(po.scope_quantity);
+  const estimatedDaysBaseline = Math.ceil(quantity * baselineRate);
+  const estimatedDaysCategory = Math.ceil(quantity * categoryRate);
+  const estimatedDaysVendor = vendorRate ? Math.ceil(quantity * vendorRate) : null;
+
+  res.json({
+    po_id: id,
+    has_scope_data: true,
+    scope_category: po.scope_category,
+    quantity: quantity,
+    unit: po.scope_unit || po.scope_category?.primary_unit,
+    estimates: {
+      baseline: {
+        rate: baselineRate,
+        days: estimatedDaysBaseline,
+        source: 'Industry baseline'
+      },
+      category: {
+        rate: categoryRate,
+        days: estimatedDaysCategory,
+        sample_count: categoryBench?.sample_count || 0,
+        source: categoryBench ? 'Historical data (all vendors)' : 'Using baseline'
+      },
+      vendor: vendorRate ? {
+        rate: vendorRate,
+        days: estimatedDaysVendor,
+        sample_count: vendorBench?.sample_count || 0,
+        speed_vs_category: vendorBench?.speed_vs_category,
+        source: 'Historical data (this vendor)'
+      } : null
+    },
+    recommended_days: estimatedDaysVendor || estimatedDaysCategory
+  });
+}));
+
+// Estimate days based on scope category and quantity (preview before saving)
+router.post('/estimate-scope', asyncHandler(async (req, res) => {
+  const { scope_category_id, scope_quantity, vendor_id } = req.body;
+
+  if (!scope_category_id || !scope_quantity) {
+    throw new AppError('VALIDATION_FAILED', 'scope_category_id and scope_quantity are required');
+  }
+
+  // Get scope category
+  const { data: category } = await supabase
+    .from('v2_scope_categories')
+    .select('id, code, name, primary_unit, baseline_days_per_unit')
+    .eq('id', scope_category_id)
+    .single();
+
+  if (!category) {
+    throw new AppError('NOT_FOUND', 'Scope category not found');
+  }
+
+  // Get category benchmark
+  const { data: categoryBench } = await supabase
+    .from('v2_category_benchmarks')
+    .select('*')
+    .eq('scope_category_id', scope_category_id)
+    .single();
+
+  // Get vendor benchmark if vendor provided
+  let vendorBench = null;
+  if (vendor_id) {
+    const { data } = await supabase
+      .from('v2_vendor_benchmarks')
+      .select('*')
+      .eq('vendor_id', vendor_id)
+      .eq('scope_category_id', scope_category_id)
+      .single();
+    vendorBench = data;
+  }
+
+  const baselineRate = category.baseline_days_per_unit || 0.01;
+  const categoryRate = categoryBench?.p50_days_per_unit || baselineRate;
+  const vendorRate = vendorBench?.avg_days_per_unit;
+
+  const quantity = parseFloat(scope_quantity);
+  const estimatedDaysBaseline = Math.ceil(quantity * baselineRate);
+  const estimatedDaysCategory = Math.ceil(quantity * categoryRate);
+  const estimatedDaysVendor = vendorRate ? Math.ceil(quantity * vendorRate) : null;
+
+  res.json({
+    scope_category: category,
+    quantity: quantity,
+    estimates: {
+      baseline: { rate: baselineRate, days: estimatedDaysBaseline },
+      category: {
+        rate: categoryRate,
+        days: estimatedDaysCategory,
+        sample_count: categoryBench?.sample_count || 0
+      },
+      vendor: vendorRate ? {
+        rate: vendorRate,
+        days: estimatedDaysVendor,
+        sample_count: vendorBench?.sample_count || 0,
+        speed_vs_category: vendorBench?.speed_vs_category
+      } : null
+    },
+    recommended_days: estimatedDaysVendor || estimatedDaysCategory
+  });
+}));
+
+// Get working days tracked for a PO from daily logs
+router.get('/:id/working-days', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: po, error: poError } = await supabase
+    .from('v2_purchase_orders')
+    .select('id, actual_start_date, actual_end_date, actual_working_days, scope_quantity, estimated_days')
+    .eq('id', id)
+    .single();
+
+  if (poError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Count working days from daily logs
+  const { data: crewEntries, error: crewError } = await supabase
+    .from('v2_daily_log_crew')
+    .select(`
+      id, is_work_day, worker_count, hours_worked, quantity_completed,
+      daily_log:v2_daily_logs!inner(id, log_date, status, deleted_at)
+    `)
+    .eq('po_id', id)
+    .is('daily_log.deleted_at', null);
+
+  if (crewError) throw new AppError('DATABASE_ERROR', crewError.message);
+
+  const workingDays = (crewEntries || []).filter(e => e.is_work_day !== false);
+  const uniqueDates = [...new Set(workingDays.map(e => e.daily_log?.log_date))].filter(Boolean);
+  const totalWorkers = workingDays.reduce((sum, e) => sum + (e.worker_count || 0), 0);
+  const totalHours = workingDays.reduce((sum, e) => sum + ((e.worker_count || 0) * (e.hours_worked || 8)), 0);
+  const totalQuantity = workingDays.reduce((sum, e) => sum + (parseFloat(e.quantity_completed) || 0), 0);
+
+  res.json({
+    po_id: id,
+    actual_start_date: po.actual_start_date,
+    actual_end_date: po.actual_end_date,
+    actual_working_days: po.actual_working_days,
+    tracked_working_days: uniqueDates.length,
+    daily_entries: workingDays.length,
+    unique_dates: uniqueDates.sort(),
+    total_workers: totalWorkers,
+    total_hours: totalHours,
+    quantity_completed: totalQuantity,
+    estimated_days: po.estimated_days,
+    scope_quantity: po.scope_quantity,
+    progress_percent: po.scope_quantity ? Math.min(100, Math.round((totalQuantity / parseFloat(po.scope_quantity)) * 100)) : null
+  });
 }));
 
 module.exports = router;

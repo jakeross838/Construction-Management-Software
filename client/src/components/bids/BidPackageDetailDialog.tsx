@@ -133,7 +133,7 @@ export function BidPackageDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 gap-0">
+        <DialogContent className="max-w-5xl w-[95vw] md:w-full h-[90vh] flex flex-col p-0 gap-0">
           {/* Header */}
           <DialogHeader className="p-6 pb-4 border-b flex-shrink-0">
             <div className="flex items-start justify-between">
@@ -175,11 +175,41 @@ export function BidPackageDetailDialog({
           {/* Content */}
           <ScrollArea className="flex-1">
             <div className="p-6 space-y-6">
+              {/* Award Banner */}
+              {bidPackage.status === 'awarded' && bidPackage.awarded_vendor_name && (
+                <Card className="border-2 border-green-500 bg-gradient-to-r from-green-50 to-emerald-50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-full bg-green-100">
+                          <Award className="h-6 w-6 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-green-800">Awarded to</p>
+                          <p className="text-xl font-bold text-green-700">{bidPackage.awarded_vendor_name}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-green-600">Award Amount</p>
+                        <p className="text-2xl font-bold text-green-700">
+                          {bidPackage.awarded_amount ? formatCurrency(bidPackage.awarded_amount) : '—'}
+                        </p>
+                        {bidPackage.awarded_at && (
+                          <p className="text-xs text-green-600">
+                            {format(new Date(bidPackage.awarded_at), 'MMM d, yyyy')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Primary Bid Info Card - for v2_bids with vendor */}
               {vendor && bidAmount && (
                 <Card className="border-2 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50">
                   <CardContent className="p-6">
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div className="space-y-4">
                         <div>
                           <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Vendor</p>
@@ -215,7 +245,7 @@ export function BidPackageDetailDialog({
               )}
 
               {/* Key Details Grid */}
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
@@ -293,7 +323,7 @@ export function BidPackageDetailDialog({
                       </h4>
                       <Badge variant="secondary">{bids.length} bids received</Badge>
                     </div>
-                    <div className="grid grid-cols-4 gap-6 text-center">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 text-center">
                       <div>
                         <p className="text-xs text-muted-foreground mb-1">Lowest Bid</p>
                         <p className="text-2xl font-bold text-green-600">
@@ -359,7 +389,7 @@ export function BidPackageDetailDialog({
 
               {/* Tabs for Bids, Compare, Documents, Invites */}
               <Tabs defaultValue="bids" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 h-12">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto sm:h-12">
                   <TabsTrigger value="bids" className="gap-2 text-sm">
                     <DollarSign className="h-4 w-4" />
                     Bids ({bids.length})
@@ -502,7 +532,11 @@ export function BidPackageDetailDialog({
 
                 {/* Compare Tab */}
                 <TabsContent value="compare" className="mt-4">
-                  <BidComparisonView bids={bids} onSelectBid={handleSelectBid} />
+                  <BidComparisonView
+                    bids={bids}
+                    onSelectBid={handleSelectBid}
+                    isAwarding={awardPackage.isPending}
+                  />
                 </TabsContent>
 
                 {/* Documents Tab */}

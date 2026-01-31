@@ -1,8 +1,19 @@
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Award,
   CheckCircle2,
@@ -43,9 +54,11 @@ interface SubcontractorBid {
 interface BidComparisonViewProps {
   bids: SubcontractorBid[];
   onSelectBid?: (bidId: string) => void;
+  isAwarding?: boolean;
 }
 
-export function BidComparisonView({ bids, onSelectBid }: BidComparisonViewProps) {
+export function BidComparisonView({ bids, onSelectBid, isAwarding }: BidComparisonViewProps) {
+  const [confirmBid, setConfirmBid] = useState<SubcontractorBid | null>(null);
   if (bids.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
@@ -80,7 +93,7 @@ export function BidComparisonView({ bids, onSelectBid }: BidComparisonViewProps)
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-xs text-muted-foreground">Lowest Bid</p>
@@ -267,16 +280,23 @@ export function BidComparisonView({ bids, onSelectBid }: BidComparisonViewProps)
                     </div>
                   )}
 
-                  {/* Select Button */}
+                  {/* Select/Award Button */}
                   {onSelectBid && bid.status !== 'selected' && (
                     <Button
                       className="w-full mt-2"
                       variant={isLowest ? 'default' : 'outline'}
-                      onClick={() => onSelectBid(bid.id)}
+                      onClick={() => setConfirmBid(bid)}
+                      disabled={isAwarding}
                     >
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                      Select This Bid
+                      <Award className="h-4 w-4 mr-2" />
+                      {isAwarding ? 'Awarding...' : 'Award This Bid'}
                     </Button>
+                  )}
+                  {bid.status === 'selected' && (
+                    <div className="w-full mt-2 py-2 px-4 bg-green-100 text-green-700 rounded-md text-center font-medium text-sm flex items-center justify-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Awarded
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -284,6 +304,49 @@ export function BidComparisonView({ bids, onSelectBid }: BidComparisonViewProps)
           })}
         </div>
       </ScrollArea>
+
+      {/* Award Confirmation Dialog */}
+      <AlertDialog open={!!confirmBid} onOpenChange={(open) => !open && setConfirmBid(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Award className="h-5 w-5 text-amber-500" />
+              Award Bid to {confirmBid?.vendor_name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>
+                  You are about to award this bid package to <strong>{confirmBid?.vendor_name}</strong> for{' '}
+                  <strong className="text-green-600">{confirmBid ? formatCurrency(confirmBid.bid_amount) : ''}</strong>.
+                </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm">
+                  <p className="font-medium text-amber-800 mb-1">This action will:</p>
+                  <ul className="list-disc list-inside text-amber-700 space-y-1">
+                    <li>Mark this bid as "Selected"</li>
+                    <li>Mark other bids as "Rejected"</li>
+                    <li>Update the package status to "Awarded"</li>
+                  </ul>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmBid && onSelectBid) {
+                  onSelectBid(confirmBid.id);
+                }
+                setConfirmBid(null);
+              }}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Award className="h-4 w-4 mr-2" />
+              Confirm Award
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

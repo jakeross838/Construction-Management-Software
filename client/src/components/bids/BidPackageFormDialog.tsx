@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -17,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Sparkles, Loader2, LayoutTemplate, ChevronDown } from 'lucide-react';
 import { useJobs } from '@/hooks/useJobs';
 import {
   useCreateBidPackage,
@@ -26,6 +27,8 @@ import {
   TRADE_CATEGORIES,
   BidPackage,
   useSuggestTradeCategory,
+  useBidPackageTemplates,
+  useApplyBidPackageTemplate,
 } from '@/hooks/useBidPackages';
 import { useJob } from '@/contexts/JobContext';
 
@@ -42,10 +45,13 @@ export function BidPackageFormDialog({
 }: BidPackageFormDialogProps) {
   const { selectedJobId } = useJob();
   const { data: jobs = [] } = useJobs();
+  const { data: templates = [] } = useBidPackageTemplates();
   const createPackage = useCreateBidPackage();
   const updatePackage = useUpdateBidPackage();
   const suggestTrade = useSuggestTradeCategory();
+  const applyTemplate = useApplyBidPackageTemplate();
   const [aiSuggestion, setAiSuggestion] = useState<{ category: string; confidence: number; reasoning: string } | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
 
   const [formData, setFormData] = useState({
     package_number: '',
@@ -144,7 +150,72 @@ export function BidPackageFormDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
+          {/* Template Selector - only show when creating new */}
+          {!editPackage && templates.length > 0 && (
+            <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <LayoutTemplate className="h-4 w-4 text-primary" />
+                Start from Template
+              </div>
+              <div className="flex gap-2">
+                <Select
+                  value={selectedTemplate}
+                  onValueChange={(templateId) => {
+                    setSelectedTemplate(templateId);
+                    if (templateId) {
+                      applyTemplate.mutate(templateId, {
+                        onSuccess: (data) => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            trade_category: data.trade_category || prev.trade_category,
+                            scope_of_work: data.scope_of_work || prev.scope_of_work,
+                            description: data.description || prev.description,
+                            specs_summary: data.specs_summary || prev.specs_summary,
+                            special_requirements: data.special_requirements || prev.special_requirements,
+                            square_footage: data.square_footage?.toString() || prev.square_footage,
+                          }));
+                        },
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a template to auto-fill..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((tpl) => (
+                      <SelectItem key={tpl.id} value={tpl.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{tpl.name}</span>
+                          <Badge variant="secondary" className="text-xs">
+                            {tpl.trade_category}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTemplate && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedTemplate('')}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              {applyTemplate.isPending && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Applying template...
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="package_number">Package Number</Label>
               <Input
@@ -187,7 +258,7 @@ export function BidPackageFormDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="trade_category">Trade Category *</Label>
@@ -293,7 +364,7 @@ export function BidPackageFormDialog({
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="issue_date">Issue Date</Label>
               <Input

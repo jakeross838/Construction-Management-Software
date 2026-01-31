@@ -42,7 +42,7 @@ import {
   PhoneOff,
   X,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import {
   DailyLog,
   WeatherCondition,
@@ -168,7 +168,7 @@ export function DailyLogViewDialog({
               <div className="space-y-2">
                 <DialogTitle className="flex items-center gap-3 text-2xl">
                   <Calendar className="h-6 w-6 text-primary" />
-                  {format(new Date(log.log_date), 'EEEE, MMMM d, yyyy')}
+                  {format(parseISO(log.log_date), 'EEEE, MMMM d, yyyy')}
                 </DialogTitle>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline" className="text-sm px-3 py-1">{log.jobs?.name}</Badge>

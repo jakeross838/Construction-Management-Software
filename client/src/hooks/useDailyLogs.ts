@@ -148,6 +148,11 @@ export interface DailyLogCrew {
   notes: string | null;
   created_at: string;
   vendors?: { name: string } | null;
+  // Scope tracking fields
+  scope_category_id: string | null;
+  quantity_completed: number | null;
+  work_quality: 'poor' | 'acceptable' | 'good' | 'excellent' | null;
+  ready_for_next_trade: boolean;
 }
 
 export interface DailyLogDelivery {
@@ -289,6 +294,7 @@ export function useCreateDailyLog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-log-stats'] });
       toast.success('Daily log created');
     },
     onError: (error: Error) => {
@@ -347,6 +353,7 @@ export function useUpdateDailyLog() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
       queryClient.invalidateQueries({ queryKey: ['daily-log', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['daily-log-stats'] });
       toast.success('Daily log updated');
     },
     onError: (error: Error) => {
@@ -370,6 +377,7 @@ export function useCompleteDailyLog() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
       queryClient.invalidateQueries({ queryKey: ['daily-log', id] });
+      queryClient.invalidateQueries({ queryKey: ['daily-log-stats'] });
       toast.success('Daily log marked as complete');
     },
     onError: (error: Error) => {
@@ -393,6 +401,7 @@ export function useReopenDailyLog() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
       queryClient.invalidateQueries({ queryKey: ['daily-log', id] });
+      queryClient.invalidateQueries({ queryKey: ['daily-log-stats'] });
       toast.success('Daily log reopened for editing');
     },
     onError: (error: Error) => {
@@ -415,6 +424,7 @@ export function useDeleteDailyLog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-log-stats'] });
       toast.success('Daily log deleted');
     },
     onError: (error: Error) => {

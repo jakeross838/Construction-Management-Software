@@ -1745,5 +1745,222 @@ router.post('/:id/milestones/bulk', asyncHandler(async (req, res) => {
   res.status(201).json({ milestones: data, count: data.length });
 }));
 
+// ============================================================
+// JOB SPECIFICATIONS (Performance Intelligence)
+// ============================================================
+
+// Get job specifications for performance tracking
+router.get('/:id/specifications', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_job_specifications')
+    .select('*')
+    .eq('job_id', id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  }
+
+  // If no specs exist, return empty with job info
+  if (!data) {
+    const { data: job } = await supabase
+      .from('v2_jobs')
+      .select('id, name')
+      .eq('id', id)
+      .single();
+
+    if (!job) throw notFoundError('job', id);
+
+    return res.json({
+      job_id: id,
+      job_name: job.name,
+      specifications: null,
+      message: 'No specifications set for this job'
+    });
+  }
+
+  res.json(data);
+}));
+
+// Create or update job specifications
+router.post('/:id/specifications', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Verify job exists
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id, name')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (jobError || !job) throw notFoundError('job', id);
+
+  // Define allowed specification fields
+  const allowedFields = [
+    // Square Footages
+    'total_sf', 'garage_sf', 'porch_sf', 'deck_sf',
+    // Room Counts
+    'bedroom_count', 'bathroom_count', 'half_bath_count',
+    // Trade-specific metrics
+    'tile_sf', 'hardwood_sf', 'carpet_sf', 'drywall_sf', 'paint_sf',
+    'roofing_squares', 'exterior_siding_sf', 'concrete_yards', 'linear_ft_trim',
+    'window_count', 'door_count', 'exterior_door_count',
+    // Plumbing
+    'plumbing_fixture_count',
+    // Electrical
+    'electrical_outlet_count', 'electrical_switch_count', 'electrical_fixture_count',
+    // HVAC
+    'hvac_tonnage', 'hvac_zone_count',
+    // Complexity factors
+    'stories', 'has_basement', 'has_pool', 'is_custom_home', 'complexity_rating',
+    // Notes
+    'notes'
+  ];
+
+  // Build specification data
+  const specData = { job_id: id };
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      specData[field] = req.body[field];
+    }
+  }
+
+  // Check if specs already exist
+  const { data: existing } = await supabase
+    .from('v2_job_specifications')
+    .select('id')
+    .eq('job_id', id)
+    .single();
+
+  let data, error;
+
+  if (existing) {
+    // Update existing
+    specData.updated_at = new Date().toISOString();
+    const result = await supabase
+      .from('v2_job_specifications')
+      .update(specData)
+      .eq('job_id', id)
+      .select()
+      .single();
+    data = result.data;
+    error = result.error;
+  } else {
+    // Insert new
+    const result = await supabase
+      .from('v2_job_specifications')
+      .insert(specData)
+      .select()
+      .single();
+    data = result.data;
+    error = result.error;
+  }
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Log activity
+  await supabase.from('v2_job_activity').insert({
+    job_id: id,
+    action: existing ? 'specifications_updated' : 'specifications_created',
+    performed_by: req.body.updated_by || 'User',
+    notes: 'Job specifications for performance tracking updated'
+  });
+
+  res.status(existing ? 200 : 201).json(data);
+}));
+
+// Update job specifications (partial update)
+router.patch('/:id/specifications', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Check if specs exist
+  const { data: existing, error: existingError } = await supabase
+    .from('v2_job_specifications')
+    .select('*')
+    .eq('job_id', id)
+    .single();
+
+  if (existingError && existingError.code === 'PGRST116') {
+    throw new AppError('NOT_FOUND', 'Job specifications not found. Use POST to create.');
+  }
+
+  // Define allowed fields
+  const allowedFields = [
+    'total_sf', 'garage_sf', 'porch_sf', 'deck_sf',
+    'bedroom_count', 'bathroom_count', 'half_bath_count',
+    'tile_sf', 'hardwood_sf', 'carpet_sf', 'drywall_sf', 'paint_sf',
+    'roofing_squares', 'exterior_siding_sf', 'concrete_yards', 'linear_ft_trim',
+    'window_count', 'door_count', 'exterior_door_count',
+    'plumbing_fixture_count',
+    'electrical_outlet_count', 'electrical_switch_count', 'electrical_fixture_count',
+    'hvac_tonnage', 'hvac_zone_count',
+    'stories', 'has_basement', 'has_pool', 'is_custom_home', 'complexity_rating',
+    'notes'
+  ];
+
+  // Build update data
+  const updates = { updated_at: new Date().toISOString() };
+  const changes = {};
+
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined && req.body[field] !== existing[field]) {
+      updates[field] = req.body[field];
+      changes[field] = { old: existing[field], new: req.body[field] };
+    }
+  }
+
+  if (Object.keys(changes).length === 0) {
+    return res.json(existing); // No changes
+  }
+
+  const { data, error } = await supabase
+    .from('v2_job_specifications')
+    .update(updates)
+    .eq('job_id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Log activity
+  await supabase.from('v2_job_activity').insert({
+    job_id: id,
+    action: 'specifications_updated',
+    performed_by: req.body.updated_by || 'User',
+    field_changes: changes
+  });
+
+  res.json(data);
+}));
+
+// Get scope estimates for a job based on specifications
+router.get('/:id/scope-estimates', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Use the view we created
+  const { data, error } = await supabase
+    .from('v2_scope_estimates')
+    .select('*')
+    .eq('job_id', id)
+    .gt('scope_quantity', 0);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Calculate totals
+  const totalDays = (data || []).reduce((sum, e) => sum + (parseFloat(e.estimated_days) || 0), 0);
+
+  res.json({
+    job_id: id,
+    estimates: data || [],
+    summary: {
+      total_scopes: (data || []).length,
+      total_estimated_days: Math.ceil(totalDays)
+    }
+  });
+}));
+
 module.exports = router;
 

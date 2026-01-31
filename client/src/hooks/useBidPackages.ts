@@ -698,6 +698,211 @@ export function useDeleteSubcontractorBidDocument() {
   });
 }
 
+// ==================== AI BID EXTRACTION ====================
+
+export interface AIBidExtraction {
+  bid_amount: number | null;
+  unit_price_per_sf: number | null;
+  inclusions: string[];
+  exclusions: string[];
+  clarifications: string[];
+  proposed_start_date: string | null;
+  proposed_duration_days: number | null;
+  payment_terms: string | null;
+  warranty_terms: string | null;
+  bond_included: boolean;
+  valid_until: string | null;
+  vendor_name: string | null;
+  confidence: number;
+}
+
+export function useExtractBidFromDocument() {
+  return useMutation({
+    mutationFn: async ({
+      submissionId,
+      docId,
+    }: {
+      submissionId: string;
+      docId: string;
+    }) => {
+      const response = await fetch(`/api/bids/submissions/${submissionId}/documents/${docId}/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+
+      return response.json() as Promise<{
+        success: boolean;
+        extraction: AIBidExtraction | null;
+        error?: string;
+        source_document?: string;
+      }>;
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useExtractBidFromFile() {
+  return useMutation({
+    mutationFn: async ({
+      submissionId,
+      file,
+    }: {
+      submissionId: string;
+      file: File;
+    }) => {
+      const formData = new FormData();
+      formData.append('document', file);
+
+      const response = await fetch(`/api/bids/submissions/${submissionId}/extract`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+
+      return response.json() as Promise<{
+        success: boolean;
+        extraction: AIBidExtraction | null;
+        error?: string;
+        source_file?: string;
+      }>;
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ==================== BID PACKAGE TEMPLATES ====================
+
+export interface BidPackageTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  trade_category: string;
+  scope_of_work: string | null;
+  specs_summary: string | null;
+  special_requirements: string | null;
+  default_duration_days: number | null;
+  typical_square_footage: number | null;
+  is_active: boolean;
+  usage_count: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  checklist?: Array<{
+    id: string;
+    item_text: string;
+    is_required: boolean;
+    sort_order: number;
+  }>;
+}
+
+export function useBidPackageTemplates(tradeCategory?: string) {
+  return useQuery({
+    queryKey: ['bid-package-templates', tradeCategory],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (tradeCategory) params.append('trade_category', tradeCategory);
+      return api<BidPackageTemplate[]>(`/bids/templates/list?${params}`);
+    },
+  });
+}
+
+export function useBidPackageTemplate(templateId: string) {
+  return useQuery({
+    queryKey: ['bid-package-template', templateId],
+    queryFn: () => api<BidPackageTemplate>(`/bids/templates/${templateId}`),
+    enabled: !!templateId,
+  });
+}
+
+export function useCreateBidPackageTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<BidPackageTemplate> & { checklist?: string[] }) =>
+      api<BidPackageTemplate>('/bids/templates', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bid-package-templates'] });
+      toast.success('Template created');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useCreateTemplateFromPackage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ packageId, name }: { packageId: string; name?: string }) =>
+      api<BidPackageTemplate>(`/bids/templates/from-package/${packageId}`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bid-package-templates'] });
+      toast.success('Template created from bid package');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useUpdateBidPackageTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: Partial<BidPackageTemplate> & { id: string }) =>
+      api<BidPackageTemplate>(`/bids/templates/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['bid-package-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['bid-package-template', variables.id] });
+      toast.success('Template updated');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useDeleteBidPackageTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/bids/templates/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bid-package-templates'] });
+      toast.success('Template deleted');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useApplyBidPackageTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (templateId: string) =>
+      api<{
+        trade_category: string;
+        scope_of_work: string | null;
+        description: string | null;
+        specs_summary: string | null;
+        special_requirements: string | null;
+        square_footage: number | null;
+      }>(`/bids/templates/${templateId}/apply`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bid-package-templates'] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
 // ==================== UTILITY: Generate Package Number ====================
 
 export async function generatePackageNumber(jobId?: string): Promise<string> {

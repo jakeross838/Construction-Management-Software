@@ -152,6 +152,181 @@ Choose "Other" only if none of the specific categories fit well.`
 // STATS ENDPOINT (must be before /:id)
 // ============================================================
 
+// ============================================================
+// BID ANALYTICS
+// ============================================================
+
+router.get('/analytics', asyncHandler(async (req, res) => {
+  const { job_id, date_from, date_to } = req.query;
+
+  // Base query for bid packages
+  let packagesQuery = supabase
+    .from('v2_bids')
+    .select('id, status, trade_category, awarded_amount, awarded_vendor_id, created_at, job_id')
+    .is('deleted_at', null);
+
+  if (job_id) packagesQuery = packagesQuery.eq('job_id', job_id);
+  if (date_from) packagesQuery = packagesQuery.gte('created_at', date_from);
+  if (date_to) packagesQuery = packagesQuery.lte('created_at', date_to);
+
+  const { data: packages, error: pkgError } = await packagesQuery;
+  if (pkgError) throw new AppError('DATABASE_ERROR', pkgError.message);
+
+  // Get all subcontractor bids
+  const packageIds = (packages || []).map(p => p.id);
+  const { data: allBids } = await supabase
+    .from('v2_subcontractor_bids')
+    .select('id, bid_package_id, vendor_id, bid_amount, status, submitted_at')
+    .in('bid_package_id', packageIds);
+
+  // Get vendor names for awarded packages
+  const vendorIds = [...new Set([
+    ...(packages || []).filter(p => p.awarded_vendor_id).map(p => p.awarded_vendor_id),
+    ...(allBids || []).map(b => b.vendor_id)
+  ])];
+
+  const { data: vendors } = await supabase
+    .from('v2_vendors')
+    .select('id, name')
+    .in('id', vendorIds);
+
+  const vendorMap = Object.fromEntries((vendors || []).map(v => [v.id, v.name]));
+
+  // Calculate analytics
+  const totalPackages = packages?.length || 0;
+  const awardedPackages = packages?.filter(p => p.status === 'awarded').length || 0;
+  const totalBids = allBids?.length || 0;
+  const totalAwardedAmount = packages?.reduce((sum, p) => sum + (parseFloat(p.awarded_amount) || 0), 0) || 0;
+
+  // Bids per package
+  const avgBidsPerPackage = totalPackages > 0 ? (totalBids / totalPackages).toFixed(1) : 0;
+
+  // Trade category breakdown
+  const tradeStats = {};
+  for (const pkg of (packages || [])) {
+    const trade = pkg.trade_category || 'Other';
+    if (!tradeStats[trade]) {
+      tradeStats[trade] = { packages: 0, awarded: 0, totalAwarded: 0 };
+    }
+    tradeStats[trade].packages++;
+    if (pkg.status === 'awarded') {
+      tradeStats[trade].awarded++;
+      tradeStats[trade].totalAwarded += parseFloat(pkg.awarded_amount) || 0;
+    }
+  }
+
+  // Vendor performance (win rates)
+  const vendorStats = {};
+  for (const bid of (allBids || [])) {
+    const vendorId = bid.vendor_id;
+    if (!vendorStats[vendorId]) {
+      vendorStats[vendorId] = {
+        vendor_id: vendorId,
+        vendor_name: vendorMap[vendorId] || 'Unknown',
+        total_bids: 0,
+        won: 0,
+        total_amount: 0,
+        won_amount: 0
+      };
+    }
+    vendorStats[vendorId].total_bids++;
+    vendorStats[vendorId].total_amount += parseFloat(bid.bid_amount) || 0;
+
+    if (bid.status === 'selected') {
+      vendorStats[vendorId].won++;
+      vendorStats[vendorId].won_amount += parseFloat(bid.bid_amount) || 0;
+    }
+  }
+
+  // Calculate win rates and sort by wins
+  const vendorPerformance = Object.values(vendorStats)
+    .map(v => ({
+      ...v,
+      win_rate: v.total_bids > 0 ? Math.round((v.won / v.total_bids) * 100) : 0,
+      avg_bid: v.total_bids > 0 ? Math.round(v.total_amount / v.total_bids) : 0
+    }))
+    .sort((a, b) => b.won - a.won)
+    .slice(0, 10); // Top 10 vendors
+
+  // Monthly trend (last 6 months)
+  const monthlyTrend = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthStart = date.toISOString().split('T')[0];
+    const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    const monthPackages = (packages || []).filter(p => {
+      const created = p.created_at?.split('T')[0];
+      return created >= monthStart && created <= monthEnd;
+    });
+
+    const monthBids = (allBids || []).filter(b => {
+      const submitted = b.submitted_at?.split('T')[0];
+      return submitted >= monthStart && submitted <= monthEnd;
+    });
+
+    monthlyTrend.push({
+      month: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      packages: monthPackages.length,
+      bids: monthBids.length,
+      awarded: monthPackages.filter(p => p.status === 'awarded').length
+    });
+  }
+
+  // Bid spread analysis
+  const spreadAnalysis = [];
+  for (const pkg of (packages || [])) {
+    const pkgBids = (allBids || []).filter(b => b.bid_package_id === pkg.id);
+    if (pkgBids.length >= 2) {
+      const amounts = pkgBids.map(b => parseFloat(b.bid_amount));
+      const min = Math.min(...amounts);
+      const max = Math.max(...amounts);
+      const spread = ((max - min) / min * 100).toFixed(1);
+      spreadAnalysis.push({
+        trade: pkg.trade_category || 'Other',
+        spread: parseFloat(spread),
+        bid_count: pkgBids.length
+      });
+    }
+  }
+
+  // Average spread by trade
+  const spreadByTrade = {};
+  for (const item of spreadAnalysis) {
+    if (!spreadByTrade[item.trade]) {
+      spreadByTrade[item.trade] = { total: 0, count: 0 };
+    }
+    spreadByTrade[item.trade].total += item.spread;
+    spreadByTrade[item.trade].count++;
+  }
+
+  const avgSpreadByTrade = Object.entries(spreadByTrade).map(([trade, data]) => ({
+    trade,
+    avg_spread: Math.round(data.total / data.count),
+    sample_size: data.count
+  })).sort((a, b) => b.avg_spread - a.avg_spread);
+
+  res.json({
+    summary: {
+      total_packages: totalPackages,
+      awarded_packages: awardedPackages,
+      award_rate: totalPackages > 0 ? Math.round((awardedPackages / totalPackages) * 100) : 0,
+      total_bids_received: totalBids,
+      avg_bids_per_package: parseFloat(avgBidsPerPackage),
+      total_awarded_amount: totalAwardedAmount
+    },
+    by_trade: Object.entries(tradeStats).map(([trade, stats]) => ({
+      trade,
+      ...stats,
+      award_rate: stats.packages > 0 ? Math.round((stats.awarded / stats.packages) * 100) : 0
+    })).sort((a, b) => b.packages - a.packages),
+    vendor_performance: vendorPerformance,
+    monthly_trend: monthlyTrend,
+    spread_by_trade: avgSpreadByTrade
+  });
+}));
+
 router.get('/stats', asyncHandler(async (req, res) => {
   const { job_id } = req.query;
 
@@ -1689,6 +1864,447 @@ router.post('/:id/award', asyncHandler(async (req, res) => {
   res.json({
     ...updatedPkg,
     awarded_vendor_name: updatedPkg.awarded_vendor?.name
+  });
+}));
+
+// ============================================================
+// AI EXTRACTION FROM BID DOCUMENTS
+// ============================================================
+
+router.post('/submissions/:submissionId/extract', upload.single('document'), asyncHandler(async (req, res) => {
+  const { submissionId } = req.params;
+
+  if (!req.file) throw new AppError('VALIDATION_ERROR', 'No file uploaded');
+
+  // Verify submission exists
+  const { data: submission, error: subError } = await supabase
+    .from('v2_subcontractor_bids')
+    .select('id, bid_package_id, vendor:v2_vendors(name), package:v2_bids(title, square_footage)')
+    .eq('id', submissionId)
+    .single();
+
+  if (subError || !submission) throw new AppError('NOT_FOUND', 'Submission not found');
+
+  try {
+    // Convert PDF to base64 for AI processing
+    const base64Content = req.file.buffer.toString('base64');
+    const mediaType = req.file.mimetype === 'application/pdf' ? 'application/pdf' : 'image/png';
+
+    // Use Claude to extract bid information
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: mediaType,
+              data: base64Content
+            }
+          },
+          {
+            type: 'text',
+            text: `Analyze this construction bid/proposal document and extract the following information in JSON format:
+
+{
+  "bid_amount": number or null (total bid amount in dollars),
+  "unit_price_per_sf": number or null (price per square foot if mentioned),
+  "inclusions": string[] (list of items/work included in the bid),
+  "exclusions": string[] (list of items/work excluded from the bid),
+  "clarifications": string[] (any clarifications or notes),
+  "proposed_start_date": string or null (ISO date format YYYY-MM-DD if mentioned),
+  "proposed_duration_days": number or null (project duration in days),
+  "payment_terms": string or null (payment schedule/terms),
+  "warranty_terms": string or null (warranty information),
+  "bond_included": boolean (whether performance/payment bond is included),
+  "valid_until": string or null (ISO date format when quote expires),
+  "vendor_name": string or null (company name from the document),
+  "confidence": number (0-1 confidence in extraction accuracy)
+}
+
+Only include fields you can confidently extract from the document. Return ONLY the JSON object, no other text.`
+          }
+        ]
+      }]
+    });
+
+    const text = response.content[0].text.trim();
+
+    // Parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Could not parse AI response');
+    }
+
+    const extracted = JSON.parse(jsonMatch[0]);
+
+    // Calculate unit price if we have square footage and bid amount
+    if (extracted.bid_amount && !extracted.unit_price_per_sf && submission.package?.square_footage) {
+      extracted.unit_price_per_sf = Math.round((extracted.bid_amount / submission.package.square_footage) * 100) / 100;
+    }
+
+    // Log the extraction
+    await logBidActivity(submission.bid_package_id, 'ai_extraction', 'AI', {
+      vendor_name: submission.vendor?.name,
+      extracted_amount: extracted.bid_amount,
+      confidence: extracted.confidence
+    });
+
+    res.json({
+      success: true,
+      extraction: extracted,
+      source_file: req.file.originalname
+    });
+
+  } catch (error) {
+    console.error('AI extraction error:', error);
+    res.json({
+      success: false,
+      error: error.message || 'Failed to extract bid information',
+      extraction: null
+    });
+  }
+}));
+
+// AI extraction without file (from existing document URL)
+router.post('/submissions/:submissionId/documents/:docId/extract', asyncHandler(async (req, res) => {
+  const { submissionId, docId } = req.params;
+
+  // Get the document
+  const { data: doc, error: docError } = await supabase
+    .from('v2_subcontractor_bid_documents')
+    .select('*')
+    .eq('id', docId)
+    .eq('subcontractor_bid_id', submissionId)
+    .single();
+
+  if (docError || !doc) throw new AppError('NOT_FOUND', 'Document not found');
+
+  // Get submission with package info
+  const { data: submission } = await supabase
+    .from('v2_subcontractor_bids')
+    .select('id, bid_package_id, vendor:v2_vendors(name), package:v2_bids(title, square_footage)')
+    .eq('id', submissionId)
+    .single();
+
+  try {
+    // Fetch the document
+    const fileResponse = await fetch(doc.file_url);
+    if (!fileResponse.ok) throw new Error('Could not fetch document');
+
+    const buffer = await fileResponse.arrayBuffer();
+    const base64Content = Buffer.from(buffer).toString('base64');
+
+    // Determine media type
+    const extension = doc.file_name.toLowerCase().split('.').pop();
+    const mediaType = extension === 'pdf' ? 'application/pdf' :
+                      ['jpg', 'jpeg'].includes(extension) ? 'image/jpeg' :
+                      extension === 'png' ? 'image/png' : 'application/pdf';
+
+    // Use Claude to extract bid information
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: mediaType,
+              data: base64Content
+            }
+          },
+          {
+            type: 'text',
+            text: `Analyze this construction bid/proposal document and extract the following information in JSON format:
+
+{
+  "bid_amount": number or null (total bid amount in dollars),
+  "unit_price_per_sf": number or null (price per square foot if mentioned),
+  "inclusions": string[] (list of items/work included in the bid),
+  "exclusions": string[] (list of items/work excluded from the bid),
+  "clarifications": string[] (any clarifications or notes),
+  "proposed_start_date": string or null (ISO date format YYYY-MM-DD if mentioned),
+  "proposed_duration_days": number or null (project duration in days),
+  "payment_terms": string or null (payment schedule/terms),
+  "warranty_terms": string or null (warranty information),
+  "bond_included": boolean (whether performance/payment bond is included),
+  "valid_until": string or null (ISO date format when quote expires),
+  "vendor_name": string or null (company name from the document),
+  "confidence": number (0-1 confidence in extraction accuracy)
+}
+
+Only include fields you can confidently extract from the document. Return ONLY the JSON object, no other text.`
+          }
+        ]
+      }]
+    });
+
+    const text = response.content[0].text.trim();
+
+    // Parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Could not parse AI response');
+    }
+
+    const extracted = JSON.parse(jsonMatch[0]);
+
+    // Calculate unit price if we have square footage and bid amount
+    if (extracted.bid_amount && !extracted.unit_price_per_sf && submission?.package?.square_footage) {
+      extracted.unit_price_per_sf = Math.round((extracted.bid_amount / submission.package.square_footage) * 100) / 100;
+    }
+
+    // Log the extraction
+    if (submission) {
+      await logBidActivity(submission.bid_package_id, 'ai_extraction', 'AI', {
+        vendor_name: submission.vendor?.name,
+        document_id: docId,
+        extracted_amount: extracted.bid_amount,
+        confidence: extracted.confidence
+      });
+    }
+
+    res.json({
+      success: true,
+      extraction: extracted,
+      source_document: doc.file_name
+    });
+
+  } catch (error) {
+    console.error('AI extraction error:', error);
+    res.json({
+      success: false,
+      error: error.message || 'Failed to extract bid information',
+      extraction: null
+    });
+  }
+}));
+
+// ============================================================
+// BID PACKAGE TEMPLATES
+// ============================================================
+
+// List all templates
+router.get('/templates/list', asyncHandler(async (req, res) => {
+  const { trade_category, active_only } = req.query;
+
+  let query = supabase
+    .from('v2_bid_package_templates')
+    .select('*')
+    .order('usage_count', { ascending: false });
+
+  if (trade_category) {
+    query = query.eq('trade_category', trade_category);
+  }
+
+  if (active_only !== 'false') {
+    query = query.eq('is_active', true);
+  }
+
+  const { data: templates, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(templates || []);
+}));
+
+// Get single template with checklist
+router.get('/templates/:templateId', asyncHandler(async (req, res) => {
+  const { templateId } = req.params;
+
+  const { data: template, error } = await supabase
+    .from('v2_bid_package_templates')
+    .select('*')
+    .eq('id', templateId)
+    .single();
+
+  if (error || !template) throw new AppError('NOT_FOUND', 'Template not found');
+
+  // Get checklist items
+  const { data: checklist } = await supabase
+    .from('v2_bid_template_checklist')
+    .select('*')
+    .eq('template_id', templateId)
+    .order('sort_order');
+
+  template.checklist = checklist || [];
+
+  res.json(template);
+}));
+
+// Create template
+router.post('/templates', asyncHandler(async (req, res) => {
+  const {
+    name,
+    description,
+    trade_category,
+    scope_of_work,
+    specs_summary,
+    special_requirements,
+    default_duration_days,
+    typical_square_footage,
+    checklist,
+    created_by
+  } = req.body;
+
+  if (!name) throw new AppError('VALIDATION_ERROR', 'Template name is required');
+  if (!trade_category) throw new AppError('VALIDATION_ERROR', 'Trade category is required');
+
+  const { data: template, error } = await supabase
+    .from('v2_bid_package_templates')
+    .insert({
+      name,
+      description,
+      trade_category,
+      scope_of_work,
+      specs_summary,
+      special_requirements,
+      default_duration_days,
+      typical_square_footage,
+      created_by: created_by || 'System'
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Add checklist items if provided
+  if (checklist && checklist.length > 0) {
+    const checklistItems = checklist.map((item, idx) => ({
+      template_id: template.id,
+      item_text: item.item_text || item,
+      is_required: item.is_required || false,
+      sort_order: idx
+    }));
+
+    await supabase.from('v2_bid_template_checklist').insert(checklistItems);
+  }
+
+  res.status(201).json(template);
+}));
+
+// Create template from existing bid package
+router.post('/templates/from-package/:packageId', asyncHandler(async (req, res) => {
+  const { packageId } = req.params;
+  const { name, created_by } = req.body;
+
+  // Get the bid package
+  const { data: pkg, error: pkgError } = await supabase
+    .from('v2_bids')
+    .select('*')
+    .eq('id', packageId)
+    .single();
+
+  if (pkgError || !pkg) throw new AppError('NOT_FOUND', 'Bid package not found');
+
+  const templateName = name || `Template from ${pkg.title}`;
+
+  const { data: template, error } = await supabase
+    .from('v2_bid_package_templates')
+    .insert({
+      name: templateName,
+      description: pkg.description,
+      trade_category: pkg.trade_category || 'Other',
+      scope_of_work: pkg.scope_of_work,
+      specs_summary: pkg.specs_summary,
+      special_requirements: pkg.special_requirements,
+      typical_square_footage: pkg.square_footage,
+      created_by: created_by || 'System'
+    })
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.status(201).json(template);
+}));
+
+// Update template
+router.patch('/templates/:templateId', asyncHandler(async (req, res) => {
+  const { templateId } = req.params;
+  const {
+    name,
+    description,
+    trade_category,
+    scope_of_work,
+    specs_summary,
+    special_requirements,
+    default_duration_days,
+    typical_square_footage,
+    is_active
+  } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (trade_category !== undefined) updates.trade_category = trade_category;
+  if (scope_of_work !== undefined) updates.scope_of_work = scope_of_work;
+  if (specs_summary !== undefined) updates.specs_summary = specs_summary;
+  if (special_requirements !== undefined) updates.special_requirements = special_requirements;
+  if (default_duration_days !== undefined) updates.default_duration_days = default_duration_days;
+  if (typical_square_footage !== undefined) updates.typical_square_footage = typical_square_footage;
+  if (is_active !== undefined) updates.is_active = is_active;
+
+  const { data: template, error } = await supabase
+    .from('v2_bid_package_templates')
+    .update(updates)
+    .eq('id', templateId)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!template) throw new AppError('NOT_FOUND', 'Template not found');
+
+  res.json(template);
+}));
+
+// Delete template
+router.delete('/templates/:templateId', asyncHandler(async (req, res) => {
+  const { templateId } = req.params;
+
+  const { error } = await supabase
+    .from('v2_bid_package_templates')
+    .delete()
+    .eq('id', templateId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json({ success: true, message: 'Template deleted' });
+}));
+
+// Apply template to new bid package (increment usage count)
+router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
+  const { templateId } = req.params;
+
+  // Get template
+  const { data: template, error: tplError } = await supabase
+    .from('v2_bid_package_templates')
+    .select('*')
+    .eq('id', templateId)
+    .single();
+
+  if (tplError || !template) throw new AppError('NOT_FOUND', 'Template not found');
+
+  // Increment usage count
+  await supabase
+    .from('v2_bid_package_templates')
+    .update({ usage_count: (template.usage_count || 0) + 1 })
+    .eq('id', templateId);
+
+  // Return template data for form population
+  res.json({
+    trade_category: template.trade_category,
+    scope_of_work: template.scope_of_work,
+    description: template.description,
+    specs_summary: template.specs_summary,
+    special_requirements: template.special_requirements,
+    square_footage: template.typical_square_footage
   });
 }));
 

@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -31,6 +32,8 @@ import {
   Package,
   Calendar,
   Award,
+  BarChart3,
+  List,
 } from 'lucide-react';
 import { format, isAfter, isBefore, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -43,6 +46,7 @@ import {
 } from '@/hooks/useBidPackages';
 import { BidPackageFormDialog } from '@/components/bids/BidPackageFormDialog';
 import { BidPackageDetailDialog } from '@/components/bids/BidPackageDetailDialog';
+import { BidAnalyticsDashboard } from '@/components/bids/BidAnalyticsDashboard';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -134,6 +138,20 @@ const Bids = () => {
             </Button>
           </div>
 
+          {/* View Toggle Tabs */}
+          <Tabs defaultValue="list" className="w-full">
+            <TabsList>
+              <TabsTrigger value="list" className="gap-2">
+                <List className="h-4 w-4" />
+                Bid Packages
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="list" className="mt-4 space-y-4">
           {/* Stats */}
           <div className="grid gap-4 md:grid-cols-4">
             <Card className="stat-card border-l-4 border-l-blue-500">
@@ -363,6 +381,12 @@ const Bids = () => {
               )}
             </CardContent>
           </Card>
+            </TabsContent>
+
+            <TabsContent value="analytics" className="mt-4">
+              <BidAnalyticsDashboard jobId={selectedJobId || undefined} />
+            </TabsContent>
+          </Tabs>
       </div>
 
       {/* Detail Dialog */}

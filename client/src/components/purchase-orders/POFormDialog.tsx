@@ -30,8 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Trash2, Building2, Upload, X, FileText, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Building2, Upload, X, FileText, Loader2, Clock, Ruler } from 'lucide-react';
 import { useJobs, useVendors, useCostCodes, useCreatePurchaseOrder, useUploadPOAttachment } from '@/hooks/useFinancialData';
+import { useScopeCategories, calculateEstimatedDays, getUnitLabel } from '@/hooks/useScopeTracking';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -58,6 +59,8 @@ const poFormSchema = z.object({
   job_id: z.string().min(1, 'Job required'),
   description: z.string().optional(),
   scope_of_work: z.string().optional(),
+  scope_category_id: z.string().optional(),
+  scope_quantity: z.coerce.number().optional(),
   line_items: z.array(lineItemSchema).min(1, 'At least one line item required'),
 });
 
@@ -78,6 +81,7 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
   const { data: jobs = [] } = useJobs();
   const { data: vendors = [] } = useVendors();
   const { data: costCodes = [] } = useCostCodes();
+  const { data: scopeCategories = [] } = useScopeCategories();
   const createPO = useCreatePurchaseOrder();
   const uploadAttachment = useUploadPOAttachment();
   const { toast } = useToast();
@@ -97,6 +101,8 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
       job_id: selectedJobId || '',
       description: '',
       scope_of_work: '',
+      scope_category_id: '',
+      scope_quantity: undefined,
       line_items: [{ title: '', cost_code_id: '', description: '', cost_type: '', unit_cost: 0, quantity: 1 }],
     },
   });
@@ -117,6 +123,8 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
         job_id: selectedJobId || '',
         description: '',
         scope_of_work: '',
+        scope_category_id: '',
+        scope_quantity: undefined,
         line_items: [{ title: '', cost_code_id: '', description: '', cost_type: '', unit_cost: 0, quantity: 1 }],
       });
       setPendingFiles([]);
@@ -131,6 +139,14 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
   const jobOptions = jobs.map(j => ({ value: j.id, label: j.name }));
   const vendorOptions = vendors.map(v => ({ value: v.id, label: v.name }));
   const costCodeOptions = costCodes.map(c => ({ value: c.id, label: `${c.code} - ${c.name}` }));
+  const scopeCategoryOptions = scopeCategories.map(c => ({ value: c.id, label: `${c.name} (${c.trade})` }));
+
+  // Scope tracking calculations
+  const watchedScopeCategoryId = form.watch('scope_category_id');
+  const watchedScopeQuantity = form.watch('scope_quantity');
+  const selectedScopeCategory = scopeCategories.find(c => c.id === watchedScopeCategoryId);
+  const estimatedDays = calculateEstimatedDays(selectedScopeCategory, watchedScopeQuantity);
+  const unitLabel = getUnitLabel(selectedScopeCategory);
 
   const lineItems = form.watch('line_items');
   const totalAmount = lineItems.reduce((sum, li) => sum + ((Number(li.unit_cost) || 0) * (Number(li.quantity) || 0)), 0);
@@ -168,10 +184,10 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
   };
 
   const onSubmit = async (data: POFormValues) => {
-    const { line_items, ...poData } = data;
-    
+    const { line_items, scope_category_id, scope_quantity, ...poData } = data;
+
     try {
-      // Create PO
+      // Create PO with scope tracking data
       const createdPO = await createPO.mutateAsync({
         ...poData,
         original_amount: totalAmount,
@@ -181,6 +197,11 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
         change_order_amount: 0,
         status: 'open',
         approval_status: 'pending',
+        // Scope tracking fields
+        scope_category_id: scope_category_id || null,
+        scope_quantity: scope_quantity || null,
+        scope_unit: selectedScopeCategory?.primary_unit || null,
+        estimated_days: estimatedDays,
         line_items: line_items.map((li) => ({
           cost_code_id: li.cost_code_id || null,
           title: li.title,
@@ -321,16 +342,92 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
                 <FormItem>
                   <FormLabel>Scope of Work</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      placeholder="Detailed scope of work..." 
+                    <Textarea
+                      placeholder="Detailed scope of work..."
                       className="min-h-[80px]"
-                      {...field} 
+                      {...field}
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {/* Scope Tracking Section */}
+            <div className="p-4 border rounded-lg bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2">
+                <Ruler className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-base font-medium">Performance Tracking (Optional)</Label>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Track scope and calculate estimated duration based on historical performance data.
+              </p>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <FormField
+                  control={form.control}
+                  name="scope_category_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Scope Category</FormLabel>
+                      <FormControl>
+                        <Combobox
+                          options={scopeCategoryOptions}
+                          value={field.value || ''}
+                          onValueChange={field.onChange}
+                          placeholder="Select category..."
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="scope_quantity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Quantity {selectedScopeCategory && `(${unitLabel})`}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder={selectedScopeCategory ? `Enter ${unitLabel}` : 'Select category first'}
+                          disabled={!selectedScopeCategory}
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div>
+                  <Label className="text-sm">Estimated Duration</Label>
+                  <div className="mt-2 p-3 border rounded-md bg-background">
+                    {estimatedDays !== null ? (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-primary" />
+                        <span className="text-lg font-semibold">{estimatedDays} days</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        {selectedScopeCategory ? 'Enter quantity' : 'Select category and quantity'}
+                      </span>
+                    )}
+                  </div>
+                  {selectedScopeCategory && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Based on {selectedScopeCategory.baseline_days_per_unit} days/{selectedScopeCategory.primary_unit}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Line Items */}
             <div className="space-y-4">

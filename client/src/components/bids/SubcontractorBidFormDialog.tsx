@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -18,14 +19,16 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, Sparkles, Upload, FileText, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useVendors } from '@/hooks/useVendors';
 import {
   useCreateSubcontractorBid,
   useUpdateSubcontractorBid,
+  useExtractBidFromFile,
   SubcontractorBid,
   BidPackage,
+  AIBidExtraction,
 } from '@/hooks/useBidPackages';
 
 interface SubcontractorBidFormDialogProps {
@@ -44,6 +47,12 @@ export function SubcontractorBidFormDialog({
   const { data: vendors = [] } = useVendors();
   const createBid = useCreateSubcontractorBid();
   const updateBid = useUpdateSubcontractorBid();
+  const extractBid = useExtractBidFromFile();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [extraction, setExtraction] = useState<AIBidExtraction | null>(null);
+  const [extractionApplied, setExtractionApplied] = useState(false);
 
   const [formData, setFormData] = useState({
     vendor_id: '',
@@ -102,9 +111,57 @@ export function SubcontractorBidFormDialog({
         setInclusions([]);
         setExclusions([]);
         setClarifications([]);
+        setUploadedFile(null);
+        setExtraction(null);
+        setExtractionApplied(false);
       }
     }
   }, [open, editBid]);
+
+  // Handle file selection for AI extraction
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadedFile(file);
+    setExtraction(null);
+    setExtractionApplied(false);
+
+    // We need a submission ID for extraction, but we don't have one yet
+    // So we'll do extraction after the form is shown
+    toast.info('File selected. Click "Extract with AI" to analyze the document.');
+  };
+
+  // Trigger AI extraction (requires a temporary submission or we extract client-side preview)
+  const handleExtract = async () => {
+    if (!uploadedFile) return;
+
+    // For now, we'll show a note that extraction happens after initial save
+    // In a full implementation, we'd have a preview extraction endpoint
+    toast.info('AI extraction will be available after recording the initial bid. Upload the document afterward for AI analysis.');
+  };
+
+  // Apply extracted data to form
+  const applyExtraction = (data: AIBidExtraction) => {
+    setFormData((prev) => ({
+      ...prev,
+      bid_amount: data.bid_amount?.toString() || prev.bid_amount,
+      unit_price_per_sf: data.unit_price_per_sf?.toString() || prev.unit_price_per_sf,
+      proposed_start_date: data.proposed_start_date?.split('T')[0] || prev.proposed_start_date,
+      proposed_duration_days: data.proposed_duration_days?.toString() || prev.proposed_duration_days,
+      payment_terms: data.payment_terms || prev.payment_terms,
+      warranty_terms: data.warranty_terms || prev.warranty_terms,
+      bond_included: data.bond_included ?? prev.bond_included,
+      valid_until: data.valid_until?.split('T')[0] || prev.valid_until,
+    }));
+
+    if (data.inclusions?.length) setInclusions(data.inclusions);
+    if (data.exclusions?.length) setExclusions(data.exclusions);
+    if (data.clarifications?.length) setClarifications(data.clarifications);
+
+    setExtractionApplied(true);
+    toast.success('AI extraction applied to form');
+  };
 
   // Auto-calculate unit price per SF
   useEffect(() => {
@@ -196,8 +253,128 @@ export function SubcontractorBidFormDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* AI Extraction Section - only for new bids */}
+          {!editBid && (
+            <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-600" />
+                  <span className="font-medium text-sm">AI Document Extraction</span>
+                  <Badge variant="secondary" className="text-xs">Beta</Badge>
+                </div>
+                {extractionApplied && (
+                  <Badge className="bg-green-100 text-green-700 gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Applied
+                  </Badge>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Upload a vendor proposal or quote PDF and AI will extract bid details automatically.
+              </p>
+
+              <div className="flex gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploadedFile ? 'Change File' : 'Upload Document'}
+                </Button>
+
+                {uploadedFile && (
+                  <div className="flex-1 flex items-center gap-2 px-3 py-1 bg-white rounded border text-sm">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="truncate flex-1">{uploadedFile.name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        setUploadedFile(null);
+                        setExtraction(null);
+                        setExtractionApplied(false);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {uploadedFile && !extraction && (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertDescription className="text-xs text-amber-800">
+                    <strong>Tip:</strong> Fill in the vendor and basic info below, then save the bid.
+                    You can upload documents and use AI extraction from the bid details view afterward.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {extraction && (
+                <div className="p-3 bg-white rounded border space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Extracted Data</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {Math.round((extraction.confidence || 0) * 100)}% confident
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    {extraction.bid_amount && (
+                      <div>
+                        <span className="text-muted-foreground">Amount:</span>{' '}
+                        <span className="font-medium">${extraction.bid_amount.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {extraction.proposed_duration_days && (
+                      <div>
+                        <span className="text-muted-foreground">Duration:</span>{' '}
+                        <span className="font-medium">{extraction.proposed_duration_days} days</span>
+                      </div>
+                    )}
+                    {extraction.inclusions?.length > 0 && (
+                      <div>
+                        <span className="text-muted-foreground">Inclusions:</span>{' '}
+                        <span className="font-medium">{extraction.inclusions.length} items</span>
+                      </div>
+                    )}
+                    {extraction.exclusions?.length > 0 && (
+                      <div>
+                        <span className="text-muted-foreground">Exclusions:</span>{' '}
+                        <span className="font-medium">{extraction.exclusions.length} items</span>
+                      </div>
+                    )}
+                  </div>
+                  {!extractionApplied && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full mt-2 gap-2"
+                      onClick={() => applyExtraction(extraction)}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Apply to Form
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Vendor & Amount */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="vendor_id">Subcontractor *</Label>
               <Select
@@ -246,7 +423,7 @@ export function SubcontractorBidFormDialog({
           </div>
 
           {/* Timeline */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="proposed_start_date">Proposed Start</Label>
               <Input
@@ -286,7 +463,7 @@ export function SubcontractorBidFormDialog({
           </div>
 
           {/* Terms */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="payment_terms">Payment Terms</Label>
               <Input
