@@ -26,6 +26,20 @@ const upload = multer({
 const STORAGE_BUCKET = 'invoices';
 const BID_PREFIX = 'bid-documents';
 
+// Anthropic client for AI features
+const Anthropic = require('@anthropic-ai/sdk');
+const anthropic = new Anthropic();
+
+// Trade categories for AI matching
+const TRADE_CATEGORIES = [
+  'Site Work', 'Concrete', 'Masonry', 'Metals', 'Wood & Plastics',
+  'Thermal & Moisture', 'Doors & Windows', 'Finishes', 'Specialties',
+  'Equipment', 'Furnishings', 'Special Construction', 'Conveying Systems',
+  'Mechanical', 'Plumbing', 'HVAC', 'Electrical', 'Drywall', 'Painting',
+  'Flooring', 'Roofing', 'Insulation', 'Cabinets & Millwork', 'Tile',
+  'Landscaping', 'Pool', 'Other'
+];
+
 // ============================================================
 // ACTIVITY LOGGING HELPER
 // ============================================================
@@ -38,6 +52,101 @@ async function logBidActivity(bidId, action, performedBy, details = {}) {
     details
   });
 }
+
+// ============================================================
+// AI TRADE CATEGORY SUGGESTION
+// ============================================================
+
+router.post('/suggest-trade', asyncHandler(async (req, res) => {
+  const { title, description, scope_of_work } = req.body;
+
+  if (!title) throw new AppError('VALIDATION_ERROR', 'Title is required');
+
+  const context = [title, description, scope_of_work].filter(Boolean).join('\n\n');
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `Analyze this construction bid package and suggest the most appropriate trade category.
+
+Bid Package:
+${context}
+
+Available trade categories:
+${TRADE_CATEGORIES.join(', ')}
+
+Respond with ONLY a JSON object in this exact format:
+{"category": "chosen category", "confidence": 0.95, "reasoning": "brief explanation"}
+
+Choose "Other" only if none of the specific categories fit well.`
+      }]
+    });
+
+    const text = response.content[0].text.trim();
+    // Extract JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Invalid AI response format');
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+
+    // Validate category
+    if (!TRADE_CATEGORIES.includes(result.category)) {
+      result.category = 'Other';
+    }
+
+    res.json({
+      success: true,
+      suggestion: result.category,
+      confidence: result.confidence || 0.8,
+      reasoning: result.reasoning || '',
+      alternatives: TRADE_CATEGORIES.filter(c => c !== result.category).slice(0, 5)
+    });
+  } catch (error) {
+    console.error('AI trade suggestion error:', error);
+    // Fallback: simple keyword matching
+    const text = context.toLowerCase();
+    let suggestion = 'Other';
+
+    const keywordMap = {
+      'plumbing': 'Plumbing', 'pipe': 'Plumbing', 'fixture': 'Plumbing',
+      'electrical': 'Electrical', 'wiring': 'Electrical', 'panel': 'Electrical',
+      'hvac': 'HVAC', 'heating': 'HVAC', 'cooling': 'HVAC', 'air conditioning': 'HVAC',
+      'concrete': 'Concrete', 'foundation': 'Concrete', 'slab': 'Concrete',
+      'roof': 'Roofing', 'shingle': 'Roofing', 'tpo': 'Roofing',
+      'drywall': 'Drywall', 'sheetrock': 'Drywall',
+      'paint': 'Painting', 'stain': 'Painting',
+      'floor': 'Flooring', 'tile': 'Tile', 'carpet': 'Flooring',
+      'cabinet': 'Cabinets & Millwork', 'millwork': 'Cabinets & Millwork',
+      'window': 'Doors & Windows', 'door': 'Doors & Windows',
+      'insulation': 'Insulation', 'foam': 'Insulation',
+      'pool': 'Pool', 'spa': 'Pool',
+      'landscape': 'Landscaping', 'irrigation': 'Landscaping',
+      'frame': 'Wood & Plastics', 'framing': 'Wood & Plastics', 'lumber': 'Wood & Plastics',
+      'steel': 'Metals', 'metal': 'Metals', 'iron': 'Metals',
+      'masonry': 'Masonry', 'brick': 'Masonry', 'block': 'Masonry',
+    };
+
+    for (const [keyword, category] of Object.entries(keywordMap)) {
+      if (text.includes(keyword)) {
+        suggestion = category;
+        break;
+      }
+    }
+
+    res.json({
+      success: true,
+      suggestion,
+      confidence: 0.6,
+      reasoning: 'Matched by keyword (AI unavailable)',
+      alternatives: TRADE_CATEGORIES.filter(c => c !== suggestion).slice(0, 5)
+    });
+  }
+}));
 
 // ============================================================
 // STATS ENDPOINT (must be before /:id)
@@ -1053,6 +1162,85 @@ router.delete('/:id/invites/:inviteId', asyncHandler(async (req, res) => {
   });
 
   res.json({ success: true, message: 'Invite removed' });
+}));
+
+// Send invite email to vendor
+router.post('/:id/invites/:inviteId/send', asyncHandler(async (req, res) => {
+  const { id, inviteId } = req.params;
+  const { sent_by } = req.body;
+
+  // Get invite with vendor and bid package details
+  const { data: invite, error: inviteError } = await supabase
+    .from('v2_bid_package_invites')
+    .select(`
+      *,
+      vendor:v2_vendors(id, name, email, phone),
+      bid_package:v2_bids(id, title, description, scope_of_work, due_date, job:v2_jobs(name))
+    `)
+    .eq('id', inviteId)
+    .eq('bid_package_id', id)
+    .single();
+
+  if (inviteError || !invite) throw new AppError('NOT_FOUND', 'Invite not found');
+
+  const vendor = invite.vendor;
+  const pkg = invite.bid_package;
+
+  if (!vendor?.email) {
+    throw new AppError('VALIDATION_ERROR', 'Vendor has no email address');
+  }
+
+  // Generate email content
+  const subject = `Invitation to Bid: ${pkg.title} - ${pkg.job?.name || 'Project'}`;
+  const dueDateStr = pkg.due_date ? new Date(pkg.due_date).toLocaleDateString() : 'TBD';
+
+  const body = `Dear ${vendor.name},
+
+Ross Built Custom Homes is pleased to invite you to submit a bid for the following scope of work:
+
+PROJECT: ${pkg.job?.name || 'Project'}
+SCOPE: ${pkg.title}
+${pkg.description ? `\nDESCRIPTION:\n${pkg.description}` : ''}
+${pkg.scope_of_work ? `\nSCOPE OF WORK:\n${pkg.scope_of_work}` : ''}
+
+BID DUE DATE: ${dueDateStr}
+
+Please review the attached documents and submit your proposal at your earliest convenience.
+
+If you have any questions, please don't hesitate to contact us.
+
+Best regards,
+Ross Built Custom Homes`;
+
+  // Generate mailto link
+  const mailtoLink = `mailto:${encodeURIComponent(vendor.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  // Mark invite as sent
+  const { error: updateError } = await supabase
+    .from('v2_bid_package_invites')
+    .update({
+      invite_sent: true,
+      invite_sent_at: new Date().toISOString()
+    })
+    .eq('id', inviteId);
+
+  if (updateError) throw new AppError('DATABASE_ERROR', updateError.message);
+
+  await logBidActivity(id, 'invite_sent', sent_by || 'System', {
+    vendor_name: vendor.name,
+    vendor_email: vendor.email
+  });
+
+  res.json({
+    success: true,
+    mailtoLink,
+    emailContent: {
+      to: vendor.email,
+      subject,
+      body
+    },
+    message: `Invite prepared for ${vendor.name}`
+  });
 }));
 
 // ============================================================

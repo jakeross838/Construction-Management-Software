@@ -180,6 +180,31 @@ export const SUBCONTRACTOR_BID_STATUS_OPTIONS = [
   { value: 'withdrawn', label: 'Withdrawn', color: 'bg-gray-100 text-gray-700' },
 ];
 
+// ==================== AI TRADE SUGGESTION ====================
+
+interface TradeSuggestion {
+  success: boolean;
+  suggestion: string;
+  confidence: number;
+  reasoning: string;
+  alternatives: string[];
+}
+
+export function useSuggestTradeCategory() {
+  return useMutation({
+    mutationFn: async ({ title, description, scope_of_work }: {
+      title: string;
+      description?: string;
+      scope_of_work?: string;
+    }) => {
+      return api<TradeSuggestion>('/bids/suggest-trade', {
+        method: 'POST',
+        body: JSON.stringify({ title, description, scope_of_work }),
+      });
+    },
+  });
+}
+
 // ==================== BID PACKAGES ====================
 
 export function useBidPackages(jobId?: string) {
@@ -454,6 +479,37 @@ export function useRemoveBidPackageInvite() {
       queryClient.invalidateQueries({ queryKey: ['bid-package-invites', bidPackageId] });
       queryClient.invalidateQueries({ queryKey: ['bid-packages'] });
       toast.success('Invite removed');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+interface SendInviteResponse {
+  success: boolean;
+  mailtoLink: string;
+  emailContent: {
+    to: string;
+    subject: string;
+    body: string;
+  };
+  message: string;
+}
+
+export function useSendBidPackageInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ inviteId, bidPackageId }: { inviteId: string; bidPackageId: string }) => {
+      const result = await api<SendInviteResponse>(`/bids/${bidPackageId}/invites/${inviteId}/send`, {
+        method: 'POST',
+        body: JSON.stringify({ sent_by: 'User' }),
+      });
+      return { ...result, bidPackageId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['bid-package-invites', data.bidPackageId] });
+      // Open the mailto link
+      window.open(data.mailtoLink, '_blank');
+      toast.success(data.message);
     },
     onError: (e: Error) => toast.error(e.message),
   });

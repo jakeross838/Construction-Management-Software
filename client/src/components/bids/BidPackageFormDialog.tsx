@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { useJobs } from '@/hooks/useJobs';
 import {
   useCreateBidPackage,
@@ -23,6 +25,7 @@ import {
   generatePackageNumber,
   TRADE_CATEGORIES,
   BidPackage,
+  useSuggestTradeCategory,
 } from '@/hooks/useBidPackages';
 import { useJob } from '@/contexts/JobContext';
 
@@ -41,6 +44,8 @@ export function BidPackageFormDialog({
   const { data: jobs = [] } = useJobs();
   const createPackage = useCreateBidPackage();
   const updatePackage = useUpdateBidPackage();
+  const suggestTrade = useSuggestTradeCategory();
+  const [aiSuggestion, setAiSuggestion] = useState<{ category: string; confidence: number; reasoning: string } | null>(null);
 
   const [formData, setFormData] = useState({
     package_number: '',
@@ -184,10 +189,48 @@ export function BidPackageFormDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="trade_category">Trade Category *</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="trade_category">Trade Category *</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs gap-1"
+                  disabled={!formData.title || suggestTrade.isPending}
+                  onClick={() => {
+                    suggestTrade.mutate(
+                      {
+                        title: formData.title,
+                        description: formData.description,
+                        scope_of_work: formData.scope_of_work
+                      },
+                      {
+                        onSuccess: (data) => {
+                          setFormData((p) => ({ ...p, trade_category: data.suggestion }));
+                          setAiSuggestion({
+                            category: data.suggestion,
+                            confidence: data.confidence,
+                            reasoning: data.reasoning
+                          });
+                        }
+                      }
+                    );
+                  }}
+                >
+                  {suggestTrade.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  Auto-detect
+                </Button>
+              </div>
               <Select
                 value={formData.trade_category}
-                onValueChange={(v) => setFormData((p) => ({ ...p, trade_category: v }))}
+                onValueChange={(v) => {
+                  setFormData((p) => ({ ...p, trade_category: v }));
+                  setAiSuggestion(null);
+                }}
                 required
               >
                 <SelectTrigger>
@@ -201,6 +244,14 @@ export function BidPackageFormDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {aiSuggestion && (
+                <div className="flex items-center gap-2 text-xs">
+                  <Badge variant="secondary" className="bg-purple-100 text-purple-700">
+                    AI: {Math.round(aiSuggestion.confidence * 100)}% confident
+                  </Badge>
+                  <span className="text-muted-foreground">{aiSuggestion.reasoning}</span>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="square_footage">Square Footage</Label>

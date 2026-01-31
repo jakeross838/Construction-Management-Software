@@ -8,13 +8,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Users, Plus, Trash2, Mail, Phone, CheckCircle2, XCircle } from 'lucide-react';
+import { Users, Plus, Trash2, Mail, Phone, CheckCircle2, XCircle, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { useVendors } from '@/hooks/useVendors';
 import {
   BidPackageInvite,
   useAddBidPackageInvite,
   useRemoveBidPackageInvite,
+  useSendBidPackageInvite,
 } from '@/hooks/useBidPackages';
 
 interface BidPackageInvitesSectionProps {
@@ -31,6 +32,7 @@ export function BidPackageInvitesSection({
 
   const addInvite = useAddBidPackageInvite();
   const removeInvite = useRemoveBidPackageInvite();
+  const sendInvite = useSendBidPackageInvite();
 
   // Filter out already invited vendors
   const invitedVendorIds = new Set(invites.map((i) => i.vendor_id));
@@ -142,9 +144,23 @@ export function BidPackageInvitesSection({
                     Sent
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-xs">
-                    Pending
-                  </Badge>
+                  <>
+                    <Badge variant="outline" className="text-xs">
+                      Pending
+                    </Badge>
+                    {invite.vendor_email && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => sendInvite.mutate({ inviteId: invite.id, bidPackageId })}
+                        disabled={sendInvite.isPending}
+                      >
+                        <Send className="h-3 w-3" />
+                        Send Email
+                      </Button>
+                    )}
+                  </>
                 )}
                 <Button
                   size="icon"

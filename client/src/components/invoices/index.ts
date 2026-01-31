@@ -12,9 +12,8 @@ export { ReviewFlagBadge, ReviewFlagsList, ReviewStatusSummary, REVIEW_FLAGS } f
 export { CostCodeSuggestions, type CostCodeSuggestion } from './CostCodeSuggestions';
 
 // AI matched entity cards
-export { AIMatchedEntityCard, AIEntitySuggestions } from './AIMatchedEntityCard';
+export { AIMatchedEntityCard } from './AIMatchedEntityCard';
 
 // Main dialogs
-export { InvoiceUploadDialog } from './InvoiceUploadDialog';
 export { InvoiceDetailDialog } from './InvoiceDetailDialog';
 export { BulkInvoiceUploadDialog } from './BulkInvoiceUploadDialog';

@@ -8,7 +8,7 @@
  * 4. Shows results with links to created records
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,6 +18,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import {
   Select,
   SelectContent,
@@ -47,6 +53,10 @@ import {
   Truck,
   Shield,
   Edit,
+  Eye,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -202,9 +212,30 @@ export function UnifiedAIUpload({
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewFile, setPreviewFile] = useState<UploadedFile | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const [previewRotation, setPreviewRotation] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+
+  // Create object URL for preview
+  const previewUrl = useMemo(() => {
+    if (previewFile) {
+      return URL.createObjectURL(previewFile.file);
+    }
+    return null;
+  }, [previewFile]);
+
+  // Cleanup object URL on unmount or preview change
+  const closePreview = useCallback(() => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewFile(null);
+    setPreviewZoom(100);
+    setPreviewRotation(0);
+  }, [previewUrl]);
 
   // Determine context hint from current page if not provided
   const effectiveContextHint = contextHint || (() => {
@@ -734,6 +765,18 @@ export function UnifiedAIUpload({
 
                     {/* Actions */}
                     <div className="flex items-center gap-1 shrink-0">
+                      {/* Preview button - available for classified and pending files */}
+                      {(uploadFile.status === 'classified' || uploadFile.status === 'pending') && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setPreviewFile(uploadFile)}
+                          title="Preview document"
+                        >
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                      )}
                       {uploadFile.status === 'error' && (
                         <Button
                           variant="ghost"
@@ -811,6 +854,116 @@ export function UnifiedAIUpload({
           </div>
         </div>
       </DialogContent>
+
+      {/* Document Preview Sheet */}
+      <Sheet open={!!previewFile} onOpenChange={(isOpen) => !isOpen && closePreview()}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl lg:max-w-4xl p-0 flex flex-col">
+          <SheetHeader className="px-6 py-4 border-b">
+            <SheetTitle className="flex items-center justify-between">
+              <span className="truncate flex-1">{previewFile?.file.name}</span>
+              <div className="flex items-center gap-1 ml-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setPreviewZoom(z => Math.max(25, z - 25))}
+                  disabled={previewZoom <= 25}
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <span className="text-sm w-12 text-center">{previewZoom}%</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setPreviewZoom(z => Math.min(200, z + 25))}
+                  disabled={previewZoom >= 200}
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setPreviewRotation(r => (r + 90) % 360)}
+                >
+                  <RotateCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-auto bg-muted/50 p-4">
+            {previewFile && previewUrl && (
+              <div className="flex items-center justify-center min-h-full">
+                {previewFile.file.type.startsWith('image/') ? (
+                  <img
+                    src={previewUrl}
+                    alt={previewFile.file.name}
+                    className="max-w-full h-auto shadow-lg rounded"
+                    style={{
+                      transform: `scale(${previewZoom / 100}) rotate(${previewRotation}deg)`,
+                      transformOrigin: 'center center',
+                      transition: 'transform 0.2s ease',
+                    }}
+                  />
+                ) : previewFile.file.type === 'application/pdf' ? (
+                  <object
+                    data={previewUrl}
+                    type="application/pdf"
+                    className="w-full bg-white rounded shadow-lg"
+                    style={{
+                      height: `${Math.max(600, 600 * (previewZoom / 100))}px`,
+                      transform: `rotate(${previewRotation}deg)`,
+                      transformOrigin: 'center center',
+                    }}
+                  >
+                    <div className="flex flex-col items-center justify-center h-96 text-muted-foreground">
+                      <FileText className="h-16 w-16 mb-4" />
+                      <p>PDF preview not available in your browser</p>
+                      <a
+                        href={previewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 text-primary hover:underline"
+                      >
+                        Open in new tab
+                      </a>
+                    </div>
+                  </object>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-96 text-muted-foreground">
+                    <FileText className="h-16 w-16 mb-4" />
+                    <p className="text-lg font-medium">{previewFile.file.name}</p>
+                    <p className="text-sm mt-1">
+                      {(previewFile.file.size / 1024).toFixed(1)} KB · {previewFile.file.type || 'Unknown type'}
+                    </p>
+                    <p className="mt-4 text-sm">Preview not available for this file type</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="px-6 py-4 border-t flex justify-between items-center">
+            <div className="text-sm text-muted-foreground">
+              {previewFile && (
+                <>
+                  {(previewFile.file.size / 1024).toFixed(1)} KB
+                  {previewFile.detectedType && (
+                    <span className="ml-2">
+                      · Detected as <span className="font-medium">{DOCUMENT_TYPES[previewFile.detectedType]?.label}</span>
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+            <Button onClick={closePreview}>
+              Close Preview
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </Dialog>
   );
 }

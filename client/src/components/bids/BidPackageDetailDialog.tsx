@@ -43,6 +43,7 @@ import {
   Tag,
   Briefcase,
   ClipboardList,
+  Scale,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -61,6 +62,7 @@ import {
 import { SubcontractorBidFormDialog } from './SubcontractorBidFormDialog';
 import { BidPackageDocumentsSection } from './BidPackageDocumentsSection';
 import { BidPackageInvitesSection } from './BidPackageInvitesSection';
+import { BidComparisonView } from './BidComparisonView';
 
 interface BidPackageDetailDialogProps {
   bidPackage: BidPackage | null;
@@ -355,20 +357,24 @@ export function BidPackageDetailDialog({
                 </Card>
               )}
 
-              {/* Tabs for Bids, Documents, Invites */}
+              {/* Tabs for Bids, Compare, Documents, Invites */}
               <Tabs defaultValue="bids" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 h-12">
+                <TabsList className="grid w-full grid-cols-4 h-12">
                   <TabsTrigger value="bids" className="gap-2 text-sm">
                     <DollarSign className="h-4 w-4" />
-                    Subcontractor Bids ({bids.length})
+                    Bids ({bids.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="compare" className="gap-2 text-sm" disabled={bids.length < 2}>
+                    <Scale className="h-4 w-4" />
+                    Compare
                   </TabsTrigger>
                   <TabsTrigger value="documents" className="gap-2 text-sm">
                     <FileText className="h-4 w-4" />
-                    Documents ({bidDocuments.length || documents.length})
+                    Docs ({bidDocuments.length || documents.length})
                   </TabsTrigger>
                   <TabsTrigger value="invites" className="gap-2 text-sm">
                     <Users className="h-4 w-4" />
-                    Invited Vendors ({invites.length})
+                    Invites ({invites.length})
                   </TabsTrigger>
                 </TabsList>
 
@@ -492,6 +498,11 @@ export function BidPackageDetailDialog({
                       </Table>
                     </Card>
                   )}
+                </TabsContent>
+
+                {/* Compare Tab */}
+                <TabsContent value="compare" className="mt-4">
+                  <BidComparisonView bids={bids} onSelectBid={handleSelectBid} />
                 </TabsContent>
 
                 {/* Documents Tab */}
