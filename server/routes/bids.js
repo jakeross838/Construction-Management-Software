@@ -1159,18 +1159,15 @@ router.post('/:id/submissions', asyncHandler(async (req, res) => {
   // Verify bid package exists
   const { data: pkg, error: pkgError } = await supabase
     .from('v2_bids')
-    .select('id, title, square_footage')
+    .select('id, title')
     .eq('id', id)
     .is('deleted_at', null)
     .single();
 
   if (pkgError || !pkg) throw new AppError('NOT_FOUND', 'Bid package not found');
 
-  // Calculate unit price per SF if square footage is available
-  let calculatedUnitPrice = unit_price_per_sf;
-  if (!calculatedUnitPrice && pkg.square_footage) {
-    calculatedUnitPrice = parseFloat(bid_amount) / pkg.square_footage;
-  }
+  // Use provided unit price or null
+  let calculatedUnitPrice = unit_price_per_sf || null;
 
   const { data: submission, error } = await supabase
     .from('v2_subcontractor_bids')

@@ -465,9 +465,9 @@ export function useSubcontractorBids(bidPackageId?: string) {
   return useQuery({
     queryKey: ['subcontractor-bids', bidPackageId],
     queryFn: async () => {
-      const endpoint = bidPackageId ? `/bids/${bidPackageId}/submissions` : '/bids/submissions';
-      return api<SubcontractorBid[]>(endpoint);
+      return api<SubcontractorBid[]>(`/bids/${bidPackageId}/submissions`);
     },
+    enabled: !!bidPackageId,
   });
 }
 
