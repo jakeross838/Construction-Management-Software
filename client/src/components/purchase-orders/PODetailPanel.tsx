@@ -47,6 +47,7 @@ import {
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 import { generatePOPdf } from '@/lib/poPdfGenerator';
 import { SendPOEmailDialog } from './SendPOEmailDialog';
+import { POFormDialog } from './POFormDialog';
 import { POLineItemsEditor } from './POLineItemsEditor';
 import { cn } from '@/lib/utils';
 
@@ -69,6 +70,7 @@ export function PODetailPanel({ poId, open, onOpenChange }: PODetailPanelProps) 
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [editFormDialogOpen, setEditFormDialogOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   
@@ -232,7 +234,7 @@ export function PODetailPanel({ poId, open, onOpenChange }: PODetailPanelProps) 
                       </>
                     ) : (
                       <>
-                        <Button variant="outline" size="sm" className="gap-2" onClick={startEditing}>
+                        <Button variant="outline" size="sm" className="gap-2" onClick={() => setEditFormDialogOpen(true)}>
                           <Pencil className="h-4 w-4" />
                           Edit
                         </Button>
@@ -610,6 +612,15 @@ export function PODetailPanel({ poId, open, onOpenChange }: PODetailPanelProps) 
         open={invoiceDialogOpen}
         onOpenChange={setInvoiceDialogOpen}
       />
+
+      {/* PO Edit Form Dialog */}
+      {po && (
+        <POFormDialog
+          open={editFormDialogOpen}
+          onOpenChange={setEditFormDialogOpen}
+          po={po}
+        />
+      )}
 
       {/* Send PO Email Dialog */}
       {po && (

@@ -10,6 +10,7 @@ const { supabase } = require('../../config');
 const logger = require('../utils/logger');
 const { asyncHandler, AppError, notFoundError } = require('../core/errors');
 const { processDailyLogIntelligence } = require('../services/daily-log-intelligence');
+const scheduleSync = require('../services/schedule-sync');
 
 // Configure multer for photo uploads
 const photoUpload = multer({
@@ -134,60 +135,39 @@ async function logDailyLogActivity(dailyLogId, action, performedBy, details = {}
 }
 
 // Helper: Update schedule task progress from crew entries
-async function updateScheduleTaskProgress(crewEntries) {
-  // Group entries by schedule_task_id
-  const taskUpdates = {};
+async function updateScheduleTaskProgress(crewEntries, dailyLogId = null) {
+  // Get unique schedule_task_ids from crew entries
+  const taskIds = [...new Set(
+    crewEntries
+      .filter(e => e.schedule_task_id)
+      .map(e => e.schedule_task_id)
+  )];
 
-  for (const entry of crewEntries) {
-    if (!entry.schedule_task_id) continue;
+  if (taskIds.length === 0) return;
 
-    // Keep track of highest completion % per task
-    if (!taskUpdates[entry.schedule_task_id]) {
-      taskUpdates[entry.schedule_task_id] = {
-        completion_percent: entry.completion_percent || 0
-      };
-    } else if ((entry.completion_percent || 0) > taskUpdates[entry.schedule_task_id].completion_percent) {
-      taskUpdates[entry.schedule_task_id].completion_percent = entry.completion_percent;
+  // Use schedule-sync service for comprehensive hours tracking
+  for (const taskId of taskIds) {
+    try {
+      await scheduleSync.updateTaskProgress(taskId);
+    } catch (err) {
+      logger.error('Failed to sync schedule task via schedule-sync', {
+        component: 'DailyLog',
+        taskId,
+        error: err.message
+      });
     }
   }
 
-  // Update each task
-  for (const [taskId, data] of Object.entries(taskUpdates)) {
+  // Also sync the full daily log if we have the ID
+  if (dailyLogId) {
     try {
-      // Get current task state
-      const { data: task } = await supabase
-        .from('v2_schedule_tasks')
-        .select('id, completion_percent, status, actual_start, actual_end')
-        .eq('id', taskId)
-        .single();
-
-      if (!task) continue;
-
-      const updates = {
-        completion_percent: data.completion_percent,
-        updated_at: new Date().toISOString()
-      };
-
-      // Set actual_start if this is the first work on the task
-      if (!task.actual_start && data.completion_percent > 0) {
-        updates.actual_start = new Date().toISOString().split('T')[0];
-      }
-
-      // Update status based on progress
-      if (data.completion_percent >= 100 && task.status !== 'completed') {
-        updates.status = 'completed';
-        updates.actual_end = new Date().toISOString().split('T')[0];
-      } else if (data.completion_percent > 0 && task.status === 'pending') {
-        updates.status = 'in_progress';
-      }
-
-      await supabase
-        .from('v2_schedule_tasks')
-        .update(updates)
-        .eq('id', taskId);
-
+      await scheduleSync.syncDailyLogToSchedule(dailyLogId);
     } catch (err) {
-      logger.error('Failed to update schedule task', { component: 'DailyLog', taskId, error: err.message });
+      logger.error('Failed to sync daily log to schedule', {
+        component: 'DailyLog',
+        dailyLogId,
+        error: err.message
+      });
     }
   }
 }
@@ -615,7 +595,7 @@ router.post('/', asyncHandler(async (req, res) => {
       await supabase.from('v2_daily_log_crew').insert(crewEntries);
 
       // Update schedule task progress for any linked tasks
-      await updateScheduleTaskProgress(crew);
+      await updateScheduleTaskProgress(crew, newLog.id);
     }
 
     // Add deliveries if provided
@@ -770,7 +750,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
         await supabase.from('v2_daily_log_crew').insert(crewEntries);
 
         // Update schedule task progress for any linked tasks
-        await updateScheduleTaskProgress(crew);
+        await updateScheduleTaskProgress(crew, id);
       }
     }
 

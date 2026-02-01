@@ -159,3 +159,103 @@ export function useDeleteChangeOrder() {
     },
   });
 }
+
+// =====================================================
+// REVISION HOOKS
+// =====================================================
+
+export interface CORevision {
+  id: string;
+  change_order_id: string;
+  revision_number: number;
+  title?: string;
+  description?: string;
+  reason?: string;
+  amount?: number;
+  base_amount?: number;
+  gc_fee_percent?: number;
+  gc_fee_amount?: number;
+  admin_hours?: number;
+  admin_rate?: number;
+  admin_cost?: number;
+  days_added?: number;
+  markup_percent?: number;
+  markup_amount?: number;
+  subtotal?: number;
+  total_amount?: number;
+  pm_hours?: number;
+  pm_hourly_rate?: number;
+  pm_cost?: number;
+  days_impact?: number;
+  line_items?: any[];
+  revision_reason?: string;
+  revised_by?: string;
+  created_at: string;
+}
+
+export interface RevisionComparison {
+  revision1: CORevision;
+  revision2: CORevision;
+  changes: Array<{
+    field: string;
+    from: any;
+    to: any;
+  }>;
+}
+
+export function useChangeOrderRevisions(changeOrderId: string) {
+  return useQuery({
+    queryKey: ['change-order-revisions', changeOrderId],
+    queryFn: () => api<CORevision[]>(`/change-orders/${changeOrderId}/revisions`),
+    enabled: !!changeOrderId,
+  });
+}
+
+export function useChangeOrderRevision(changeOrderId: string, revisionNumber: number) {
+  return useQuery({
+    queryKey: ['change-order-revision', changeOrderId, revisionNumber],
+    queryFn: () => api<CORevision>(`/change-orders/${changeOrderId}/revisions/${revisionNumber}`),
+    enabled: !!changeOrderId && revisionNumber >= 0,
+  });
+}
+
+export function useCreateRevision() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      changeOrderId,
+      revision_reason,
+      revised_by,
+    }: {
+      changeOrderId: string;
+      revision_reason: string;
+      revised_by: string;
+    }) => {
+      return api<{ revision: CORevision; change_order: ChangeOrder }>(
+        `/change-orders/${changeOrderId}/revisions`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ revision_reason, revised_by }),
+        }
+      );
+    },
+    onSuccess: (data, { changeOrderId }) => {
+      queryClient.invalidateQueries({ queryKey: ['change-order-revisions', changeOrderId] });
+      queryClient.invalidateQueries({ queryKey: ['change-order', changeOrderId] });
+      queryClient.invalidateQueries({ queryKey: ['change-orders'] });
+      toast.success(`Revision ${data.revision.revision_number} created`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to create revision: ${error.message}`);
+    },
+  });
+}
+
+export function useCompareRevisions(changeOrderId: string, rev1: number, rev2: number) {
+  return useQuery({
+    queryKey: ['change-order-revision-compare', changeOrderId, rev1, rev2],
+    queryFn: () => api<RevisionComparison>(`/change-orders/${changeOrderId}/revisions/compare/${rev1}/${rev2}`),
+    enabled: !!changeOrderId && rev1 >= 0 && rev2 >= 0 && rev1 !== rev2,
+  });
+}

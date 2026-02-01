@@ -830,6 +830,168 @@ router.get('/:id/budget', asyncHandler(async (req, res) => {
   });
 }));
 
+// Create a budget line
+router.post('/:id/budget', asyncHandler(async (req, res) => {
+  const jobId = req.params.id;
+  const { cost_code_id, budgeted_amount, notes } = req.body;
+
+  // Validate required fields
+  if (!cost_code_id) {
+    throw new AppError('VALIDATION_ERROR', 'cost_code_id is required');
+  }
+  if (budgeted_amount === undefined || budgeted_amount === null) {
+    throw new AppError('VALIDATION_ERROR', 'budgeted_amount is required');
+  }
+
+  // Check if job exists
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id')
+    .eq('id', jobId)
+    .single();
+
+  if (jobError || !job) {
+    throw new AppError('NOT_FOUND', 'Job not found');
+  }
+
+  // Check if budget line already exists for this job/cost code
+  const { data: existing } = await supabase
+    .from('v2_budget_lines')
+    .select('id')
+    .eq('job_id', jobId)
+    .eq('cost_code_id', cost_code_id)
+    .single();
+
+  if (existing) {
+    throw new AppError('DUPLICATE_ENTRY', 'Budget line already exists for this job and cost code');
+  }
+
+  // Create budget line
+  const { data, error } = await supabase
+    .from('v2_budget_lines')
+    .insert({
+      job_id: jobId,
+      cost_code_id,
+      budgeted_amount: parseFloat(budgeted_amount),
+      notes: notes || null
+    })
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .single();
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  }
+
+  res.status(201).json(data);
+}));
+
+// Update a budget line
+router.patch('/:id/budget/:lineId', asyncHandler(async (req, res) => {
+  const { id: jobId, lineId } = req.params;
+  const { budgeted_amount, notes } = req.body;
+
+  // Build update object with only provided fields
+  const updates = {};
+  if (budgeted_amount !== undefined) {
+    updates.budgeted_amount = parseFloat(budgeted_amount);
+  }
+  if (notes !== undefined) {
+    updates.notes = notes;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new AppError('VALIDATION_ERROR', 'No fields to update');
+  }
+
+  // Verify the budget line belongs to this job
+  const { data: existing, error: existingError } = await supabase
+    .from('v2_budget_lines')
+    .select('id, job_id')
+    .eq('id', lineId)
+    .single();
+
+  if (existingError || !existing) {
+    throw new AppError('NOT_FOUND', 'Budget line not found');
+  }
+
+  if (existing.job_id !== jobId) {
+    throw new AppError('FORBIDDEN', 'Budget line does not belong to this job');
+  }
+
+  // Update budget line
+  const { data, error } = await supabase
+    .from('v2_budget_lines')
+    .update(updates)
+    .eq('id', lineId)
+    .select(`
+      *,
+      cost_code:v2_cost_codes(id, code, name, category)
+    `)
+    .single();
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  }
+
+  res.json(data);
+}));
+
+// Delete a budget line
+router.delete('/:id/budget/:lineId', asyncHandler(async (req, res) => {
+  const { id: jobId, lineId } = req.params;
+
+  // Verify the budget line belongs to this job
+  const { data: existing, error: existingError } = await supabase
+    .from('v2_budget_lines')
+    .select('id, job_id, committed_amount, billed_amount')
+    .eq('id', lineId)
+    .single();
+
+  if (existingError || !existing) {
+    throw new AppError('NOT_FOUND', 'Budget line not found');
+  }
+
+  if (existing.job_id !== jobId) {
+    throw new AppError('FORBIDDEN', 'Budget line does not belong to this job');
+  }
+
+  // Warn if there are committed or billed amounts
+  const committed = parseFloat(existing.committed_amount || 0);
+  const billed = parseFloat(existing.billed_amount || 0);
+  if (committed > 0 || billed > 0) {
+    // Soft delete by setting deleted_at
+    const { error } = await supabase
+      .from('v2_budget_lines')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', lineId);
+
+    if (error) {
+      throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+    }
+
+    res.json({
+      message: 'Budget line archived (has committed/billed amounts)',
+      soft_deleted: true
+    });
+    return;
+  }
+
+  // Hard delete if no committed or billed amounts
+  const { error } = await supabase
+    .from('v2_budget_lines')
+    .delete()
+    .eq('id', lineId);
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+  }
+
+  res.json({ message: 'Budget line deleted', soft_deleted: false });
+}));
+
 // Get draws for a job
 router.get('/:id/draws', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
@@ -1959,6 +2121,95 @@ router.get('/:id/scope-estimates', asyncHandler(async (req, res) => {
       total_scopes: (data || []).length,
       total_estimated_days: Math.ceil(totalDays)
     }
+  });
+}));
+
+// ============================================================
+// SYNC/RECONCILIATION ENDPOINTS
+// ============================================================
+
+const budgetSync = require('../services/budget-sync');
+const invoiceSync = require('../services/invoice-sync');
+const coSync = require('../services/co-sync');
+const scheduleSync = require('../services/schedule-sync');
+
+/**
+ * POST /api/jobs/:id/sync-budget
+ * Recalculate all committed amounts for a job
+ */
+router.post('/:id/sync-budget', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const result = await budgetSync.syncJobBudget(id);
+
+  res.json({
+    success: true,
+    message: `Synced ${result.synced} cost codes`,
+    ...result,
+  });
+}));
+
+/**
+ * POST /api/jobs/:id/sync-cos
+ * Recalculate all CO amounts for a job
+ */
+router.post('/:id/sync-cos', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const result = await coSync.syncJobCOs(id);
+
+  res.json({
+    success: true,
+    message: `Synced ${result.posUpdated} POs and ${result.costCodesUpdated} cost codes`,
+    ...result,
+  });
+}));
+
+/**
+ * POST /api/jobs/:id/sync-schedule
+ * Recalculate all schedule task progress for a job
+ */
+router.post('/:id/sync-schedule', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const results = await scheduleSync.syncJobSchedule(id);
+
+  res.json({
+    success: true,
+    message: `Updated ${results.length} tasks`,
+    tasks: results,
+  });
+}));
+
+/**
+ * GET /api/jobs/:id/schedule-progress
+ * Get schedule progress summary for a job
+ */
+router.get('/:id/schedule-progress', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const summary = await scheduleSync.getJobScheduleProgress(id);
+
+  res.json(summary);
+}));
+
+/**
+ * POST /api/jobs/:id/sync-all
+ * Full reconciliation - sync budget, COs, and schedule
+ */
+router.post('/:id/sync-all', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const budgetResult = await budgetSync.syncJobBudget(id);
+  const coResult = await coSync.syncJobCOs(id);
+  const scheduleResults = await scheduleSync.syncJobSchedule(id);
+
+  res.json({
+    success: true,
+    message: 'Full reconciliation complete',
+    budget: budgetResult,
+    changeOrders: coResult,
+    schedule: { tasksUpdated: scheduleResults.length },
   });
 }));
 

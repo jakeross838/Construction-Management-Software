@@ -22,7 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
+import {
   Calculator,
   TrendingUp,
   TrendingDown,
@@ -31,15 +31,39 @@ import {
   FileText,
   Download,
   Plus,
+  Pencil,
 } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
-import { useBudgetSummary } from '@/hooks/useBudget';
+import { useBudgetSummary, useBudgetLines, type BudgetLine } from '@/hooks/useBudget';
 import { useCostCodes } from '@/hooks/useFinancialData';
+import { BudgetLineFormDialog } from '@/components/budgets/BudgetLineFormDialog';
 
 const Budget = () => {
   const { selectedJobId } = useJob();
   const { data: budgetCategories = [], isLoading } = useBudgetSummary(selectedJobId || undefined);
+  const { data: budgetLines = [] } = useBudgetLines(selectedJobId || undefined);
   const { data: costCodes = [] } = useCostCodes();
+
+  // Dialog state
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [editingLine, setEditingLine] = useState<BudgetLine | null>(null);
+
+  // Get existing cost code IDs to prevent duplicates
+  const existingCostCodeIds = budgetLines.map(bl => bl.cost_code_id);
+
+  const handleAddBudgetLine = () => {
+    setEditingLine(null);
+    setFormDialogOpen(true);
+  };
+
+  const handleEditBudgetLine = (category: typeof budgetCategories[0]) => {
+    // Find the budget line that matches this category
+    const budgetLine = budgetLines.find(bl => bl.cost_code_id === category.cost_code_id);
+    if (budgetLine) {
+      setEditingLine(budgetLine);
+      setFormDialogOpen(true);
+    }
+  };
 
   const totals = useMemo(() => {
     return budgetCategories.reduce((acc, cat) => ({
@@ -74,7 +98,7 @@ const Budget = () => {
               <Download className="h-4 w-4" />
               Export
             </Button>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={handleAddBudgetLine} disabled={!selectedJobId}>
               <Plus className="h-4 w-4" />
               Add Budget Line
             </Button>
@@ -180,7 +204,7 @@ const Budget = () => {
                         ? 'Add budget lines to this job to start tracking costs by cost code.'
                         : 'Select a job to view its budget, or add budget lines to get started.'}
                     </p>
-                    <Button className="gap-2">
+                    <Button className="gap-2" onClick={handleAddBudgetLine} disabled={!selectedJobId}>
                       <Plus className="h-4 w-4" />
                       Add Budget Line
                     </Button>
@@ -189,6 +213,7 @@ const Budget = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10"></TableHead>
                         <TableHead>Code</TableHead>
                         <TableHead>Cost Code</TableHead>
                         <TableHead className="text-right">Budget</TableHead>
@@ -207,6 +232,16 @@ const Budget = () => {
                         
                         return (
                           <TableRow key={category.cost_code_id}>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => handleEditBudgetLine(category)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
                             <TableCell className="font-mono text-sm">{category.code}</TableCell>
                             <TableCell className="font-medium">{category.name}</TableCell>
                             <TableCell className="text-right">{formatCurrency(category.budget)}</TableCell>
@@ -235,6 +270,7 @@ const Budget = () => {
                       {/* Totals Row */}
                       {budgetCategories.length > 0 && (
                         <TableRow className="font-semibold bg-muted/50">
+                          <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell>Total</TableCell>
                           <TableCell className="text-right">{formatCurrency(totals.budget)}</TableCell>
@@ -316,6 +352,17 @@ const Budget = () => {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Budget Line Form Dialog */}
+        {selectedJobId && (
+          <BudgetLineFormDialog
+            open={formDialogOpen}
+            onOpenChange={setFormDialogOpen}
+            budgetLine={editingLine}
+            jobId={selectedJobId}
+            existingCostCodeIds={existingCostCodeIds}
+          />
+        )}
       </div>
     </AppLayout>
   );

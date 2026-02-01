@@ -104,8 +104,8 @@ export function useUpdateBudgetLine() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; budgeted_amount?: number; notes?: string }) => {
-      return api(`/budget-lines/${id}`, {
+    mutationFn: async ({ id, job_id, ...updates }: { id: string; job_id: string; budgeted_amount?: number; notes?: string }) => {
+      return api(`/jobs/${job_id}/budget/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
       });
@@ -125,8 +125,8 @@ export function useDeleteBudgetLine() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      return api(`/budget-lines/${id}`, { method: 'DELETE' });
+    mutationFn: async ({ id, job_id }: { id: string; job_id: string }) => {
+      return api(`/jobs/${job_id}/budget/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budget-lines'] });

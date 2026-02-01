@@ -30,8 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Trash2, Building2, Upload, X, FileText, Loader2, Clock, Ruler } from 'lucide-react';
-import { useJobs, useVendors, useCostCodes, useCreatePurchaseOrder, useUploadPOAttachment } from '@/hooks/useFinancialData';
+import { Plus, Trash2, Building2, Upload, X, FileText, Loader2, Clock, Ruler, Shield, User, Calendar } from 'lucide-react';
+import { useJobs, useVendors, useCostCodes, useCreatePurchaseOrder, useUpdatePurchaseOrder, useUploadPOAttachment, PurchaseOrder } from '@/hooks/useFinancialData';
 import { useScopeCategories, calculateEstimatedDays, getUnitLabel } from '@/hooks/useScopeTracking';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -53,6 +53,16 @@ const lineItemSchema = z.object({
   quantity: z.coerce.number().min(0.01, 'Quantity required'),
 });
 
+const PAYMENT_TERMS_OPTIONS = [
+  { value: 'Net 30', label: 'Net 30' },
+  { value: 'Net 15', label: 'Net 15' },
+  { value: 'Net 45', label: 'Net 45' },
+  { value: 'Net 60', label: 'Net 60' },
+  { value: 'Due on Receipt', label: 'Due on Receipt' },
+  { value: '50% Upfront', label: '50% Upfront, 50% on Completion' },
+  { value: 'Progress Billing', label: 'Progress Billing' },
+];
+
 const poFormSchema = z.object({
   po_number: z.string().min(1, 'PO number required'),
   vendor_id: z.string().min(1, 'Vendor required'),
@@ -61,6 +71,15 @@ const poFormSchema = z.object({
   scope_of_work: z.string().optional(),
   scope_category_id: z.string().optional(),
   scope_quantity: z.coerce.number().optional(),
+  // Extended fields
+  payment_terms: z.string().optional(),
+  delivery_date: z.string().optional(),
+  delivery_address: z.string().optional(),
+  warranty_period: z.string().optional(),
+  insurance_required: z.boolean().optional(),
+  contact_name: z.string().optional(),
+  contact_phone: z.string().optional(),
+  contact_email: z.string().optional(),
   line_items: z.array(lineItemSchema).min(1, 'At least one line item required'),
 });
 
@@ -75,14 +94,17 @@ interface POFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedJobId?: string | null;
+  po?: PurchaseOrder | null; // For edit mode
 }
 
-export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialogProps) {
+export function POFormDialog({ open, onOpenChange, selectedJobId, po }: POFormDialogProps) {
+  const isEditing = !!po;
   const { data: jobs = [] } = useJobs();
   const { data: vendors = [] } = useVendors();
   const { data: costCodes = [] } = useCostCodes();
   const { data: scopeCategories = [] } = useScopeCategories();
   const createPO = useCreatePurchaseOrder();
+  const updatePO = useUpdatePurchaseOrder();
   const uploadAttachment = useUploadPOAttachment();
   const { toast } = useToast();
 
@@ -91,7 +113,8 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedJob = selectedJobId ? jobs.find(j => j.id === selectedJobId) : null;
+  const effectiveJobId = po?.job_id || selectedJobId;
+  const selectedJob = effectiveJobId ? jobs.find(j => j.id === effectiveJobId) : null;
 
   const form = useForm<POFormValues>({
     resolver: zodResolver(poFormSchema),
@@ -103,6 +126,14 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
       scope_of_work: '',
       scope_category_id: '',
       scope_quantity: undefined,
+      payment_terms: '',
+      delivery_date: '',
+      delivery_address: '',
+      warranty_period: '',
+      insurance_required: false,
+      contact_name: '',
+      contact_phone: '',
+      contact_email: '',
       line_items: [{ title: '', cost_code_id: '', description: '', cost_type: '', unit_cost: 0, quantity: 1 }],
     },
   });
@@ -117,19 +148,59 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
-      form.reset({
-        po_number: '',
-        vendor_id: '',
-        job_id: selectedJobId || '',
-        description: '',
-        scope_of_work: '',
-        scope_category_id: '',
-        scope_quantity: undefined,
-        line_items: [{ title: '', cost_code_id: '', description: '', cost_type: '', unit_cost: 0, quantity: 1 }],
-      });
+      if (po) {
+        // Edit mode: pre-populate with existing PO data
+        form.reset({
+          po_number: po.po_number || '',
+          vendor_id: po.vendor_id || '',
+          job_id: po.job_id || '',
+          description: po.description || '',
+          scope_of_work: po.scope_of_work || '',
+          scope_category_id: po.scope_category_id || '',
+          scope_quantity: po.scope_quantity || undefined,
+          payment_terms: (po as any).payment_terms || '',
+          delivery_date: (po as any).delivery_date || '',
+          delivery_address: (po as any).delivery_address || '',
+          warranty_period: (po as any).warranty_period || '',
+          insurance_required: (po as any).insurance_required || false,
+          contact_name: (po as any).contact_name || '',
+          contact_phone: (po as any).contact_phone || '',
+          contact_email: (po as any).contact_email || '',
+          line_items: (po.line_items && po.line_items.length > 0)
+            ? po.line_items.map((li: any) => ({
+                title: li.title || '',
+                cost_code_id: li.cost_code_id || '',
+                description: li.description || '',
+                cost_type: li.cost_type || '',
+                unit_cost: li.unit_cost || 0,
+                quantity: li.quantity || 1,
+              }))
+            : [{ title: '', cost_code_id: '', description: '', cost_type: '', unit_cost: 0, quantity: 1 }],
+        });
+      } else {
+        // Create mode
+        form.reset({
+          po_number: '',
+          vendor_id: '',
+          job_id: selectedJobId || '',
+          description: '',
+          scope_of_work: '',
+          scope_category_id: '',
+          scope_quantity: undefined,
+          payment_terms: '',
+          delivery_date: '',
+          delivery_address: '',
+          warranty_period: '',
+          insurance_required: false,
+          contact_name: '',
+          contact_phone: '',
+          contact_email: '',
+          line_items: [{ title: '', cost_code_id: '', description: '', cost_type: '', unit_cost: 0, quantity: 1 }],
+        });
+      }
       setPendingFiles([]);
     }
-  }, [open, selectedJobId, form]);
+  }, [open, selectedJobId, po, form]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -187,43 +258,61 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
     const { line_items, scope_category_id, scope_quantity, ...poData } = data;
 
     try {
-      // Create PO with scope tracking data
-      const createdPO = await createPO.mutateAsync({
-        ...poData,
-        original_amount: totalAmount,
-        current_amount: totalAmount,
-        remaining_amount: totalAmount,
-        invoiced_amount: 0,
-        change_order_amount: 0,
-        status: 'open',
-        approval_status: 'pending',
-        // Scope tracking fields
-        scope_category_id: scope_category_id || null,
-        scope_quantity: scope_quantity || null,
-        scope_unit: selectedScopeCategory?.primary_unit || null,
-        estimated_days: estimatedDays,
-        line_items: line_items.map((li) => ({
-          cost_code_id: li.cost_code_id || null,
-          title: li.title,
-          description: li.description || '',
-          unit_cost: li.unit_cost || 0,
-          quantity: li.quantity || 1,
-          amount: (li.unit_cost || 0) * (li.quantity || 0),
-        })),
-      } as any);
+      let resultPO: PurchaseOrder | null = null;
 
-      // Upload pending files if PO was created successfully
-      if (createdPO && pendingFiles.length > 0) {
+      if (isEditing && po) {
+        // Update existing PO
+        resultPO = await updatePO.mutateAsync({
+          id: po.id,
+          ...poData,
+          current_amount: totalAmount,
+          // Scope tracking fields
+          scope_category_id: scope_category_id || null,
+          scope_quantity: scope_quantity || null,
+          scope_unit: selectedScopeCategory?.primary_unit || null,
+          estimated_days: estimatedDays,
+          // Note: Line items are updated separately via POLineItemsEditor
+          // For complete edit, we'd need a separate endpoint or batch update
+        } as any);
+      } else {
+        // Create new PO
+        resultPO = await createPO.mutateAsync({
+          ...poData,
+          original_amount: totalAmount,
+          current_amount: totalAmount,
+          remaining_amount: totalAmount,
+          invoiced_amount: 0,
+          change_order_amount: 0,
+          status: 'open',
+          approval_status: 'pending',
+          // Scope tracking fields
+          scope_category_id: scope_category_id || null,
+          scope_quantity: scope_quantity || null,
+          scope_unit: selectedScopeCategory?.primary_unit || null,
+          estimated_days: estimatedDays,
+          line_items: line_items.map((li) => ({
+            cost_code_id: li.cost_code_id || null,
+            title: li.title,
+            description: li.description || '',
+            unit_cost: li.unit_cost || 0,
+            quantity: li.quantity || 1,
+            amount: (li.unit_cost || 0) * (li.quantity || 0),
+          })),
+        } as any);
+      }
+
+      // Upload pending files if PO was created/updated successfully
+      if (resultPO && pendingFiles.length > 0) {
         setIsUploading(true);
         for (const pf of pendingFiles) {
           try {
-            await uploadAttachment.mutateAsync({ poId: createdPO.id, file: pf.file });
+            await uploadAttachment.mutateAsync({ poId: resultPO.id, file: pf.file });
           } catch (err) {
             console.error('Failed to upload file:', pf.file.name, err);
           }
         }
         setIsUploading(false);
-        
+
         toast({
           title: "Files uploaded",
           description: `${pendingFiles.length} file(s) attached to PO`,
@@ -234,7 +323,7 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
       setPendingFiles([]);
       onOpenChange(false);
     } catch (error) {
-      console.error('Failed to create PO:', error);
+      console.error(`Failed to ${isEditing ? 'update' : 'create'} PO:`, error);
     }
   };
 
@@ -248,9 +337,14 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Purchase Order</DialogTitle>
+          <DialogTitle>{isEditing ? 'Edit Purchase Order' : 'Create Purchase Order'}</DialogTitle>
           <DialogDescription>
-            {selectedJob ? (
+            {isEditing ? (
+              <span className="flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Editing <strong>{po?.po_number}</strong> for {selectedJob?.name || 'job'}
+              </span>
+            ) : selectedJob ? (
               <span className="flex items-center gap-2">
                 <Building2 className="h-4 w-4" />
                 Creating PO for <strong>{selectedJob.name}</strong>
@@ -426,6 +520,162 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
                     </p>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Payment & Delivery Section */}
+            <div className="p-4 border rounded-lg bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-base font-medium">Payment & Delivery</Label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <FormField
+                  control={form.control}
+                  name="payment_terms"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Terms</FormLabel>
+                      <FormControl>
+                        <Select value={field.value || ''} onValueChange={field.onChange}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select terms..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PAYMENT_TERMS_OPTIONS.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="delivery_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Delivery Date</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="warranty_period"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Warranty Period</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., 1 year, 90 days" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="delivery_address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Delivery Address (if different from job site)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Leave blank to use job site address" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Vendor Contact Section */}
+            <div className="p-4 border rounded-lg bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-base font-medium">Vendor Contact (for this PO)</Label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <FormField
+                  control={form.control}
+                  name="contact_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contact Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contact_phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone</FormLabel>
+                      <FormControl>
+                        <Input type="tel" placeholder="(555) 123-4567" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contact_email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="email@vendor.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Insurance Requirement */}
+            <div className="p-4 border rounded-lg bg-muted/30 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base font-medium">Insurance Required</Label>
+                </div>
+                <FormField
+                  control={form.control}
+                  name="insurance_required"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-2 space-y-0">
+                      <FormControl>
+                        <input
+                          type="checkbox"
+                          checked={field.value || false}
+                          onChange={field.onChange}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                      </FormControl>
+                      <FormLabel className="text-sm font-normal">
+                        Vendor must provide proof of insurance
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
               </div>
             </div>
 
@@ -636,14 +886,14 @@ export function POFormDialog({ open, onOpenChange, selectedJobId }: POFormDialog
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createPO.isPending || isUploading}>
-                {createPO.isPending || isUploading ? (
+              <Button type="submit" disabled={createPO.isPending || updatePO.isPending || isUploading}>
+                {createPO.isPending || updatePO.isPending || isUploading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {isUploading ? 'Uploading files...' : 'Creating...'}
+                    {isUploading ? 'Uploading files...' : isEditing ? 'Updating...' : 'Creating...'}
                   </>
                 ) : (
-                  'Create PO'
+                  isEditing ? 'Update PO' : 'Create PO'
                 )}
               </Button>
             </DialogFooter>

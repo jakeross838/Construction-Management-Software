@@ -939,6 +939,167 @@ router.post('/:id/remove-invoice', asyncHandler(async (req, res) => {
     res.json({ success: true, new_total: newTotal, draw_number: draw.draw_number });
 }));
 
+// Bulk remove invoices from draw
+router.post('/:id/remove-invoices', asyncHandler(async (req, res) => {
+  const drawId = req.params.id;
+  const { invoice_ids, performed_by = 'System' } = req.body;
+
+  if (!invoice_ids || !Array.isArray(invoice_ids) || invoice_ids.length === 0) {
+    return res.status(400).json({ error: 'invoice_ids array is required' });
+  }
+
+  const { data: draw } = await supabase
+    .from('v2_draws')
+    .select('draw_number, status')
+    .eq('id', drawId)
+    .single();
+
+  if (!draw) return res.status(404).json({ error: 'Draw not found' });
+  if (draw.status !== 'draft') {
+    return res.status(400).json({ error: 'Cannot remove invoices from non-draft draws' });
+  }
+
+  let removedCount = 0;
+
+  for (const invoice_id of invoice_ids) {
+    try {
+      // Get invoice with allocations
+      const { data: invoice } = await supabase
+        .from('v2_invoices')
+        .select('id, invoice_number, job:v2_jobs(id, name)')
+        .eq('id', invoice_id)
+        .single();
+
+      if (!invoice) continue;
+
+      // Get draw allocations for budget updates
+      const { data: drawAllocations } = await supabase
+        .from('v2_draw_allocations')
+        .select('cost_code_id, amount')
+        .eq('draw_id', drawId)
+        .eq('invoice_id', invoice_id);
+
+      // Decrement budget billed_amount for each allocation
+      if (invoice?.job?.id && drawAllocations && drawAllocations.length > 0) {
+        for (const alloc of drawAllocations) {
+          if (!alloc.cost_code_id) continue;
+
+          const { data: budgetLine } = await supabase
+            .from('v2_budget_lines')
+            .select('id, billed_amount')
+            .eq('job_id', invoice.job.id)
+            .eq('cost_code_id', alloc.cost_code_id)
+            .single();
+
+          if (budgetLine) {
+            const newBilled = Math.max(0, (parseFloat(budgetLine.billed_amount) || 0) - parseFloat(alloc.amount));
+            await supabase
+              .from('v2_budget_lines')
+              .update({ billed_amount: newBilled })
+              .eq('id', budgetLine.id);
+          }
+        }
+      }
+
+      // Remove from draw
+      await supabase.from('v2_draw_allocations').delete().eq('draw_id', drawId).eq('invoice_id', invoice_id);
+      await supabase.from('v2_draw_invoices').delete().eq('draw_id', drawId).eq('invoice_id', invoice_id);
+
+      // Update invoice status
+      await supabase.from('v2_invoices').update({ status: 'approved' }).eq('id', invoice_id);
+
+      // Re-stamp
+      try {
+        await stampInvoice(invoice_id, { force: true });
+      } catch (stampErr) {
+        logger.error('Re-stamping failed', { component: 'Draw', invoiceId: invoice_id, error: stampErr.message });
+      }
+
+      await logActivity(invoice_id, 'removed_from_draw', performed_by, { draw_number: draw.draw_number });
+      removedCount++;
+    } catch (err) {
+      logger.error('Failed to remove invoice from draw', { invoiceId: invoice_id, error: err.message });
+    }
+  }
+
+  await logDrawActivity(drawId, 'invoices_bulk_removed', performed_by, { count: removedCount });
+  const newTotal = await updateDrawTotal(drawId);
+
+  res.json({ success: true, removed_count: removedCount, new_total: newTotal });
+}));
+
+// Reorder invoices within draw
+router.post('/:id/reorder-invoices', asyncHandler(async (req, res) => {
+  const drawId = req.params.id;
+  const { invoice_ids } = req.body;
+
+  if (!invoice_ids || !Array.isArray(invoice_ids)) {
+    return res.status(400).json({ error: 'invoice_ids array is required' });
+  }
+
+  const { data: draw } = await supabase
+    .from('v2_draws')
+    .select('id, status')
+    .eq('id', drawId)
+    .single();
+
+  if (!draw) return res.status(404).json({ error: 'Draw not found' });
+  if (draw.status !== 'draft') {
+    return res.status(400).json({ error: 'Cannot reorder invoices in non-draft draws' });
+  }
+
+  // Update sort_order for each invoice in the draw
+  for (let i = 0; i < invoice_ids.length; i++) {
+    await supabase
+      .from('v2_draw_invoices')
+      .update({ sort_order: i })
+      .eq('draw_id', drawId)
+      .eq('invoice_id', invoice_ids[i]);
+  }
+
+  res.json({ success: true, message: 'Invoices reordered' });
+}));
+
+// Add all approved invoices for job to draw
+router.post('/:id/add-all-approved', asyncHandler(async (req, res) => {
+  const drawId = req.params.id;
+  const { performed_by = 'System' } = req.body;
+
+  // Get draw with job
+  const { data: draw } = await supabase
+    .from('v2_draws')
+    .select('id, job_id, status')
+    .eq('id', drawId)
+    .single();
+
+  if (!draw) return res.status(404).json({ error: 'Draw not found' });
+  if (draw.status !== 'draft') {
+    return res.status(400).json({ error: 'Can only add invoices to draft draws' });
+  }
+
+  // Get all approved invoices for this job that are not already in a draw
+  const { data: approvedInvoices } = await supabase
+    .from('v2_invoices')
+    .select('id')
+    .eq('job_id', draw.job_id)
+    .eq('status', 'approved')
+    .is('deleted_at', null);
+
+  if (!approvedInvoices || approvedInvoices.length === 0) {
+    return res.json({ success: true, added_count: 0, message: 'No approved invoices to add' });
+  }
+
+  const invoice_ids = approvedInvoices.map(inv => inv.id);
+
+  // Forward to add-invoices endpoint logic (can refactor to shared function later)
+  // For now, redirect to add-invoices
+  req.body.invoice_ids = invoice_ids;
+  req.body.performed_by = performed_by;
+
+  // This is a workaround - ideally extract shared logic
+  res.redirect(307, `${req.baseUrl}/${drawId}/add-invoices`);
+}));
+
 // ============================================================
 // VALIDATION
 // ============================================================
@@ -1298,12 +1459,110 @@ router.patch('/:id/fund', asyncHandler(async (req, res) => {
 router.delete('/:id', asyncHandler(async (req, res) => {
     const drawId = req.params.id;
 
+    // Get draw to check status
+    const { data: draw, error: fetchError } = await supabase
+      .from('v2_draws')
+      .select('id, status')
+      .eq('id', drawId)
+      .is('deleted_at', null)
+      .single();
+
+    if (fetchError || !draw) {
+      return res.status(404).json({ error: 'Draw not found' });
+    }
+
+    // Only allow delete for draft draws
+    if (draw.status !== 'draft') {
+      return res.status(400).json({
+        error: 'Only draft draws can be deleted. Use archive for submitted/funded draws.',
+        status: draw.status
+      });
+    }
+
+    // Remove invoices from draw (reset their status to approved)
+    const { data: drawInvoices } = await supabase
+      .from('v2_draw_invoices')
+      .select('invoice_id')
+      .eq('draw_id', drawId);
+
+    if (drawInvoices && drawInvoices.length > 0) {
+      const invoiceIds = drawInvoices.map(di => di.invoice_id);
+      await supabase
+        .from('v2_invoices')
+        .update({ status: 'approved' })
+        .in('id', invoiceIds)
+        .eq('status', 'in_draw');
+    }
+
+    // Hard delete related records for draft draws
     await supabase.from('v2_draw_allocations').delete().eq('draw_id', drawId);
     await supabase.from('v2_draw_invoices').delete().eq('draw_id', drawId);
     await supabase.from('v2_draw_activity').delete().eq('draw_id', drawId);
     await supabase.from('v2_draws').delete().eq('id', drawId);
 
-    res.json({ success: true });
+    res.json({ success: true, message: 'Draw deleted' });
+}));
+
+// Archive a draw (soft delete - for any status)
+router.patch('/:id/archive', asyncHandler(async (req, res) => {
+    const drawId = req.params.id;
+
+    // Get draw
+    const { data: draw, error: fetchError } = await supabase
+      .from('v2_draws')
+      .select('id, status')
+      .eq('id', drawId)
+      .is('deleted_at', null)
+      .single();
+
+    if (fetchError || !draw) {
+      return res.status(404).json({ error: 'Draw not found' });
+    }
+
+    // Set deleted_at to archive
+    const { data, error } = await supabase
+      .from('v2_draws')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', drawId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new AppError('DATABASE_ERROR', error.message);
+    }
+
+    res.json({ success: true, message: 'Draw archived', draw: data });
+}));
+
+// Unarchive a draw
+router.patch('/:id/unarchive', asyncHandler(async (req, res) => {
+    const drawId = req.params.id;
+
+    // Get draw (including archived)
+    const { data: draw, error: fetchError } = await supabase
+      .from('v2_draws')
+      .select('id, status, deleted_at')
+      .eq('id', drawId)
+      .not('deleted_at', 'is', null)
+      .single();
+
+    if (fetchError || !draw) {
+      return res.status(404).json({ error: 'Archived draw not found' });
+    }
+
+    // Clear deleted_at to unarchive
+    const { data, error } = await supabase
+      .from('v2_draws')
+      .update({ deleted_at: null })
+      .eq('id', drawId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new AppError('DATABASE_ERROR', error.message);
+    }
+
+    res.json({ success: true, message: 'Draw unarchived', draw: data });
 }));
 
 // ============================================================

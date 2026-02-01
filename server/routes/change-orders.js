@@ -57,9 +57,9 @@ router.get('/', asyncHandler(async (req, res) => {
 
     if (error) throw error;
 
-    // Add billing amount for this draw to each CO
+    // Add billing amount for this draw to each CO and transform
     const result = (data || []).map(co => ({
-      ...co,
+      ...transformJobCO(co),
       draw_billing_amount: billings
         .filter(b => b.change_order_id === co.id)
         .reduce((sum, b) => sum + parseFloat(b.amount || 0), 0)
@@ -83,8 +83,35 @@ router.get('/', asyncHandler(async (req, res) => {
   const { data, error } = await query;
   if (error) throw error;
 
-  res.json(data || []);
+  // Transform all COs to frontend format
+  res.json((data || []).map(transformJobCO));
 }));
+
+// Helper: Transform job change order to frontend format
+function transformJobCO(co) {
+  if (!co) return co;
+  return {
+    ...co,
+    // Map database fields to frontend expected fields
+    co_number: `CO-${co.change_order_number || 0}`,
+    type: co.reason || 'scope_change',
+    total_amount: co.amount || 0,
+    subtotal: co.base_amount || co.amount || 0,
+    markup_amount: co.gc_fee_amount || 0,
+    markup_percent: co.gc_fee_percent || 0,
+    days_impact: co.days_added || 0,
+    pm_hours: co.admin_hours || 0,
+    pm_hourly_rate: co.admin_rate || 0,
+    pm_cost: co.admin_cost || 0,
+    job_name: co.job?.name || '',
+    job_client: co.job?.client_name || '',
+    requested_by: co.created_by || null,
+    client_signature_required: false,
+    client_signed_at: co.client_approved_at,
+    approved_at: co.internal_approved_at,
+    approved_by: co.internal_approved_by,
+  };
+}
 
 // Get single change order with billing history
 router.get('/:id', asyncHandler(async (req, res) => {
@@ -113,7 +140,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
-    res.json({ ...co, activity: activity || [] });
+    // Transform to frontend format
+    const transformed = transformJobCO(co);
+    res.json({ ...transformed, activity: activity || [] });
 }));
 
 // ============================================================
@@ -435,6 +464,184 @@ router.put('/:id/cost-codes', asyncHandler(async (req, res) => {
 
     await logCOActivity(id, 'cost_codes_updated', 'System', { count: cost_codes?.length || 0 });
     res.json({ success: true });
+}));
+
+// ============================================================
+// REVISIONS
+// ============================================================
+
+// Get revision history for a change order
+router.get('/:id/revisions', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('v2_change_order_revisions')
+      .select('*')
+      .eq('change_order_id', id)
+      .order('revision_number', { ascending: false });
+
+    if (error) throw error;
+    res.json(data || []);
+}));
+
+// Get a specific revision
+router.get('/:id/revisions/:revisionNumber', asyncHandler(async (req, res) => {
+    const { id, revisionNumber } = req.params;
+
+    const { data, error } = await supabase
+      .from('v2_change_order_revisions')
+      .select('*')
+      .eq('change_order_id', id)
+      .eq('revision_number', parseInt(revisionNumber))
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    if (!data) return res.status(404).json({ error: 'Revision not found' });
+
+    res.json(data);
+}));
+
+// Create a new revision (snapshot current state before making changes)
+router.post('/:id/revisions', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { revision_reason, revised_by } = req.body;
+
+    // Get current CO data
+    const { data: co, error: coError } = await supabase
+      .from('v2_job_change_orders')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (coError) throw coError;
+    if (!co) return res.status(404).json({ error: 'Change order not found' });
+
+    // Get current line items
+    const { data: lineItems } = await supabase
+      .from('v2_change_order_line_items')
+      .select('*')
+      .eq('change_order_id', id);
+
+    // Get current revision number and increment
+    const currentRevision = co.revision_number || 0;
+    const newRevisionNumber = currentRevision + 1;
+
+    // Create revision snapshot
+    const { data: revision, error: revError } = await supabase
+      .from('v2_change_order_revisions')
+      .insert({
+        change_order_id: id,
+        revision_number: currentRevision, // Store CURRENT state before incrementing
+        title: co.title,
+        description: co.description,
+        reason: co.reason,
+        amount: co.amount,
+        base_amount: co.base_amount,
+        gc_fee_percent: co.gc_fee_percent,
+        gc_fee_amount: co.gc_fee_amount,
+        admin_hours: co.admin_hours,
+        admin_rate: co.admin_rate,
+        admin_cost: co.admin_cost,
+        days_added: co.days_added,
+        markup_percent: co.markup_percent,
+        markup_amount: co.markup_amount,
+        subtotal: co.subtotal,
+        total_amount: co.total_amount,
+        pm_hours: co.pm_hours,
+        pm_hourly_rate: co.pm_hourly_rate,
+        pm_cost: co.pm_cost,
+        days_impact: co.days_impact,
+        line_items: lineItems || [],
+        revision_reason: revision_reason || 'Revision created',
+        revised_by: revised_by || 'System',
+      })
+      .select()
+      .single();
+
+    if (revError) throw revError;
+
+    // Update CO with new revision number
+    const { data: updatedCO, error: updateError } = await supabase
+      .from('v2_job_change_orders')
+      .update({
+        revision_number: newRevisionNumber,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    await logCOActivity(id, 'revision_created', revised_by, {
+      revision_number: currentRevision,
+      new_revision_number: newRevisionNumber,
+      reason: revision_reason
+    });
+
+    res.status(201).json({
+      revision,
+      change_order: updatedCO
+    });
+}));
+
+// Compare two revisions
+router.get('/:id/revisions/compare/:rev1/:rev2', asyncHandler(async (req, res) => {
+    const { id, rev1, rev2 } = req.params;
+
+    const { data, error } = await supabase
+      .from('v2_change_order_revisions')
+      .select('*')
+      .eq('change_order_id', id)
+      .in('revision_number', [parseInt(rev1), parseInt(rev2)]);
+
+    if (error) throw error;
+
+    const revision1 = data?.find(r => r.revision_number === parseInt(rev1));
+    const revision2 = data?.find(r => r.revision_number === parseInt(rev2));
+
+    if (!revision1 || !revision2) {
+      return res.status(404).json({ error: 'One or both revisions not found' });
+    }
+
+    // Calculate differences
+    const changes = [];
+    const fieldsToCompare = [
+      'title', 'description', 'reason', 'amount', 'base_amount',
+      'gc_fee_percent', 'gc_fee_amount', 'admin_hours', 'admin_rate',
+      'admin_cost', 'days_added', 'markup_percent', 'markup_amount',
+      'subtotal', 'total_amount', 'pm_hours', 'pm_hourly_rate',
+      'pm_cost', 'days_impact'
+    ];
+
+    fieldsToCompare.forEach(field => {
+      const val1 = revision1[field];
+      const val2 = revision2[field];
+      if (val1 !== val2) {
+        changes.push({
+          field,
+          from: val1,
+          to: val2
+        });
+      }
+    });
+
+    // Compare line items count
+    const li1Count = (revision1.line_items || []).length;
+    const li2Count = (revision2.line_items || []).length;
+    if (li1Count !== li2Count) {
+      changes.push({
+        field: 'line_items_count',
+        from: li1Count,
+        to: li2Count
+      });
+    }
+
+    res.json({
+      revision1,
+      revision2,
+      changes
+    });
 }));
 
 module.exports = router;

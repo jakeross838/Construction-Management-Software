@@ -262,6 +262,7 @@ export interface ChangeOrder {
   approved_at: string | null;
   approved_by: string | null;
   notes: string | null;
+  revision_number: number;
   created_at: string;
   updated_at: string;
   line_items?: COLineItem[];

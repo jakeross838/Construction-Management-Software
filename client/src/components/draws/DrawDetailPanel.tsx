@@ -42,16 +42,21 @@ import {
   AlertTriangle,
   TrendingUp,
   ChevronDown,
+  Trash2,
+  Archive,
+  MoreVertical,
 } from 'lucide-react';
 import { formatCurrency, formatDate, drawStatusConfig } from '@/types/financial';
 import type { G703LineItem, LienRelease, ChangeOrder, Invoice } from '@/types/financial';
 import { useDraw, useBudgetLines, useChangeOrdersByDraw, useLienReleasesByDraw } from '@/hooks/useFinancialData';
-import { 
-  useSubmitDraw, 
-  useUnsubmitDraw, 
+import {
+  useSubmitDraw,
+  useUnsubmitDraw,
   useRemoveInvoiceFromDraw,
   useRemoveChangeOrderFromDraw,
   useRemoveLienReleaseFromDraw,
+  useDeleteDraw,
+  useArchiveDraw,
 } from '@/hooks/useDrawMutations';
 import { cn } from '@/lib/utils';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
@@ -78,6 +83,8 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
   const removeInvoice = useRemoveInvoiceFromDraw();
   const removeCO = useRemoveChangeOrderFromDraw();
   const removeLR = useRemoveLienReleaseFromDraw();
+  const deleteDraw = useDeleteDraw();
+  const archiveDraw = useArchiveDraw();
   
   // View dialogs
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -187,7 +194,29 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
     if (!draw) return;
     await unsubmitDraw.mutateAsync(draw.id);
   };
-  
+
+  const handleDelete = async () => {
+    if (!draw) return;
+    if (draw.status !== 'draft') {
+      toast.error('Only draft draws can be deleted. Use archive for submitted/funded draws.');
+      return;
+    }
+    if (!confirm(`Delete Draw #${draw.draw_number}? This will remove all invoices from the draw and cannot be undone.`)) {
+      return;
+    }
+    await deleteDraw.mutateAsync(draw.id);
+    onOpenChange(false);
+  };
+
+  const handleArchive = async () => {
+    if (!draw) return;
+    if (!confirm(`Archive Draw #${draw.draw_number}? This will hide it from the main list.`)) {
+      return;
+    }
+    await archiveDraw.mutateAsync(draw.id);
+    onOpenChange(false);
+  };
+
   const handleRemoveInvoice = async (invoiceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isDraft) {
@@ -379,9 +408,9 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
                   
                   {isSubmitted && (
                     <>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="gap-2"
                         onClick={handleUnsubmit}
                         disabled={unsubmitDraw.isPending}
@@ -389,8 +418,8 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
                         <Undo2 className="h-4 w-4" />
                         Unsubmit
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         className="gap-2"
                         onClick={() => setFundDialogOpen(true)}
                       >
@@ -399,6 +428,35 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
                       </Button>
                     </>
                   )}
+
+                  {/* More Actions (Delete/Archive) */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {isDraft && (
+                        <DropdownMenuItem
+                          onClick={handleDelete}
+                          className="gap-2 text-destructive focus:text-destructive"
+                          disabled={deleteDraw.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete Draw
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        onClick={handleArchive}
+                        className="gap-2"
+                        disabled={archiveDraw.isPending}
+                      >
+                        <Archive className="h-4 w-4" />
+                        Archive Draw
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </DialogHeader>
 

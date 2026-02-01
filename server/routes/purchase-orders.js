@@ -12,6 +12,7 @@ const { AppError, asyncHandler } = require('../core/errors');
 const { broadcastInvoiceUpdate } = require('../core/realtime');
 const { logPOActivity } = require('../services/activity-logger');
 const { validate, schemas } = require('../middleware/validate');
+const coSync = require('../services/co-sync');
 
 // Multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -482,6 +483,24 @@ router.patch('/:id', validate(schemas.poUpdate), asyncHandler(async (req, res) =
     }
   }
 
+  // Prevent vendor/job changes if invoices are linked
+  if (updates.vendor_id !== undefined || updates.job_id !== undefined) {
+    const { count: invoiceCount } = await supabase
+      .from('v2_invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('po_id', id)
+      .is('deleted_at', null);
+
+    if (invoiceCount > 0) {
+      if (updates.vendor_id && updates.vendor_id !== existing.vendor_id) {
+        throw new AppError('VALIDATION_ERROR', 'Cannot change vendor - invoices are linked to this PO');
+      }
+      if (updates.job_id && updates.job_id !== existing.job_id) {
+        throw new AppError('VALIDATION_ERROR', 'Cannot change job - invoices are linked to this PO');
+      }
+    }
+  }
+
   // Update PO fields
   const { data: updated, error: updateError } = await supabase
     .from('v2_purchase_orders')
@@ -524,6 +543,39 @@ router.patch('/:id', validate(schemas.poUpdate), asyncHandler(async (req, res) =
   const warnings = getPOWarnings(updated, finalLineItems);
 
   res.json({ ...updated, warnings });
+}));
+
+// Reorder line items
+router.post('/:id/line-items/reorder', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { line_item_ids } = req.body;
+
+  if (!Array.isArray(line_item_ids)) {
+    throw new AppError('VALIDATION_ERROR', 'line_item_ids must be an array');
+  }
+
+  // Verify PO exists
+  const { data: po, error: poError } = await supabase
+    .from('v2_purchase_orders')
+    .select('id')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (poError || !po) {
+    throw new AppError('NOT_FOUND', 'Purchase order not found');
+  }
+
+  // Update sort_order for each line item
+  for (let i = 0; i < line_item_ids.length; i++) {
+    await supabase
+      .from('v2_po_line_items')
+      .update({ sort_order: i })
+      .eq('id', line_item_ids[i])
+      .eq('po_id', id);
+  }
+
+  res.json({ success: true, message: 'Line items reordered' });
 }));
 
 // Delete (soft delete) purchase order
@@ -1396,6 +1448,18 @@ router.post('/:poId/change-orders/:coId/approve', asyncHandler(async (req, res) 
     new_total: newTotal
   });
 
+  // Sync CO to budget (updates change_order_amount column)
+  try {
+    await coSync.syncCOToBudgetAndPO(coId);
+  } catch (syncErr) {
+    logger.error('Failed to sync CO to budget after approval', {
+      component: 'PO',
+      changeOrderId: coId,
+      error: syncErr.message
+    });
+    // Don't fail the approval, just log the error
+  }
+
   res.json({ success: true, new_total: newTotal });
 }));
 
@@ -1419,6 +1483,17 @@ router.post('/:poId/change-orders/:coId/reject', asyncHandler(async (req, res) =
     change_order_id: coId,
     reason
   });
+
+  // Sync CO to budget (recalculates after rejection)
+  try {
+    await coSync.syncCOToBudgetAndPO(coId);
+  } catch (syncErr) {
+    logger.error('Failed to sync CO to budget after rejection', {
+      component: 'PO',
+      changeOrderId: coId,
+      error: syncErr.message
+    });
+  }
 
   res.json({ success: true });
 }));

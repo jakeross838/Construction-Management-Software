@@ -29,6 +29,10 @@ import Contracts from "./pages/Contracts";
 import Tasks from "./pages/Tasks";
 import Files from "./pages/Files";
 import ChangeOrders from "./pages/ChangeOrders";
+import RFIs from "./pages/RFIs";
+import Submittals from "./pages/Submittals";
+import Inspections from "./pages/Inspections";
+import Photos from "./pages/Photos";
 import PunchLists from "./pages/PunchLists";
 import Warranties from "./pages/Warranties";
 import LienReleases from "./pages/LienReleases";
@@ -74,7 +78,11 @@ const App = () => (
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/files" element={<Files />} />
           <Route path="/change-orders" element={<ChangeOrders />} />
-          
+          <Route path="/rfis" element={<RFIs />} />
+          <Route path="/submittals" element={<Submittals />} />
+          <Route path="/inspections" element={<Inspections />} />
+          <Route path="/photos" element={<Photos />} />
+
           {/* Financial */}
           <Route path="/invoices" element={<Invoices />} />
           <Route path="/purchase-orders" element={<PurchaseOrders />} />

@@ -132,3 +132,136 @@ export const architecturalStyleOptions = [
   { value: 'coastal', label: 'Coastal' },
   { value: 'farmhouse', label: 'Farmhouse' },
 ];
+
+// Job specs update mutation (uses dedicated /specs endpoint)
+export function useUpdateJobSpecs() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...specs }: { id: string; [key: string]: any }) => {
+      const response = await fetch(`/api/jobs/${id}/specs`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(specs),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || 'Failed to update job specs');
+      }
+      return response.json();
+    },
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', id] });
+      toast.success('Job specifications updated');
+    },
+    onError: (error: Error) => {
+      console.error('Failed to update job specs:', error);
+      toast.error(`Failed to update specs: ${error.message}`);
+    },
+  });
+}
+
+// Dropdown options for various spec fields
+export const poolTypeOptions = [
+  { value: '', label: 'None' },
+  { value: 'in_ground', label: 'In-Ground Pool' },
+  { value: 'above_ground', label: 'Above Ground' },
+  { value: 'spa', label: 'Spa Only' },
+];
+
+export const foundationTypeOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'slab', label: 'Slab on Grade' },
+  { value: 'crawl', label: 'Crawl Space' },
+  { value: 'basement', label: 'Basement' },
+  { value: 'pier', label: 'Pier & Beam' },
+  { value: 'piling', label: 'Pilings' },
+];
+
+export const roofTypeOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'shingle', label: 'Asphalt Shingle' },
+  { value: 'tile', label: 'Tile' },
+  { value: 'metal', label: 'Metal' },
+  { value: 'flat', label: 'Flat/TPO' },
+  { value: 'slate', label: 'Slate' },
+];
+
+export const exteriorFinishOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'stucco', label: 'Stucco' },
+  { value: 'siding', label: 'Siding' },
+  { value: 'brick', label: 'Brick' },
+  { value: 'stone', label: 'Stone' },
+  { value: 'hardie', label: 'HardiePlank' },
+  { value: 'combo', label: 'Mixed/Combo' },
+];
+
+export const hvacSystemOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'split', label: 'Split System' },
+  { value: 'package', label: 'Package Unit' },
+  { value: 'mini_split', label: 'Mini-Split' },
+  { value: 'geothermal', label: 'Geothermal' },
+];
+
+export const hvacFuelOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'electric', label: 'Electric' },
+  { value: 'gas', label: 'Natural Gas' },
+  { value: 'propane', label: 'Propane' },
+  { value: 'heat_pump', label: 'Heat Pump' },
+];
+
+export const waterHeaterOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'tank', label: 'Tank' },
+  { value: 'tankless', label: 'Tankless' },
+  { value: 'hybrid', label: 'Hybrid/Heat Pump' },
+];
+
+export const windowFrameOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'aluminum', label: 'Aluminum' },
+  { value: 'vinyl', label: 'Vinyl' },
+  { value: 'wood', label: 'Wood' },
+  { value: 'fiberglass', label: 'Fiberglass' },
+  { value: 'clad', label: 'Wood Clad' },
+];
+
+export const windowGlassOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'single', label: 'Single Pane' },
+  { value: 'double', label: 'Double Pane' },
+  { value: 'triple', label: 'Triple Pane' },
+  { value: 'low_e', label: 'Low-E' },
+  { value: 'impact', label: 'Impact Rated' },
+];
+
+export const pipeMaterialOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'pex', label: 'PEX' },
+  { value: 'copper', label: 'Copper' },
+  { value: 'cpvc', label: 'CPVC' },
+  { value: 'pvc', label: 'PVC (Drain)' },
+];
+
+export const insulationTypeOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'batt', label: 'Fiberglass Batt' },
+  { value: 'blown', label: 'Blown In' },
+  { value: 'spray_open', label: 'Open Cell Spray Foam' },
+  { value: 'spray_closed', label: 'Closed Cell Spray Foam' },
+  { value: 'rigid', label: 'Rigid Board' },
+];
+
+export const countertopOptions = [
+  { value: '', label: 'Not Specified' },
+  { value: 'granite', label: 'Granite' },
+  { value: 'quartz', label: 'Quartz' },
+  { value: 'marble', label: 'Marble' },
+  { value: 'laminate', label: 'Laminate' },
+  { value: 'butcher_block', label: 'Butcher Block' },
+  { value: 'concrete', label: 'Concrete' },
+];

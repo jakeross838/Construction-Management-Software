@@ -1,4 +1,4 @@
-import { Building2, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { Building2, MoreVertical, Pencil, Trash2, ClipboardList } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import type { Job } from '@/types/job';
@@ -15,10 +15,11 @@ interface JobCardProps {
   job: Job;
   onClick: () => void;
   onEdit?: () => void;
+  onEditSpecs?: () => void;
   onDelete?: () => void;
 }
 
-export function JobCard({ job, onClick, onEdit, onDelete }: JobCardProps) {
+export function JobCard({ job, onClick, onEdit, onEditSpecs, onDelete }: JobCardProps) {
   const budgetProgress = (job.spent / job.budget) * 100;
   const laborProgress = (job.laborHours / job.estimatedHours) * 100;
   const status = statusConfig[job.status];
@@ -44,7 +45,7 @@ export function JobCard({ job, onClick, onEdit, onDelete }: JobCardProps) {
           <span className={cn("status-badge", status.class)}>
             {status.label}
           </span>
-          {(onEdit || onDelete) && (
+          {(onEdit || onEditSpecs || onDelete) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -55,11 +56,17 @@ export function JobCard({ job, onClick, onEdit, onDelete }: JobCardProps) {
                 {onEdit && (
                   <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
                     <Pencil className="h-4 w-4 mr-2" />
-                    Edit
+                    Edit Job
+                  </DropdownMenuItem>
+                )}
+                {onEditSpecs && (
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEditSpecs(); }}>
+                    <ClipboardList className="h-4 w-4 mr-2" />
+                    Edit Specifications
                   </DropdownMenuItem>
                 )}
                 {onDelete && (
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     onClick={(e) => { e.stopPropagation(); onDelete(); }}
                     className="text-destructive"
                   >

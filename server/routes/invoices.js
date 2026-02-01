@@ -2416,8 +2416,79 @@ router.delete('/:id', validate(schemas.idParam), asyncHandler(async (req, res) =
 }));
 
 // ============================================================
-// TEST ENDPOINT - Create invoice directly (for testing only)
+// MANUAL INVOICE CREATION - Create invoice without PDF upload
 // ============================================================
+router.post('/create', asyncHandler(async (req, res) => {
+  const {
+    job_id,
+    vendor_id,
+    po_id,
+    invoice_number,
+    invoice_date,
+    due_date,
+    amount,
+    description,
+    notes,
+    status
+  } = req.body;
+
+  if (!job_id || !vendor_id || !amount) {
+    throw validationError('job_id, vendor_id, and amount are required');
+  }
+
+  if (!invoice_number) {
+    throw validationError('invoice_number is required');
+  }
+
+  // Check for duplicate invoice number for this job
+  const { data: existing } = await supabase
+    .from('v2_invoices')
+    .select('id')
+    .eq('job_id', job_id)
+    .eq('invoice_number', invoice_number)
+    .is('deleted_at', null)
+    .single();
+
+  if (existing) {
+    throw validationError(`Invoice number "${invoice_number}" already exists for this job`);
+  }
+
+  const { data: invoice, error } = await supabase
+    .from('v2_invoices')
+    .insert({
+      job_id,
+      vendor_id,
+      po_id: po_id || null,
+      invoice_number,
+      invoice_date: invoice_date || new Date().toISOString().split('T')[0],
+      due_date: due_date || null,
+      amount: parseFloat(amount),
+      description: description || null,
+      notes: notes || null,
+      status: status || 'needs_approval',
+      ai_processed: false,
+      version: 1
+    })
+    .select(`
+      *,
+      job:v2_jobs(id, name),
+      vendor:v2_vendors(id, name)
+    `)
+    .single();
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', `Failed to create invoice: ${error.message}`);
+  }
+
+  await logActivity(invoice.id, 'created', 'Manual Entry', {
+    manual_entry: true,
+    has_po: !!po_id
+  });
+
+  res.status(201).json(invoice);
+}));
+
+// Legacy endpoint for backwards compatibility
 router.post('/test-create', asyncHandler(async (req, res) => {
   const { job_id, vendor_id, invoice_number, invoice_date, amount, status } = req.body;
 

@@ -179,11 +179,13 @@ export function useCreateInvoice() {
       job_id: string;
       vendor_id: string;
       invoice_number: string;
-      invoice_date: string;
+      invoice_date?: string;
       amount: number;
       due_date?: string;
+      po_id?: string;
+      description?: string;
       notes?: string;
-    }) => api<Invoice>('/invoices/test-create', {
+    }) => api<Invoice>('/invoices/create', {
       method: 'POST',
       body: JSON.stringify({ ...invoice, status: 'needs_approval' }),
     }),

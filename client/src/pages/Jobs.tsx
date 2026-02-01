@@ -5,6 +5,7 @@ import { JobsStats } from '@/components/jobs/JobsStats';
 import { JobCard } from '@/components/jobs/JobCard';
 import { JobDetail } from '@/components/jobs/JobDetail';
 import { JobFormDialog } from '@/components/jobs/JobFormDialog';
+import { JobSpecsFormDialog } from '@/components/jobs/JobSpecsFormDialog';
 import { useJobs, useDeleteJob, Job } from '@/hooks/useJobs';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -44,6 +45,7 @@ const Jobs = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [deletingJob, setDeletingJob] = useState<Job | null>(null);
+  const [specsJob, setSpecsJob] = useState<Job | null>(null);
 
   const { data: jobs = [], isLoading } = useJobs();
   const deleteJob = useDeleteJob();
@@ -76,6 +78,10 @@ const Jobs = () => {
   const handleEditJob = (job: Job) => {
     setEditingJob(job);
     setIsFormOpen(true);
+  };
+
+  const handleEditSpecs = (job: Job) => {
+    setSpecsJob(job);
   };
 
   const handleDeleteJob = async () => {
@@ -123,6 +129,7 @@ const Jobs = () => {
                 job={job}
                 onClick={() => setSelectedJobId(job.id)}
                 onEdit={() => handleEditJob(filteredJobs[index])}
+                onEditSpecs={() => handleEditSpecs(filteredJobs[index])}
                 onDelete={() => setDeletingJob(filteredJobs[index])}
               />
             ))}
@@ -145,6 +152,14 @@ const Jobs = () => {
         onOpenChange={setIsFormOpen}
         job={editingJob}
       />
+
+      {specsJob && (
+        <JobSpecsFormDialog
+          open={!!specsJob}
+          onOpenChange={(open) => !open && setSpecsJob(null)}
+          job={specsJob}
+        />
+      )}
 
       <AlertDialog open={!!deletingJob} onOpenChange={() => setDeletingJob(null)}>
         <AlertDialogContent>

@@ -28,11 +28,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { 
-  useChangeOrder, 
-  useUpdateChangeOrder, 
+import {
+  useChangeOrder,
+  useUpdateChangeOrder,
   useApproveChangeOrder,
   useRejectChangeOrder,
+  useCreateRevision,
 } from '@/hooks/useChangeOrders';
 import { 
   formatCurrency, 
@@ -43,10 +44,10 @@ import {
   COType,
   RequestedBy,
 } from '@/types/financial';
-import { 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
+import {
+  CheckCircle2,
+  XCircle,
+  Clock,
   FileEdit,
   Building2,
   User,
@@ -62,11 +63,13 @@ import {
   MoreVertical,
   ArrowRight,
   Link2,
+  History,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { generateCOPdf } from '@/lib/coPdfGenerator';
 import { SendCOEmailDialog } from './SendCOEmailDialog';
 import { COToPODialog } from './COToPODialog';
+import { CORevisionHistory } from './CORevisionHistory';
 
 interface CODetailPanelProps {
   coId: string | null;
@@ -79,7 +82,8 @@ export function CODetailPanel({ coId, open, onOpenChange }: CODetailPanelProps) 
   const updateCO = useUpdateChangeOrder();
   const approveCO = useApproveChangeOrder();
   const rejectCO = useRejectChangeOrder();
-  
+  const createRevision = useCreateRevision();
+
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     description: '',
@@ -95,6 +99,7 @@ export function CODetailPanel({ coId, open, onOpenChange }: CODetailPanelProps) 
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showPODialog, setShowPODialog] = useState(false);
+  const [showRevisionHistory, setShowRevisionHistory] = useState(false);
   
   const startEditing = () => {
     if (!co) return;
@@ -117,6 +122,16 @@ export function CODetailPanel({ coId, open, onOpenChange }: CODetailPanelProps) 
   
   const saveEdits = async () => {
     if (!co) return;
+
+    // If CO is approved, create a revision snapshot before making changes
+    if (co.status === 'approved') {
+      await createRevision.mutateAsync({
+        changeOrderId: co.id,
+        revision_reason: 'Changes made to approved change order',
+        revised_by: 'Current User',
+      });
+    }
+
     await updateCO.mutateAsync({
       id: co.id,
       ...editForm,
@@ -237,6 +252,10 @@ export function CODetailPanel({ coId, open, onOpenChange }: CODetailPanelProps) 
                             <DropdownMenuItem onClick={() => setShowEmailDialog(true)}>
                               <Mail className="h-4 w-4 mr-2" />
                               Email CO
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setShowRevisionHistory(true)}>
+                              <History className="h-4 w-4 mr-2" />
+                              Revision History
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => setShowPODialog(true)}>
@@ -597,6 +616,16 @@ export function CODetailPanel({ coId, open, onOpenChange }: CODetailPanelProps) 
           open={showPODialog}
           onOpenChange={setShowPODialog}
           co={co}
+        />
+      )}
+
+      {/* Revision History Dialog */}
+      {co && (
+        <CORevisionHistory
+          changeOrderId={co.id}
+          currentRevision={co.revision_number || 0}
+          open={showRevisionHistory}
+          onOpenChange={setShowRevisionHistory}
         />
       )}
     </>

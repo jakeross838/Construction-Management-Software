@@ -38,6 +38,100 @@ export function useRemoveInvoiceFromDraw() {
   });
 }
 
+// Bulk remove invoices from draw
+export function useBulkRemoveInvoicesFromDraw() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ drawId, invoiceIds }: { drawId: string; invoiceIds: string[] }) => {
+      return api<{ removed_count: number }>(`/draws/${drawId}/remove-invoices`, {
+        method: 'POST',
+        body: JSON.stringify({ invoice_ids: invoiceIds }),
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      queryClient.invalidateQueries({ queryKey: ['draw'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
+      toast.success(`${data.removed_count} invoice(s) removed from draw`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to remove invoices: ${error.message}`);
+    },
+  });
+}
+
+// Bulk add invoices to draw
+export function useBulkAddInvoicesToDraw() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ drawId, invoiceIds }: { drawId: string; invoiceIds: string[] }) => {
+      return api(`/draws/${drawId}/add-invoices`, {
+        method: 'POST',
+        body: JSON.stringify({ invoice_ids: invoiceIds }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      queryClient.invalidateQueries({ queryKey: ['draw'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['unassigned-approved-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
+      toast.success('Invoices added to draw');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to add invoices: ${error.message}`);
+    },
+  });
+}
+
+// Add all approved invoices for job to draw
+export function useAddAllApprovedToDraw() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (drawId: string) => {
+      return api(`/draws/${drawId}/add-all-approved`, {
+        method: 'POST',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      queryClient.invalidateQueries({ queryKey: ['draw'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['unassigned-approved-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
+      toast.success('All approved invoices added to draw');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to add invoices: ${error.message}`);
+    },
+  });
+}
+
+// Reorder invoices within draw
+export function useReorderDrawInvoices() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ drawId, invoiceIds }: { drawId: string; invoiceIds: string[] }) => {
+      return api(`/draws/${drawId}/reorder-invoices`, {
+        method: 'POST',
+        body: JSON.stringify({ invoice_ids: invoiceIds }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draw'] });
+      toast.success('Invoices reordered');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to reorder invoices: ${error.message}`);
+    },
+  });
+}
+
 // Remove change order billing from draw
 export function useRemoveChangeOrderFromDraw() {
   const queryClient = useQueryClient();
@@ -238,6 +332,61 @@ export function useAddInvoiceToExistingDraw() {
     },
     onError: (error: Error) => {
       toast.error(`Failed to add invoice: ${error.message}`);
+    },
+  });
+}
+
+// Delete draw (draft only)
+export function useDeleteDraw() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (drawId: string) => {
+      return api(`/draws/${drawId}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Draw deleted');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to delete draw: ${error.message}`);
+    },
+  });
+}
+
+// Archive draw (soft delete - any status)
+export function useArchiveDraw() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (drawId: string) => {
+      return api(`/draws/${drawId}/archive`, { method: 'PATCH' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      toast.success('Draw archived');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to archive draw: ${error.message}`);
+    },
+  });
+}
+
+// Unarchive draw
+export function useUnarchiveDraw() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (drawId: string) => {
+      return api(`/draws/${drawId}/unarchive`, { method: 'PATCH' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draws'] });
+      toast.success('Draw restored');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to restore draw: ${error.message}`);
     },
   });
 }
