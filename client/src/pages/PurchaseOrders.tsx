@@ -18,6 +18,7 @@ import { POTable } from '@/components/purchase-orders/POTable';
 import { PODetailPanel } from '@/components/purchase-orders/PODetailPanel';
 import { POFormDialog } from '@/components/purchase-orders/POFormDialog';
 import { POUploadDialog } from '@/components/purchase-orders/POUploadDialog';
+import { POBulkActions } from '@/components/purchase-orders/POBulkActions';
 import type { PurchaseOrder } from '@/types/financial';
 
 const PurchaseOrders = () => {
@@ -27,6 +28,7 @@ const PurchaseOrders = () => {
   const [selectedPOId, setSelectedPOId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Fetch all POs when filtering by job (we filter client-side for name fallback)
   const { data: purchaseOrders = [], isLoading } = usePurchaseOrders(
@@ -125,11 +127,23 @@ const PurchaseOrders = () => {
           </Select>
         </div>
 
+        {/* Bulk Actions Bar */}
+        <POBulkActions
+          selectedIds={selectedIds}
+          purchaseOrders={purchaseOrders}
+          onClearSelection={() => setSelectedIds([])}
+        />
+
         {/* PO Table */}
         {isLoading ? (
           <Skeleton className="h-96 w-full" />
         ) : (
-          <POTable purchaseOrders={filteredPOs} onSelectPO={handleSelectPO} />
+          <POTable
+            purchaseOrders={filteredPOs}
+            onSelectPO={handleSelectPO}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+          />
         )}
       </div>
 

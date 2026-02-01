@@ -110,3 +110,46 @@ export function getVendorStatus(insuranceExpiry: string | null): 'active' | 'exp
   if (expiry <= thirtyDaysFromNow) return 'expiring';
   return 'active';
 }
+
+// Bulk import vendors
+export function useBulkImportVendors() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (vendors: VendorInsert[]) => {
+      const results = await Promise.allSettled(
+        vendors.map(vendor =>
+          fetch('/api/vendors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(vendor),
+          }).then(res => {
+            if (!res.ok) throw new Error('Failed');
+            return res.json();
+          })
+        )
+      );
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      if (failed > 0 && succeeded === 0) {
+        throw new Error('All imports failed');
+      }
+
+      return { succeeded, failed, total: vendors.length };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      if (result.failed > 0) {
+        toast.warning(`Imported ${result.succeeded} of ${result.total} vendors (${result.failed} failed)`);
+      } else {
+        toast.success(`Successfully imported ${result.succeeded} vendor(s)`);
+      }
+    },
+    onError: (error: Error) => {
+      console.error('Bulk import failed:', error);
+      toast.error('Failed to import vendors');
+    },
+  });
+}

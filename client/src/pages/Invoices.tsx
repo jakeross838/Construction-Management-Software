@@ -26,7 +26,6 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  ThumbsUp,
   AlertTriangle,
   Sparkles,
 } from 'lucide-react';
@@ -37,6 +36,7 @@ import { UnifiedAIUpload } from '@/components/ai/UnifiedAIUpload';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 import { ReviewFlagsList } from '@/components/invoices/ReviewFlagsBadges';
 import { AIConfidenceBadge } from '@/components/invoices/AIConfidenceBadge';
+import { InvoiceBulkActions } from '@/components/invoices/InvoiceBulkActions';
 
 const Invoices = () => {
   const { selectedJobId } = useJob();
@@ -152,32 +152,10 @@ const Invoices = () => {
     }
   };
 
-  const handleBulkApprove = async () => {
-    const toApprove = invoices.filter(inv => 
-      selectedIds.includes(inv.id) && inv.status === 'needs_approval'
-    );
-    
-    for (const inv of toApprove) {
-      await updateInvoice.mutateAsync({
-        id: inv.id,
-        status: 'approved',
-        approved_at: new Date().toISOString(),
-        approved_by: 'Current User',
-      });
-    }
-    
-    setSelectedIds([]);
-  };
-
   const handleViewInvoice = (id: string) => {
     setSelectedInvoiceId(id);
     setDetailDialogOpen(true);
   };
-
-  const pendingApprovalSelected = selectedIds.some(id => {
-    const inv = invoices.find(i => i.id === id);
-    return inv && inv.status === 'needs_approval';
-  });
 
   return (
     <AppLayout>
@@ -284,6 +262,13 @@ const Invoices = () => {
           </div>
         </div>
 
+        {/* Bulk Actions Bar */}
+        <InvoiceBulkActions
+          selectedIds={selectedIds}
+          invoices={invoices}
+          onClearSelection={() => setSelectedIds([])}
+        />
+
         {/* Invoice Sections by Status */}
         {['needs_review', 'needs_approval', 'ready_for_approval', 'approved', 'in_draw', 'billed', 'paid', 'denied', 'received'].map((status) => {
           const statusInvoices = filteredInvoices.filter(inv => inv.status === status);
@@ -302,12 +287,6 @@ const Invoices = () => {
                     {statusInvoices.length} invoice{statusInvoices.length !== 1 ? 's' : ''} · {formatCurrency(statusInvoices.reduce((sum, i) => sum + i.amount, 0))}
                   </span>
                 </div>
-                {status === 'needs_approval' && statusInvoices.some(inv => selectedIds.includes(inv.id)) && (
-                  <Button size="sm" className="gap-2" onClick={handleBulkApprove}>
-                    <ThumbsUp className="h-4 w-4" />
-                    Approve Selected
-                  </Button>
-                )}
               </div>
               <Table>
                 <TableHeader>

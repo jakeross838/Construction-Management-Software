@@ -85,3 +85,40 @@ export const useDeleteCostCode = () => {
     },
   });
 };
+
+// Bulk import cost codes
+export const useBulkImportCostCodes = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (codes: CreateCostCodeData[]) => {
+      const results = await Promise.allSettled(
+        codes.map(code => api('/cost-codes', {
+          method: 'POST',
+          body: JSON.stringify(code),
+        }))
+      );
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      if (failed > 0 && succeeded === 0) {
+        throw new Error('All imports failed');
+      }
+
+      return { succeeded, failed, total: codes.length };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['cost-codes'] });
+      if (result.failed > 0) {
+        toast.warning(`Imported ${result.succeeded} of ${result.total} cost codes (${result.failed} failed)`);
+      } else {
+        toast.success(`Successfully imported ${result.succeeded} cost code(s)`);
+      }
+    },
+    onError: (error: Error) => {
+      console.error('Bulk import failed:', error);
+      toast.error('Failed to import cost codes');
+    },
+  });
+};

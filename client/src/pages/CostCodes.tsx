@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Plus, Edit, Trash2, Filter } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Filter, Upload, Download } from 'lucide-react';
 import { useCostCodes, type CostCode } from '@/hooks/useCostCodes';
-import { useDeleteCostCode } from '@/hooks/useCostCodeMutations';
+import { useDeleteCostCode, useBulkImportCostCodes } from '@/hooks/useCostCodeMutations';
+import { CSVImportDialog } from '@/components/data/CSVImportDialog';
+import { ExportButton } from '@/components/data/ExportButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CostCodeFormDialog } from '@/components/cost-codes/CostCodeFormDialog';
@@ -29,9 +31,11 @@ const CostCodes = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCode, setEditingCode] = useState<CostCode | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  
+  const [importOpen, setImportOpen] = useState(false);
+
   const { data: costCodes = [], isLoading } = useCostCodes();
   const deleteMutation = useDeleteCostCode();
+  const bulkImport = useBulkImportCostCodes();
 
   const categories = [...new Set(costCodes.map(c => c.category).filter(Boolean))] as string[];
   
@@ -81,9 +85,25 @@ const CostCodes = () => {
             <h1 className="text-2xl font-semibold">Cost Codes</h1>
             <p className="text-sm text-muted-foreground">Manage cost code structure for job costing</p>
           </div>
-          <Button className="gap-2" onClick={handleAdd}>
-            <Plus className="h-4 w-4" />Add Cost Code
-          </Button>
+          <div className="flex gap-2">
+            <ExportButton
+              data={costCodes}
+              columns={[
+                { key: 'code', label: 'Code' },
+                { key: 'name', label: 'Name' },
+                { key: 'category', label: 'Category' },
+                { key: 'description', label: 'Description' },
+              ]}
+              filename="cost-codes"
+            />
+            <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Import
+            </Button>
+            <Button className="gap-2" onClick={handleAdd}>
+              <Plus className="h-4 w-4" />Add Cost Code
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
@@ -232,13 +252,13 @@ const CostCodes = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Cost Code</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete cost code <strong>{codeToDelete?.code}</strong> ({codeToDelete?.name})? 
+              Are you sure you want to delete cost code <strong>{codeToDelete?.code}</strong> ({codeToDelete?.name})?
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleDelete}
               className="bg-red-500 hover:bg-red-600"
             >
@@ -247,6 +267,39 @@ const CostCodes = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CSVImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Cost Codes"
+        description="Upload a CSV file to import cost codes in bulk."
+        templateColumns={[
+          { key: 'code', label: 'Code', required: true },
+          { key: 'name', label: 'Name', required: true },
+          { key: 'category', label: 'Category' },
+          { key: 'description', label: 'Description' },
+        ]}
+        validationRules={[
+          { field: 'code', required: true },
+          { field: 'name', required: true },
+        ]}
+        sampleData={[
+          { code: '01000', name: 'General Requirements', category: 'General', description: 'Project-wide requirements' },
+          { code: '03000', name: 'Concrete', category: 'Structure', description: 'Concrete work' },
+          { code: '06100', name: 'Rough Carpentry', category: 'Framing', description: 'Wood framing' },
+        ]}
+        onImport={async (data) => {
+          await bulkImport.mutateAsync(
+            data.map(row => ({
+              code: row.code,
+              name: row.name,
+              category: row.category || null,
+              description: row.description || null,
+              is_active: true,
+            }))
+          );
+        }}
+      />
     </AppLayout>
   );
 };

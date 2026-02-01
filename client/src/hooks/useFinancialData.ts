@@ -458,6 +458,85 @@ export function useDeletePOLineItem() {
   });
 }
 
+// Bulk PO status change
+export function useBulkPOStatusChange() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[]; status: 'open' | 'closed' | 'cancelled' }) => {
+      const results = await Promise.allSettled(
+        ids.map(id => api(`/purchase-orders/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status })
+        }))
+      );
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+      return { succeeded, failed, status };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
+      if (result.failed > 0) {
+        toast.warning(`${result.succeeded} POs changed to ${result.status}, ${result.failed} failed`);
+      } else {
+        toast.success(`${result.succeeded} PO(s) changed to ${result.status}`);
+      }
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+}
+
+// Bulk PO approval
+export function useBulkPOApproval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, approvedBy }: { ids: string[]; approvedBy: string }) => {
+      const results = await Promise.allSettled(
+        ids.map(id => api(`/purchase-orders/${id}/approve`, {
+          method: 'POST',
+          body: JSON.stringify({ approved_by: approvedBy })
+        }))
+      );
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+      return { succeeded, failed };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
+      if (result.failed > 0) {
+        toast.warning(`${result.succeeded} approved, ${result.failed} failed`);
+      } else {
+        toast.success(`${result.succeeded} PO(s) approved`);
+      }
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+}
+
+// Bulk delete POs
+export function useBulkDeletePOs() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map(id => api(`/purchase-orders/${id}`, { method: 'DELETE' }))
+      );
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) {
+        throw new Error(`${failed} of ${ids.length} deletions failed`);
+      }
+      return { deleted: ids.length };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-summary'] });
+      toast.success(`${result.deleted} PO(s) deleted`);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+}
+
 // =====================================================
 // DRAWS HOOKS
 // =====================================================

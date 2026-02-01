@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -14,9 +15,16 @@ import { formatCurrency, formatDate, PurchaseOrder, poStatusConfig } from '@/typ
 interface POTableProps {
   purchaseOrders: PurchaseOrder[];
   onSelectPO: (po: PurchaseOrder) => void;
+  selectedIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
 }
 
-export function POTable({ purchaseOrders, onSelectPO }: POTableProps) {
+export function POTable({
+  purchaseOrders,
+  onSelectPO,
+  selectedIds = [],
+  onSelectionChange,
+}: POTableProps) {
   const getStatusBadge = (status: string, approvalStatus: string) => {
     if (approvalStatus === 'pending') {
       return <Badge variant="destructive">Pending Approval</Badge>;
@@ -33,6 +41,27 @@ export function POTable({ purchaseOrders, onSelectPO }: POTableProps) {
     );
   };
 
+  const handleSelectAll = (checked: boolean) => {
+    if (!onSelectionChange) return;
+    if (checked) {
+      onSelectionChange(purchaseOrders.map(po => po.id));
+    } else {
+      onSelectionChange([]);
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (!onSelectionChange) return;
+    if (checked) {
+      onSelectionChange([...selectedIds, id]);
+    } else {
+      onSelectionChange(selectedIds.filter(i => i !== id));
+    }
+  };
+
+  const showCheckboxes = !!onSelectionChange;
+  const allSelected = purchaseOrders.length > 0 && purchaseOrders.every(po => selectedIds.includes(po.id));
+
   if (purchaseOrders.length === 0) {
     return (
       <div className="text-center py-12">
@@ -46,6 +75,14 @@ export function POTable({ purchaseOrders, onSelectPO }: POTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
+            {showCheckboxes && (
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={handleSelectAll}
+                />
+              </TableHead>
+            )}
             <TableHead>PO Number</TableHead>
             <TableHead>Vendor</TableHead>
             <TableHead>Job</TableHead>
@@ -62,13 +99,22 @@ export function POTable({ purchaseOrders, onSelectPO }: POTableProps) {
             const invoiced = po.invoiced_amount || 0;
             const remaining = po.remaining_amount ?? (amount - invoiced);
             const invoicedPercent = amount > 0 ? (invoiced / amount) * 100 : 0;
-            
+            const isSelected = selectedIds.includes(po.id);
+
             return (
-              <TableRow 
-                key={po.id} 
+              <TableRow
+                key={po.id}
                 className="cursor-pointer hover:bg-muted/50"
                 onClick={() => onSelectPO(po)}
               >
+                {showCheckboxes && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) => handleSelectOne(po.id, !!checked)}
+                    />
+                  </TableCell>
+                )}
                 <TableCell className="font-medium font-mono">{po.po_number}</TableCell>
                 <TableCell>{po.vendor_name || '—'}</TableCell>
                 <TableCell>{po.job_name || '—'}</TableCell>

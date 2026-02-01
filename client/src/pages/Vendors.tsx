@@ -36,9 +36,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { 
-  Search, 
-  Plus, 
+import {
+  Search,
+  Plus,
   Truck,
   AlertTriangle,
   CheckCircle,
@@ -49,9 +49,12 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Upload,
 } from 'lucide-react';
-import { useVendors, useDeleteVendor, getVendorStatus, type Vendor } from '@/hooks/useVendors';
+import { useVendors, useDeleteVendor, useBulkImportVendors, getVendorStatus, type Vendor } from '@/hooks/useVendors';
 import { VendorFormDialog } from '@/components/vendors/VendorFormDialog';
+import { CSVImportDialog } from '@/components/data/CSVImportDialog';
+import { ExportButton } from '@/components/data/ExportButton';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ReactNode }> = {
   active: { label: 'Active', variant: 'default', icon: <CheckCircle className="h-3.5 w-3.5" /> },
@@ -66,9 +69,11 @@ const Vendors = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data: vendors = [], isLoading } = useVendors();
   const deleteMutation = useDeleteVendor();
+  const bulkImport = useBulkImportVendors();
 
   const vendorsWithStatus = useMemo(() => {
     return vendors.map(v => ({
@@ -141,10 +146,30 @@ const Vendors = () => {
             <h1 className="text-2xl font-semibold text-foreground">Vendors</h1>
             <p className="text-sm text-muted-foreground">Manage trade partners and subcontractors</p>
           </div>
-          <Button className="gap-2" onClick={handleAdd}>
-            <Plus className="h-4 w-4" />
-            Add Vendor
-          </Button>
+          <div className="flex gap-2">
+            <ExportButton
+              data={vendors}
+              columns={[
+                { key: 'name', label: 'Vendor Name' },
+                { key: 'contact_name', label: 'Contact Name' },
+                { key: 'email', label: 'Email' },
+                { key: 'phone', label: 'Phone' },
+                { key: 'address', label: 'Address' },
+                { key: 'tax_id', label: 'Tax ID' },
+                { key: 'w9_on_file', label: 'W9 On File', formatter: (v) => v ? 'Yes' : 'No' },
+                { key: 'insurance_expiry', label: 'Insurance Expiry' },
+              ]}
+              filename="vendors"
+            />
+            <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Import
+            </Button>
+            <Button className="gap-2" onClick={handleAdd}>
+              <Plus className="h-4 w-4" />
+              Add Vendor
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -341,13 +366,13 @@ const Vendors = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Vendor</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete <strong>{vendorToDelete?.name}</strong>? 
+              Are you sure you want to delete <strong>{vendorToDelete?.name}</strong>?
               This action cannot be undone. The vendor may be linked to purchase orders or invoices.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleDelete}
               className="bg-red-500 hover:bg-red-600"
             >
@@ -356,6 +381,45 @@ const Vendors = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CSVImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Vendors"
+        description="Upload a CSV file to import vendors in bulk."
+        templateColumns={[
+          { key: 'name', label: 'Vendor Name', required: true },
+          { key: 'contact_name', label: 'Contact Name' },
+          { key: 'email', label: 'Email' },
+          { key: 'phone', label: 'Phone' },
+          { key: 'address', label: 'Address' },
+          { key: 'tax_id', label: 'Tax ID' },
+        ]}
+        validationRules={[
+          { field: 'name', required: true },
+          { field: 'email', type: 'email' },
+        ]}
+        sampleData={[
+          { name: 'ABC Plumbing', contact_name: 'John Smith', email: 'john@abcplumbing.com', phone: '555-123-4567', address: '123 Main St', tax_id: '12-3456789' },
+          { name: 'XYZ Electric', contact_name: 'Jane Doe', email: 'jane@xyzelectric.com', phone: '555-987-6543', address: '456 Oak Ave', tax_id: '98-7654321' },
+        ]}
+        onImport={async (data) => {
+          await bulkImport.mutateAsync(
+            data.map(row => ({
+              name: row.name,
+              contact_name: row.contact_name || null,
+              email: row.email || null,
+              phone: row.phone || null,
+              address: row.address || null,
+              tax_id: row.tax_id || null,
+              w9_on_file: false,
+              insurance_expiry: null,
+              status: 'active',
+              notes: null,
+            }))
+          );
+        }}
+      />
     </AppLayout>
   );
 };
