@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Combobox } from '@/components/ui/combobox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { User, Building2, Settings2 } from 'lucide-react';
 import { Estimate, projectTypes, defaultMarkupSettings, EstimateMarkupSettings } from '@/types/estimate';
 import { useJobs, type Job as DBJob } from '@/hooks/useJobs';
@@ -158,13 +159,15 @@ export function EstimateFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{isEditing ? 'Edit Estimate' : 'Create New Estimate'}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <Tabs defaultValue="client" className="w-full">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <div className="py-4">
+              <Tabs defaultValue="client" className="w-full">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="client" className="flex items-center gap-2">
                 <User className="h-4 w-4" />
@@ -382,9 +385,11 @@ export function EstimateFormDialog({
                 </CardContent>
               </Card>
             </TabsContent>
-          </Tabs>
+              </Tabs>
+            </div>
+          </ScrollArea>
 
-          <DialogFooter className="mt-6">
+          <DialogFooter className="flex-shrink-0 gap-2 sm:gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { BaseFormDialog } from '@/components/ui/base-form-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -88,9 +87,7 @@ export function CostCodeFormDialog({ open, onOpenChange, costCode, categories }:
     }
   }, [costCode, open]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const handleSubmit = async () => {
     if (!code.trim() || !name.trim()) return;
 
     try {
@@ -133,93 +130,85 @@ export function CostCodeFormDialog({ open, onOpenChange, costCode, categories }:
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Cost Code' : 'Add Cost Code'}</DialogTitle>
-        </DialogHeader>
+    <BaseFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? 'Edit Cost Code' : 'Add Cost Code'}
+      size="md"
+      onSubmit={handleSubmit}
+      submitLabel={isEditing ? 'Save Changes' : 'Create'}
+      isSubmitting={isPending}
+      submitDisabled={!code.trim() || !name.trim()}
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="code">Code *</Label>
+          <Input
+            id="code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="e.g., 10101"
+            className="font-mono"
+            required
+          />
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="code">Code *</Label>
-              <Input
-                id="code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g., 10101"
-                className="font-mono"
-                required
-              />
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="category">Category</Label>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              {allCategories.map((cat) => (
+                <SelectItem key={cat} value={cat}>
+                  {cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allCategories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="name">Name *</Label>
+        <Input
+          id="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., Framing Labor & General Carpentry"
+          required
+        />
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Framing Labor & General Carpentry"
-              required
+      <div className="space-y-2">
+        <Label htmlFor="description">Description</Label>
+        <Textarea
+          id="description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Optional description..."
+          rows={2}
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Switch id="active" checked={isActive} onCheckedChange={setIsActive} />
+          <Label htmlFor="active">Active</Label>
+        </div>
+
+        {!isEditing && (
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="createChange"
+              checked={createChangeCode}
+              onCheckedChange={setCreateChangeCode}
             />
+            <Label htmlFor="createChange">Also create Change code ({code}C)</Label>
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description..."
-              rows={2}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Switch id="active" checked={isActive} onCheckedChange={setIsActive} />
-              <Label htmlFor="active">Active</Label>
-            </div>
-
-            {!isEditing && (
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="createChange"
-                  checked={createChangeCode}
-                  onCheckedChange={setCreateChangeCode}
-                />
-                <Label htmlFor="createChange">Also create Change code ({code}C)</Label>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isPending || !code.trim() || !name.trim()}>
-              {isPending ? 'Saving...' : isEditing ? 'Save Changes' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        )}
+      </div>
+    </BaseFormDialog>
   );
 }

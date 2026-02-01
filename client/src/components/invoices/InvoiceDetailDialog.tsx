@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   FileText,
   ThumbsUp,
@@ -517,8 +518,8 @@ export function InvoiceDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[1400px] max-h-[95vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-[95vw] w-[1400px] max-h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-3">
               Invoice: {invoice?.invoice_number}
@@ -612,13 +613,15 @@ export function InvoiceDetailDialog({
           </div>
         </DialogHeader>
 
-        {isLoading ? (
-          <div className="py-12 text-center">
-            <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary" />
-            <p className="mt-2 text-muted-foreground">Loading invoice details...</p>
-          </div>
-        ) : invoice ? (
-          <div className="grid md:grid-cols-2 gap-6">
+        <ScrollArea className="flex-1">
+          <div className="py-4">
+            {isLoading ? (
+              <div className="py-12 text-center">
+                <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary" />
+                <p className="mt-2 text-muted-foreground">Loading invoice details...</p>
+              </div>
+            ) : invoice ? (
+              <div className="grid md:grid-cols-2 gap-6">
             {/* Left: PDF Preview */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -1213,10 +1216,12 @@ export function InvoiceDetailDialog({
                 />
               )}
             </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </ScrollArea>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="flex-shrink-0 gap-2 sm:gap-2">
           {isEditing ? (
             <>
               <Button variant="outline" onClick={() => setIsEditing(false)}>

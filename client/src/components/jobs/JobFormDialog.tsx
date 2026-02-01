@@ -20,6 +20,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -194,454 +195,458 @@ export function JobFormDialog({ open, onOpenChange, job }: JobFormDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{isEditing ? 'Edit Job' : 'Create New Job'}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            <Tabs defaultValue="general" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="general">General</TabsTrigger>
-                <TabsTrigger value="client">Client</TabsTrigger>
-                <TabsTrigger value="specs">Specs</TabsTrigger>
-                <TabsTrigger value="financials">Financials</TabsTrigger>
-              </TabsList>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col flex-1 min-h-0">
+            <ScrollArea className="flex-1 -mx-6 px-6">
+              <div className="py-4 space-y-6">
+                <Tabs defaultValue="general" className="w-full">
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="general">General</TabsTrigger>
+                    <TabsTrigger value="client">Client</TabsTrigger>
+                    <TabsTrigger value="specs">Specs</TabsTrigger>
+                    <TabsTrigger value="financials">Financials</TabsTrigger>
+                  </TabsList>
 
-              <TabsContent value="general" className="space-y-4 mt-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Job Name *</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Lakewood Estate" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                  <TabsContent value="general" className="space-y-4 mt-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Job Name *</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Lakewood Estate" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Status</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {statusOptions.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="address"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Project Address</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
+                            <Input placeholder="123 Main St, Austin TX" {...field} />
                           </FormControl>
-                          <SelectContent>
-                            {statusOptions.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name="address"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Project Address</FormLabel>
-                      <FormControl>
-                        <Input placeholder="123 Main St, Austin TX" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="start_date"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Start Date</FormLabel>
+                            <FormControl>
+                              <Input type="date" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="end_date"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Target Completion</FormLabel>
+                            <FormControl>
+                              <Input type="date" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="start_date"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Start Date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="end_date"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Target Completion</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="project_manager"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Project Manager</FormLabel>
+                            <FormControl>
+                              <Input placeholder="John Smith" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="site_supervisor"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Site Supervisor</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Mike Johnson" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="project_manager"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Project Manager</FormLabel>
-                        <FormControl>
-                          <Input placeholder="John Smith" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="site_supervisor"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Site Supervisor</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Mike Johnson" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="architect"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Architect</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Architect name" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="engineer"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Engineer</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Engineer name" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="architect"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Architect</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Architect name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="engineer"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Engineer</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Engineer name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Notes</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Additional job notes..."
-                          className="resize-none"
-                          rows={3}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </TabsContent>
-
-              <TabsContent value="client" className="space-y-4 mt-4">
-                <FormField
-                  control={form.control}
-                  name="client"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Client Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="The Morrison Family" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="client_email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Client Email</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="client@email.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="client_phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Client Phone</FormLabel>
-                        <FormControl>
-                          <Input placeholder="512-555-1234" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="client_cell"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Client Cell</FormLabel>
-                        <FormControl>
-                          <Input placeholder="512-555-5678" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="specs" className="space-y-4 mt-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="construction_type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Construction Type</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ''}>
+                    <FormField
+                      control={form.control}
+                      name="notes"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Notes</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
+                            <Textarea
+                              placeholder="Additional job notes..."
+                              className="resize-none"
+                              rows={3}
+                              {...field}
+                            />
                           </FormControl>
-                          <SelectContent>
-                            {constructionTypeOptions.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="architectural_style"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Architectural Style</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ''}>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="client" className="space-y-4 mt-4">
+                    <FormField
+                      control={form.control}
+                      name="client"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Client Name</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select style" />
-                            </SelectTrigger>
+                            <Input placeholder="The Morrison Family" {...field} />
                           </FormControl>
-                          <SelectContent>
-                            {architecturalStyleOptions.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name="square_footage"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Square Footage</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="4500" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name="client_email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Client Email</FormLabel>
+                          <FormControl>
+                            <Input type="email" placeholder="client@email.com" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <div className="grid grid-cols-4 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="bedrooms"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Bedrooms</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="bathrooms"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Full Baths</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="half_baths"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Half Baths</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="stories"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Stories</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="client_phone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Client Phone</FormLabel>
+                            <FormControl>
+                              <Input placeholder="512-555-1234" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="client_cell"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Client Cell</FormLabel>
+                            <FormControl>
+                              <Input placeholder="512-555-5678" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </TabsContent>
 
-                <FormField
-                  control={form.control}
-                  name="garage_spaces"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Garage Spaces</FormLabel>
-                      <FormControl>
-                        <Input type="number" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </TabsContent>
+                  <TabsContent value="specs" className="space-y-4 mt-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="construction_type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Construction Type</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || ''}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {constructionTypeOptions.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="architectural_style"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Architectural Style</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || ''}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select style" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {architecturalStyleOptions.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-              <TabsContent value="financials" className="space-y-4 mt-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="contract_amount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Contract Amount ($)</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="2500000" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="budget_amount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Budget Amount ($)</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="2000000" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                    <FormField
+                      control={form.control}
+                      name="square_footage"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Square Footage</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="4500" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <div className="grid grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="target_margin"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Target Margin (%)</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="20" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="retainage_percent"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Retainage (%)</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="10" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="percent_complete"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>% Complete</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="0" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
+                    <div className="grid grid-cols-4 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="bedrooms"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Bedrooms</FormLabel>
+                            <FormControl>
+                              <Input type="number" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="bathrooms"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Full Baths</FormLabel>
+                            <FormControl>
+                              <Input type="number" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="half_baths"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Half Baths</FormLabel>
+                            <FormControl>
+                              <Input type="number" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="stories"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Stories</FormLabel>
+                            <FormControl>
+                              <Input type="number" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                    <FormField
+                      control={form.control}
+                      name="garage_spaces"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Garage Spaces</FormLabel>
+                          <FormControl>
+                            <Input type="number" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="financials" className="space-y-4 mt-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="contract_amount"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Contract Amount ($)</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="2500000" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="budget_amount"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Budget Amount ($)</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="2000000" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="target_margin"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Target Margin (%)</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="20" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="retainage_percent"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Retainage (%)</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="10" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="percent_complete"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>% Complete</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="0" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </ScrollArea>
+
+            <DialogFooter className="flex-shrink-0 gap-2 sm:gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isPending}>

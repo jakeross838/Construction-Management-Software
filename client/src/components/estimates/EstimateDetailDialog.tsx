@@ -65,8 +65,8 @@ export function EstimateDetailDialog({ estimate, open, onOpenChange, onEdit }: E
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] p-0">
-        <DialogHeader className="p-6 pb-0">
+      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="p-6 pb-0 flex-shrink-0">
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-3">
@@ -99,8 +99,8 @@ export function EstimateDetailDialog({ estimate, open, onOpenChange, onEdit }: E
           </div>
         </DialogHeader>
 
-        <Tabs defaultValue="overview" className="flex-1">
-          <div className="px-6">
+        <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
+          <div className="px-6 flex-shrink-0">
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="breakdown">Cost Breakdown</TabsTrigger>
@@ -109,7 +109,7 @@ export function EstimateDetailDialog({ estimate, open, onOpenChange, onEdit }: E
             </TabsList>
           </div>
 
-          <ScrollArea className="h-[calc(90vh-180px)]">
+          <ScrollArea className="flex-1">
             <div className="p-6 pt-4">
               <TabsContent value="overview" className="mt-0 space-y-6">
                 {/* Client & Project Info */}

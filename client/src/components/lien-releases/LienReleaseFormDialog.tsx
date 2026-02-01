@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { BaseFormDialog } from '@/components/ui/base-form-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,11 +20,11 @@ interface LienReleaseFormDialogProps {
 
 export function LienReleaseFormDialog({ open, onOpenChange, release, defaultJobId, defaultDrawId }: LienReleaseFormDialogProps) {
   const { selectedJobId: contextJobId } = useJob();
-  
+
   // Prefer prop, then context
   const effectiveJobId = defaultJobId || contextJobId || '';
   const showJobSelector = !effectiveJobId;
-  
+
   const [jobId, setJobId] = useState('');
   const [drawId, setDrawId] = useState('');
   const [vendorId, setVendorId] = useState('');
@@ -37,7 +36,7 @@ export function LienReleaseFormDialog({ open, onOpenChange, release, defaultJobI
 
   const { data: vendors = [] } = useVendors();
   const { data: jobs = [] } = useDBJobs();
-  
+
   const { data: draws = [] } = useQuery({
     queryKey: ['draws-for-job', jobId],
     queryFn: async () => {
@@ -79,8 +78,7 @@ export function LienReleaseFormDialog({ open, onOpenChange, release, defaultJobI
     }
   }, [release, open, effectiveJobId, defaultDrawId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!jobId || !drawId || !vendorId || !amount) return;
 
     const data = {
@@ -109,133 +107,125 @@ export function LienReleaseFormDialog({ open, onOpenChange, release, defaultJobI
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Lien Release' : 'Request Lien Release'}</DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            {showJobSelector && (
-              <div className="space-y-2">
-                <Label>Job *</Label>
-                <Select value={jobId} onValueChange={setJobId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select job" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {jobs.map((job) => (
-                      <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Draw *</Label>
-              <Select value={drawId} onValueChange={setDrawId} disabled={!jobId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select draw" />
-                </SelectTrigger>
-                <SelectContent>
-                  {draws.map((draw) => (
-                    <SelectItem key={draw.id} value={draw.id}>Draw #{draw.draw_number}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
+    <BaseFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? 'Edit Lien Release' : 'Request Lien Release'}
+      size="md"
+      onSubmit={handleSubmit}
+      submitLabel={isEditing ? 'Save Changes' : 'Request Release'}
+      isSubmitting={isPending}
+      submitDisabled={!jobId || !drawId || !vendorId || !amount}
+    >
+      <div className="grid grid-cols-2 gap-4">
+        {showJobSelector && (
           <div className="space-y-2">
-            <Label>Vendor *</Label>
-            <Select value={vendorId} onValueChange={setVendorId}>
+            <Label>Job *</Label>
+            <Select value={jobId} onValueChange={setJobId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select vendor" />
+                <SelectValue placeholder="Select job" />
               </SelectTrigger>
               <SelectContent>
-                {vendors.map((vendor) => (
-                  <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>
+                {jobs.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+        )}
+        <div className="space-y-2">
+          <Label>Draw *</Label>
+          <Select value={drawId} onValueChange={setDrawId} disabled={!jobId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select draw" />
+            </SelectTrigger>
+            <SelectContent>
+              {draws.map((draw) => (
+                <SelectItem key={draw.id} value={draw.id}>Draw #{draw.draw_number}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Release Type *</Label>
-              <Select value={releaseType} onValueChange={setReleaseType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {releaseTypeOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {releaseStatusOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+      <div className="space-y-2">
+        <Label>Vendor *</Label>
+        <Select value={vendorId} onValueChange={setVendorId}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select vendor" />
+          </SelectTrigger>
+          <SelectContent>
+            {vendors.map((vendor) => (
+              <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount *</Label>
-              <Input
-                id="amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="throughDate">Through Date</Label>
-              <Input
-                id="throughDate"
-                type="date"
-                value={throughDate}
-                onChange={(e) => setThroughDate(e.target.value)}
-              />
-            </div>
-          </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Release Type *</Label>
+          <Select value={releaseType} onValueChange={setReleaseType}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {releaseTypeOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Status</Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {releaseStatusOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Additional notes..."
-              rows={2}
-            />
-          </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="amount">Amount *</Label>
+          <Input
+            id="amount"
+            type="number"
+            min="0"
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="throughDate">Through Date</Label>
+          <Input
+            id="throughDate"
+            type="date"
+            value={throughDate}
+            onChange={(e) => setThroughDate(e.target.value)}
+          />
+        </div>
+      </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isPending || !jobId || !drawId || !vendorId || !amount}>
-              {isPending ? 'Saving...' : isEditing ? 'Save Changes' : 'Request Release'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <div className="space-y-2">
+        <Label htmlFor="notes">Notes</Label>
+        <Textarea
+          id="notes"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Additional notes..."
+          rows={2}
+        />
+      </div>
+    </BaseFormDialog>
   );
 }

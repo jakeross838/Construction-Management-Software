@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { BaseFormDialog } from '@/components/ui/base-form-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -53,8 +52,7 @@ export function VendorFormDialog({ open, onOpenChange, vendor }: VendorFormDialo
     }
   }, [vendor, open]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!name.trim()) return;
 
     const data = {
@@ -85,115 +83,107 @@ export function VendorFormDialog({ open, onOpenChange, vendor }: VendorFormDialo
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px]">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Vendor' : 'Add Vendor'}</DialogTitle>
-        </DialogHeader>
+    <BaseFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? 'Edit Vendor' : 'Add Vendor'}
+      size="form"
+      onSubmit={handleSubmit}
+      submitLabel={isEditing ? 'Save Changes' : 'Add Vendor'}
+      isSubmitting={isPending}
+      submitDisabled={!name.trim()}
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="name">Company Name *</Label>
+          <Input
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="ABC Construction"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="contactName">Contact Name</Label>
+          <Input
+            id="contactName"
+            value={contactName}
+            onChange={(e) => setContactName(e.target.value)}
+            placeholder="John Smith"
+          />
+        </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Company Name *</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="ABC Construction"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="contactName">Contact Name</Label>
-              <Input
-                id="contactName"
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-                placeholder="John Smith"
-              />
-            </div>
-          </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="contact@vendor.com"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="phone">Phone</Label>
+          <Input
+            id="phone"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(555) 123-4567"
+          />
+        </div>
+      </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="contact@vendor.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="(555) 123-4567"
-              />
-            </div>
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="address">Address</Label>
+        <Textarea
+          id="address"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="123 Main St, City, State 12345"
+          rows={2}
+        />
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="address">Address</Label>
-            <Textarea
-              id="address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="123 Main St, City, State 12345"
-              rows={2}
-            />
-          </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="taxId">Tax ID / EIN</Label>
+          <Input
+            id="taxId"
+            value={taxId}
+            onChange={(e) => setTaxId(e.target.value)}
+            placeholder="XX-XXXXXXX"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="insuranceExpiry">Insurance Expiry</Label>
+          <Input
+            id="insuranceExpiry"
+            type="date"
+            value={insuranceExpiry}
+            onChange={(e) => setInsuranceExpiry(e.target.value)}
+          />
+        </div>
+      </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="taxId">Tax ID / EIN</Label>
-              <Input
-                id="taxId"
-                value={taxId}
-                onChange={(e) => setTaxId(e.target.value)}
-                placeholder="XX-XXXXXXX"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="insuranceExpiry">Insurance Expiry</Label>
-              <Input
-                id="insuranceExpiry"
-                type="date"
-                value={insuranceExpiry}
-                onChange={(e) => setInsuranceExpiry(e.target.value)}
-              />
-            </div>
-          </div>
+      <div className="flex items-center space-x-2">
+        <Switch id="w9" checked={w9OnFile} onCheckedChange={setW9OnFile} />
+        <Label htmlFor="w9">W-9 on File</Label>
+      </div>
 
-          <div className="flex items-center space-x-2">
-            <Switch id="w9" checked={w9OnFile} onCheckedChange={setW9OnFile} />
-            <Label htmlFor="w9">W-9 on File</Label>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Additional notes about this vendor..."
-              rows={2}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isPending || !name.trim()}>
-              {isPending ? 'Saving...' : isEditing ? 'Save Changes' : 'Add Vendor'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <div className="space-y-2">
+        <Label htmlFor="notes">Notes</Label>
+        <Textarea
+          id="notes"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Additional notes about this vendor..."
+          rows={2}
+        />
+      </div>
+    </BaseFormDialog>
   );
 }

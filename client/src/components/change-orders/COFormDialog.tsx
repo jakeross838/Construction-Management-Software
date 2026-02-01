@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash2, Info } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useDBJobs, usePurchaseOrders, useCostCodes } from '@/hooks/useFinancialData';
 import { useCreateChangeOrder } from '@/hooks/useChangeOrders';
@@ -196,15 +197,16 @@ export function COFormDialog({ open, onOpenChange, selectedJobId }: COFormDialog
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>New Budgetary Change Order</DialogTitle>
           <p className="text-sm text-muted-foreground">
             This is a budgetary estimate. Actual costs will be reconciled as invoices are received against this change order.
           </p>
         </DialogHeader>
-        
-        <div className="space-y-6 py-4">
+
+        <ScrollArea className="flex-1 -mx-6 px-6">
+          <div className="py-4 space-y-6">
           {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
             {showJobSelector && (
@@ -530,14 +532,15 @@ export function COFormDialog({ open, onOpenChange, selectedJobId }: COFormDialog
               <li>Client signature constitutes acceptance of all terms, conditions, and schedule impacts.</li>
             </ul>
           </div>
-        </div>
-        
-        <DialogFooter>
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="flex-shrink-0 gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleSubmit} 
+          <Button
+            onClick={handleSubmit}
             disabled={createCO.isPending || !jobId || !description.trim() || !allHaveCostCodes}
             title={!allHaveCostCodes ? 'All line items must have cost codes assigned' : ''}
           >

@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash2, Building2, Upload, X, FileText, Loader2, Clock, Ruler, Shield, User, Calendar } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useJobs, useVendors, useCostCodes, useCreatePurchaseOrder, useUpdatePurchaseOrder, useUploadPOAttachment, PurchaseOrder } from '@/hooks/useFinancialData';
 import { useScopeCategories, calculateEstimatedDays, getUnitLabel } from '@/hooks/useScopeTracking';
 import { useToast } from '@/hooks/use-toast';
@@ -335,7 +336,7 @@ export function POFormDialog({ open, onOpenChange, selectedJobId, po }: POFormDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Purchase Order' : 'Create Purchase Order'}</DialogTitle>
           <DialogDescription>
@@ -356,7 +357,9 @@ export function POFormDialog({ open, onOpenChange, selectedJobId, po }: POFormDi
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <ScrollArea className="flex-1 -mx-6 px-6">
+              <div className="py-4 space-y-6">
             {/* PO Details */}
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
@@ -881,8 +884,10 @@ export function POFormDialog({ open, onOpenChange, selectedJobId, po }: POFormDi
                 </div>
               )}
             </div>
+              </div>
+            </ScrollArea>
 
-            <DialogFooter>
+            <DialogFooter className="flex-shrink-0 gap-2 sm:gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
