@@ -13,6 +13,7 @@ const { broadcastInvoiceUpdate } = require('../core/realtime');
 const { logPOActivity } = require('../services/activity-logger');
 const { validate, schemas } = require('../middleware/validate');
 const coSync = require('../services/co-sync');
+const standards = require('../services/standards');
 
 // Multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -394,6 +395,38 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
 router.post('/', validate(schemas.poCreate), async (req, res) => {
   try {
     const { line_items, ...poData } = req.body;
+
+    // Auto-generate PO number if not provided
+    if (!poData.po_number) {
+      if (poData.job_id) {
+        // Get job name for PO number format
+        const { data: job } = await supabase
+          .from('v2_jobs')
+          .select('name')
+          .eq('id', poData.job_id)
+          .single();
+
+        // Count existing POs for this job to get next sequence
+        const { count } = await supabase
+          .from('v2_purchase_orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('job_id', poData.job_id);
+
+        const sequence = (count || 0) + 1;
+        poData.po_number = standards.generatePONumber(job?.name || '', sequence);
+      } else {
+        // Draft without job - generate temporary number
+        const timestamp = Date.now().toString(36).toUpperCase();
+        poData.po_number = `DRAFT-${timestamp}`;
+      }
+    }
+
+    // Calculate total_amount from line items
+    if (line_items && line_items.length > 0) {
+      const total = line_items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+      poData.total_amount = total;
+      poData.original_amount = total;
+    }
 
     // Validate PO-CO linkage if job_change_order_id is provided
     if (poData.job_change_order_id) {
