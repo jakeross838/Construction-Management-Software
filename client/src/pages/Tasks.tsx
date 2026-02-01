@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { jobs } from '@/data/mockData';
 import { useJob } from '@/contexts/JobContext';
+import { CompactStats } from '@/components/ui/compact-stats';
 
 type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 type TaskStatus = 'todo' | 'in_progress' | 'completed';
@@ -118,76 +119,38 @@ const Tasks = () => {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card className="stat-card border-l-4 border-l-gray-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">To Do</p>
-                  <p className="text-2xl font-semibold">{stats.todo}</p>
-                </div>
-                <CheckSquare className="h-8 w-8 text-gray-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="stat-card border-l-4 border-l-blue-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">In Progress</p>
-                  <p className="text-2xl font-semibold">{stats.inProgress}</p>
-                </div>
-                <Clock className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="stat-card border-l-4 border-l-red-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Overdue</p>
-                  <p className="text-2xl font-semibold">{stats.overdue}</p>
-                </div>
-                <AlertCircle className="h-8 w-8 text-red-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="stat-card border-l-4 border-l-green-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Completed</p>
-                  <p className="text-2xl font-semibold">{stats.completed}</p>
-                </div>
-                <CheckSquare className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
+        {/* Filters & Compact Stats */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="todo">To Do</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="todo">To Do</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
+          <CompactStats
+            stats={[
+              { label: 'To Do', value: stats.todo, icon: CheckSquare, color: 'default' },
+              { label: 'In Progress', value: stats.inProgress, icon: Clock, color: 'blue' },
+              { label: 'Overdue', value: stats.overdue, icon: AlertCircle, color: 'red' },
+              { label: 'Completed', value: stats.completed, icon: CheckSquare, color: 'green' },
+            ]}
+          />
         </div>
 
         {/* Kanban Board */}

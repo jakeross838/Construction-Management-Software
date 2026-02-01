@@ -24,6 +24,7 @@ import {
 import { LeadFormDialog } from '@/components/leads/LeadFormDialog';
 import { LeadDetailDialog } from '@/components/leads/LeadDetailDialog';
 import { LeadKanbanBoard } from '@/components/leads/LeadKanbanBoard';
+import { CompactStats } from '@/components/ui/compact-stats';
 import { toast } from 'sonner';
 import { LeadStage } from '@/types/job';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -183,62 +184,24 @@ const Leads = () => {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card className="border-l-4 border-l-primary">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Leads</p>
-                  <p className="text-2xl font-semibold">{stats.total}</p>
-                </div>
-                <Target className="h-8 w-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-green-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Pipeline Value</p>
-                  <p className="text-2xl font-semibold">{formatCurrency(stats.totalValue)}</p>
-                </div>
-                <DollarSign className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-blue-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">New This Week</p>
-                  <p className="text-2xl font-semibold">{stats.newThisWeek}</p>
-                </div>
-                <Clock className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-amber-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Win Rate</p>
-                  <p className="text-2xl font-semibold">{stats.conversionRate}%</p>
-                </div>
-                <TrendingUp className="h-8 w-8 text-amber-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search leads..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+        {/* Filters & Compact Stats */}
+        <div className="flex flex-col gap-3">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search leads..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <CompactStats
+            stats={[
+              { label: 'Total', value: stats.total, icon: Target, color: 'default' },
+              { label: 'Pipeline', value: formatCurrency(stats.totalValue), icon: DollarSign, color: 'green' },
+              { label: 'New This Week', value: stats.newThisWeek, icon: Clock, color: 'blue' },
+              { label: 'Win Rate', value: `${stats.conversionRate}%`, icon: TrendingUp, color: 'amber' },
+            ]}
           />
         </div>
 

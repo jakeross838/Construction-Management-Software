@@ -47,6 +47,7 @@ import {
 import { BidPackageFormDialog } from '@/components/bids/BidPackageFormDialog';
 import { BidPackageDetailDialog } from '@/components/bids/BidPackageDetailDialog';
 import { BidAnalyticsDashboard } from '@/components/bids/BidAnalyticsDashboard';
+import { CompactStats } from '@/components/ui/compact-stats';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -152,96 +153,54 @@ const Bids = () => {
             </TabsList>
 
             <TabsContent value="list" className="mt-4 space-y-4">
-          {/* Stats */}
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card className="stat-card border-l-4 border-l-blue-500">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Active Packages</p>
-                    <p className="text-2xl font-semibold">{stats.active}</p>
-                  </div>
-                  <Package className="h-8 w-8 text-blue-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="stat-card border-l-4 border-l-green-500">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Awarded</p>
-                    <p className="text-2xl font-semibold">{stats.awarded}</p>
-                  </div>
-                  <Award className="h-8 w-8 text-green-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="stat-card border-l-4 border-l-amber-500">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Due This Week</p>
-                    <p className="text-2xl font-semibold">{stats.dueSoon}</p>
-                  </div>
-                  <Clock className="h-8 w-8 text-amber-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="stat-card border-l-4 border-l-purple-500">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Bids Received</p>
-                    <p className="text-2xl font-semibold">{stats.totalBids}</p>
-                  </div>
-                  <DollarSign className="h-8 w-8 text-purple-500" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Filters */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search packages..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                <Select value={tradeFilter} onValueChange={setTradeFilter}>
-                  <SelectTrigger className="w-[160px]">
-                    <SelectValue placeholder="Trade" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Trades</SelectItem>
-                    {TRADE_CATEGORIES.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    {BID_PACKAGE_STATUS_OPTIONS.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          {/* Filters & Compact Stats */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search packages..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
               </div>
-            </CardContent>
-          </Card>
+              <Select value={tradeFilter} onValueChange={setTradeFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Trade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Trades</SelectItem>
+                  {TRADE_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  {BID_PACKAGE_STATUS_OPTIONS.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <CompactStats
+              stats={[
+                { label: 'Active', value: stats.active, icon: Package, color: 'blue' },
+                { label: 'Awarded', value: stats.awarded, icon: Award, color: 'green' },
+                { label: 'Due This Week', value: stats.dueSoon, icon: Clock, color: 'amber' },
+                { label: 'Bids Received', value: stats.totalBids, icon: DollarSign, color: 'purple' },
+              ]}
+            />
+          </div>
 
           {/* Packages Table */}
           <Card>

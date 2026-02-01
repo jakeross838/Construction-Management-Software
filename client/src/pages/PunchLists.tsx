@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, Clock, CheckCircle, ListTodo } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
+import { CompactStats } from '@/components/ui/compact-stats';
 
 const punchItems = [
   { id: '1', jobId: '4', room: 'Kitchen', description: 'Touch up paint on cabinet frames', priority: 'low', status: 'pending', assignee: 'Carlos Rodriguez' },
@@ -50,14 +51,18 @@ const PunchLists = () => {
           </div>
           <Button className="gap-2"><Plus className="h-4 w-4" />Add Item</Button>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="stat-card border-l-4 border-l-amber-500"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Pending</p><p className="text-2xl font-semibold">{stats.pending}</p></CardContent></Card>
-          <Card className="stat-card border-l-4 border-l-green-500"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Completed</p><p className="text-2xl font-semibold">{stats.completed}</p></CardContent></Card>
-          <Card className="stat-card border-l-4 border-l-blue-500"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Total Items</p><p className="text-2xl font-semibold">{stats.total}</p></CardContent></Card>
-        </div>
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9" />
+        <div className="flex flex-col gap-3">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9" />
+          </div>
+          <CompactStats
+            stats={[
+              { label: 'Pending', value: stats.pending, icon: Clock, color: 'amber' },
+              { label: 'Completed', value: stats.completed, icon: CheckCircle, color: 'green' },
+              { label: 'Total', value: stats.total, icon: ListTodo, color: 'default' },
+            ]}
+          />
         </div>
         <div className="space-y-2">
           {filteredItems.map(item => (
