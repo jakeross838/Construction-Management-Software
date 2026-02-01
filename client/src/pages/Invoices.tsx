@@ -33,6 +33,7 @@ import { useJob } from '@/contexts/JobContext';
 import { useInvoices, useVendors, useJobs, usePurchaseOrders, useUpdateInvoice, useCostCodes } from '@/hooks/useFinancialData';
 import { formatCurrency, formatDate, invoiceStatusConfig } from '@/types/financial';
 import { UnifiedAIUpload } from '@/components/ai/UnifiedAIUpload';
+import { CompactStats } from '@/components/ui/compact-stats';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 import { ReviewFlagsList } from '@/components/invoices/ReviewFlagsBadges';
 import { AIConfidenceBadge } from '@/components/invoices/AIConfidenceBadge';
@@ -84,11 +85,12 @@ const Invoices = () => {
     });
   }, [invoices, vendors, jobs, searchQuery, statusFilter, selectedJobId]);
 
+  // Calculate stats from filtered data (respects job filter)
   const stats = useMemo(() => {
-    const needsReview = invoices.filter(i => i.status === 'needs_review');
-    const needsApproval = invoices.filter(i => i.status === 'needs_approval');
-    const approved = invoices.filter(i => i.status === 'approved');
-    const inDraw = invoices.filter(i => i.status === 'in_draw');
+    const needsReview = filteredInvoices.filter(i => i.status === 'needs_review');
+    const needsApproval = filteredInvoices.filter(i => i.status === 'needs_approval');
+    const approved = filteredInvoices.filter(i => i.status === 'approved');
+    const inDraw = filteredInvoices.filter(i => i.status === 'in_draw');
 
     // Count both needs_review and needs_approval as "needs attention"
     const needsAttention = [...needsReview, ...needsApproval];
@@ -98,9 +100,9 @@ const Invoices = () => {
       needsApprovalAmount: needsAttention.reduce((sum, i) => sum + i.amount, 0),
       approvedAmount: approved.reduce((sum, i) => sum + i.amount, 0),
       inDrawAmount: inDraw.reduce((sum, i) => sum + i.amount, 0),
-      totalThisMonth: invoices.reduce((sum, i) => sum + i.amount, 0),
+      total: filteredInvoices.length,
     };
-  }, [invoices]);
+  }, [filteredInvoices]);
 
   const getVendorName = (vendorId: string | null) => {
     if (!vendorId) return '—';
@@ -178,88 +180,46 @@ const Invoices = () => {
           />
         </div>
 
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card className="border-l-4 border-l-amber-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Needs Approval</p>
-                  <p className="text-2xl font-semibold">{stats.needsApprovalCount}</p>
-                </div>
-                <AlertCircle className="h-8 w-8 text-amber-500" />
+        {/* Filters & Compact Stats */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="invoice-search"
+                  name="invoice-search"
+                  placeholder="Search invoices..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
               </div>
-              <p className="text-sm text-muted-foreground mt-1">{formatCurrency(stats.needsApprovalAmount)}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-green-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Approved</p>
-                  <p className="text-2xl font-semibold">{formatCurrency(stats.approvedAmount)}</p>
-                </div>
-                <CheckCircle className="h-8 w-8 text-green-500" />
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">Ready for draw</p>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-blue-500">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">In Draw</p>
-                  <p className="text-2xl font-semibold">{formatCurrency(stats.inDrawAmount)}</p>
-                </div>
-                <Clock className="h-8 w-8 text-blue-500" />
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">Awaiting funding</p>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-primary">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total This Month</p>
-                  <p className="text-2xl font-semibold">{formatCurrency(stats.totalThisMonth)}</p>
-                </div>
-                <FileText className="h-8 w-8 text-primary" />
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">{invoices.length} invoices</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters & Bulk Actions */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="invoice-search"
-                name="invoice-search"
-                placeholder="Search invoices..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="needs_review">Needs Review</SelectItem>
+                  <SelectItem value="needs_approval">Needs Approval</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="in_draw">In Draw</SelectItem>
+                  <SelectItem value="billed">Billed</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="denied">Denied</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="needs_review">Needs Review</SelectItem>
-                <SelectItem value="needs_approval">Needs Approval</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="in_draw">In Draw</SelectItem>
-                <SelectItem value="billed">Billed</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="denied">Denied</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
+          <CompactStats
+            stats={[
+              { label: 'Needs Approval', value: stats.needsApprovalCount, subValue: formatCurrency(stats.needsApprovalAmount), icon: AlertCircle, color: 'amber' },
+              { label: 'Approved', value: formatCurrency(stats.approvedAmount), icon: CheckCircle, color: 'green' },
+              { label: 'In Draw', value: formatCurrency(stats.inDrawAmount), icon: Clock, color: 'blue' },
+              { label: 'Total', value: stats.total, icon: FileText, color: 'default' },
+            ]}
+          />
         </div>
 
         {/* Bulk Actions Bar */}

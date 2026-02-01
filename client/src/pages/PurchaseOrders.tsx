@@ -10,11 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Plus, Sparkles } from 'lucide-react';
+import { Search, Plus, Sparkles, CheckCircle, Clock, ClipboardList, FileText } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
 import { usePurchaseOrders } from '@/hooks/useFinancialData';
-import { POStats } from '@/components/purchase-orders/POStats';
+import { CompactStats } from '@/components/ui/compact-stats';
 import { POTable } from '@/components/purchase-orders/POTable';
+import { formatCurrency } from '@/types/financial';
 import { PODetailPanel } from '@/components/purchase-orders/PODetailPanel';
 import { POFormDialog } from '@/components/purchase-orders/POFormDialog';
 import { POUploadDialog } from '@/components/purchase-orders/POUploadDialog';
@@ -67,6 +68,15 @@ const PurchaseOrders = () => {
     return filtered;
   }, [purchaseOrders, searchQuery, selectedJobId, selectedJobName]);
 
+  // Calculate stats from filtered data
+  const stats = useMemo(() => {
+    const open = filteredPOs.filter(p => p.status === 'open');
+    const pendingApproval = filteredPOs.filter(p => p.approval_status === 'pending');
+    const totalCommitted = filteredPOs.reduce((sum, p) => sum + (p.current_amount || p.original_amount), 0);
+    const totalInvoiced = filteredPOs.reduce((sum, p) => sum + (p.invoiced_amount || 0), 0);
+    return { open: open.length, pendingApproval: pendingApproval.length, totalCommitted, totalInvoiced };
+  }, [filteredPOs]);
+
   const handleSelectPO = (po: PurchaseOrder) => {
     setSelectedPOId(po.id);
   };
@@ -92,39 +102,40 @@ const PurchaseOrders = () => {
           </div>
         </div>
 
-        {/* Stats */}
-        {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-4">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-24 w-full" />
-            ))}
+        {/* Filters & Compact Stats */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search POs..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="closed">Closed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        ) : (
-          <POStats purchaseOrders={purchaseOrders} />
-        )}
-
-        {/* Filters */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search POs..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
+          {!isLoading && (
+            <CompactStats
+              stats={[
+                { label: 'Open', value: stats.open, icon: CheckCircle, color: 'green' },
+                { label: 'Pending Approval', value: stats.pendingApproval, icon: Clock, color: 'amber' },
+                { label: 'Committed', value: formatCurrency(stats.totalCommitted), icon: ClipboardList, color: 'blue' },
+                { label: 'Invoiced', value: formatCurrency(stats.totalInvoiced), icon: FileText, color: 'default' },
+              ]}
             />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+          )}
         </div>
 
         {/* Bulk Actions Bar */}

@@ -41,6 +41,7 @@ import {
 } from '@/hooks/useInspections';
 import { InspectionFormDialog } from '@/components/inspections/InspectionFormDialog';
 import { InspectionDetailDialog } from '@/components/inspections/InspectionDetailDialog';
+import { CompactStats } from '@/components/ui/compact-stats';
 
 export default function Inspections() {
   const { selectedJobId } = useJob();
@@ -155,88 +156,54 @@ export default function Inspections() {
           </Button>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Total</span>
-              </div>
-              <div className="text-2xl font-bold mt-1">{stats.total}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-blue-500" />
-                <span className="text-sm text-muted-foreground">Scheduled</span>
-              </div>
-              <div className="text-2xl font-bold mt-1">{stats.scheduled}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-muted-foreground">Passed</span>
-              </div>
-              <div className="text-2xl font-bold mt-1">{stats.passed}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <XCircle className="h-4 w-4 text-red-500" />
-                <span className="text-sm text-muted-foreground">Failed</span>
-              </div>
-              <div className="text-2xl font-bold mt-1">{stats.failed}</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters */}
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex flex-wrap gap-4">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search inspections..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <Select value={jobFilter} onValueChange={setJobFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="All Jobs" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Jobs</SelectItem>
-                  {jobs?.map((job) => (
-                    <SelectItem key={job.id} value={job.id}>
-                      {job.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={resultFilter} onValueChange={setResultFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="All Results" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Results</SelectItem>
-                  {(Object.keys(inspectionResultConfig) as InspectionResult[]).map((result) => (
-                    <SelectItem key={result} value={result}>
-                      {inspectionResultConfig[result].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        {/* Filters & Compact Stats */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-4">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search inspections..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
             </div>
-          </CardContent>
-        </Card>
+            <Select value={jobFilter} onValueChange={setJobFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="All Jobs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Jobs</SelectItem>
+                {jobs?.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>
+                    {job.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={resultFilter} onValueChange={setResultFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="All Results" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Results</SelectItem>
+                {(Object.keys(inspectionResultConfig) as InspectionResult[]).map((result) => (
+                  <SelectItem key={result} value={result}>
+                    {inspectionResultConfig[result].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <CompactStats
+            stats={[
+              { label: 'Scheduled', value: stats.scheduled, icon: Clock, color: 'blue' },
+              { label: 'Passed', value: stats.passed, icon: CheckCircle, color: 'green' },
+              { label: 'Failed', value: stats.failed, icon: XCircle, color: 'red' },
+              { label: 'Total', value: stats.total, icon: ClipboardCheck, color: 'default' },
+            ]}
+          />
+        </div>
 
         {/* Inspection Table */}
         <Card>

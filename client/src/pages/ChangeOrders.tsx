@@ -34,6 +34,7 @@ import { useJob } from '@/contexts/JobContext';
 import { useChangeOrders } from '@/hooks/useChangeOrders';
 import { COFormDialog } from '@/components/change-orders/COFormDialog';
 import { CODetailPanel } from '@/components/change-orders/CODetailPanel';
+import { CompactStats } from '@/components/ui/compact-stats';
 import { formatCurrency, formatDate, coStatusConfig, coTypeConfig, COStatus, COType } from '@/types/financial';
 import { cn } from '@/lib/utils';
 
@@ -88,16 +89,18 @@ const ChangeOrders = () => {
     return filtered;
   }, [changeOrders, searchQuery, selectedJobId, selectedJobName]);
 
+  // Calculate stats from filtered data (respects job filter)
   const stats = useMemo(() => {
-    const pending = changeOrders.filter(co => co.status === 'pending');
-    const approved = changeOrders.filter(co => co.status === 'approved');
+    const pending = filteredCOs.filter(co => co.status === 'pending');
+    const approved = filteredCOs.filter(co => co.status === 'approved');
     return {
       pending: pending.length,
       approved: approved.length,
       pendingValue: pending.reduce((sum, co) => sum + (co.total_amount || 0), 0),
       approvedValue: approved.reduce((sum, co) => sum + (co.total_amount || 0), 0),
+      total: filteredCOs.length,
     };
-  }, [changeOrders]);
+  }, [filteredCOs]);
 
   return (
     <AppLayout>
@@ -114,85 +117,40 @@ const ChangeOrders = () => {
           </Button>
         </div>
 
-        {/* Stats */}
-        {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-4">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-24 w-full" />
-            ))}
+        {/* Filters & Compact Stats */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search change orders..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card className="border-l-4 border-l-amber-500">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pending Approval</p>
-                    <p className="text-2xl font-semibold">{stats.pending}</p>
-                  </div>
-                  <Clock className="h-8 w-8 text-amber-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-l-4 border-l-purple-500">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pending Value</p>
-                    <p className="text-2xl font-semibold">{formatCurrency(stats.pendingValue)}</p>
-                  </div>
-                  <AlertTriangle className="h-8 w-8 text-purple-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-l-4 border-l-green-500">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Approved</p>
-                    <p className="text-2xl font-semibold">{stats.approved}</p>
-                  </div>
-                  <CheckCircle2 className="h-8 w-8 text-green-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-l-4 border-l-blue-500">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Approved Value</p>
-                    <p className="text-2xl font-semibold">{formatCurrency(stats.approvedValue)}</p>
-                  </div>
-                  <DollarSign className="h-8 w-8 text-blue-500" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search change orders..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
+          {!isLoading && (
+            <CompactStats
+              stats={[
+                { label: 'Pending', value: stats.pending, subValue: formatCurrency(stats.pendingValue), icon: Clock, color: 'amber' },
+                { label: 'Approved', value: stats.approved, subValue: formatCurrency(stats.approvedValue), icon: CheckCircle2, color: 'green' },
+                { label: 'Total', value: stats.total, icon: FileEdit, color: 'default' },
+              ]}
             />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-            </SelectContent>
-          </Select>
+          )}
         </div>
 
         {/* Change Orders Table */}

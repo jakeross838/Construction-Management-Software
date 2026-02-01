@@ -9,10 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, FileText, Clock, CheckCircle, Briefcase } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
 import { useDraws } from '@/hooks/useFinancialData';
-import { DrawStats } from '@/components/draws/DrawStats';
+import { formatCurrency } from '@/types/financial';
+import { CompactStats } from '@/components/ui/compact-stats';
 import { DrawTable } from '@/components/draws/DrawTable';
 import { DrawDetailPanel } from '@/components/draws/DrawDetailPanel';
 import { DrawFormDialog } from '@/components/draws/DrawFormDialog';
@@ -30,15 +31,29 @@ const Draws = () => {
 
   const filteredDraws = useMemo(() => {
     return draws.filter(draw => {
-      const matchesSearch = !searchQuery.trim() || 
+      const matchesSearch = !searchQuery.trim() ||
         (draw.job_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         `Draw ${draw.draw_number}`.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       const matchesStatus = statusFilter === 'all' || draw.status === statusFilter;
-      
+
       return matchesSearch && matchesStatus;
     });
   }, [draws, searchQuery, statusFilter]);
+
+  // Calculate stats from filtered data
+  const stats = useMemo(() => {
+    const drafts = filteredDraws.filter(d => d.status === 'draft');
+    const submitted = filteredDraws.filter(d => d.status === 'submitted');
+    const funded = filteredDraws.filter(d => d.status === 'funded');
+    return {
+      drafts: drafts.length,
+      draftAmount: drafts.reduce((sum, d) => sum + (d.current_payment_due || 0), 0),
+      submitted: submitted.length,
+      submittedAmount: submitted.reduce((sum, d) => sum + (d.current_payment_due || 0), 0),
+      fundedAmount: funded.reduce((sum, d) => sum + (d.funded_amount || 0), 0),
+    };
+  }, [filteredDraws]);
 
   const handleSelectDraw = (draw: Draw) => {
     setSelectedDrawId(draw.id);
@@ -62,33 +77,39 @@ const Draws = () => {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="shrink-0">
-          <DrawStats draws={draws} />
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center shrink-0">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search draws..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
+        {/* Filters & Compact Stats */}
+        <div className="flex flex-col gap-3 shrink-0">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search draws..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="submitted">Submitted</SelectItem>
+                <SelectItem value="funded">Funded</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="submitted">Submitted</SelectItem>
-              <SelectItem value="funded">Funded</SelectItem>
-            </SelectContent>
-          </Select>
+          {!isLoading && (
+            <CompactStats
+              stats={[
+                { label: 'Draft', value: stats.drafts, subValue: formatCurrency(stats.draftAmount), icon: FileText, color: 'amber' },
+                { label: 'Submitted', value: stats.submitted, subValue: formatCurrency(stats.submittedAmount), icon: Clock, color: 'blue' },
+                { label: 'Funded', value: formatCurrency(stats.fundedAmount), icon: CheckCircle, color: 'green' },
+              ]}
+            />
+          )}
         </div>
 
         {/* Table */}

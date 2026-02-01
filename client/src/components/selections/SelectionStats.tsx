@@ -1,13 +1,12 @@
-import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  CheckCircle2, 
-  Clock, 
-  ShoppingCart, 
+import {
+  CheckCircle2,
+  Clock,
+  ShoppingCart,
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { CompactStats, StatItem } from '@/components/ui/compact-stats';
 
 interface SelectionStatsData {
   total: number;
@@ -35,13 +34,7 @@ const formatCurrency = (value: number) => {
 
 export function SelectionStats({ stats, isLoading }: SelectionStatsProps) {
   if (isLoading) {
-    return (
-      <div className="grid gap-4 md:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <Skeleton key={i} className="h-24 w-full" />
-        ))}
-      </div>
-    );
+    return <Skeleton className="h-8 w-96" />;
   }
 
   const data = stats || {
@@ -54,75 +47,34 @@ export function SelectionStats({ stats, isLoading }: SelectionStatsProps) {
     variance: 0,
   };
 
-  return (
-    <div className="grid gap-4 md:grid-cols-4">
-      <Card className="border-l-4 border-l-amber-500">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Pending Approval</p>
-              <p className="text-2xl font-semibold">{data.pending}</p>
-              <p className="text-xs text-muted-foreground">of {data.total} total</p>
-            </div>
-            <Clock className="h-8 w-8 text-amber-500" />
-          </div>
-        </CardContent>
-      </Card>
+  const statItems: StatItem[] = [
+    {
+      label: 'Pending',
+      value: data.pending,
+      subValue: `of ${data.total}`,
+      icon: Clock,
+      color: 'amber'
+    },
+    {
+      label: 'Approved',
+      value: data.approved,
+      subValue: data.total > 0 ? `${Math.round((data.approved / data.total) * 100)}%` : '0%',
+      icon: CheckCircle2,
+      color: 'green'
+    },
+    {
+      label: 'Ready to Order',
+      value: data.needsOrder,
+      icon: ShoppingCart,
+      color: 'blue'
+    },
+    {
+      label: 'Variance',
+      value: `${data.variance >= 0 ? '+' : ''}${formatCurrency(data.variance)}`,
+      icon: data.variance >= 0 ? TrendingUp : TrendingDown,
+      color: data.variance >= 0 ? 'green' : 'red'
+    },
+  ];
 
-      <Card className="border-l-4 border-l-green-500">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Approved</p>
-              <p className="text-2xl font-semibold">{data.approved}</p>
-              <p className="text-xs text-muted-foreground">
-                {data.total > 0 ? Math.round((data.approved / data.total) * 100) : 0}% complete
-              </p>
-            </div>
-            <CheckCircle2 className="h-8 w-8 text-green-500" />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-l-4 border-l-blue-500">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Ready to Order</p>
-              <p className="text-2xl font-semibold">{data.needsOrder}</p>
-              <p className="text-xs text-muted-foreground">approved, not ordered</p>
-            </div>
-            <ShoppingCart className="h-8 w-8 text-blue-500" />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className={cn(
-        "border-l-4",
-        data.variance >= 0 ? "border-l-green-500" : "border-l-red-500"
-      )}>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Budget Variance</p>
-              <p className={cn(
-                "text-2xl font-semibold",
-                data.variance >= 0 ? "text-green-600" : "text-red-600"
-              )}>
-                {data.variance >= 0 ? '+' : ''}{formatCurrency(data.variance)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {formatCurrency(data.totalActual)} of {formatCurrency(data.totalAllowance)}
-              </p>
-            </div>
-            {data.variance >= 0 ? (
-              <TrendingUp className="h-8 w-8 text-green-500" />
-            ) : (
-              <TrendingDown className="h-8 w-8 text-red-500" />
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <CompactStats stats={statItems} />;
 }

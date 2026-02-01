@@ -43,6 +43,7 @@ import {
 } from '@/hooks/useSubmittals';
 import { SubmittalFormDialog } from '@/components/submittals/SubmittalFormDialog';
 import { SubmittalDetailDialog } from '@/components/submittals/SubmittalDetailDialog';
+import { CompactStats } from '@/components/ui/compact-stats';
 
 export default function Submittals() {
   const { selectedJobId } = useJob();
@@ -133,117 +134,58 @@ export default function Submittals() {
           </Button>
         </div>
 
-        {/* Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Total</span>
-                </div>
-                <div className="text-2xl font-bold mt-1">{stats.total}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Edit className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm text-muted-foreground">Draft</span>
-                </div>
-                <div className="text-2xl font-bold mt-1">{stats.draft}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-yellow-500" />
-                  <span className="text-sm text-muted-foreground">Pending</span>
-                </div>
-                <div className="text-2xl font-bold mt-1">{stats.pending_review}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-muted-foreground">Approved</span>
-                </div>
-                <div className="text-2xl font-bold mt-1">{stats.approved}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-blue-500" />
-                  <span className="text-sm text-muted-foreground">As Noted</span>
-                </div>
-                <div className="text-2xl font-bold mt-1">{stats.approved_as_noted}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-orange-500" />
-                  <span className="text-sm text-muted-foreground">Revise</span>
-                </div>
-                <div className="text-2xl font-bold mt-1">{stats.revise_resubmit}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-red-500" />
-                  <span className="text-sm text-muted-foreground">Rejected</span>
-                </div>
-                <div className="text-2xl font-bold mt-1">{stats.rejected}</div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Filters */}
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex flex-wrap gap-4">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search submittals..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <Select value={jobFilter} onValueChange={setJobFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="All Jobs" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Jobs</SelectItem>
-                  {jobs?.map((job) => (
-                    <SelectItem key={job.id} value={job.id}>
-                      {job.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  {(Object.keys(submittalStatusConfig) as SubmittalStatus[]).map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {submittalStatusConfig[status].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        {/* Filters & Compact Stats */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-4">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search submittals..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
             </div>
-          </CardContent>
-        </Card>
+            <Select value={jobFilter} onValueChange={setJobFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="All Jobs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Jobs</SelectItem>
+                {jobs?.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>
+                    {job.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                {(Object.keys(submittalStatusConfig) as SubmittalStatus[]).map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {submittalStatusConfig[status].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {stats && (
+            <CompactStats
+              stats={[
+                { label: 'Draft', value: stats.draft, icon: Edit, color: 'default' },
+                { label: 'Pending', value: stats.pending_review, icon: Clock, color: 'amber' },
+                { label: 'Approved', value: stats.approved, icon: CheckCircle, color: 'green' },
+                { label: 'As Noted', value: stats.approved_as_noted, icon: CheckCircle, color: 'blue' },
+                { label: 'Revise', value: stats.revise_resubmit, icon: AlertTriangle, color: 'amber' },
+                { label: 'Rejected', value: stats.rejected, icon: XCircle, color: 'red' },
+              ]}
+            />
+          )}
+        </div>
 
         {/* Submittal Table */}
         <Card>
