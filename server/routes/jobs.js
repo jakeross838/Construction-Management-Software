@@ -15,56 +15,144 @@ const {
   createDetailedFixHint,
   formatAmount
 } = require('../matching/validation-errors');
+const { tables, getBuilderId } = require('../core/multi-tenant');
+const { triggerWebhooks } = require('./webhooks');
+const { cacheResponse } = require('../middleware/cache');
+const cache = require('../services/cache');
+
+// Cache TTL constants
+const JOBS_LIST_CACHE_TTL = 60; // 1 minute for jobs list (changes more frequently)
+
+/**
+ * Invalidate jobs cache
+ */
+async function invalidateJobsCache() {
+  await cache.invalidatePattern('response:/api/jobs*');
+}
 
 // Create a new job
 router.post('/', validate(schemas.jobCreate), asyncHandler(async (req, res) => {
   const { name, address, client_name, contract_amount, status } = req.body;
+  const builderId = getBuilderId(req);
+
+  const jobData = {
+    name,
+    address,
+    client_name,
+    contract_amount: contract_amount || null,
+    status: status || 'active'
+  };
+
+  // Add builder_id if authenticated
+  if (builderId) {
+    jobData.builder_id = builderId;
+  }
 
   const { data, error } = await supabase
     .from('v2_jobs')
-    .insert({
-      name,
-      address,
-      client_name,
-      contract_amount: contract_amount || null,
-      status: status || 'active'
-    })
+    .insert(jobData)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
 
   // Log activity
-  await supabase.from('v2_job_activity').insert({
+  const activityData = {
     job_id: data.id,
     action: 'created',
-    performed_by: req.body.created_by || 'User',
+    performed_by: req.body.created_by || req.user?.email || 'User',
     notes: `Job "${name}" created`
-  });
+  };
+  if (builderId) activityData.builder_id = builderId;
+
+  await supabase.from('v2_job_activity').insert(activityData);
+
+  // Trigger webhook for job creation
+  if (builderId) {
+    triggerWebhooks(builderId, 'job.created', data.id, {
+      id: data.id,
+      name: data.name,
+      address: data.address,
+      client_name: data.client_name,
+      contract_amount: data.contract_amount,
+      status: data.status,
+      created_at: data.created_at,
+    }).catch(() => {}); // Fire and forget
+  }
+
+  // Invalidate jobs cache
+  await invalidateJobsCache();
 
   res.status(201).json(data);
 }));
 
-// Get all jobs
-router.get('/', asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+// Get all jobs (with optional pagination, cached for 1 minute)
+router.get('/', cacheResponse(JOBS_LIST_CACHE_TTL), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const { page, limit, status } = req.query;
+  const usePagination = page !== undefined || limit !== undefined;
+
+  let query = supabase
     .from('v2_jobs')
-    .select('*')
+    .select('*', usePagination ? { count: 'exact' } : undefined)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
+  // Filter by builder if authenticated
+  if (builderId) {
+    query = query.eq('builder_id', builderId);
+  }
+
+  // Filter by status if provided
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  // Apply pagination if requested
+  if (usePagination) {
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+    const offset = (pageNum - 1) * limitNum;
+    query = query.range(offset, offset + limitNum - 1);
+
+    const { data, error, count } = await query;
+    if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+    const totalPages = Math.ceil((count || 0) / limitNum);
+    return res.json({
+      data: data || [],
+      meta: {
+        page: pageNum,
+        limit: limitNum,
+        total: count || 0,
+        totalPages,
+        hasMore: pageNum < totalPages
+      }
+    });
+  }
+
+  // Return plain array for backward compatibility
+  const { data, error } = await query;
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
   res.json(data);
 }));
 
 // Get single job
 router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  const builderId = getBuilderId(req);
+
+  let query = supabase
     .from('v2_jobs')
     .select('*')
     .eq('id', req.params.id)
-    .is('deleted_at', null)
-    .single();
+    .is('deleted_at', null);
+
+  // Filter by builder if authenticated
+  if (builderId) {
+    query = query.eq('builder_id', builderId);
+  }
+
+  const { data, error } = await query.single();
 
   if (error) {
     if (error.code === 'PGRST116') throw notFoundError('job', req.params.id);
@@ -76,15 +164,21 @@ router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
 // Update job (basic fields, not specs)
 router.patch('/:id', validate(schemas.jobUpdate), asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const allowedFields = ['name', 'address', 'client_name', 'contract_amount', 'status'];
 
   // Get current job for activity log
-  const { data: current } = await supabase
+  let currentQuery = supabase
     .from('v2_jobs')
     .select('*')
     .eq('id', id)
-    .is('deleted_at', null)
-    .single();
+    .is('deleted_at', null);
+
+  if (builderId) {
+    currentQuery = currentQuery.eq('builder_id', builderId);
+  }
+
+  const { data: current } = await currentQuery.single();
 
   if (!current) throw notFoundError('job', id);
 
@@ -104,60 +198,108 @@ router.patch('/:id', validate(schemas.jobUpdate), asyncHandler(async (req, res) 
 
   updates.updated_at = new Date().toISOString();
 
-  const { data, error } = await supabase
+  let updateQuery = supabase
     .from('v2_jobs')
     .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
+    .eq('id', id);
+
+  if (builderId) {
+    updateQuery = updateQuery.eq('builder_id', builderId);
+  }
+
+  const { data, error } = await updateQuery.select().single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
 
   // Log activity
   const action = updates.status ? 'status_changed' : 'updated';
-  await supabase.from('v2_job_activity').insert({
+  const activityData = {
     job_id: id,
     action,
-    performed_by: req.body.updated_by || 'User',
+    performed_by: req.body.updated_by || req.user?.email || 'User',
     field_changes: changes,
     previous_status: updates.status ? current.status : null,
     new_status: updates.status || null
-  });
+  };
+  if (builderId) activityData.builder_id = builderId;
+
+  await supabase.from('v2_job_activity').insert(activityData);
+
+  // Trigger webhook for job update
+  if (builderId) {
+    triggerWebhooks(builderId, 'job.updated', data.id, {
+      id: data.id,
+      name: data.name,
+      address: data.address,
+      client_name: data.client_name,
+      contract_amount: data.contract_amount,
+      status: data.status,
+      changes,
+      updated_at: data.updated_at,
+    }).catch(() => {});
+  }
+
+  // Invalidate jobs cache
+  await invalidateJobsCache();
 
   res.json(data);
 }));
 
-// Soft delete job
+// Soft delete job (invalidates cache)
 router.delete('/:id', validateRequest({
   params: { id: { type: 'uuid' } }
 }), asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   // Verify job exists
-  const { data: current } = await supabase
+  let currentQuery = supabase
     .from('v2_jobs')
     .select('id, name')
     .eq('id', id)
-    .is('deleted_at', null)
-    .single();
+    .is('deleted_at', null);
+
+  if (builderId) {
+    currentQuery = currentQuery.eq('builder_id', builderId);
+  }
+
+  const { data: current } = await currentQuery.single();
 
   if (!current) throw notFoundError('job', id);
 
   // Soft delete
-  const { error } = await supabase
+  let deleteQuery = supabase
     .from('v2_jobs')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id);
 
+  if (builderId) {
+    deleteQuery = deleteQuery.eq('builder_id', builderId);
+  }
+
+  const { error } = await deleteQuery;
+
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
 
   // Log activity
-  await supabase.from('v2_job_activity').insert({
+  const activityData = {
     job_id: id,
     action: 'deleted',
-    performed_by: req.body.deleted_by || 'User',
+    performed_by: req.body.deleted_by || req.user?.email || 'User',
     notes: `Job "${current.name}" archived`
-  });
+  };
+  if (builderId) activityData.builder_id = builderId;
+
+  await supabase.from('v2_job_activity').insert(activityData);
+
+  // Trigger webhook for job deletion
+  if (builderId) {
+    triggerWebhooks(builderId, 'job.deleted', id, {
+      id,
+      name: current.name,
+      deleted_at: new Date().toISOString(),
+    }).catch(() => {});
+  }
 
   res.json({ success: true, message: 'Job archived' });
 }));
@@ -2211,6 +2353,148 @@ router.post('/:id/sync-all', asyncHandler(async (req, res) => {
     changeOrders: coResult,
     schedule: { tasksUpdated: scheduleResults.length },
   });
+}));
+
+// ============================================================
+// JOB LOCATIONS (for QR code scanning) - Phase 5 Mobile
+// ============================================================
+
+/**
+ * GET /api/jobs/:id/locations
+ * Get all locations for a job
+ */
+router.get('/:id/locations', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: locations, error } = await supabase
+    .from('v2_job_locations')
+    .select('*')
+    .eq('job_id', id)
+    .order('floor', { ascending: true, nullsFirst: true })
+    .order('room', { ascending: true, nullsFirst: true })
+    .order('name', { ascending: true });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(locations || []);
+}));
+
+/**
+ * POST /api/jobs/:id/locations
+ * Create a new location with auto-generated QR code
+ */
+router.post('/:id/locations', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, description, floor, room, qr_code } = req.body;
+
+  if (!name) {
+    throw new AppError('VALIDATION_ERROR', 'Location name is required');
+  }
+
+  // Get job to create QR code
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id, name')
+    .eq('id', id)
+    .single();
+
+  if (jobError || !job) {
+    throw new AppError('NOT_FOUND', 'Job not found');
+  }
+
+  // Generate QR code if not provided
+  let finalQrCode = qr_code;
+  if (!finalQrCode) {
+    // Create a unique QR code based on job + location name
+    const jobPrefix = job.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 12).toUpperCase();
+    const locationPart = name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
+    const baseName = `${jobPrefix}-${locationPart}`;
+
+    // Check for uniqueness and add suffix if needed
+    let counter = 0;
+    finalQrCode = baseName;
+    let exists = true;
+
+    while (exists) {
+      const { data: existing } = await supabase
+        .from('v2_job_locations')
+        .select('id')
+        .eq('qr_code', finalQrCode)
+        .single();
+
+      if (!existing) {
+        exists = false;
+      } else {
+        counter++;
+        finalQrCode = `${baseName}-${counter}`;
+      }
+    }
+  }
+
+  const { data: location, error } = await supabase
+    .from('v2_job_locations')
+    .insert({
+      job_id: id,
+      name,
+      description: description || null,
+      floor: floor || null,
+      room: room || null,
+      qr_code: finalQrCode
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') { // Unique constraint violation
+      throw new AppError('VALIDATION_ERROR', 'QR code already exists');
+    }
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.status(201).json(location);
+}));
+
+/**
+ * PATCH /api/jobs/:jobId/locations/:locationId
+ * Update a location
+ */
+router.patch('/:jobId/locations/:locationId', asyncHandler(async (req, res) => {
+  const { locationId } = req.params;
+  const { name, description, floor, room } = req.body;
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (floor !== undefined) updates.floor = floor;
+  if (room !== undefined) updates.room = room;
+
+  const { data: location, error } = await supabase
+    .from('v2_job_locations')
+    .update(updates)
+    .eq('id', locationId)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(location);
+}));
+
+/**
+ * DELETE /api/jobs/:jobId/locations/:locationId
+ * Delete a location
+ */
+router.delete('/:jobId/locations/:locationId', asyncHandler(async (req, res) => {
+  const { locationId } = req.params;
+
+  const { error } = await supabase
+    .from('v2_job_locations')
+    .delete()
+    .eq('id', locationId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json({ success: true, message: 'Location deleted' });
 }));
 
 module.exports = router;

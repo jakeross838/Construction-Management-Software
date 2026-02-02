@@ -14,6 +14,8 @@ const { logPOActivity } = require('../services/activity-logger');
 const { validate, schemas } = require('../middleware/validate');
 const coSync = require('../services/co-sync');
 const standards = require('../services/standards');
+const { getBuilderId } = require('../core/multi-tenant');
+const { triggerWebhooks } = require('./webhooks');
 
 // Multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -49,10 +51,12 @@ function getPOWarnings(po, lineItems) {
 }
 
 
-// Get all purchase orders
+// Get all purchase orders (with optional pagination)
 router.get('/', validate(schemas.poQuery), async (req, res) => {
   try {
-    const { job_id, vendor_id, status } = req.query;
+    const { job_id, vendor_id, status, page, limit } = req.query;
+    const builderId = getBuilderId(req);
+    const usePagination = page !== undefined || limit !== undefined;
 
     let query = supabase
       .from('v2_purchase_orders')
@@ -64,14 +68,53 @@ router.get('/', validate(schemas.poQuery), async (req, res) => {
           id, description, amount, invoiced_amount,
           cost_code:v2_cost_codes(id, code, name)
         )
-      `)
+      `, usePagination ? { count: 'exact' } : undefined)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
+    // Filter by builder if authenticated
+    if (builderId) query = query.eq('builder_id', builderId);
     if (job_id) query = query.eq('job_id', job_id);
     if (vendor_id) query = query.eq('vendor_id', vendor_id);
     if (status) query = query.eq('status', status);
 
+    // Apply pagination if requested
+    if (usePagination) {
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+      const offset = (pageNum - 1) * limitNum;
+      query = query.range(offset, offset + limitNum - 1);
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      // Flatten vendor and job data for frontend compatibility
+      const flattened = (data || []).map(po => ({
+        ...po,
+        vendor_name: po.vendor?.name || null,
+        vendor_address: po.vendor?.address || null,
+        vendor_phone: po.vendor?.phone || null,
+        vendor_email: po.vendor?.email || null,
+        vendor_contact: po.vendor?.contact_name || null,
+        job_name: po.job?.name || null,
+        job_address: po.job?.address || null,
+        job_client: po.job?.client_name || null,
+      }));
+
+      const totalPages = Math.ceil((count || 0) / limitNum);
+      return res.json({
+        data: flattened,
+        meta: {
+          page: pageNum,
+          limit: limitNum,
+          total: count || 0,
+          totalPages,
+          hasMore: pageNum < totalPages
+        }
+      });
+    }
+
+    // Return plain array for backward compatibility
     const { data, error } = await query;
     if (error) throw error;
 
@@ -97,15 +140,16 @@ router.get('/', validate(schemas.poQuery), async (req, res) => {
 // Get PO statistics (must be before /:id route)
 router.get('/stats', asyncHandler(async (req, res) => {
   const { job_id } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_purchase_orders')
     .select('id, total_amount, status, status_detail, approval_status')
     .is('deleted_at', null);
 
-  if (job_id) {
-    query = query.eq('job_id', job_id);
-  }
+  // Filter by builder if authenticated
+  if (builderId) query = query.eq('builder_id', builderId);
+  if (job_id) query = query.eq('job_id', job_id);
 
   const { data: pos, error } = await query;
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -471,6 +515,20 @@ router.post('/', validate(schemas.poCreate), async (req, res) => {
     // Get warnings for frontend display
     const warnings = getPOWarnings(po, line_items);
 
+    // Trigger webhook for PO creation
+    const builderId = getBuilderId(req);
+    if (builderId) {
+      triggerWebhooks(builderId, 'po.created', po.id, {
+        id: po.id,
+        po_number: po.po_number,
+        job_id: po.job_id,
+        vendor_id: po.vendor_id,
+        total_amount: po.total_amount,
+        status: po.status,
+        created_at: po.created_at,
+      }).catch(() => {});
+    }
+
     res.json({ ...po, warnings });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -777,6 +835,20 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
   }
 
   broadcastInvoiceUpdate(id, 'po_approved', { po: updated });
+
+  // Trigger webhook for PO approval
+  const builderId = getBuilderId(req);
+  if (builderId) {
+    triggerWebhooks(builderId, 'po.approved', updated.id, {
+      id: updated.id,
+      po_number: updated.po_number,
+      job_id: updated.job_id,
+      vendor_id: updated.vendor_id,
+      total_amount: updated.total_amount,
+      approved_by: updated.approved_by,
+      approved_at: updated.approved_at,
+    }).catch(() => {});
+  }
 
   res.json({ success: true, po: updated });
 }));

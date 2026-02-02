@@ -10,6 +10,7 @@ const logger = require('../utils/logger');
 const { logActivity, checkSplitReconciliation, stampInvoice } = require('../services/invoice-helpers');
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../core/errors');
 const { validate, schemas } = require('../middleware/validate');
+const { getBuilderId } = require('../core/multi-tenant');
 // Storage and pdf-stamper functions removed - using unified stampInvoice instead
 
 // Helper: Log draw activity
@@ -170,7 +171,9 @@ async function validateDrawAllocations(drawId) {
 
 // List all draws
 router.get('/', asyncHandler(async (req, res) => {
-    const { data, error } = await supabase
+    const builderId = getBuilderId(req);
+
+    let query = supabase
       .from('v2_draws')
       .select(`
         *,
@@ -180,6 +183,11 @@ router.get('/', asyncHandler(async (req, res) => {
         )
       `)
       .order('created_at', { ascending: false });
+
+    // Filter by builder if authenticated
+    if (builderId) query = query.eq('builder_id', builderId);
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -208,12 +216,16 @@ router.get('/', asyncHandler(async (req, res) => {
 // Get single draw with G702/G703 data
 router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
+    const builderId = getBuilderId(req);
 
-    const { data: draw, error: drawError } = await supabase
+    let drawQuery = supabase
       .from('v2_draws')
       .select(`*, job:v2_jobs(id, name, address, client_name, contract_amount)`)
-      .eq('id', drawId)
-      .single();
+      .eq('id', drawId);
+
+    if (builderId) drawQuery = drawQuery.eq('builder_id', builderId);
+
+    const { data: draw, error: drawError } = await drawQuery.single();
 
     if (drawError) throw drawError;
     if (!draw) return res.status(404).json({ error: 'Draw not found' });

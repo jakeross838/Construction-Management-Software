@@ -9,10 +9,13 @@ const { supabase } = require('../../config');
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../core/errors');
 const { calculateVendorSimilarity } = require('../services/standards');
 const { validate, schemas } = require('../middleware/validate');
+const { getBuilderId } = require('../core/multi-tenant');
+const { triggerWebhooks } = require('./webhooks');
 
 // Check for similar vendors (used before create)
 router.get('/check-duplicate', asyncHandler(async (req, res) => {
   const { name, threshold = 75 } = req.query;
+  const builderId = getBuilderId(req);
 
   if (!name || name.trim().length < 2) {
     return res.json({ matches: [] });
@@ -21,10 +24,14 @@ router.get('/check-duplicate', asyncHandler(async (req, res) => {
   const searchName = name.trim();
 
   // Get all active vendors
-  const { data: vendors, error } = await supabase
+  let query = supabase
     .from('v2_vendors')
     .select('id, name, email, phone, trade')
     .is('deleted_at', null);
+
+  if (builderId) query = query.eq('builder_id', builderId);
+
+  const { data: vendors, error } = await query;
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
 
@@ -50,13 +57,18 @@ router.get('/check-duplicate', asyncHandler(async (req, res) => {
   });
 }));
 
-// Get all vendors
+// Get all vendors (with optional pagination)
 router.get('/', asyncHandler(async (req, res) => {
-  const { search, trade, include_deleted } = req.query;
+  const { search, trade, include_deleted, page, limit } = req.query;
+  const builderId = getBuilderId(req);
+  const usePagination = page !== undefined || limit !== undefined;
 
   let query = supabase
     .from('v2_vendors')
-    .select('*');
+    .select('*', usePagination ? { count: 'exact' } : undefined);
+
+  // Filter by builder if authenticated
+  if (builderId) query = query.eq('builder_id', builderId);
 
   // Filter deleted unless explicitly requested
   if (include_deleted !== 'true') {
@@ -73,8 +85,33 @@ router.get('/', asyncHandler(async (req, res) => {
     query = query.eq('trade', trade);
   }
 
-  const { data, error } = await query.order('name');
+  query = query.order('name');
 
+  // Apply pagination if requested
+  if (usePagination) {
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+    const offset = (pageNum - 1) * limitNum;
+    query = query.range(offset, offset + limitNum - 1);
+
+    const { data, error, count } = await query;
+    if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+    const totalPages = Math.ceil((count || 0) / limitNum);
+    return res.json({
+      data: data || [],
+      meta: {
+        page: pageNum,
+        limit: limitNum,
+        total: count || 0,
+        totalPages,
+        hasMore: pageNum < totalPages
+      }
+    });
+  }
+
+  // Return plain array for backward compatibility
+  const { data, error } = await query;
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
   res.json(data);
 }));
@@ -82,13 +119,18 @@ router.get('/', asyncHandler(async (req, res) => {
 // Create vendor (with duplicate warning)
 router.post('/', validate(schemas.vendorCreate), asyncHandler(async (req, res) => {
   const { name, skip_duplicate_check } = req.body;
+  const builderId = getBuilderId(req);
 
   // Check for duplicates unless explicitly skipped
   if (!skip_duplicate_check) {
-    const { data: vendors } = await supabase
+    let dupQuery = supabase
       .from('v2_vendors')
       .select('id, name, email, phone, trade')
       .is('deleted_at', null);
+
+    if (builderId) dupQuery = dupQuery.eq('builder_id', builderId);
+
+    const { data: vendors } = await dupQuery;
 
     const duplicates = [];
     for (const vendor of vendors || []) {
@@ -110,6 +152,10 @@ router.post('/', validate(schemas.vendorCreate), asyncHandler(async (req, res) =
 
   // Create the vendor (strip skip_duplicate_check from data)
   const { skip_duplicate_check: _, ...vendorData } = req.body;
+
+  // Add builder_id if authenticated
+  if (builderId) vendorData.builder_id = builderId;
+
   const { data, error } = await supabase
     .from('v2_vendors')
     .insert(vendorData)
@@ -117,34 +163,67 @@ router.post('/', validate(schemas.vendorCreate), asyncHandler(async (req, res) =
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Trigger webhook for vendor creation
+  if (builderId) {
+    triggerWebhooks(builderId, 'vendor.created', data.id, {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      trade: data.trade,
+      created_at: data.created_at,
+    }).catch(() => {});
+  }
+
   res.json(data);
 }));
 
 // Update vendor
 router.patch('/:id', validate(schemas.vendorUpdate), asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('v2_vendors')
     .update(req.body)
-    .eq('id', id)
-    .select()
-    .single();
+    .eq('id', id);
+
+  if (builderId) query = query.eq('builder_id', builderId);
+
+  const { data, error } = await query.select().single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Trigger webhook for vendor update
+  if (builderId) {
+    triggerWebhooks(builderId, 'vendor.updated', data.id, {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      trade: data.trade,
+      updated_at: data.updated_at,
+    }).catch(() => {});
+  }
+
   res.json(data);
 }));
 
 // Soft delete vendor
 router.delete('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   // Check vendor exists and not already deleted
-  const { data: vendor, error: findError } = await supabase
+  let findQuery = supabase
     .from('v2_vendors')
     .select('id, name, deleted_at')
-    .eq('id', id)
-    .single();
+    .eq('id', id);
+
+  if (builderId) findQuery = findQuery.eq('builder_id', builderId);
+
+  const { data: vendor, error: findError } = await findQuery.single();
 
   if (findError || !vendor) {
     throw notFoundError('vendor', id);

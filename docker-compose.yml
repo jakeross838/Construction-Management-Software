@@ -1,0 +1,80 @@
+# =============================================================================
+# Ross Built Construction Management Software - Docker Compose (Production)
+# =============================================================================
+# Usage:
+#   docker-compose up -d          # Start in detached mode
+#   docker-compose logs -f app    # Follow app logs
+#   docker-compose down           # Stop and remove containers
+# =============================================================================
+
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rossbuilt-cms:latest
+    container_name: rossbuilt-cms
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3001}:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      # Supabase Configuration
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      # API Keys
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SUPABASE_ACCESS_TOKEN=${SUPABASE_ACCESS_TOKEN}
+    volumes:
+      # Persistent storage for uploads and logs
+      - rossbuilt-uploads:/app/uploads
+      - rossbuilt-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - rossbuilt-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Redis cache service for session/caching (future use)
+  redis:
+    image: redis:7-alpine
+    container_name: rossbuilt-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - rossbuilt-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rossbuilt-network
+    profiles:
+      - with-redis
+    command: redis-server --appendonly yes
+
+volumes:
+  rossbuilt-uploads:
+    driver: local
+  rossbuilt-logs:
+    driver: local
+  rossbuilt-redis:
+    driver: local
+
+networks:
+  rossbuilt-network:
+    driver: bridge

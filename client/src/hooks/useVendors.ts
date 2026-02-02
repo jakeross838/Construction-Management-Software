@@ -20,11 +20,32 @@ export interface Vendor {
 export type VendorInsert = Omit<Vendor, 'id' | 'created_at' | 'updated_at'>;
 export type VendorUpdate = Partial<VendorInsert> & { id: string };
 
-export function useVendors() {
+interface VendorsPaginationParams {
+  page?: number;
+  limit?: number;
+}
+
+interface PaginatedVendorsResponse {
+  data: Vendor[];
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
+export function useVendors(pagination?: VendorsPaginationParams) {
   return useQuery({
-    queryKey: ['vendors'],
-    queryFn: async (): Promise<Vendor[]> => {
-      const response = await fetch('/api/vendors');
+    queryKey: ['vendors', pagination?.page, pagination?.limit],
+    queryFn: async (): Promise<Vendor[] | PaginatedVendorsResponse> => {
+      const params = new URLSearchParams();
+      if (pagination?.page) params.append('page', String(pagination.page));
+      if (pagination?.limit) params.append('limit', String(pagination.limit));
+
+      const url = `/api/vendors${params.size > 0 ? `?${params.toString()}` : ''}`;
+      const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch vendors');
       return response.json();
     },

@@ -137,8 +137,52 @@ export function useInvoices(jobId?: string, status?: InvoiceStatus | 'all') {
       let endpoint = '/invoices?';
       if (jobId) endpoint += `job_id=${jobId}&`;
       if (status && status !== 'all') endpoint += `status=${status}&`;
-      const data = await api<any[]>(endpoint);
+
+      const response = await api<any>(endpoint);
+
+      // Handle both paginated and non-paginated responses for backward compatibility
+      const data = Array.isArray(response) ? response : response?.data || [];
       return data.map(transformInvoice) as Invoice[];
+    },
+  });
+}
+
+export interface PaginatedInvoicesResponse {
+  data: Invoice[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
+export function usePaginatedInvoices(
+  jobId?: string,
+  status?: InvoiceStatus | 'all',
+  page: number = 1,
+  limit: number = 50
+) {
+  return useQuery({
+    queryKey: ['invoices-paginated', jobId, status, page, limit],
+    queryFn: async (): Promise<PaginatedInvoicesResponse> => {
+      let endpoint = `/invoices?page=${page}&limit=${limit}`;
+      if (jobId) endpoint += `&job_id=${jobId}`;
+      if (status && status !== 'all') endpoint += `&status=${status}`;
+
+      const response = await api<any>(endpoint);
+
+      return {
+        data: (response?.data || []).map(transformInvoice) as Invoice[],
+        meta: response?.meta || {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+          hasMore: false,
+        },
+      };
     },
   });
 }
@@ -370,7 +414,54 @@ export function usePurchaseOrders(jobId?: string, status?: string) {
       let endpoint = '/purchase-orders?';
       if (jobId) endpoint += `job_id=${jobId}&`;
       if (status) endpoint += `status=${status}&`;
-      return api<PurchaseOrder[]>(endpoint);
+
+      const response = await api<any>(endpoint);
+
+      // Handle both paginated and non-paginated responses for backward compatibility
+      const data = Array.isArray(response) ? response : response?.data || [];
+      return data as PurchaseOrder[];
+    },
+  });
+}
+
+export interface PaginatedPurchaseOrdersResponse {
+  data: PurchaseOrder[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
+export function usePaginatedPurchaseOrders(
+  jobId?: string,
+  status?: string,
+  vendorId?: string,
+  page: number = 1,
+  limit: number = 50
+) {
+  return useQuery({
+    queryKey: ['purchase-orders-paginated', jobId, status, vendorId, page, limit],
+    queryFn: async (): Promise<PaginatedPurchaseOrdersResponse> => {
+      let endpoint = `/purchase-orders?page=${page}&limit=${limit}`;
+      if (jobId) endpoint += `&job_id=${jobId}`;
+      if (status) endpoint += `&status=${status}`;
+      if (vendorId) endpoint += `&vendor_id=${vendorId}`;
+
+      const response = await api<any>(endpoint);
+
+      return {
+        data: (response?.data || []) as PurchaseOrder[],
+        meta: response?.meta || {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+          hasMore: false,
+        },
+      };
     },
   });
 }

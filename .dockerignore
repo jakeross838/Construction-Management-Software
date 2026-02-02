@@ -1,0 +1,75 @@
+# =============================================================================
+# Docker Ignore File - Ross Built CMS
+# Excludes files/directories from Docker build context
+# =============================================================================
+
+# Dependencies (will be installed fresh in container)
+node_modules/
+client/node_modules/
+
+# Environment files (use docker-compose env vars instead)
+.env
+.env.local
+.env.*.local
+client/.env
+client/.env.local
+
+# Git
+.git/
+.gitignore
+
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs (rebuilt in container)
+client/dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test files
+tests/
+*.spec.js
+*.spec.ts
+*.test.js
+*.test.ts
+coverage/
+playwright-report/
+test-results/
+
+# Documentation
+*.md
+!README.md
+
+# Development files
+.mcp.json
+.claude/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# PID files
+server.pid
+*.pid
+
+# Playwright
+playwright.config.js
+playwright.config.ts
+
+# Other Docker files
+Dockerfile*
+docker-compose*.yml
+.dockerignore

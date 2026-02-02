@@ -96,6 +96,15 @@ const app = createApp();
 // ============================================================
 // ROUTE MODULES (Refactored from monolithic index.js)
 // ============================================================
+const authRoutes = require('./routes/auth');
+const onboardingRoutes = require('./routes/onboarding');
+const clientPortalRoutes = require('./routes/client-portal');
+const quickbooksRoutes = require('./routes/quickbooks');
+const xeroRoutes = require('./routes/xero');
+const buildertrendRoutes = require('./routes/buildertrend');
+const billingRoutes = require('./routes/billing');
+const apiKeysRoutes = require('./routes/api-keys');
+const webhooksRoutes = require('./routes/webhooks');
 const invoiceRoutes = require('./routes/invoices');
 const drawRoutes = require('./routes/draws');
 const changeOrderRoutes = require('./routes/change-orders');
@@ -110,6 +119,7 @@ const aiRoutes = require('./routes/ai');
 const realtimeRoutes = require('./routes/realtime');
 const dailyLogRoutes = require('./routes/daily-logs');
 const scheduleRoutes = require('./routes/schedules');
+const weatherDelaysRoutes = require('./routes/weather-delays');
 const documentRoutes = require('./routes/documents');
 const inspectionRoutes = require('./routes/inspections');
 const punchListRoutes = require('./routes/punch-lists');
@@ -117,6 +127,7 @@ const bidRoutes = require('./routes/bids');
 const estimateRoutes = require('./routes/estimates');
 const aiEstimateRoutes = require('./routes/ai-estimates');
 const budgetBuilderRoutes = require('./routes/budget-builder');
+const budgetImportRoutes = require('./routes/budget-import');
 const priceIntelligenceRoutes = require('./routes/price-intelligence');
 const laborBidsRoutes = require('./routes/labor-bids');
 const orderOptimizerRoutes = require('./routes/order-optimizer');
@@ -135,6 +146,8 @@ const notificationsRoutes = require('./routes/notifications');
 const warrantiesRoutes = require('./routes/warranties');
 const closeoutRoutes = require('./routes/closeout');
 const adminRoutes = require('./routes/admin');
+const backupRoutes = require('./routes/backups');
+const rolesRoutes = require('./routes/roles');
 const contactsRoutes = require('./routes/contacts');
 const companiesRoutes = require('./routes/companies');
 const communicationsRoutes = require('./routes/communications');
@@ -145,12 +158,14 @@ const businessRoutes = require('./routes/business');
 const feedbackRoutes = require('./routes/feedback');
 const intelligenceRoutes = require('./routes/intelligence');
 const documentHubRoutes = require('./routes/document-hub');
+const documentIntelligenceRoutes = require('./routes/document-intelligence');
 const expenseRoutes = require('./routes/expenses');
 const financialPeriodRoutes = require('./routes/financial-periods');
 const employeeRoutes = require('./routes/employees');
 const timesheetRoutes = require('./routes/timesheets');
 const overheadRoutes = require('./routes/overhead');
 const profitabilityRoutes = require('./routes/profitability');
+const accountsReceivableRoutes = require('./routes/accounts-receivable');
 const proposalsRoutes = require('./routes/proposals');
 const wipRoutes = require('./routes/wip');
 const pnlRoutes = require('./routes/pnl');
@@ -159,6 +174,15 @@ const businessPlanningRoutes = require('./routes/business-planning');
 const assemblyTemplatesRoutes = require('./routes/assembly-templates');
 const scopeCategoriesRoutes = require('./routes/scope-categories');
 const benchmarksRoutes = require('./routes/benchmarks');
+const executiveDashboardRoutes = require('./routes/executive-dashboard');
+const retainageRoutes = require('./routes/retainage');
+const timeTrackingRoutes = require('./routes/time-tracking');
+const emailRoutes = require('./routes/emails');
+const resourceConflictsRoutes = require('./routes/resource-conflicts');
+const planSetsRoutes = require('./routes/plan-sets');
+const estimateAssembliesRoutes = require('./routes/estimate-assemblies');
+const historicalCostsRoutes = require('./routes/historical-costs');
+const inventoryRoutes = require('./routes/inventory');
 const { deprecatedRoutes } = require('./middleware/deprecation');
 
 // ============================================================
@@ -207,6 +231,14 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Mount modular routes (these take precedence over legacy inline routes)
+app.use('/api/auth', authRoutes);
+app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/client-portal', clientPortalRoutes);
+app.use('/api/quickbooks', quickbooksRoutes);
+app.use('/api/xero', xeroRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/api-keys', apiKeysRoutes);
+app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/draws', drawRoutes);
 app.use('/api/change-orders', changeOrderRoutes);
@@ -228,6 +260,7 @@ app.use('/api/bids', bidRoutes);
 app.use('/api/estimates', estimateRoutes);
 app.use('/api/ai-estimates', aiEstimateRoutes);
 app.use('/api/budget-builder', budgetBuilderRoutes);
+app.use('/api', budgetImportRoutes);  // Budget import routes (template + import/export)
 app.use('/api/price-intelligence', priceIntelligenceRoutes);
 app.use('/api/labor-bids', laborBidsRoutes);
 app.use('/api/order-optimizer', orderOptimizerRoutes);
@@ -253,6 +286,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/warranties', warrantiesRoutes);
 app.use('/api/closeout', closeoutRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/roles', rolesRoutes);
 app.use('/api/contacts', contactsRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/communications', communicationsRoutes);
@@ -269,6 +303,7 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/timesheets', timesheetRoutes);
 app.use('/api/overhead', overheadRoutes);
 app.use('/api/profitability', profitabilityRoutes);
+app.use('/api/ar', accountsReceivableRoutes);
 app.use('/api/proposals', proposalsRoutes);
 // Canonical routes (preferred)
 app.use('/api/work-in-progress', wipRoutes);
@@ -281,6 +316,18 @@ app.use('/api/business-planning', businessPlanningRoutes);
 app.use('/api/assembly-templates', assemblyTemplatesRoutes);
 app.use('/api/scope-categories', scopeCategoriesRoutes);
 app.use('/api/benchmarks', benchmarksRoutes);
+app.use('/api/executive', executiveDashboardRoutes);
+app.use('/api/retainage', retainageRoutes);
+app.use('/api/time-tracking', timeTrackingRoutes);
+app.use('/api/emails', emailRoutes);
+app.use('/api/inventory', inventoryRoutes);
+
+// Route aliases for frontend compatibility
+// These redirect common alternative names to their canonical routes
+app.use('/api/schedule', scheduleRoutes);  // Alias: singular form
+app.use('/api/files', documentRoutes);      // Alias: files -> documents
+app.use('/api/final-docs', closeoutRoutes); // Alias: final-docs -> closeout
+app.use('/api/pricing', priceIntelligenceRoutes); // Alias: pricing -> price-intelligence
 
 // Note: Legacy routes below are kept for complex endpoints not yet migrated
 // These will be removed as route modules become complete

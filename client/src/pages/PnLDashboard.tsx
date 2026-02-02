@@ -1,67 +1,94 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { 
-  BarChart3, 
-  TrendingUp, 
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  BarChart3,
+  TrendingUp,
   TrendingDown,
   DollarSign,
-  ArrowRight,
   ArrowUp,
   ArrowDown,
-  Download
+  Download,
+  RefreshCw,
+  Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import { Progress } from '@/components/ui/progress';
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
-  BarChart,
   Bar,
   ComposedChart,
   Line
 } from 'recharts';
-
-const monthlyPnL = [
-  { month: 'Jul', revenue: 420000, costs: 340000, profit: 80000 },
-  { month: 'Aug', revenue: 380000, costs: 310000, profit: 70000 },
-  { month: 'Sep', revenue: 520000, costs: 420000, profit: 100000 },
-  { month: 'Oct', revenue: 480000, costs: 390000, profit: 90000 },
-  { month: 'Nov', revenue: 560000, costs: 445000, profit: 115000 },
-  { month: 'Dec', revenue: 620000, costs: 495000, profit: 125000 },
-  { month: 'Jan', revenue: 580000, costs: 460000, profit: 120000 },
-];
-
-const costBreakdown = [
-  { category: 'Direct Labor', amount: 185000, percentage: 40.2 },
-  { category: 'Materials', amount: 142000, percentage: 30.9 },
-  { category: 'Subcontractors', amount: 68000, percentage: 14.8 },
-  { category: 'Labor Burden', amount: 32500, percentage: 7.1 },
-  { category: 'Overhead Allocation', amount: 32500, percentage: 7.1 },
-];
-
-function formatCurrency(amount: number): string {
-  if (amount >= 1000000) {
-    return `$${(amount / 1000000).toFixed(2)}M`;
-  }
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
+import {
+  usePnLDashboard,
+  formatCurrency,
+  formatPercent,
+  formatMonthFromDate,
+} from '@/hooks/usePnL';
 
 const PnLDashboard = () => {
-  const totalRevenue = monthlyPnL.reduce((sum, m) => sum + m.revenue, 0);
-  const totalCosts = monthlyPnL.reduce((sum, m) => sum + m.costs, 0);
-  const totalProfit = monthlyPnL.reduce((sum, m) => sum + m.profit, 0);
-  const profitMargin = ((totalProfit / totalRevenue) * 100).toFixed(1);
+  const { data, isLoading, error, refetch, isFetching } = usePnLDashboard();
+
+  if (isLoading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="ml-2 text-muted-foreground">Loading P&L data...</span>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center h-64 space-y-4">
+          <AlertTriangle className="h-12 w-12 text-destructive" />
+          <p className="text-destructive">Failed to load P&L data</p>
+          <Button onClick={() => refetch()} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  const ytd = data?.ytd || {
+    total_revenue: 0,
+    total_cogs: 0,
+    gross_profit: 0,
+    gross_margin: 0,
+    total_opex: 0,
+    net_income: 0,
+    net_margin: 0,
+  };
+
+  const topJobs = data?.top_jobs || [];
+  const monthlyTrend = (data?.monthly_trend || []).map(m => ({
+    month: formatMonthFromDate(m.start_date),
+    revenue: m.revenue || 0,
+    costs: (m.cogs || 0) + (m.opex || 0),
+    profit: m.net_income || 0,
+  })).reverse();
+
+  // Calculate cost breakdown from YTD data
+  const totalCosts = (ytd.total_cogs || 0) + (ytd.total_opex || 0);
+  const costBreakdown = [
+    { category: 'Cost of Goods Sold', amount: ytd.total_cogs || 0, percentage: totalCosts > 0 ? ((ytd.total_cogs || 0) / totalCosts) * 100 : 0 },
+    { category: 'Operating Expenses', amount: ytd.total_opex || 0, percentage: totalCosts > 0 ? ((ytd.total_opex || 0) / totalCosts) * 100 : 0 },
+  ];
+
+  const profitMargin = ytd.net_margin || 0;
+  const hasData = ytd.total_revenue > 0 || topJobs.length > 0;
 
   return (
     <AppLayout>
@@ -75,7 +102,15 @@ const PnLDashboard = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline">FY 2025-2026</Badge>
+            <Badge variant="outline">YTD {new Date().getFullYear()}</Badge>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => refetch()}
+              disabled={isFetching}
+            >
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            </Button>
             <Button variant="outline">
               <Download className="h-4 w-4 mr-2" />
               Export Report
@@ -83,35 +118,44 @@ const PnLDashboard = () => {
           </div>
         </div>
 
+        {!hasData && (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No P&L Data Yet</h3>
+              <p className="text-muted-foreground text-center max-w-md">
+                P&L data will appear here once you have closed financial periods with expenses and revenue.
+                Check your job profitability data below for real-time insights.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Key metrics */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             title="Total Revenue"
-            value={formatCurrency(totalRevenue)}
+            value={formatCurrency(ytd.total_revenue)}
             icon={DollarSign}
-            change={{ value: 15.2, label: 'vs prior period' }}
-            trend="up"
+            trend={ytd.total_revenue > 0 ? "up" : "neutral"}
           />
           <MetricCard
             title="Total Costs"
             value={formatCurrency(totalCosts)}
             icon={TrendingDown}
-            change={{ value: 12.8, label: 'vs prior period' }}
             trend="neutral"
           />
           <MetricCard
-            title="Net Profit"
-            value={formatCurrency(totalProfit)}
+            title="Net Income"
+            value={formatCurrency(ytd.net_income)}
             icon={TrendingUp}
-            change={{ value: 22.4, label: 'vs prior period' }}
-            trend="up"
+            trend={ytd.net_income > 0 ? "up" : ytd.net_income < 0 ? "down" : "neutral"}
           />
           <MetricCard
             title="Profit Margin"
-            value={`${profitMargin}%`}
+            value={formatPercent(profitMargin)}
             icon={BarChart3}
-            change={{ value: 1.8, label: 'improvement' }}
-            trend="up"
+            trend={profitMargin >= 0.11 ? "up" : profitMargin > 0 ? "neutral" : "down"}
           />
         </div>
 
@@ -124,8 +168,8 @@ const PnLDashboard = () => {
               </div>
               <h3 className="font-semibold text-profit">Revenue</h3>
             </div>
-            <p className="text-3xl font-bold font-mono">{formatCurrency(totalRevenue)}</p>
-            <p className="text-sm text-muted-foreground mt-1">7 months total</p>
+            <p className="text-3xl font-bold font-mono">{formatCurrency(ytd.total_revenue)}</p>
+            <p className="text-sm text-muted-foreground mt-1">Year-to-date</p>
           </div>
 
           <div className="rounded-lg border-2 border-loss/30 bg-loss/5 p-6">
@@ -136,134 +180,201 @@ const PnLDashboard = () => {
               <h3 className="font-semibold text-loss">Costs</h3>
             </div>
             <p className="text-3xl font-bold font-mono">{formatCurrency(totalCosts)}</p>
-            <p className="text-sm text-muted-foreground mt-1">Including overhead allocation</p>
+            <p className="text-sm text-muted-foreground mt-1">COGS + Operating Expenses</p>
           </div>
 
-          <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-6">
+          <div className={`rounded-lg border-2 p-6 ${ytd.net_income >= 0 ? 'border-primary/30 bg-primary/5' : 'border-loss/30 bg-loss/5'}`}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="rounded-full bg-primary/20 p-2">
-                <ArrowRight className="h-5 w-5 text-primary" />
+              <div className={`rounded-full p-2 ${ytd.net_income >= 0 ? 'bg-primary/20' : 'bg-loss/20'}`}>
+                {ytd.net_income >= 0 ? (
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                ) : (
+                  <TrendingDown className="h-5 w-5 text-loss" />
+                )}
               </div>
-              <h3 className="font-semibold text-primary">Net Profit</h3>
+              <h3 className={`font-semibold ${ytd.net_income >= 0 ? 'text-primary' : 'text-loss'}`}>
+                Net {ytd.net_income >= 0 ? 'Profit' : 'Loss'}
+              </h3>
             </div>
-            <p className="text-3xl font-bold font-mono">{formatCurrency(totalProfit)}</p>
-            <p className="text-sm text-muted-foreground mt-1">{profitMargin}% margin</p>
+            <p className="text-3xl font-bold font-mono">{formatCurrency(Math.abs(ytd.net_income))}</p>
+            <p className="text-sm text-muted-foreground mt-1">{formatPercent(profitMargin)} margin</p>
           </div>
         </div>
 
         {/* Charts */}
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Revenue & Costs trend */}
-          <div className="rounded-lg border border-border bg-card p-6">
-            <h3 className="font-semibold mb-4">Monthly Revenue vs Costs</h3>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={monthlyPnL}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 20%, 20%)" />
-                  <XAxis 
-                    dataKey="month" 
-                    stroke="hsl(215, 15%, 55%)" 
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis 
-                    stroke="hsl(215, 15%, 55%)" 
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value) => `$${value / 1000}k`}
-                  />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'hsl(222, 25%, 11%)',
-                      border: '1px solid hsl(215, 20%, 20%)',
-                      borderRadius: '8px',
-                    }}
-                    formatter={(value: number) => formatCurrency(value)}
-                  />
-                  <Bar dataKey="revenue" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} name="Revenue" />
-                  <Bar dataKey="costs" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} name="Costs" />
-                  <Line type="monotone" dataKey="profit" stroke="hsl(38, 92%, 50%)" strokeWidth={2} name="Profit" dot={{ fill: 'hsl(38, 92%, 50%)' }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex items-center justify-center gap-6 mt-4">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded bg-profit" />
-                <span className="text-sm text-muted-foreground">Revenue</span>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Monthly Revenue vs Costs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {monthlyTrend.length > 0 ? (
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={monthlyTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 20%, 20%)" />
+                      <XAxis
+                        dataKey="month"
+                        stroke="hsl(215, 15%, 55%)"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        stroke="hsl(215, 15%, 55%)"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value) => `$${value / 1000}k`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'hsl(222, 25%, 11%)',
+                          border: '1px solid hsl(215, 20%, 20%)',
+                          borderRadius: '8px',
+                        }}
+                        formatter={(value: number) => formatCurrency(value)}
+                      />
+                      <Bar dataKey="revenue" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} name="Revenue" />
+                      <Bar dataKey="costs" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} name="Costs" />
+                      <Line type="monotone" dataKey="profit" stroke="hsl(38, 92%, 50%)" strokeWidth={2} name="Profit" dot={{ fill: 'hsl(38, 92%, 50%)' }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-72 flex items-center justify-center text-muted-foreground">
+                  No monthly trend data available
+                </div>
+              )}
+              <div className="flex items-center justify-center gap-6 mt-4">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded bg-profit" />
+                  <span className="text-sm text-muted-foreground">Revenue</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded bg-loss" />
+                  <span className="text-sm text-muted-foreground">Costs</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded bg-primary" />
+                  <span className="text-sm text-muted-foreground">Profit</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded bg-loss" />
-                <span className="text-sm text-muted-foreground">Costs</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded bg-primary" />
-                <span className="text-sm text-muted-foreground">Profit</span>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Cost breakdown */}
-          <div className="rounded-lg border border-border bg-card p-6">
-            <h3 className="font-semibold mb-4">Cost Breakdown (Jan 2026)</h3>
-            <div className="space-y-4">
-              {costBreakdown.map((item) => (
-                <div key={item.category}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm">{item.category}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm">{formatCurrency(item.amount)}</span>
-                      <span className="text-xs text-muted-foreground w-12 text-right">
-                        {item.percentage}%
-                      </span>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Cost Breakdown (YTD)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {totalCosts > 0 ? (
+                <div className="space-y-4">
+                  {costBreakdown.map((item) => (
+                    <div key={item.category}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm">{item.category}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-sm">{formatCurrency(item.amount)}</span>
+                          <span className="text-xs text-muted-foreground w-12 text-right">
+                            {item.percentage.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                      <Progress value={item.percentage} className="h-2" />
+                    </div>
+                  ))}
+                  <div className="mt-6 pt-4 border-t border-border">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">Total Costs</span>
+                      <span className="font-mono font-bold text-lg">{formatCurrency(totalCosts)}</span>
                     </div>
                   </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div 
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${item.percentage}%` }}
-                    />
-                  </div>
                 </div>
-              ))}
-            </div>
-            <div className="mt-6 pt-4 border-t border-border">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Total Costs</span>
-                <span className="font-mono font-bold text-lg">{formatCurrency(460000)}</span>
-              </div>
-            </div>
-          </div>
+              ) : (
+                <div className="py-8 text-center text-muted-foreground">
+                  No cost data available
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
+        {/* Top Jobs by Profit */}
+        {topJobs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Top Jobs by Net Profit</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {topJobs.map((job, index) => (
+                  <div key={job.job_id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <span className="text-2xl font-bold text-muted-foreground">#{index + 1}</span>
+                      <div>
+                        <p className="font-medium">{job.job_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Contract: {formatCurrency(job.total_contract)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-xl font-bold ${job.net_profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(job.net_profit)}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatPercent(job.net_margin)} margin
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Industry comparison */}
-        <div className="rounded-lg border border-border bg-card p-6">
-          <h3 className="font-semibold mb-4">Industry Benchmark Comparison</h3>
-          <div className="grid gap-6 sm:grid-cols-3">
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-2">Your Overhead Rate</p>
-              <p className="text-3xl font-bold font-mono text-profit">5.2%</p>
-              <p className="text-xs text-profit mt-1">
-                <TrendingUp className="h-3 w-3 inline mr-1" />
-                0.5% below industry avg
-              </p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Industry Benchmark Comparison</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 sm:grid-cols-3">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-2">Your Gross Margin</p>
+                <p className={`text-3xl font-bold font-mono ${(ytd.gross_margin || 0) >= 0.22 ? 'text-profit' : 'text-amber-500'}`}>
+                  {formatPercent(ytd.gross_margin)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  NAHB benchmark: 22%
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-2">Your Net Margin</p>
+                <p className={`text-3xl font-bold font-mono ${profitMargin >= 0.085 ? 'text-profit' : 'text-amber-500'}`}>
+                  {formatPercent(profitMargin)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  NAHB benchmark: 8.5%
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-2">Target Profit Margin</p>
+                <p className="text-3xl font-bold font-mono">11%</p>
+                <p className={`text-xs mt-1 ${profitMargin >= 0.11 ? 'text-profit' : 'text-amber-500'}`}>
+                  {profitMargin >= 0.11 ? (
+                    <span><TrendingUp className="h-3 w-3 inline mr-1" />Above target</span>
+                  ) : (
+                    <span><TrendingDown className="h-3 w-3 inline mr-1" />Below target</span>
+                  )}
+                </p>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-2">NAHB 2024 Overhead</p>
-              <p className="text-3xl font-bold font-mono">5.7%</p>
-              <p className="text-xs text-muted-foreground mt-1">Industry standard</p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-2">Your Profit Margin</p>
-              <p className="text-3xl font-bold font-mono text-profit">{profitMargin}%</p>
-              <p className="text-xs text-profit mt-1">
-                <TrendingUp className="h-3 w-3 inline mr-1" />
-                {(parseFloat(profitMargin) - 11).toFixed(1)}% above target 11%
-              </p>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );

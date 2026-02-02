@@ -165,9 +165,132 @@ router.get('/tasks', asyncHandler(async (req, res) => {
       assigned_to: task.assigned_vendor_id || task.assigned_to || null,
       trades: task.trades || [],
       tags: task.tags || [],
+      // Milestone and baseline support
+      is_milestone: task.is_milestone || task.task_type === 'milestone' || false,
+      baseline_start: task.baseline_start || null,
+      baseline_end: task.baseline_end || null,
     }));
 
     res.json(mappedTasks);
+}));
+
+// Create task (accepts job_id - creates schedule if needed)
+router.post('/tasks', asyncHandler(async (req, res) => {
+    const {
+      job_id,
+      name,
+      description,
+      phase,
+      cost_code_id,
+      trade_id,
+      start_date,
+      end_date,
+      planned_start,
+      planned_end,
+      estimated_days,
+      duration_days,
+      assigned_vendor_id,
+      assigned_to,
+      sort_order,
+      is_milestone,
+      task_type,
+      predecessors,
+      created_by
+    } = req.body;
+
+    if (!job_id) {
+      return res.status(400).json({ error: 'job_id is required' });
+    }
+    if (!name) {
+      return res.status(400).json({ error: 'Task name is required' });
+    }
+
+    // Get or create schedule for this job
+    let schedule;
+    const { data: existingSchedule } = await supabase
+      .from('v2_schedules')
+      .select('id')
+      .eq('job_id', job_id)
+      .single();
+
+    if (existingSchedule) {
+      schedule = existingSchedule;
+    } else {
+      // Create a new schedule for this job
+      const { data: newSchedule, error: scheduleError } = await supabase
+        .from('v2_schedules')
+        .insert({
+          job_id,
+          name: 'Master Schedule',
+          status: 'draft',
+          created_by: created_by || 'System'
+        })
+        .select()
+        .single();
+
+      if (scheduleError) throw scheduleError;
+      schedule = newSchedule;
+    }
+
+    // Get next sort order if not provided
+    let taskSortOrder = sort_order;
+    if (taskSortOrder === undefined) {
+      const { data: lastTask } = await supabase
+        .from('v2_schedule_tasks')
+        .select('sort_order')
+        .eq('schedule_id', schedule.id)
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .single();
+
+      taskSortOrder = (lastTask?.sort_order || 0) + 10;
+    }
+
+    // Determine if this is a milestone
+    const isMilestone = is_milestone || task_type === 'milestone';
+
+    // Map frontend field names to database field names
+    const taskPlannedStart = planned_start || start_date;
+    const taskPlannedEnd = planned_end || end_date;
+    const taskEstimatedDays = isMilestone ? 0 : (estimated_days || duration_days || 1);
+
+    const { data: task, error } = await supabase
+      .from('v2_schedule_tasks')
+      .insert({
+        schedule_id: schedule.id,
+        name,
+        description,
+        phase,
+        cost_code_id,
+        trade_id,
+        planned_start: taskPlannedStart,
+        planned_end: taskPlannedEnd,
+        estimated_days: taskEstimatedDays,
+        assigned_vendor_id: assigned_vendor_id || assigned_to,
+        sort_order: taskSortOrder,
+        status: 'not_started',
+        percent_complete: 0,
+        is_milestone: isMilestone,
+        task_type: task_type || 'work',
+        predecessors: predecessors || []
+      })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+
+    await logScheduleActivity(schedule.id, task.id, 'task_added', created_by, { name });
+
+    // Map response to frontend format
+    res.status(201).json({
+      ...task,
+      job_id,
+      start_date: task.planned_start,
+      end_date: task.planned_end,
+      duration_days: task.estimated_days,
+      assigned_to: task.assigned_vendor_id,
+      is_milestone: task.is_milestone || task.task_type === 'milestone'
+    });
 }));
 
 // Get single schedule with all tasks
@@ -363,6 +486,8 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
       estimated_days,
       assigned_vendor_id,
       sort_order,
+      is_milestone,
+      task_type,
       created_by
     } = req.body;
 
@@ -384,6 +509,9 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
       taskSortOrder = (lastTask?.sort_order || 0) + 10;
     }
 
+    // Determine if this is a milestone based on task_type or is_milestone flag
+    const isMilestone = is_milestone || task_type === 'milestone';
+
     const { data: task, error } = await supabase
       .from('v2_schedule_tasks')
       .insert({
@@ -395,11 +523,13 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
         trade_id,
         planned_start,
         planned_end,
-        estimated_days: estimated_days || 1,
+        estimated_days: isMilestone ? 0 : (estimated_days || 1),
         assigned_vendor_id,
         sort_order: taskSortOrder,
         status: 'not_started',
-        percent_complete: 0
+        percent_complete: 0,
+        is_milestone: isMilestone,
+        task_type: task_type || 'work'
       })
       .select(`
         *,
@@ -425,14 +555,21 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
       trade_id,
       planned_start,
       planned_end,
+      start_date,
+      end_date,
       estimated_days,
+      duration_days,
       actual_start,
       actual_end,
       actual_days,
       status,
       percent_complete,
       assigned_vendor_id,
+      assigned_to,
       sort_order,
+      is_milestone,
+      task_type,
+      predecessors,
       updated_by
     } = req.body;
 
@@ -443,16 +580,24 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
     if (phase !== undefined) updates.phase = phase;
     if (cost_code_id !== undefined) updates.cost_code_id = cost_code_id;
     if (trade_id !== undefined) updates.trade_id = trade_id;
+    // Handle both frontend (start_date/end_date) and backend (planned_start/planned_end) field names
     if (planned_start !== undefined) updates.planned_start = planned_start;
+    else if (start_date !== undefined) updates.planned_start = start_date;
     if (planned_end !== undefined) updates.planned_end = planned_end;
+    else if (end_date !== undefined) updates.planned_end = end_date;
     if (estimated_days !== undefined) updates.estimated_days = estimated_days;
+    else if (duration_days !== undefined) updates.estimated_days = duration_days;
     if (actual_start !== undefined) updates.actual_start = actual_start;
     if (actual_end !== undefined) updates.actual_end = actual_end;
     if (actual_days !== undefined) updates.actual_days = actual_days;
     if (status !== undefined) updates.status = status;
     if (percent_complete !== undefined) updates.percent_complete = percent_complete;
     if (assigned_vendor_id !== undefined) updates.assigned_vendor_id = assigned_vendor_id;
+    else if (assigned_to !== undefined) updates.assigned_vendor_id = assigned_to;
     if (sort_order !== undefined) updates.sort_order = sort_order;
+    if (is_milestone !== undefined) updates.is_milestone = is_milestone;
+    if (task_type !== undefined) updates.task_type = task_type;
+    if (predecessors !== undefined) updates.predecessors = predecessors;
 
     // Auto-update status based on completion
     if (percent_complete !== undefined) {
@@ -745,6 +890,71 @@ router.get('/:id/baseline', asyncHandler(async (req, res) => {
     tasks: tasksWithVariance,
     summary
   });
+}));
+
+// ============================================================
+// BASELINE CAPTURE & VARIANCE (RPC-based)
+// ============================================================
+
+// Capture baseline using the capture_schedule_baseline RPC function
+router.post('/:id/capture-baseline', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { captured_by } = req.body;
+
+  // Verify schedule exists
+  const { data: schedule, error: fetchError } = await supabase
+    .from('v2_schedules')
+    .select('id, name, baseline_captured_at')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) {
+    if (fetchError.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+    throw fetchError;
+  }
+
+  // Call capture_schedule_baseline RPC
+  const { data, error } = await supabase.rpc('capture_schedule_baseline', {
+    p_schedule_id: id
+  });
+
+  if (error) throw error;
+
+  await logScheduleActivity(id, null, 'baseline_captured', captured_by || 'System', {
+    previous_baseline: schedule.baseline_captured_at,
+    tasks_captured: data?.tasks_captured
+  });
+
+  res.json(data);
+}));
+
+// Get schedule variance using the get_schedule_variance RPC function
+router.get('/:id/variance', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Call get_schedule_variance RPC
+  const { data, error } = await supabase.rpc('get_schedule_variance', {
+    p_schedule_id: id
+  });
+
+  if (error) {
+    if (error.message && error.message.includes('Schedule not found')) {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+    throw error;
+  }
+
+  // Check if baseline exists
+  if (!data.has_baseline) {
+    return res.status(404).json({
+      error: 'No baseline captured',
+      message: 'Use POST /:id/capture-baseline to capture a baseline first'
+    });
+  }
+
+  res.json(data);
 }));
 
 // ============================================================
@@ -1294,6 +1504,142 @@ router.get('/:id/gantt-enhanced', asyncHandler(async (req, res) => {
   };
 
   res.json(ganttData);
+}));
+
+// ============================================================
+// PDF EXPORT
+// ============================================================
+
+// Export schedule/Gantt to PDF
+router.get('/jobs/:jobId/export-pdf', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  // Get job info
+  const { data: job, error: jobError } = await supabase
+    .from('v2_jobs')
+    .select('id, name, address, client_name')
+    .eq('id', jobId)
+    .single();
+
+  if (jobError) {
+    if (jobError.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    throw jobError;
+  }
+
+  // Get schedule for this job
+  const { data: schedule } = await supabase
+    .from('v2_schedules')
+    .select('id, name, start_date, target_end_date, status')
+    .eq('job_id', jobId)
+    .single();
+
+  // Get tasks for this job's schedule
+  let tasks = [];
+  if (schedule) {
+    const { data: taskData } = await supabase
+      .from('v2_schedule_tasks')
+      .select(`
+        id, name, description, phase,
+        planned_start, planned_end, estimated_days,
+        actual_start, actual_end,
+        status, percent_complete, sort_order,
+        is_milestone, is_critical, task_type,
+        predecessors, trade_id
+      `)
+      .eq('schedule_id', schedule.id)
+      .order('sort_order', { ascending: true });
+
+    tasks = (taskData || []).map(task => ({
+      ...task,
+      start_date: task.planned_start || task.actual_start,
+      end_date: task.planned_end || task.actual_end,
+      critical_path: task.is_critical || false,
+    }));
+  }
+
+  // Generate PDF
+  const { generateSchedulePDF } = require('../services/schedule-pdf-generator');
+  const pdfBuffer = await generateSchedulePDF({
+    job,
+    schedule,
+    tasks,
+  });
+
+  // Set response headers for PDF download
+  const jobIdentifier = (job.name || 'Schedule').replace(/[^a-zA-Z0-9]/g, '_');
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `Schedule_${jobIdentifier}_${dateStr}.pdf`;
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', pdfBuffer.length);
+
+  res.send(pdfBuffer);
+}));
+
+// Alternative endpoint using schedule ID directly
+router.get('/:id/export-pdf', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get schedule with job info
+  const { data: schedule, error: scheduleError } = await supabase
+    .from('v2_schedules')
+    .select(`
+      id, name, start_date, target_end_date, status,
+      job:v2_jobs(id, name, address, client_name)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (scheduleError) {
+    if (scheduleError.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+    throw scheduleError;
+  }
+
+  // Get tasks
+  const { data: tasks } = await supabase
+    .from('v2_schedule_tasks')
+    .select(`
+      id, name, description, phase,
+      planned_start, planned_end, estimated_days,
+      actual_start, actual_end,
+      status, percent_complete, sort_order,
+      is_milestone, is_critical, task_type,
+      predecessors, trade_id
+    `)
+    .eq('schedule_id', id)
+    .order('sort_order', { ascending: true });
+
+  const mappedTasks = (tasks || []).map(task => ({
+    ...task,
+    start_date: task.planned_start || task.actual_start,
+    end_date: task.planned_end || task.actual_end,
+    critical_path: task.is_critical || false,
+  }));
+
+  // Generate PDF
+  const { generateSchedulePDF } = require('../services/schedule-pdf-generator');
+  const pdfBuffer = await generateSchedulePDF({
+    job: schedule.job,
+    schedule,
+    tasks: mappedTasks,
+  });
+
+  // Set response headers for PDF download
+  const jobName = schedule.job?.name || 'Schedule';
+  const jobIdentifier = jobName.replace(/[^a-zA-Z0-9]/g, '_');
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `Schedule_${jobIdentifier}_${dateStr}.pdf`;
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', pdfBuffer.length);
+
+  res.send(pdfBuffer);
 }));
 
 module.exports = router;

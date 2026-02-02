@@ -2,7 +2,7 @@ import { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, ChevronRight, CheckCircle2, Pencil, Trash2, Link2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle2, Pencil, Trash2, Link2, Diamond, Flag } from 'lucide-react';
 import { ScheduleTask, Predecessor, PredecessorType, statusConfig, predecessorTypeConfig, useUpdateScheduleTask } from '@/hooks/useScheduleTasks';
 import { 
   format, 
@@ -58,9 +58,13 @@ export function ScheduleGanttView({ tasks, onTaskClick, onEdit, onDelete }: Sche
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragDelta, setDragDelta] = useState(0);
   const [linkDragState, setLinkDragState] = useState<LinkDragState | null>(null);
+  const [showBaseline, setShowBaseline] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const updateTask = useUpdateScheduleTask();
   const hasDragged = useRef(false);
+
+  // Check if any task has baseline data
+  const hasBaselineData = useMemo(() => tasks.some(t => t.baseline_start && t.baseline_end), [tasks]);
   
   const weeksToShow = 4;
   const today = new Date();
@@ -80,14 +84,14 @@ export function ScheduleGanttView({ tasks, onTaskClick, onEdit, onDelete }: Sche
   const getTaskPosition = useCallback((task: ScheduleTask, applyDrag = false) => {
     const taskStart = parseISO(task.start_date);
     const taskEnd = parseISO(task.end_date);
-    
+
     let startOffset = differenceInDays(taskStart, baseDate);
     let duration = differenceInDays(taskEnd, taskStart) + 1;
 
     // Apply drag delta for the dragged task
     if (applyDrag && dragState?.taskId === task.id) {
       const daysDelta = Math.round(dragDelta / dayWidth);
-      
+
       if (dragState.type === 'move') {
         startOffset += daysDelta;
       } else if (dragState.type === 'resize-start') {
@@ -97,13 +101,34 @@ export function ScheduleGanttView({ tasks, onTaskClick, onEdit, onDelete }: Sche
         duration += daysDelta;
       }
     }
-    
+
+    // Calculate baseline position if available
+    let baselineLeft = 0;
+    let baselineWidth = 0;
+    let baselineVisible = false;
+    if (task.baseline_start && task.baseline_end) {
+      const baselineStart = parseISO(task.baseline_start);
+      const baselineEnd = parseISO(task.baseline_end);
+      const baselineStartOffset = differenceInDays(baselineStart, baseDate);
+      const baselineDuration = differenceInDays(baselineEnd, baselineStart) + 1;
+      baselineLeft = Math.max(0, baselineStartOffset * dayWidth);
+      baselineWidth = Math.max(dayWidth, baselineDuration * dayWidth);
+      baselineVisible = baselineEnd >= baseDate && baselineStart <= endDate;
+    }
+
+    // Check if this is a milestone (same start/end date or is_milestone flag)
+    const isMilestone = task.is_milestone || differenceInDays(taskEnd, taskStart) === 0;
+
     return {
       left: Math.max(0, startOffset * dayWidth),
-      width: Math.max(dayWidth, duration * dayWidth),
+      width: isMilestone ? dayWidth : Math.max(dayWidth, duration * dayWidth),
       isVisible: taskEnd >= baseDate && taskStart <= endDate,
       startOffset,
       duration,
+      isMilestone,
+      baselineLeft,
+      baselineWidth,
+      baselineVisible,
     };
   }, [baseDate, endDate, dragState, dragDelta, dayWidth]);
 
@@ -400,6 +425,16 @@ export function ScheduleGanttView({ tasks, onTaskClick, onEdit, onDelete }: Sche
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {hasBaselineData && (
+              <Button
+                variant={showBaseline ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowBaseline(b => !b)}
+                className="text-xs"
+              >
+                {showBaseline ? 'Hide' : 'Show'} Baseline
+              </Button>
+            )}
             <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -442,19 +477,25 @@ export function ScheduleGanttView({ tasks, onTaskClick, onEdit, onDelete }: Sche
                   </div>
                   
                   {/* Tasks in job */}
-                  {group.tasks.map(task => (
-                    <div 
-                      key={task.id}
-                      className="border-b flex items-center px-3 hover:bg-muted/50 cursor-pointer gap-2"
-                      style={{ height: rowHeight }}
-                      onClick={(e) => handleTaskClick(e, task)}
-                    >
-                      {task.critical_path && (
-                        <Badge variant="destructive" className="h-4 text-[10px] px-1">CP</Badge>
-                      )}
-                      <span className="text-sm truncate flex-1">{task.name}</span>
-                    </div>
-                  ))}
+                  {group.tasks.map(task => {
+                    const pos = getTaskPosition(task, false);
+                    return (
+                      <div
+                        key={task.id}
+                        className="border-b flex items-center px-3 hover:bg-muted/50 cursor-pointer gap-2"
+                        style={{ height: rowHeight }}
+                        onClick={(e) => handleTaskClick(e, task)}
+                      >
+                        {pos.isMilestone && (
+                          <Diamond className="h-3 w-3 text-cyan-500 shrink-0" fill="currentColor" />
+                        )}
+                        {task.critical_path && (
+                          <Badge variant="destructive" className="h-4 text-[10px] px-1">CP</Badge>
+                        )}
+                        <span className="text-sm truncate flex-1">{task.name}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -599,86 +640,150 @@ export function ScheduleGanttView({ tasks, onTaskClick, onEdit, onDelete }: Sche
                           );
                         })}
                         
-                        {/* Task Bar */}
+                        {/* Baseline Bar (shown behind task bar when enabled) */}
+                        {showBaseline && position.baselineVisible && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div
+                                  className="absolute top-2 rounded-sm opacity-30"
+                                  style={{
+                                    left: position.baselineLeft,
+                                    width: position.baselineWidth - 4,
+                                    height: taskHeight - 4,
+                                    backgroundColor: task.color,
+                                    border: '1px dashed currentColor',
+                                  }}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="text-xs">
+                                <div>Baseline: {task.baseline_start} - {task.baseline_end}</div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+
+                        {/* Task Bar / Milestone Diamond */}
                         {position.isVisible && (
                           <ContextMenu>
                             <ContextMenuTrigger asChild>
-                              <div
-                                className={`absolute top-1.5 rounded-md transition-shadow flex items-center text-xs text-white font-medium overflow-hidden group ${
-                                  isDragging ? 'shadow-lg z-30 opacity-90' : 'hover:shadow-md'
-                                } ${task.critical_path ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
-                                style={{
-                                  left: position.left,
-                                  width: position.width - 4,
-                                  height: taskHeight,
-                                  backgroundColor: task.color,
-                                  cursor: dragState ? 'inherit' : 'grab',
-                                }}
-                                onMouseDown={(e) => handleMouseDown(e, task, 'move')}
-                                onClick={(e) => handleTaskClick(e, task)}
-                              >
-                                {/* Link handle - start (for SS) */}
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div
-                                        className="absolute -left-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-blue-500 border-2 border-white opacity-0 group-hover:opacity-100 cursor-crosshair z-10"
-                                        onMouseDown={(e) => handleLinkDragStart(e, task, 'start')}
-                                      />
-                                    </TooltipTrigger>
-                                    <TooltipContent side="left" className="text-xs">
-                                      Drag for Start-to-Start link
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                                
-                                {/* Resize handle - start */}
+                              {position.isMilestone ? (
+                                // Milestone Diamond Shape
                                 <div
-                                  className="absolute left-0 top-0 w-2 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 bg-black/20"
-                                  onMouseDown={(e) => handleMouseDown(e, task, 'resize-start')}
-                                />
-                                
-                                {/* Task content */}
-                                <div className="flex-1 px-2 truncate">
-                                  {position.width > 60 && (
-                                    <span className="truncate">{task.name}</span>
+                                  className={`absolute top-1/2 -translate-y-1/2 group cursor-pointer ${
+                                    isDragging ? 'z-30 opacity-90' : ''
+                                  } ${task.critical_path ? 'drop-shadow-lg' : ''}`}
+                                  style={{
+                                    left: position.left + dayWidth / 2 - 14,
+                                  }}
+                                  onMouseDown={(e) => handleMouseDown(e, task, 'move')}
+                                  onClick={(e) => handleTaskClick(e, task)}
+                                >
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div
+                                          className="w-7 h-7 rotate-45 flex items-center justify-center transition-shadow hover:shadow-lg"
+                                          style={{ backgroundColor: task.color }}
+                                        >
+                                          <Flag className="h-3 w-3 text-white -rotate-45" />
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" className="text-xs">
+                                        <div className="font-medium">{task.name}</div>
+                                        <div className="text-muted-foreground">{task.start_date}</div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  {/* Link handles for milestones */}
+                                  <div
+                                    className="absolute -left-2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-blue-500 border-2 border-white opacity-0 group-hover:opacity-100 cursor-crosshair z-10"
+                                    onMouseDown={(e) => handleLinkDragStart(e, task, 'start')}
+                                  />
+                                  <div
+                                    className="absolute -right-2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gray-500 border-2 border-white opacity-0 group-hover:opacity-100 cursor-crosshair z-10"
+                                    onMouseDown={(e) => handleLinkDragStart(e, task, 'end')}
+                                  />
+                                </div>
+                              ) : (
+                                // Regular Task Bar
+                                <div
+                                  className={`absolute top-1.5 rounded-md transition-shadow flex items-center text-xs text-white font-medium overflow-hidden group ${
+                                    isDragging ? 'shadow-lg z-30 opacity-90' : 'hover:shadow-md'
+                                  } ${task.critical_path ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
+                                  style={{
+                                    left: position.left,
+                                    width: position.width - 4,
+                                    height: taskHeight,
+                                    backgroundColor: task.color,
+                                    cursor: dragState ? 'inherit' : 'grab',
+                                  }}
+                                  onMouseDown={(e) => handleMouseDown(e, task, 'move')}
+                                  onClick={(e) => handleTaskClick(e, task)}
+                                >
+                                  {/* Link handle - start (for SS) */}
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div
+                                          className="absolute -left-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-blue-500 border-2 border-white opacity-0 group-hover:opacity-100 cursor-crosshair z-10"
+                                          onMouseDown={(e) => handleLinkDragStart(e, task, 'start')}
+                                        />
+                                      </TooltipTrigger>
+                                      <TooltipContent side="left" className="text-xs">
+                                        Drag for Start-to-Start link
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+
+                                  {/* Resize handle - start */}
+                                  <div
+                                    className="absolute left-0 top-0 w-2 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 bg-black/20"
+                                    onMouseDown={(e) => handleMouseDown(e, task, 'resize-start')}
+                                  />
+
+                                  {/* Task content */}
+                                  <div className="flex-1 px-2 truncate">
+                                    {position.width > 60 && (
+                                      <span className="truncate">{task.name}</span>
+                                    )}
+                                  </div>
+
+                                  {/* Progress indicator */}
+                                  {task.percent_complete > 0 && (
+                                    <div
+                                      className="absolute bottom-0 left-0 h-1 bg-white/40"
+                                      style={{ width: `${task.percent_complete}%` }}
+                                    />
+                                  )}
+
+                                  {/* Resize handle - end */}
+                                  <div
+                                    className="absolute right-0 top-0 w-2 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 bg-black/20"
+                                    onMouseDown={(e) => handleMouseDown(e, task, 'resize-end')}
+                                  />
+
+                                  {/* Link handle - end (for FS) */}
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div
+                                          className="absolute -right-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gray-500 border-2 border-white opacity-0 group-hover:opacity-100 cursor-crosshair z-10"
+                                          onMouseDown={(e) => handleLinkDragStart(e, task, 'end')}
+                                        />
+                                      </TooltipTrigger>
+                                      <TooltipContent side="right" className="text-xs">
+                                        Drag for Finish-to-Start link
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+
+                                  {/* Confirmed indicator */}
+                                  {task.confirmed_at && (
+                                    <CheckCircle2 className="h-3 w-3 mr-1 shrink-0" />
                                   )}
                                 </div>
-                                
-                                {/* Progress indicator */}
-                                {task.percent_complete > 0 && (
-                                  <div 
-                                    className="absolute bottom-0 left-0 h-1 bg-white/40"
-                                    style={{ width: `${task.percent_complete}%` }}
-                                  />
-                                )}
-                                
-                                {/* Resize handle - end */}
-                                <div
-                                  className="absolute right-0 top-0 w-2 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 bg-black/20"
-                                  onMouseDown={(e) => handleMouseDown(e, task, 'resize-end')}
-                                />
-                                
-                                {/* Link handle - end (for FS) */}
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div
-                                        className="absolute -right-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gray-500 border-2 border-white opacity-0 group-hover:opacity-100 cursor-crosshair z-10"
-                                        onMouseDown={(e) => handleLinkDragStart(e, task, 'end')}
-                                      />
-                                    </TooltipTrigger>
-                                    <TooltipContent side="right" className="text-xs">
-                                      Drag for Finish-to-Start link
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-
-                                {/* Confirmed indicator */}
-                                {task.confirmed_at && (
-                                  <CheckCircle2 className="h-3 w-3 mr-1 shrink-0" />
-                                )}
-                              </div>
+                              )}
                             </ContextMenuTrigger>
                             <ContextMenuContent>
                               <ContextMenuItem onClick={() => handleConfirmTask(task)}>
@@ -743,6 +848,10 @@ export function ScheduleGanttView({ tasks, onTaskClick, onEdit, onDelete }: Sche
         {/* Legend */}
         <div className="mt-4 pt-4 border-t flex flex-wrap gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
+            <Diamond className="h-3 w-3 text-cyan-500" fill="currentColor" />
+            <span>Milestone</span>
+          </div>
+          <div className="flex items-center gap-1">
             <div className="w-3 h-0.5 bg-muted-foreground" style={{ borderStyle: 'dashed', borderWidth: '1px 0 0 0' }} />
             <span>FS (Finish-to-Start)</span>
           </div>
@@ -754,6 +863,12 @@ export function ScheduleGanttView({ tasks, onTaskClick, onEdit, onDelete }: Sche
             <Badge variant="destructive" className="h-4 text-[10px] px-1">CP</Badge>
             <span>Critical Path</span>
           </div>
+          {hasBaselineData && (
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-2 rounded-sm opacity-30 border border-dashed border-current bg-gray-400" />
+              <span>Baseline (toggle to show)</span>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

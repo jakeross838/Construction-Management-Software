@@ -236,7 +236,7 @@ export function useSubmitDraw() {
         body: JSON.stringify({ submitted_by: submittedBy }),
       });
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { id: string; draw_number: number }) => {
       queryClient.invalidateQueries({ queryKey: ['draws'] });
       queryClient.invalidateQueries({ queryKey: ['draw', data.id] });
       toast.success(`Draw #${data.draw_number} submitted`);

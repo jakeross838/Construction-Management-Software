@@ -6,10 +6,19 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
+
+// Helper to apply builder filter
+const withBuilderFilter = (query, builderId) => {
+  if (builderId) {
+    return query.eq('builder_id', builderId);
+  }
+  return query;
+};
 
 // ============================================================
 // TASKS
@@ -21,6 +30,7 @@ const asyncHandler = fn => (req, res, next) =>
  */
 router.get('/', asyncHandler(async (req, res) => {
   const { job_id, status, assigned_to, priority, type, due_before, parent_task_id } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_tasks')
@@ -30,6 +40,8 @@ router.get('/', asyncHandler(async (req, res) => {
     `)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
+
+  query = withBuilderFilter(query, builderId);
 
   if (job_id) query = query.eq('job_id', job_id);
   if (status) query = query.eq('status', status);
@@ -54,12 +66,14 @@ router.get('/', asyncHandler(async (req, res) => {
  */
 router.get('/stats', asyncHandler(async (req, res) => {
   const { job_id } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_tasks')
     .select('status, priority, due_date')
     .is('deleted_at', null);
 
+  query = withBuilderFilter(query, builderId);
   if (job_id) query = query.eq('job_id', job_id);
 
   const { data, error } = await query;
@@ -93,8 +107,9 @@ router.get('/stats', asyncHandler(async (req, res) => {
  */
 router.get('/my-tasks', asyncHandler(async (req, res) => {
   const { assigned_to = 'Jake Ross' } = req.query;
+  const builderId = getBuilderId(req);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('v2_tasks')
     .select(`
       *,
@@ -105,6 +120,9 @@ router.get('/my-tasks', asyncHandler(async (req, res) => {
     .not('status', 'in', '("completed","cancelled")')
     .order('due_date', { ascending: true, nullsLast: true });
 
+  query = withBuilderFilter(query, builderId);
+
+  const { data, error } = await query;
   if (error) throw error;
   res.json(data);
 }));
@@ -115,17 +133,20 @@ router.get('/my-tasks', asyncHandler(async (req, res) => {
  */
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   // Get task
-  const { data: task, error: taskError } = await supabase
+  let taskQuery = supabase
     .from('v2_tasks')
     .select(`
       *,
       job:v2_jobs(id, name)
     `)
     .eq('id', id)
-    .is('deleted_at', null)
-    .single();
+    .is('deleted_at', null);
+
+  taskQuery = withBuilderFilter(taskQuery, builderId);
+  const { data: task, error: taskError } = await taskQuery.single();
 
   if (taskError) throw taskError;
   if (!task) {
@@ -154,12 +175,15 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .order('created_at');
 
   // Get subtasks
-  const { data: subtasks } = await supabase
+  let subtasksQuery = supabase
     .from('v2_tasks')
     .select('*')
     .eq('parent_task_id', id)
     .is('deleted_at', null)
     .order('created_at');
+
+  subtasksQuery = withBuilderFilter(subtasksQuery, builderId);
+  const { data: subtasks } = await subtasksQuery;
 
   res.json({
     ...task,
@@ -183,36 +207,48 @@ router.post('/', asyncHandler(async (req, res) => {
     category,
     priority,
     assigned_to,
+    assignee_id,
     created_by,
     due_date,
     start_date,
     parent_task_id,
+    estimated_hours,
     tags,
     notes
   } = req.body;
+  const builderId = getBuilderId(req);
 
   if (!title) {
     return res.status(400).json({ error: 'Title is required' });
   }
 
+  const insertData = {
+    job_id: job_id || null,
+    title,
+    description,
+    type: type || 'task',
+    category,
+    priority: priority || 'normal',
+    assigned_to,
+    assignee_id: assignee_id || null,
+    created_by: created_by || 'Jake Ross',
+    due_date,
+    start_date,
+    parent_task_id: parent_task_id || null,
+    estimated_hours: estimated_hours || null,
+    tags,
+    notes,
+    status: 'todo'
+  };
+
+  // Add builder_id if available
+  if (builderId) {
+    insertData.builder_id = builderId;
+  }
+
   const { data, error } = await supabase
     .from('v2_tasks')
-    .insert({
-      job_id: job_id || null,
-      title,
-      description,
-      type: type || 'task',
-      category,
-      priority: priority || 'normal',
-      assigned_to,
-      created_by: created_by || 'Jake Ross',
-      due_date,
-      start_date,
-      parent_task_id: parent_task_id || null,
-      tags,
-      notes,
-      status: 'todo'
-    })
+    .insert(insertData)
     .select(`
       *,
       job:v2_jobs(id, name)
@@ -229,11 +265,13 @@ router.post('/', asyncHandler(async (req, res) => {
  */
 router.patch('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const updates = req.body;
 
   delete updates.id;
   delete updates.created_at;
   delete updates.task_number;
+  delete updates.builder_id; // Don't allow builder_id to be changed
 
   // If marking as completed, set completed_at
   if (updates.status === 'completed' && !updates.completed_at) {
@@ -246,11 +284,15 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     updates.completed_at = null;
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('v2_tasks')
     .update(updates)
     .eq('id', id)
-    .is('deleted_at', null)
+    .is('deleted_at', null);
+
+  query = withBuilderFilter(query, builderId);
+
+  const { data, error } = await query
     .select(`
       *,
       job:v2_jobs(id, name)
@@ -271,8 +313,9 @@ router.patch('/:id', asyncHandler(async (req, res) => {
  */
 router.post('/:id/complete', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('v2_tasks')
     .update({
       status: 'completed',
@@ -280,9 +323,11 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
       completed_at: new Date().toISOString()
     })
     .eq('id', id)
-    .is('deleted_at', null)
-    .select()
-    .single();
+    .is('deleted_at', null);
+
+  query = withBuilderFilter(query, builderId);
+
+  const { data, error } = await query.select().single();
 
   if (error) throw error;
   if (!data) {
@@ -298,17 +343,20 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
  */
 router.post('/:id/reopen', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('v2_tasks')
     .update({
       status: 'todo',
       completed_at: null
     })
     .eq('id', id)
-    .is('deleted_at', null)
-    .select()
-    .single();
+    .is('deleted_at', null);
+
+  query = withBuilderFilter(query, builderId);
+
+  const { data, error } = await query.select().single();
 
   if (error) throw error;
   if (!data) {
@@ -324,14 +372,17 @@ router.post('/:id/reopen', asyncHandler(async (req, res) => {
  */
 router.delete('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('v2_tasks')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
-    .is('deleted_at', null)
-    .select()
-    .single();
+    .is('deleted_at', null);
+
+  query = withBuilderFilter(query, builderId);
+
+  const { data, error } = await query.select().single();
 
   if (error) throw error;
   if (!data) {

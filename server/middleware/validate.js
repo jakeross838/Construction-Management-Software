@@ -92,8 +92,9 @@ function formatZodErrors(error, location) {
 // UUID validation
 const uuidSchema = z.string().uuid('Invalid UUID format');
 
-// Pagination
+// Pagination - supports both page-based and offset-based pagination
 const paginationSchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0)
 });
@@ -263,7 +264,9 @@ const invoiceQuerySchema = paginationSchema.extend({
   status: z.string().optional(),
   job_id: uuidSchema.optional(),
   vendor_id: uuidSchema.optional(),
-  search: z.string().max(100).optional()
+  search: z.string().max(100).optional(),
+  // Cursor pagination support
+  cursor: z.string().optional()
 });
 
 const poQuerySchema = paginationSchema.extend({

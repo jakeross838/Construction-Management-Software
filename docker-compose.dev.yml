@@ -1,0 +1,76 @@
+# =============================================================================
+# Ross Built Construction Management Software - Docker Compose (Development)
+# =============================================================================
+# Usage:
+#   docker-compose -f docker-compose.dev.yml up    # Start with hot reload
+#   docker-compose -f docker-compose.dev.yml down  # Stop containers
+#
+# Features:
+#   - Volume mounts for live code changes
+#   - Debug-friendly environment
+#   - Separate from production configuration
+# =============================================================================
+
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server-builder  # Use build stage for dev dependencies
+    image: rossbuilt-cms:dev
+    container_name: rossbuilt-cms-dev
+    ports:
+      - "${PORT:-3001}:3001"
+      - "9229:9229"  # Node.js debug port
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DEBUG=*
+      # Supabase Configuration
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      # API Keys
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SUPABASE_ACCESS_TOKEN=${SUPABASE_ACCESS_TOKEN}
+    volumes:
+      # Mount source code for hot reload
+      - ./server:/app/server:ro
+      - ./config:/app/config:ro
+      - ./client/dist:/app/client/dist:ro
+      # Exclude node_modules to use container's version
+      - /app/node_modules
+      # Persistent storage
+      - rossbuilt-uploads-dev:/app/uploads
+      - rossbuilt-logs-dev:/app/logs
+    command: ["node", "--inspect=0.0.0.0:9229", "server/index.js"]
+    networks:
+      - rossbuilt-network-dev
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # Redis for development/testing caching
+  redis:
+    image: redis:7-alpine
+    container_name: rossbuilt-redis-dev
+    ports:
+      - "6379:6379"
+    networks:
+      - rossbuilt-network-dev
+    profiles:
+      - with-redis
+
+volumes:
+  rossbuilt-uploads-dev:
+    driver: local
+  rossbuilt-logs-dev:
+    driver: local
+
+networks:
+  rossbuilt-network-dev:
+    driver: bridge

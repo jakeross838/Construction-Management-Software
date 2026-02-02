@@ -35,6 +35,9 @@ function requestLogger(options = {}) {
     // Attach request ID to request object for use in other middleware/handlers
     req.requestId = requestId;
 
+    // Set correlation ID in response header for client-side debugging
+    res.setHeader('X-Request-ID', requestId);
+
     // Log request start
     const requestLog = {
       component: 'http',

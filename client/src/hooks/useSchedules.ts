@@ -133,6 +133,50 @@ export interface BaselineVariance {
   };
 }
 
+// Response from capture_schedule_baseline RPC
+export interface CaptureBaselineResult {
+  success: boolean;
+  schedule_id: string;
+  schedule_name: string;
+  tasks_captured: number;
+  captured_at: string;
+}
+
+// Response from get_schedule_variance RPC
+export interface ScheduleVarianceResult {
+  schedule_id: string;
+  schedule_name: string;
+  baseline_captured_at: string | null;
+  baseline_set_by: string | null;
+  has_baseline: boolean;
+  tasks: Array<{
+    task_id: string;
+    task_name: string;
+    phase: string | null;
+    baseline_start: string | null;
+    baseline_end: string | null;
+    planned_start: string | null;
+    planned_end: string | null;
+    actual_start: string | null;
+    actual_end: string | null;
+    status: string;
+    percent_complete: number;
+    start_variance_days: number;
+    end_variance_days: number;
+    has_baseline: boolean;
+  }>;
+  summary: {
+    total_tasks: number;
+    tasks_with_baseline: number;
+    tasks_without_baseline: number;
+    on_schedule: number;
+    behind_schedule: number;
+    ahead_of_schedule: number;
+    total_end_variance_days: number;
+    avg_end_variance_days: number;
+  };
+}
+
 export interface CriticalPath {
   critical_path_days: number;
   start_date: string | null;
@@ -619,6 +663,45 @@ export function useSetBaseline() {
     onError: (error: Error) => {
       toast.error(`Failed to set baseline: ${error.message}`);
     },
+  });
+}
+
+// Capture baseline using the capture_schedule_baseline RPC function
+export function useCaptureBaseline() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ scheduleId, captured_by }: { scheduleId: string; captured_by?: string }) => {
+      return api<CaptureBaselineResult>(`/schedules/${scheduleId}/capture-baseline`, {
+        method: 'POST',
+        body: JSON.stringify({ captured_by }),
+      });
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['baseline', variables.scheduleId] });
+      queryClient.invalidateQueries({ queryKey: ['schedule-variance', variables.scheduleId] });
+      queryClient.invalidateQueries({ queryKey: ['schedule', variables.scheduleId] });
+      toast.success(`Baseline captured: ${data.tasks_captured} tasks`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to capture baseline: ${error.message}`);
+    },
+  });
+}
+
+// Get schedule variance using the get_schedule_variance RPC function
+export function useScheduleVariance(scheduleId: string | null) {
+  return useQuery({
+    queryKey: ['schedule-variance', scheduleId],
+    queryFn: async () => {
+      if (!scheduleId) return null;
+      try {
+        return await api<ScheduleVarianceResult>(`/schedules/${scheduleId}/variance`);
+      } catch {
+        return null; // No baseline captured
+      }
+    },
+    enabled: !!scheduleId,
   });
 }
 

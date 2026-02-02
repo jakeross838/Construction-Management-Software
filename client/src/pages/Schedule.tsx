@@ -3,12 +3,14 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  CalendarDays, 
-  List, 
+import {
+  CalendarDays,
+  List,
   GanttChart,
   Plus,
   Building,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
 import { 
@@ -48,6 +50,7 @@ const Schedule = () => {
   const { data: tasks = [], isLoading } = useScheduleTasks(selectedJobId);
   const createTask = useCreateScheduleTask();
   const updateTask = useUpdateScheduleTask();
+  const [isExporting, setIsExporting] = useState(false);
   const deleteTask = useDeleteScheduleTask();
 
   const [activeView, setActiveView] = useState<'calendar' | 'list' | 'gantt'>('calendar');
@@ -99,6 +102,39 @@ const Schedule = () => {
     }
   };
 
+  const handleExportPDF = async () => {
+    if (!selectedJobId) return;
+    setIsExporting(true);
+    try {
+      const response = await fetch(`/api/schedules/jobs/${selectedJobId}/export-pdf`);
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // Extract filename from Content-Disposition header if available
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'schedule.pdf';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/);
+        if (match) filename = match[1];
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success('Schedule PDF exported successfully');
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export schedule PDF');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (!selectedJobId) {
     return (
       <AppLayout>
@@ -141,6 +177,19 @@ const Schedule = () => {
           </div>
           <div className="flex items-center gap-2">
             <ScheduleColorLegend />
+            <Button
+              variant="outline"
+              onClick={handleExportPDF}
+              disabled={isExporting || tasks.length === 0}
+              className="gap-2"
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Export PDF
+            </Button>
             <Button onClick={handleAddTask} className="gap-2">
               <Plus className="h-4 w-4" />
               Add Task

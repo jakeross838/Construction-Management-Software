@@ -28,6 +28,44 @@ async function logPunchListActivity(punchListId, itemId, action, performedBy, de
 }
 
 // ============================================================
+// QR CODE LOCATION LOOKUP (Phase 5 Mobile)
+// ============================================================
+
+// Scan QR code to get location info (placed before parameterized routes)
+router.get('/locations/scan/:qrCode', asyncHandler(async (req, res) => {
+  const { qrCode } = req.params;
+
+  const { data: location, error } = await supabase
+    .from('v2_job_locations')
+    .select(`
+      *,
+      job:v2_jobs(id, name, address)
+    `)
+    .eq('qr_code', qrCode)
+    .single();
+
+  if (error || !location) {
+    throw new AppError('NOT_FOUND', 'Location not found for this QR code');
+  }
+
+  // Also get any punch items at this location
+  const { data: punchItems } = await supabase
+    .from('v2_punch_list_items')
+    .select(`
+      *,
+      punch_list:v2_punch_lists(id, title, status)
+    `)
+    .or(`location_qr_code.eq.${qrCode},location_id.eq.${location.id}`)
+    .in('status', ['open', 'in_progress']);
+
+  res.json({
+    location,
+    punch_items: punchItems || [],
+    punch_item_count: (punchItems || []).length
+  });
+}))
+
+// ============================================================
 // LIST & FILTER ENDPOINTS
 // ============================================================
 
@@ -730,6 +768,171 @@ router.post('/:id/close', asyncHandler(async (req, res) => {
   await logPunchListActivity(id, null, 'list_closed', closed_by || 'system', {});
 
   res.json(updated);
+}));
+
+// ============================================================
+// MOBILE ENHANCEMENTS - Phase 5
+// ============================================================
+
+// Quick complete item with photo (swipe-to-complete support)
+router.patch('/items/:itemId/complete', asyncHandler(async (req, res) => {
+  const { itemId } = req.params;
+  const { completed_by, completed_photo_url, completion_method = 'button', resolution_notes } = req.body;
+
+  const { data: item, error: fetchError } = await supabase
+    .from('v2_punch_list_items')
+    .select('*, punch_list:v2_punch_lists(id, job_id)')
+    .eq('id', itemId)
+    .single();
+
+  if (fetchError || !item) {
+    throw new AppError('NOT_FOUND', 'Item not found');
+  }
+
+  if (!['open', 'in_progress'].includes(item.status)) {
+    throw new AppError('VALIDATION_ERROR', 'Only open or in-progress items can be completed');
+  }
+
+  const now = new Date().toISOString();
+
+  const { data: updated, error } = await supabase
+    .from('v2_punch_list_items')
+    .update({
+      status: 'resolved',
+      resolved_at: now,
+      resolved_by: completed_by || 'system',
+      resolution_notes: resolution_notes || null,
+      completed_photo_url: completed_photo_url || null,
+      completed_at: now,
+      completed_by: completed_by || 'system',
+      updated_at: now
+    })
+    .eq('id', itemId)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Log activity with completion method for analytics
+  await logPunchListActivity(item.punch_list_id, itemId, 'item_completed', completed_by || 'system', {
+    completion_method,
+    has_photo: !!completed_photo_url,
+    resolution_notes
+  });
+
+  // Broadcast update
+  broadcastInvoiceUpdate(item.punch_list_id, 'punch_item_completed', { item: updated });
+
+  res.json(updated);
+}));
+
+// Save annotated photo
+router.post('/items/:itemId/annotate', upload.single('file'), asyncHandler(async (req, res) => {
+  const { itemId } = req.params;
+  const { attachment_id, annotations, annotated_by } = req.body;
+
+  // Get the item to find punch_list_id
+  const { data: item, error: itemError } = await supabase
+    .from('v2_punch_list_items')
+    .select('punch_list_id')
+    .eq('id', itemId)
+    .single();
+
+  if (itemError || !item) {
+    throw new AppError('NOT_FOUND', 'Item not found');
+  }
+
+  // If a file is uploaded, store it
+  let annotatedUrl = null;
+  let originalUrl = null;
+
+  if (req.file) {
+    const file = req.file;
+    const timestamp = Date.now();
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const storagePath = `punch-list-photos/${item.punch_list_id}/annotated_${timestamp}_${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('invoices')
+      .upload(storagePath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false
+      });
+
+    if (uploadError) throw new AppError('DATABASE_ERROR', uploadError.message);
+
+    const { data: urlData } = supabase.storage
+      .from('invoices')
+      .getPublicUrl(storagePath);
+
+    annotatedUrl = urlData.publicUrl;
+  }
+
+  // If attachment_id provided, get original URL and update attachment
+  if (attachment_id) {
+    const { data: attachment, error: attachmentError } = await supabase
+      .from('v2_punch_list_attachments')
+      .select('file_url')
+      .eq('id', attachment_id)
+      .single();
+
+    if (attachmentError || !attachment) {
+      throw new AppError('NOT_FOUND', 'Attachment not found');
+    }
+
+    originalUrl = attachment.file_url;
+
+    // Update attachment with annotation info
+    await supabase
+      .from('v2_punch_list_attachments')
+      .update({
+        has_annotation: true,
+        annotated_url: annotatedUrl
+      })
+      .eq('id', attachment_id);
+  }
+
+  // Parse annotations if string
+  const parsedAnnotations = typeof annotations === 'string' ? JSON.parse(annotations) : (annotations || []);
+
+  // Create annotation record
+  const { data: annotationRecord, error: annotationError } = await supabase
+    .from('v2_punch_list_photo_annotations')
+    .insert({
+      attachment_id: attachment_id || null,
+      punch_list_id: item.punch_list_id,
+      item_id: itemId,
+      original_url: originalUrl || req.body.original_url,
+      annotated_url: annotatedUrl || req.body.annotated_url,
+      annotations: parsedAnnotations,
+      annotated_by: annotated_by || 'system'
+    })
+    .select()
+    .single();
+
+  if (annotationError) throw new AppError('DATABASE_ERROR', annotationError.message);
+
+  // Log activity
+  await logPunchListActivity(item.punch_list_id, itemId, 'photo_annotated', annotated_by || 'system', {
+    annotation_count: parsedAnnotations.length
+  });
+
+  res.json(annotationRecord);
+}));
+
+// Get annotations for an item
+router.get('/items/:itemId/annotations', asyncHandler(async (req, res) => {
+  const { itemId } = req.params;
+
+  const { data: annotations, error } = await supabase
+    .from('v2_punch_list_photo_annotations')
+    .select('*')
+    .eq('item_id', itemId)
+    .order('annotated_at', { ascending: false });
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(annotations || []);
 }));
 
 module.exports = router;

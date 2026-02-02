@@ -76,14 +76,15 @@ async function logDocumentActivity(documentId, action, performedBy, details = {}
 
 // List documents with filters
 router.get('/', asyncHandler(async (req, res) => {
-    const { job_id, category, vendor_id, search, include_deleted } = req.query;
+    const { job_id, category, vendor_id, folder_id, search, include_deleted } = req.query;
 
     let query = supabase
       .from('v2_documents')
       .select(`
         *,
         job:v2_jobs!job_id(id, name),
-        vendor:v2_vendors(id, name)
+        vendor:v2_vendors(id, name),
+        folder:v2_document_folders(id, name)
       `)
       .order('created_at', { ascending: false });
 
@@ -100,6 +101,13 @@ router.get('/', asyncHandler(async (req, res) => {
     // Filter by vendor
     if (vendor_id) {
       query = query.eq('vendor_id', vendor_id);
+    }
+
+    // Filter by folder (null = root level)
+    if (folder_id === 'null' || folder_id === 'root') {
+      query = query.is('folder_id', null);
+    } else if (folder_id) {
+      query = query.eq('folder_id', folder_id);
     }
 
     // Exclude deleted unless requested
@@ -252,6 +260,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
       name,
       description,
       category,
+      folder_id,
       document_date,
       expiration_date,
       vendor_id,
@@ -320,6 +329,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
         name: name || req.file.originalname,
         description: description || null,
         category,
+        folder_id: folder_id || null,
         file_url: urlData.publicUrl,
         file_name: req.file.originalname,
         file_size: req.file.size,
@@ -368,6 +378,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       name,
       description,
       category,
+      folder_id,
       document_date,
       expiration_date,
       vendor_id,
@@ -387,6 +398,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       }
       updateData.category = category;
     }
+    if (folder_id !== undefined) updateData.folder_id = folder_id || null;
     if (document_date !== undefined) updateData.document_date = document_date;
     if (expiration_date !== undefined) updateData.expiration_date = expiration_date;
     if (vendor_id !== undefined) updateData.vendor_id = vendor_id;
@@ -990,6 +1002,440 @@ router.delete('/requirements/:reqId', asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true });
+}));
+
+// ============================================================
+// FOLDER MANAGEMENT
+// ============================================================
+
+// List folders for a job (optionally within a parent folder)
+router.get('/folders', asyncHandler(async (req, res) => {
+  const { job_id, parent_folder_id, include_deleted } = req.query;
+
+  if (!job_id) {
+    return res.status(400).json({ error: 'job_id is required' });
+  }
+
+  let query = supabase
+    .from('v2_document_folders')
+    .select('*')
+    .eq('job_id', job_id)
+    .order('sort_order')
+    .order('name');
+
+  // Filter by parent folder (null = root level)
+  if (parent_folder_id === 'null' || parent_folder_id === '') {
+    query = query.is('parent_folder_id', null);
+  } else if (parent_folder_id) {
+    query = query.eq('parent_folder_id', parent_folder_id);
+  }
+
+  // Exclude deleted unless requested
+  if (!include_deleted) {
+    query = query.is('deleted_at', null);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // Get document and subfolder counts for each folder
+  const foldersWithCounts = await Promise.all(
+    (data || []).map(async (folder) => {
+      const [docCount, subfolderCount] = await Promise.all([
+        supabase
+          .from('v2_documents')
+          .select('id', { count: 'exact', head: true })
+          .eq('folder_id', folder.id)
+          .is('deleted_at', null),
+        supabase
+          .from('v2_document_folders')
+          .select('id', { count: 'exact', head: true })
+          .eq('parent_folder_id', folder.id)
+          .is('deleted_at', null)
+      ]);
+
+      return {
+        ...folder,
+        document_count: docCount.count || 0,
+        subfolder_count: subfolderCount.count || 0
+      };
+    })
+  );
+
+  res.json(foldersWithCounts);
+}));
+
+// Get single folder with path
+router.get('/folders/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: folder, error } = await supabase
+    .from('v2_document_folders')
+    .select(`
+      *,
+      job:v2_jobs!job_id(id, name),
+      parent:v2_document_folders!parent_folder_id(id, name)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!folder) return res.status(404).json({ error: 'Folder not found' });
+
+  // Get folder path (breadcrumb)
+  const { data: pathData } = await supabase
+    .rpc('get_folder_path', { p_folder_id: id });
+
+  res.json({
+    ...folder,
+    path: pathData || []
+  });
+}));
+
+// Create folder
+router.post('/folders', asyncHandler(async (req, res) => {
+  const {
+    job_id,
+    name,
+    description,
+    parent_folder_id,
+    color,
+    icon,
+    sort_order,
+    created_by
+  } = req.body;
+
+  if (!job_id) {
+    return res.status(400).json({ error: 'job_id is required' });
+  }
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+
+  // Validate parent folder exists and belongs to same job
+  if (parent_folder_id) {
+    const { data: parentFolder, error: parentError } = await supabase
+      .from('v2_document_folders')
+      .select('id, job_id')
+      .eq('id', parent_folder_id)
+      .single();
+
+    if (parentError || !parentFolder) {
+      return res.status(400).json({ error: 'Parent folder not found' });
+    }
+
+    if (parentFolder.job_id !== job_id) {
+      return res.status(400).json({ error: 'Parent folder must belong to the same job' });
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('v2_document_folders')
+    .insert({
+      job_id,
+      name: name.trim(),
+      description: description || null,
+      parent_folder_id: parent_folder_id || null,
+      color: color || null,
+      icon: icon || null,
+      sort_order: sort_order || 0,
+      created_by: created_by || null
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'A folder with this name already exists in this location' });
+    }
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.status(201).json(data);
+}));
+
+// Update folder
+router.patch('/folders/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    description,
+    parent_folder_id,
+    color,
+    icon,
+    sort_order
+  } = req.body;
+
+  // Get current folder to verify it exists
+  const { data: currentFolder, error: fetchError } = await supabase
+    .from('v2_document_folders')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (fetchError || !currentFolder) {
+    return res.status(404).json({ error: 'Folder not found' });
+  }
+
+  const updateData = { updated_at: new Date().toISOString() };
+
+  if (name !== undefined) {
+    if (!name.trim()) {
+      return res.status(400).json({ error: 'name cannot be empty' });
+    }
+    updateData.name = name.trim();
+  }
+
+  if (description !== undefined) updateData.description = description;
+  if (color !== undefined) updateData.color = color;
+  if (icon !== undefined) updateData.icon = icon;
+  if (sort_order !== undefined) updateData.sort_order = sort_order;
+
+  // Handle parent folder change
+  if (parent_folder_id !== undefined) {
+    // Prevent moving folder to itself
+    if (parent_folder_id === id) {
+      return res.status(400).json({ error: 'Cannot move folder into itself' });
+    }
+
+    // Validate new parent exists and is in the same job
+    if (parent_folder_id) {
+      const { data: parentFolder, error: parentError } = await supabase
+        .from('v2_document_folders')
+        .select('id, job_id')
+        .eq('id', parent_folder_id)
+        .single();
+
+      if (parentError || !parentFolder) {
+        return res.status(400).json({ error: 'Parent folder not found' });
+      }
+
+      if (parentFolder.job_id !== currentFolder.job_id) {
+        return res.status(400).json({ error: 'Parent folder must belong to the same job' });
+      }
+
+      // Prevent circular reference (moving folder into its own descendant)
+      const { data: pathData } = await supabase
+        .rpc('get_folder_path', { p_folder_id: parent_folder_id });
+
+      if (pathData && pathData.some(p => p.id === id)) {
+        return res.status(400).json({ error: 'Cannot move folder into its own descendant' });
+      }
+    }
+
+    updateData.parent_folder_id = parent_folder_id || null;
+  }
+
+  const { data, error } = await supabase
+    .from('v2_document_folders')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'A folder with this name already exists in this location' });
+    }
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.json(data);
+}));
+
+// Delete folder (soft delete)
+router.delete('/folders/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { recursive, deleted_by } = req.body;
+
+  // Get folder to check it exists
+  const { data: folder, error: fetchError } = await supabase
+    .from('v2_document_folders')
+    .select('id, job_id')
+    .eq('id', id)
+    .single();
+
+  if (fetchError || !folder) {
+    return res.status(404).json({ error: 'Folder not found' });
+  }
+
+  // Check for subfolders or documents
+  const [subfolders, documents] = await Promise.all([
+    supabase
+      .from('v2_document_folders')
+      .select('id', { count: 'exact', head: true })
+      .eq('parent_folder_id', id)
+      .is('deleted_at', null),
+    supabase
+      .from('v2_documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('folder_id', id)
+      .is('deleted_at', null)
+  ]);
+
+  const hasContents = (subfolders.count || 0) > 0 || (documents.count || 0) > 0;
+
+  if (hasContents && !recursive) {
+    return res.status(400).json({
+      error: 'Folder is not empty',
+      subfolder_count: subfolders.count || 0,
+      document_count: documents.count || 0,
+      message: 'Set recursive=true to delete folder and move contents to parent, or remove contents first'
+    });
+  }
+
+  // If recursive, move documents and subfolders to parent folder
+  if (hasContents && recursive) {
+    // Get parent_folder_id from current folder
+    const { data: currentFolder } = await supabase
+      .from('v2_document_folders')
+      .select('parent_folder_id')
+      .eq('id', id)
+      .single();
+
+    const newParentId = currentFolder?.parent_folder_id || null;
+
+    // Move subfolders to parent
+    await supabase
+      .from('v2_document_folders')
+      .update({ parent_folder_id: newParentId, updated_at: new Date().toISOString() })
+      .eq('parent_folder_id', id)
+      .is('deleted_at', null);
+
+    // Move documents to parent folder (null = root)
+    await supabase
+      .from('v2_documents')
+      .update({ folder_id: newParentId, updated_at: new Date().toISOString() })
+      .eq('folder_id', id)
+      .is('deleted_at', null);
+  }
+
+  // Soft delete the folder
+  const { data, error } = await supabase
+    .from('v2_document_folders')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json({ success: true, folder: data });
+}));
+
+// Restore deleted folder
+router.post('/folders/:id/restore', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_document_folders')
+    .update({ deleted_at: null, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Move document to folder
+router.patch('/:id/move', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { folder_id } = req.body;
+
+  // Validate document exists
+  const { data: doc, error: docError } = await supabase
+    .from('v2_documents')
+    .select('id, job_id')
+    .eq('id', id)
+    .single();
+
+  if (docError || !doc) {
+    return res.status(404).json({ error: 'Document not found' });
+  }
+
+  // Validate folder exists and belongs to same job (if provided)
+  if (folder_id) {
+    const { data: folder, error: folderError } = await supabase
+      .from('v2_document_folders')
+      .select('id, job_id')
+      .eq('id', folder_id)
+      .single();
+
+    if (folderError || !folder) {
+      return res.status(400).json({ error: 'Folder not found' });
+    }
+
+    if (folder.job_id !== doc.job_id) {
+      return res.status(400).json({ error: 'Folder must belong to the same job as the document' });
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('v2_documents')
+    .update({ folder_id: folder_id || null, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json(data);
+}));
+
+// Bulk move documents to folder
+router.post('/move-bulk', asyncHandler(async (req, res) => {
+  const { document_ids, folder_id } = req.body;
+
+  if (!document_ids || !Array.isArray(document_ids) || document_ids.length === 0) {
+    return res.status(400).json({ error: 'document_ids array is required' });
+  }
+
+  // Get documents to verify they exist and get job_id
+  const { data: docs, error: docsError } = await supabase
+    .from('v2_documents')
+    .select('id, job_id')
+    .in('id', document_ids);
+
+  if (docsError) throw new AppError('DATABASE_ERROR', docsError.message);
+
+  if (!docs || docs.length === 0) {
+    return res.status(404).json({ error: 'No documents found' });
+  }
+
+  // Verify all documents belong to the same job
+  const jobIds = [...new Set(docs.map(d => d.job_id))];
+  if (jobIds.length > 1) {
+    return res.status(400).json({ error: 'All documents must belong to the same job' });
+  }
+
+  const jobId = jobIds[0];
+
+  // Validate folder exists and belongs to same job (if provided)
+  if (folder_id) {
+    const { data: folder, error: folderError } = await supabase
+      .from('v2_document_folders')
+      .select('id, job_id')
+      .eq('id', folder_id)
+      .single();
+
+    if (folderError || !folder) {
+      return res.status(400).json({ error: 'Folder not found' });
+    }
+
+    if (folder.job_id !== jobId) {
+      return res.status(400).json({ error: 'Folder must belong to the same job as the documents' });
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('v2_documents')
+    .update({ folder_id: folder_id || null, updated_at: new Date().toISOString() })
+    .in('id', document_ids)
+    .select();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  res.json({ success: true, moved: data?.length || 0, documents: data });
 }));
 
 module.exports = router;

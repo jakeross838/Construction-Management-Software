@@ -754,7 +754,7 @@ router.get('/', asyncHandler(async (req, res) => {
     .select(`
       *,
       job:v2_jobs(id, name),
-      source_bid:v2_bids(id, title, vendor:v2_vendors(id, name))
+      source_bid:v2_bids(id, title, vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name))
     `)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -804,7 +804,7 @@ router.get('/job/:jobId', asyncHandler(async (req, res) => {
     .select(`
       *,
       job:v2_jobs(id, name, address),
-      source_bid:v2_bids(id, title, bid_amount, vendor:v2_vendors(id, name))
+      source_bid:v2_bids(id, title, bid_amount, vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name))
     `)
     .eq('job_id', jobId)
     .is('deleted_at', null)
@@ -851,7 +851,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .select(`
       *,
       job:v2_jobs(id, name, address),
-      source_bid:v2_bids(id, title, bid_amount, vendor:v2_vendors(id, name))
+      source_bid:v2_bids(id, title, bid_amount, vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name))
     `)
     .eq('id', id)
     .is('deleted_at', null)

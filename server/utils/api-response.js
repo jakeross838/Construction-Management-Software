@@ -4,201 +4,260 @@
  */
 
 /**
+ * Error codes enum for consistent error handling across the API
+ * @enum {string}
+ */
+const ErrorCodes = {
+  // Client errors (4xx)
+  BAD_REQUEST: 'BAD_REQUEST',
+  VALIDATION_FAILED: 'VALIDATION_FAILED',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  DUPLICATE: 'DUPLICATE',
+  LOCKED: 'LOCKED',
+  RATE_LIMITED: 'RATE_LIMITED',
+
+  // Server errors (5xx)
+  SERVER_ERROR: 'SERVER_ERROR',
+  DATABASE_ERROR: 'DATABASE_ERROR',
+  EXTERNAL_SERVICE_ERROR: 'EXTERNAL_SERVICE_ERROR',
+
+  // Business logic errors
+  INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
+  INSUFFICIENT_FUNDS: 'INSUFFICIENT_FUNDS',
+  BUDGET_EXCEEDED: 'BUDGET_EXCEEDED',
+  PO_CLOSED: 'PO_CLOSED',
+  INVOICE_ALREADY_PAID: 'INVOICE_ALREADY_PAID',
+  DRAW_ALREADY_FUNDED: 'DRAW_ALREADY_FUNDED'
+};
+
+/**
  * Standard success response
  * @param {Object} res - Express response object
- * @param {*} data - Response data
- * @param {Object} options - Additional options
- * @param {string} options.message - Optional success message
- * @param {Object} options.meta - Optional metadata (pagination, etc.)
- * @param {number} options.status - HTTP status code (default: 200)
+ * @param {*} data - Response data (object, array, or primitive)
+ * @param {Object} [meta={}] - Optional metadata (timestamps, counts, etc.)
+ * @returns {Object} Express response
+ * @example
+ * success(res, { id: 1, name: 'Job' });
+ * success(res, invoices, { count: invoices.length });
  */
-function success(res, data, options = {}) {
-  const { message, meta, status = 200 } = options;
-
+function success(res, data, meta = {}) {
   const response = {
     success: true,
     data
   };
 
-  if (message) {
-    response.message = message;
-  }
-
-  if (meta) {
+  if (Object.keys(meta).length > 0) {
     response.meta = meta;
   }
 
-  return res.status(status).json(response);
-}
-
-/**
- * Standard created response (201)
- * @param {Object} res - Express response object
- * @param {*} data - Created resource data
- * @param {string} message - Optional message
- */
-function created(res, data, message = 'Resource created successfully') {
-  return success(res, data, { status: 201, message });
+  return res.status(200).json(response);
 }
 
 /**
  * Standard error response
  * @param {Object} res - Express response object
- * @param {string} error - Error message
- * @param {Object} options - Additional options
- * @param {number} options.status - HTTP status code (default: 400)
- * @param {string} options.code - Error code for client handling
- * @param {*} options.details - Additional error details
+ * @param {string} code - Error code from ErrorCodes enum
+ * @param {string} message - Human-readable error message
+ * @param {Object} [details={}] - Additional error details (field errors, constraints, etc.)
+ * @param {number} [status=400] - HTTP status code
+ * @returns {Object} Express response
+ * @example
+ * error(res, ErrorCodes.NOT_FOUND, 'Invoice not found', { id: '123' }, 404);
+ * error(res, ErrorCodes.VALIDATION_FAILED, 'Invalid amount', { field: 'amount', reason: 'must be positive' });
  */
-function error(res, errorMessage, options = {}) {
-  const { status = 400, code, details } = options;
-
+function error(res, code, message, details = {}, status = 400) {
   const response = {
     success: false,
-    error: errorMessage
+    error: {
+      code,
+      message
+    }
   };
 
-  if (code) {
-    response.code = code;
-  }
-
-  if (details) {
-    response.details = details;
+  if (Object.keys(details).length > 0) {
+    response.error.details = details;
   }
 
   return res.status(status).json(response);
 }
 
 /**
- * Standard not found response
+ * Paginated list response with metadata
  * @param {Object} res - Express response object
- * @param {string} resource - Resource type that wasn't found
- * @param {string} id - Resource identifier
+ * @param {Array} data - Array of items for current page
+ * @param {number} page - Current page number (1-indexed)
+ * @param {number} limit - Items per page
+ * @param {number} total - Total number of items across all pages
+ * @returns {Object} Express response
+ * @example
+ * paginated(res, invoices, 1, 50, 150);
+ * // Returns: { success: true, data: [...], meta: { page: 1, limit: 50, total: 150, totalPages: 3, hasMore: true } }
  */
-function notFound(res, resource, id) {
-  return error(res, `${resource} not found`, {
-    status: 404,
-    code: 'NOT_FOUND',
-    details: { resource, id }
-  });
-}
-
-/**
- * Standard validation error response
- * @param {Object} res - Express response object
- * @param {Array|Object} errors - Validation errors
- */
-function validationError(res, errors) {
-  return error(res, 'Validation failed', {
-    status: 400,
-    code: 'VALIDATION_FAILED',
-    details: Array.isArray(errors) ? errors : [errors]
-  });
-}
-
-/**
- * Standard unauthorized response
- * @param {Object} res - Express response object
- * @param {string} message - Optional custom message
- */
-function unauthorized(res, message = 'Unauthorized') {
-  return error(res, message, {
-    status: 401,
-    code: 'UNAUTHORIZED'
-  });
-}
-
-/**
- * Standard forbidden response
- * @param {Object} res - Express response object
- * @param {string} message - Optional custom message
- */
-function forbidden(res, message = 'Access denied') {
-  return error(res, message, {
-    status: 403,
-    code: 'FORBIDDEN'
-  });
-}
-
-/**
- * Standard conflict response (e.g., duplicate)
- * @param {Object} res - Express response object
- * @param {string} message - Conflict message
- * @param {*} details - Conflict details
- */
-function conflict(res, message, details) {
-  return error(res, message, {
-    status: 409,
-    code: 'CONFLICT',
-    details
-  });
-}
-
-/**
- * Standard server error response
- * @param {Object} res - Express response object
- * @param {string} message - Error message (defaults to generic)
- */
-function serverError(res, message = 'Internal server error') {
-  return error(res, message, {
-    status: 500,
-    code: 'SERVER_ERROR'
-  });
-}
-
-/**
- * Paginated list response
- * @param {Object} res - Express response object
- * @param {Array} items - List of items
- * @param {Object} pagination - Pagination info
- * @param {number} pagination.page - Current page
- * @param {number} pagination.limit - Items per page
- * @param {number} pagination.total - Total items
- */
-function paginated(res, items, pagination) {
-  const { page = 1, limit = 50, total } = pagination;
+function paginated(res, data, page, limit, total) {
   const totalPages = Math.ceil(total / limit);
 
-  return success(res, items, {
+  return res.status(200).json({
+    success: true,
+    data,
     meta: {
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasMore: page < totalPages
-      }
+      page,
+      limit,
+      total,
+      totalPages,
+      hasMore: page < totalPages
     }
   });
 }
 
 /**
+ * Created response (HTTP 201)
+ * @param {Object} res - Express response object
+ * @param {*} data - Created resource data
+ * @returns {Object} Express response
+ * @example
+ * created(res, { id: 'new-uuid', name: 'New Invoice' });
+ */
+function created(res, data) {
+  return res.status(201).json({
+    success: true,
+    data
+  });
+}
+
+/**
+ * No content response (HTTP 204)
+ * Used for successful operations that don't return data (e.g., DELETE)
+ * @param {Object} res - Express response object
+ * @returns {Object} Express response
+ * @example
+ * noContent(res); // Returns empty 204 response
+ */
+function noContent(res) {
+  return res.status(204).send();
+}
+
+// ----- Convenience helpers (use the base functions internally) -----
+
+/**
+ * Not found error response (HTTP 404)
+ * @param {Object} res - Express response object
+ * @param {string} resource - Resource type that wasn't found
+ * @param {string} [id] - Resource identifier
+ * @returns {Object} Express response
+ * @example
+ * notFound(res, 'Invoice', 'abc-123');
+ */
+function notFound(res, resource, id) {
+  return error(res, ErrorCodes.NOT_FOUND, `${resource} not found`, id ? { resource, id } : { resource }, 404);
+}
+
+/**
+ * Validation error response (HTTP 400)
+ * @param {Object} res - Express response object
+ * @param {Array|Object} errors - Validation errors
+ * @returns {Object} Express response
+ * @example
+ * validationError(res, [{ field: 'amount', message: 'Required' }]);
+ * validationError(res, { field: 'email', message: 'Invalid format' });
+ */
+function validationError(res, errors) {
+  return error(
+    res,
+    ErrorCodes.VALIDATION_FAILED,
+    'Validation failed',
+    { errors: Array.isArray(errors) ? errors : [errors] },
+    400
+  );
+}
+
+/**
+ * Unauthorized error response (HTTP 401)
+ * @param {Object} res - Express response object
+ * @param {string} [message='Unauthorized'] - Custom message
+ * @returns {Object} Express response
+ */
+function unauthorized(res, message = 'Unauthorized') {
+  return error(res, ErrorCodes.UNAUTHORIZED, message, {}, 401);
+}
+
+/**
+ * Forbidden error response (HTTP 403)
+ * @param {Object} res - Express response object
+ * @param {string} [message='Access denied'] - Custom message
+ * @returns {Object} Express response
+ */
+function forbidden(res, message = 'Access denied') {
+  return error(res, ErrorCodes.FORBIDDEN, message, {}, 403);
+}
+
+/**
+ * Conflict error response (HTTP 409)
+ * @param {Object} res - Express response object
+ * @param {string} message - Conflict description
+ * @param {Object} [details={}] - Conflict details
+ * @returns {Object} Express response
+ * @example
+ * conflict(res, 'Invoice number already exists', { invoiceNumber: 'INV-001' });
+ */
+function conflict(res, message, details = {}) {
+  return error(res, ErrorCodes.CONFLICT, message, details, 409);
+}
+
+/**
+ * Server error response (HTTP 500)
+ * @param {Object} res - Express response object
+ * @param {string} [message='Internal server error'] - Error message
+ * @returns {Object} Express response
+ */
+function serverError(res, message = 'Internal server error') {
+  return error(res, ErrorCodes.SERVER_ERROR, message, {}, 500);
+}
+
+/**
  * Express middleware to add response helpers to res object
+ * Attach to Express app: app.use(responseHelpers);
+ * Then use: res.apiSuccess(data), res.apiError(code, message), etc.
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
  */
 function responseHelpers(req, res, next) {
-  res.apiSuccess = (data, options) => success(res, data, options);
-  res.apiCreated = (data, message) => created(res, data, message);
-  res.apiError = (msg, options) => error(res, msg, options);
+  res.apiSuccess = (data, meta) => success(res, data, meta);
+  res.apiError = (code, message, details, status) => error(res, code, message, details, status);
+  res.apiPaginated = (data, page, limit, total) => paginated(res, data, page, limit, total);
+  res.apiCreated = (data) => created(res, data);
+  res.apiNoContent = () => noContent(res);
   res.apiNotFound = (resource, id) => notFound(res, resource, id);
   res.apiValidationError = (errors) => validationError(res, errors);
-  res.apiUnauthorized = (msg) => unauthorized(res, msg);
-  res.apiForbidden = (msg) => forbidden(res, msg);
-  res.apiConflict = (msg, details) => conflict(res, msg, details);
-  res.apiServerError = (msg) => serverError(res, msg);
-  res.apiPaginated = (items, pagination) => paginated(res, items, pagination);
+  res.apiUnauthorized = (message) => unauthorized(res, message);
+  res.apiForbidden = (message) => forbidden(res, message);
+  res.apiConflict = (message, details) => conflict(res, message, details);
+  res.apiServerError = (message) => serverError(res, message);
   next();
 }
 
 module.exports = {
+  // Core functions (as specified in requirements)
   success,
-  created,
   error,
+  paginated,
+  created,
+  noContent,
+
+  // Convenience helpers
   notFound,
   validationError,
   unauthorized,
   forbidden,
   conflict,
   serverError,
-  paginated,
-  responseHelpers
+
+  // Middleware
+  responseHelpers,
+
+  // Error codes enum
+  ErrorCodes
 };

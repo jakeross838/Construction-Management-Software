@@ -1355,4 +1355,364 @@ router.delete('/:id/photos/:photoId', asyncHandler(async (req, res) => {
     res.json({ success: true });
 }));
 
+// ============================================================
+// WEATHER ENDPOINTS (Phase 5 Mobile Enhancement)
+// ============================================================
+
+// Import weather service
+const weatherService = require('../services/weather');
+
+// Fetch and save weather for a daily log
+router.post('/:id/weather', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { lat, lng, address } = req.body;
+
+    // Verify daily log exists
+    const { data: log, error: logError } = await supabase
+      .from('v2_daily_logs')
+      .select(`
+        id, job_id, log_date, status,
+        job:v2_jobs(id, name, address)
+      `)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (logError || !log) {
+      return res.status(404).json({ error: 'Daily log not found' });
+    }
+
+    let weatherData;
+    let location;
+
+    // If coordinates provided, use them directly
+    if (lat && lng) {
+      weatherData = await weatherService.fetchWeather(lat, lng);
+      location = { lat, lng };
+    }
+    // Otherwise geocode from address (provided or from job)
+    else {
+      const addr = address || log.job?.address;
+      if (!addr) {
+        return res.status(400).json({ error: 'No address available for weather lookup' });
+      }
+
+      const result = await weatherService.getWeatherForAddress(addr);
+      if (result.error) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      weatherData = result.weather;
+      location = result.location;
+    }
+
+    if (weatherData.error) {
+      return res.status(500).json({ error: weatherData.error });
+    }
+
+    // Assess workability
+    const workability = weatherService.assessWorkability(weatherData);
+
+    // Update the daily log with weather data
+    const { error: updateError } = await supabase
+      .from('v2_daily_logs')
+      .update({
+        weather_data: weatherData,
+        // Also update the manual weather fields for backwards compatibility
+        weather_conditions: mapWeatherToCondition(weatherData.conditions),
+        temperature_high: weatherData.temp_high,
+        temperature_low: weatherData.temp_low,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (updateError) throw updateError;
+
+    // Log activity
+    await logDailyLogActivity(id, 'weather_fetched', 'System', {
+      source: weatherData.source,
+      conditions: weatherData.conditions,
+      temp: weatherData.temp_current
+    });
+
+    res.json({
+      daily_log_id: id,
+      location,
+      weather: weatherData,
+      workability
+    });
+}));
+
+// Helper to map API weather conditions to our enum values
+function mapWeatherToCondition(apiCondition) {
+  const mapping = {
+    'clear': 'sunny',
+    'partly_cloudy': 'partly_cloudy',
+    'cloudy': 'cloudy',
+    'foggy': 'cloudy',
+    'drizzle': 'rainy',
+    'rainy': 'rainy',
+    'rain_showers': 'rainy',
+    'freezing_rain': 'rainy',
+    'freezing_drizzle': 'rainy',
+    'snow': 'snow',
+    'snow_showers': 'snow',
+    'thunderstorm': 'stormy',
+    'windy': 'windy',
+    'hazy': 'cloudy',
+    'dusty': 'windy',
+    'severe': 'stormy'
+  };
+  return mapping[apiCondition] || 'cloudy';
+}
+
+// ============================================================
+// GPS LOCATION ENDPOINTS (Phase 5 Mobile Enhancement)
+// ============================================================
+
+// Save GPS location for a daily log
+router.patch('/:id/location', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { lat, lng, accuracy, updated_by } = req.body;
+
+    // Validate coordinates
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ error: 'lat and lng are required numbers' });
+    }
+
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return res.status(400).json({ error: 'Invalid coordinates' });
+    }
+
+    // Verify daily log exists
+    const { data: log, error: logError } = await supabase
+      .from('v2_daily_logs')
+      .select('id, status')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (logError || !log) {
+      return res.status(404).json({ error: 'Daily log not found' });
+    }
+
+    // Build GPS location object
+    const gpsLocation = {
+      lat,
+      lng,
+      accuracy: accuracy || null,
+      captured_at: new Date().toISOString()
+    };
+
+    // Update the daily log
+    const { error: updateError } = await supabase
+      .from('v2_daily_logs')
+      .update({
+        gps_location: gpsLocation,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (updateError) throw updateError;
+
+    // Log activity
+    await logDailyLogActivity(id, 'location_tagged', updated_by || 'System', {
+      lat,
+      lng,
+      accuracy
+    });
+
+    res.json({
+      daily_log_id: id,
+      gps_location: gpsLocation
+    });
+}));
+
+// ============================================================
+// VOICE NOTES / TRANSCRIPTION ENDPOINTS (Phase 5 Mobile Enhancement)
+// ============================================================
+
+// Configure multer for voice note uploads
+const voiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit for audio
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/webm',
+      'audio/ogg', 'audio/m4a', 'audio/x-m4a', 'audio/mp4'
+    ];
+    if (allowedTypes.includes(file.mimetype) || file.originalname.match(/\.(mp3|wav|webm|ogg|m4a)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio files (MP3, WAV, WebM, OGG, M4A) are allowed'), false);
+    }
+  }
+});
+
+const VOICE_PREFIX = 'daily-log-voice';
+
+// Upload voice note
+router.post('/:id/voice-note', voiceUpload.single('audio'), asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { uploaded_by, auto_transcribe } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file uploaded' });
+    }
+
+    // Verify daily log exists and is not completed
+    const { data: log, error: logError } = await supabase
+      .from('v2_daily_logs')
+      .select('id, status, job_id')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (logError || !log) {
+      return res.status(404).json({ error: 'Daily log not found' });
+    }
+
+    if (log.status === 'completed') {
+      return res.status(400).json({ error: 'Cannot add voice notes to a completed daily log' });
+    }
+
+    // Upload to Supabase Storage
+    const timestamp = Date.now();
+    const ext = req.file.originalname.split('.').pop() || 'mp3';
+    const fileName = `${VOICE_PREFIX}/${log.job_id}/${id}/${timestamp}.${ext}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: true  // Allow overwriting existing voice note
+      });
+
+    if (uploadError) {
+      logger.error('Voice note upload error', { component: 'DailyLog', dailyLogId: id, error: uploadError.message });
+      throw new Error(`Failed to upload voice note: ${uploadError.message}`);
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(PHOTO_BUCKET)
+      .getPublicUrl(fileName);
+
+    // Update daily log with voice note URL
+    const { error: updateError } = await supabase
+      .from('v2_daily_logs')
+      .update({
+        voice_notes_url: urlData.publicUrl,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (updateError) throw updateError;
+
+    // Log activity
+    await logDailyLogActivity(id, 'voice_note_uploaded', uploaded_by || 'System', {
+      file_name: req.file.originalname,
+      file_size: req.file.size
+    });
+
+    res.status(201).json({
+      daily_log_id: id,
+      voice_notes_url: urlData.publicUrl,
+      message: 'Voice note uploaded successfully. Use POST /transcribe to transcribe it.'
+    });
+}));
+
+// Transcribe voice note (placeholder - requires speech-to-text service)
+router.post('/:id/transcribe', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { transcribed_by, manual_text } = req.body;
+
+    // Verify daily log exists
+    const { data: log, error: logError } = await supabase
+      .from('v2_daily_logs')
+      .select('id, status, voice_notes_url, transcribed_notes')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (logError || !log) {
+      return res.status(404).json({ error: 'Daily log not found' });
+    }
+
+    // If manual text provided, save it directly
+    if (manual_text) {
+      const { error: updateError } = await supabase
+        .from('v2_daily_logs')
+        .update({
+          transcribed_notes: manual_text,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (updateError) throw updateError;
+
+      await logDailyLogActivity(id, 'notes_transcribed', transcribed_by || 'User', {
+        method: 'manual',
+        length: manual_text.length
+      });
+
+      return res.json({
+        daily_log_id: id,
+        transcribed_notes: manual_text,
+        method: 'manual'
+      });
+    }
+
+    // Auto-transcription would require a speech-to-text service
+    // Placeholder for integration with services like:
+    // - OpenAI Whisper API
+    // - Google Cloud Speech-to-Text
+    // - AWS Transcribe
+    // - AssemblyAI
+
+    if (!log.voice_notes_url) {
+      return res.status(400).json({
+        error: 'No voice note to transcribe. Upload a voice note first or provide manual_text.'
+      });
+    }
+
+    // For now, return a placeholder response
+    // In production, this would call the speech-to-text API
+    return res.status(501).json({
+      error: 'Automatic transcription not yet implemented',
+      message: 'Please provide manual_text in the request body, or integrate a speech-to-text service',
+      voice_notes_url: log.voice_notes_url,
+      suggested_services: [
+        'OpenAI Whisper API (OPENAI_API_KEY)',
+        'Google Cloud Speech-to-Text',
+        'AWS Transcribe',
+        'AssemblyAI'
+      ]
+    });
+}));
+
+// Get transcription status
+router.get('/:id/transcription', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const { data: log, error: logError } = await supabase
+      .from('v2_daily_logs')
+      .select('id, voice_notes_url, transcribed_notes')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (logError || !log) {
+      return res.status(404).json({ error: 'Daily log not found' });
+    }
+
+    res.json({
+      daily_log_id: id,
+      has_voice_note: !!log.voice_notes_url,
+      voice_notes_url: log.voice_notes_url,
+      has_transcription: !!log.transcribed_notes,
+      transcribed_notes: log.transcribed_notes
+    });
+}));
+
 module.exports = router;

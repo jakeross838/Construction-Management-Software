@@ -7,32 +7,61 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
+const { cacheResponse, invalidateCache } = require('../middleware/cache');
+const cache = require('../services/cache');
 
-// Get all cost codes
-router.get('/', asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+// Cache TTL constants
+const LIST_CACHE_TTL = 300; // 5 minutes for cost codes list
+
+/**
+ * Invalidate cost codes cache
+ */
+async function invalidateCostCodesCache() {
+  await cache.invalidatePattern('response:/api/cost-codes*');
+}
+
+// Get all cost codes (cached for 5 minutes)
+router.get('/', cacheResponse(LIST_CACHE_TTL), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
+  let query = supabase
     .from('v2_cost_codes')
     .select('*')
     .order('code');
+
+  // Filter by builder if authenticated
+  if (builderId) query = query.eq('builder_id', builderId);
+
+  const { data, error } = await query;
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
   res.json({ costCodes: data });
 }));
 
-// Create cost code
+// Create cost code (invalidates cache)
 router.post('/', asyncHandler(async (req, res) => {
   const { code, name, category } = req.body;
+  const builderId = getBuilderId(req);
+
   if (!code || !name) {
     throw new AppError('VALIDATION_FAILED', 'Code and name are required');
   }
 
+  const costCodeData = { code, name, category };
+  if (builderId) costCodeData.builder_id = builderId;
+
   const { data, error } = await supabase
     .from('v2_cost_codes')
-    .insert({ code, name, category })
+    .insert(costCodeData)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Invalidate cost codes cache
+  await invalidateCostCodesCache();
+
   res.json({ costCode: data });
 }));
 
@@ -40,28 +69,44 @@ router.post('/', asyncHandler(async (req, res) => {
 router.patch('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { code, name, category } = req.body;
+  const builderId = getBuilderId(req);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('v2_cost_codes')
     .update({ code, name, category })
-    .eq('id', id)
-    .select()
-    .single();
+    .eq('id', id);
+
+  if (builderId) query = query.eq('builder_id', builderId);
+
+  const { data, error } = await query.select().single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Invalidate cost codes cache
+  await invalidateCostCodesCache();
+
   res.json({ costCode: data });
 }));
 
-// Delete cost code
+// Delete cost code (invalidates cache)
 router.delete('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
-  const { error } = await supabase
+  let query = supabase
     .from('v2_cost_codes')
     .delete()
     .eq('id', id);
 
+  if (builderId) query = query.eq('builder_id', builderId);
+
+  const { error } = await query;
+
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
+
+  // Invalidate cost codes cache
+  await invalidateCostCodesCache();
+
   res.json({ success: true });
 }));
 

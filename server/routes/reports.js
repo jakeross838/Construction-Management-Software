@@ -2542,4 +2542,797 @@ function getCategoryName(divisionCode) {
   return divisions[divisionCode] || 'Other';
 }
 
+// ============================================================
+// CUSTOM REPORT BUILDER - TEMPLATE CRUD
+// ============================================================
+
+const { getBuilderId } = require('../core/multi-tenant');
+
+/**
+ * Entity schema definitions for the report builder
+ * Defines available fields, types, and relationships for each entity type
+ */
+const ENTITY_SCHEMAS = {
+  jobs: {
+    table: 'v2_jobs',
+    label: 'Jobs',
+    fields: {
+      id: { type: 'uuid', label: 'Job ID' },
+      name: { type: 'text', label: 'Job Name', sortable: true, filterable: true },
+      address: { type: 'text', label: 'Address', sortable: true, filterable: true },
+      client_name: { type: 'text', label: 'Client Name', sortable: true, filterable: true },
+      contract_amount: { type: 'number', label: 'Contract Amount', sortable: true, filterable: true, aggregatable: true },
+      status: { type: 'text', label: 'Status', sortable: true, filterable: true },
+      construction_type: { type: 'text', label: 'Construction Type', filterable: true },
+      square_footage: { type: 'number', label: 'Square Footage', sortable: true, filterable: true, aggregatable: true },
+      created_at: { type: 'timestamp', label: 'Created', sortable: true, filterable: true }
+    },
+    defaultColumns: ['name', 'client_name', 'contract_amount', 'status']
+  },
+  invoices: {
+    table: 'v2_invoices',
+    label: 'Invoices',
+    fields: {
+      id: { type: 'uuid', label: 'Invoice ID' },
+      invoice_number: { type: 'text', label: 'Invoice #', sortable: true, filterable: true },
+      invoice_date: { type: 'date', label: 'Invoice Date', sortable: true, filterable: true },
+      due_date: { type: 'date', label: 'Due Date', sortable: true, filterable: true },
+      amount: { type: 'number', label: 'Amount', sortable: true, filterable: true, aggregatable: true },
+      status: { type: 'text', label: 'Status', sortable: true, filterable: true },
+      job_id: { type: 'uuid', label: 'Job', relation: 'v2_jobs' },
+      vendor_id: { type: 'uuid', label: 'Vendor', relation: 'v2_vendors' },
+      po_id: { type: 'uuid', label: 'PO', relation: 'v2_purchase_orders' },
+      ai_processed: { type: 'boolean', label: 'AI Processed', filterable: true },
+      needs_review: { type: 'boolean', label: 'Needs Review', filterable: true },
+      created_at: { type: 'timestamp', label: 'Created', sortable: true, filterable: true }
+    },
+    joins: {
+      job: { table: 'v2_jobs', fields: ['id', 'name'] },
+      vendor: { table: 'v2_vendors', fields: ['id', 'name', 'trade'] },
+      po: { table: 'v2_purchase_orders', fields: ['id', 'po_number'] }
+    },
+    defaultColumns: ['invoice_number', 'vendor.name', 'amount', 'status', 'invoice_date']
+  },
+  vendors: {
+    table: 'v2_vendors',
+    label: 'Vendors',
+    fields: {
+      id: { type: 'uuid', label: 'Vendor ID' },
+      name: { type: 'text', label: 'Vendor Name', sortable: true, filterable: true },
+      trade: { type: 'text', label: 'Trade', sortable: true, filterable: true },
+      email: { type: 'text', label: 'Email', sortable: true, filterable: true },
+      phone: { type: 'text', label: 'Phone', filterable: true },
+      contact_name: { type: 'text', label: 'Contact Name', sortable: true, filterable: true },
+      address: { type: 'text', label: 'Address', filterable: true },
+      city: { type: 'text', label: 'City', sortable: true, filterable: true },
+      state: { type: 'text', label: 'State', filterable: true },
+      created_at: { type: 'timestamp', label: 'Created', sortable: true, filterable: true }
+    },
+    defaultColumns: ['name', 'trade', 'email', 'phone']
+  },
+  purchase_orders: {
+    table: 'v2_purchase_orders',
+    label: 'Purchase Orders',
+    fields: {
+      id: { type: 'uuid', label: 'PO ID' },
+      po_number: { type: 'text', label: 'PO Number', sortable: true, filterable: true },
+      description: { type: 'text', label: 'Description', filterable: true },
+      total_amount: { type: 'number', label: 'Total Amount', sortable: true, filterable: true, aggregatable: true },
+      status: { type: 'text', label: 'Status', sortable: true, filterable: true },
+      status_detail: { type: 'text', label: 'Status Detail', filterable: true },
+      job_id: { type: 'uuid', label: 'Job', relation: 'v2_jobs' },
+      vendor_id: { type: 'uuid', label: 'Vendor', relation: 'v2_vendors' },
+      original_amount: { type: 'number', label: 'Original Amount', sortable: true, aggregatable: true },
+      change_order_total: { type: 'number', label: 'CO Total', sortable: true, aggregatable: true },
+      created_at: { type: 'timestamp', label: 'Created', sortable: true, filterable: true }
+    },
+    joins: {
+      job: { table: 'v2_jobs', fields: ['id', 'name'] },
+      vendor: { table: 'v2_vendors', fields: ['id', 'name'] }
+    },
+    defaultColumns: ['po_number', 'vendor.name', 'job.name', 'total_amount', 'status']
+  },
+  draws: {
+    table: 'v2_draws',
+    label: 'Draws',
+    fields: {
+      id: { type: 'uuid', label: 'Draw ID' },
+      draw_number: { type: 'number', label: 'Draw #', sortable: true, filterable: true },
+      job_id: { type: 'uuid', label: 'Job', relation: 'v2_jobs' },
+      period_start: { type: 'date', label: 'Period Start', sortable: true, filterable: true },
+      period_end: { type: 'date', label: 'Period End', sortable: true, filterable: true },
+      total_amount: { type: 'number', label: 'Total Amount', sortable: true, filterable: true, aggregatable: true },
+      status: { type: 'text', label: 'Status', sortable: true, filterable: true },
+      funded_amount: { type: 'number', label: 'Funded Amount', sortable: true, aggregatable: true },
+      submitted_at: { type: 'timestamp', label: 'Submitted', sortable: true, filterable: true },
+      funded_at: { type: 'timestamp', label: 'Funded', sortable: true, filterable: true },
+      created_at: { type: 'timestamp', label: 'Created', sortable: true, filterable: true }
+    },
+    joins: {
+      job: { table: 'v2_jobs', fields: ['id', 'name'] }
+    },
+    defaultColumns: ['draw_number', 'job.name', 'total_amount', 'status', 'period_end']
+  },
+  expenses: {
+    table: 'v2_expenses',
+    label: 'Expenses',
+    fields: {
+      id: { type: 'uuid', label: 'Expense ID' },
+      amount: { type: 'number', label: 'Amount', sortable: true, filterable: true, aggregatable: true },
+      description: { type: 'text', label: 'Description', filterable: true },
+      expense_date: { type: 'date', label: 'Expense Date', sortable: true, filterable: true },
+      category_id: { type: 'uuid', label: 'Category', relation: 'v2_expense_categories' },
+      vendor_id: { type: 'uuid', label: 'Vendor', relation: 'v2_vendors' },
+      job_id: { type: 'uuid', label: 'Job', relation: 'v2_jobs' },
+      created_at: { type: 'timestamp', label: 'Created', sortable: true, filterable: true }
+    },
+    joins: {
+      category: { table: 'v2_expense_categories', fields: ['id', 'name'] },
+      vendor: { table: 'v2_vendors', fields: ['id', 'name'] },
+      job: { table: 'v2_jobs', fields: ['id', 'name'] }
+    },
+    defaultColumns: ['description', 'amount', 'category.name', 'expense_date']
+  },
+  daily_logs: {
+    table: 'v2_daily_logs',
+    label: 'Daily Logs',
+    fields: {
+      id: { type: 'uuid', label: 'Log ID' },
+      job_id: { type: 'uuid', label: 'Job', relation: 'v2_jobs' },
+      log_date: { type: 'date', label: 'Date', sortable: true, filterable: true },
+      status: { type: 'text', label: 'Status', sortable: true, filterable: true },
+      weather_conditions: { type: 'text', label: 'Weather', filterable: true },
+      temperature_high: { type: 'number', label: 'High Temp', filterable: true },
+      temperature_low: { type: 'number', label: 'Low Temp', filterable: true },
+      work_performed: { type: 'text', label: 'Work Performed', filterable: true },
+      delays_issues: { type: 'text', label: 'Delays/Issues', filterable: true },
+      created_at: { type: 'timestamp', label: 'Created', sortable: true, filterable: true }
+    },
+    joins: {
+      job: { table: 'v2_jobs', fields: ['id', 'name'] }
+    },
+    defaultColumns: ['log_date', 'job.name', 'status', 'weather_conditions', 'work_performed']
+  },
+  budget_lines: {
+    table: 'v2_budget_lines',
+    label: 'Budget Lines',
+    fields: {
+      id: { type: 'uuid', label: 'Line ID' },
+      job_id: { type: 'uuid', label: 'Job', relation: 'v2_jobs' },
+      cost_code_id: { type: 'uuid', label: 'Cost Code', relation: 'v2_cost_codes' },
+      budgeted_amount: { type: 'number', label: 'Budgeted', sortable: true, filterable: true, aggregatable: true },
+      committed_amount: { type: 'number', label: 'Committed', sortable: true, filterable: true, aggregatable: true },
+      billed_amount: { type: 'number', label: 'Billed', sortable: true, filterable: true, aggregatable: true },
+      paid_amount: { type: 'number', label: 'Paid', sortable: true, filterable: true, aggregatable: true }
+    },
+    joins: {
+      job: { table: 'v2_jobs', fields: ['id', 'name'] },
+      cost_code: { table: 'v2_cost_codes', fields: ['id', 'code', 'name', 'category'] }
+    },
+    defaultColumns: ['cost_code.code', 'cost_code.name', 'budgeted_amount', 'committed_amount', 'billed_amount']
+  }
+};
+
+// ============================================================
+// GET ENTITY SCHEMA
+// GET /api/reports/schema/:entity
+// ============================================================
+
+router.get('/schema/:entity', asyncHandler(async (req, res) => {
+  const { entity } = req.params;
+
+  const schema = ENTITY_SCHEMAS[entity];
+  if (!schema) {
+    throw new AppError('VALIDATION_ERROR', `Unknown entity type: ${entity}. Available types: ${Object.keys(ENTITY_SCHEMAS).join(', ')}`);
+  }
+
+  res.json({
+    entity,
+    label: schema.label,
+    table: schema.table,
+    fields: schema.fields,
+    joins: schema.joins || {},
+    defaultColumns: schema.defaultColumns
+  });
+}));
+
+// ============================================================
+// LIST ALL ENTITY SCHEMAS
+// GET /api/reports/schemas
+// ============================================================
+
+router.get('/schemas', asyncHandler(async (req, res) => {
+  const schemas = Object.entries(ENTITY_SCHEMAS).map(([key, schema]) => ({
+    entity: key,
+    label: schema.label,
+    fieldCount: Object.keys(schema.fields).length
+  }));
+
+  res.json(schemas);
+}));
+
+// ============================================================
+// LIST REPORT TEMPLATES
+// GET /api/reports/templates
+// ============================================================
+
+router.get('/templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const { entity_type, created_by } = req.query;
+
+  let query = supabase
+    .from('v2_report_templates')
+    .select('*')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  // Filter by builder - show own templates + public templates
+  if (builderId) {
+    query = query.or(`builder_id.eq.${builderId},is_public.eq.true`);
+  }
+
+  if (entity_type) {
+    query = query.eq('entity_type', entity_type);
+  }
+
+  if (created_by) {
+    query = query.eq('created_by', created_by);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.json(data || []);
+}));
+
+// ============================================================
+// GET REPORT TEMPLATE BY ID
+// GET /api/reports/templates/:id
+// ============================================================
+
+router.get('/templates/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const builderId = getBuilderId(req);
+
+  let query = supabase
+    .from('v2_report_templates')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null);
+
+  const { data, error } = await query.single();
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  if (!data) {
+    throw new AppError('VALIDATION_ERROR', 'Report template not found');
+  }
+
+  // Check access
+  if (data.builder_id !== builderId && !data.is_public) {
+    throw new AppError('VALIDATION_ERROR', 'Access denied to this report template');
+  }
+
+  res.json(data);
+}));
+
+// ============================================================
+// CREATE REPORT TEMPLATE
+// POST /api/reports/templates
+// ============================================================
+
+router.post('/templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const {
+    name,
+    description,
+    entity_type,
+    columns,
+    filters,
+    grouping,
+    sort,
+    options,
+    is_public,
+    created_by
+  } = req.body;
+
+  // Validate required fields
+  if (!name) {
+    throw new AppError('VALIDATION_ERROR', 'Template name is required');
+  }
+
+  if (!entity_type || !ENTITY_SCHEMAS[entity_type]) {
+    throw new AppError('VALIDATION_ERROR', `Invalid entity type. Available types: ${Object.keys(ENTITY_SCHEMAS).join(', ')}`);
+  }
+
+  // Validate columns reference valid fields
+  if (columns && Array.isArray(columns)) {
+    const schema = ENTITY_SCHEMAS[entity_type];
+    for (const col of columns) {
+      const fieldName = col.field?.split('.')[0]; // Handle nested fields like 'job.name'
+      if (!schema.fields[fieldName] && !schema.joins?.[fieldName]) {
+        throw new AppError('VALIDATION_ERROR', `Invalid column field: ${col.field}`);
+      }
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('v2_report_templates')
+    .insert({
+      builder_id: builderId,
+      name,
+      description: description || null,
+      entity_type,
+      columns: columns || [],
+      filters: filters || [],
+      grouping: grouping || {},
+      sort: sort || [],
+      options: options || {},
+      is_public: is_public || false,
+      created_by: created_by || null
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.status(201).json(data);
+}));
+
+// ============================================================
+// UPDATE REPORT TEMPLATE
+// PATCH /api/reports/templates/:id
+// ============================================================
+
+router.patch('/templates/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const builderId = getBuilderId(req);
+  const updates = req.body;
+
+  // Get existing template
+  const { data: existing, error: fetchError } = await supabase
+    .from('v2_report_templates')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !existing) {
+    throw new AppError('VALIDATION_ERROR', 'Report template not found');
+  }
+
+  // Check ownership
+  if (existing.builder_id !== builderId) {
+    throw new AppError('VALIDATION_ERROR', 'Cannot modify template owned by another builder');
+  }
+
+  // Validate entity_type if being changed
+  if (updates.entity_type && !ENTITY_SCHEMAS[updates.entity_type]) {
+    throw new AppError('VALIDATION_ERROR', `Invalid entity type: ${updates.entity_type}`);
+  }
+
+  // Build update object (only allowed fields)
+  const allowedFields = ['name', 'description', 'columns', 'filters', 'grouping', 'sort', 'options', 'is_public'];
+  const updateData = {};
+  for (const field of allowedFields) {
+    if (updates[field] !== undefined) {
+      updateData[field] = updates[field];
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('v2_report_templates')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.json(data);
+}));
+
+// ============================================================
+// DELETE REPORT TEMPLATE
+// DELETE /api/reports/templates/:id
+// ============================================================
+
+router.delete('/templates/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const builderId = getBuilderId(req);
+
+  // Get existing template
+  const { data: existing, error: fetchError } = await supabase
+    .from('v2_report_templates')
+    .select('builder_id')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !existing) {
+    throw new AppError('VALIDATION_ERROR', 'Report template not found');
+  }
+
+  // Check ownership
+  if (existing.builder_id !== builderId) {
+    throw new AppError('VALIDATION_ERROR', 'Cannot delete template owned by another builder');
+  }
+
+  // Soft delete
+  const { error } = await supabase
+    .from('v2_report_templates')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.json({ success: true, message: 'Template deleted' });
+}));
+
+// ============================================================
+// EXECUTE REPORT
+// POST /api/reports/execute
+// ============================================================
+
+router.post('/execute', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const startTime = Date.now();
+  const {
+    entity_type,
+    columns,
+    filters,
+    grouping,
+    sort,
+    limit = 500,
+    offset = 0,
+    template_id
+  } = req.body;
+
+  // Validate entity type
+  if (!entity_type || !ENTITY_SCHEMAS[entity_type]) {
+    throw new AppError('VALIDATION_ERROR', `Invalid entity type. Available types: ${Object.keys(ENTITY_SCHEMAS).join(', ')}`);
+  }
+
+  const schema = ENTITY_SCHEMAS[entity_type];
+
+  // Build select clause
+  let selectClause = '*';
+  if (columns && Array.isArray(columns) && columns.length > 0) {
+    const selectParts = [];
+    const joinParts = [];
+
+    for (const col of columns) {
+      if (col.field.includes('.')) {
+        // Nested field like 'job.name' - need to include join
+        const [joinName, fieldName] = col.field.split('.');
+        if (schema.joins?.[joinName]) {
+          const join = schema.joins[joinName];
+          joinParts.push(`${joinName}:${join.table}(${join.fields.join(',')})`);
+        }
+      } else {
+        selectParts.push(col.field);
+      }
+    }
+
+    // Always include id
+    if (!selectParts.includes('id')) {
+      selectParts.push('id');
+    }
+
+    // Remove duplicates from joins
+    const uniqueJoins = [...new Set(joinParts)];
+    selectClause = [...selectParts, ...uniqueJoins].join(',');
+  } else {
+    // Default: include all default columns + joins
+    if (schema.joins) {
+      const joinParts = Object.entries(schema.joins).map(([name, join]) =>
+        `${name}:${join.table}(${join.fields.join(',')})`
+      );
+      selectClause = `*,${joinParts.join(',')}`;
+    }
+  }
+
+  // Build query
+  let query = supabase
+    .from(schema.table)
+    .select(selectClause, { count: 'exact' });
+
+  // Apply builder filter if table supports it
+  if (builderId) {
+    // Check if table has builder_id column
+    const tablesWithBuilderId = ['v2_jobs', 'v2_invoices', 'v2_vendors', 'v2_purchase_orders', 'v2_draws', 'v2_expenses', 'v2_daily_logs'];
+    if (tablesWithBuilderId.includes(schema.table)) {
+      query = query.eq('builder_id', builderId);
+    }
+  }
+
+  // Apply soft-delete filter
+  query = query.is('deleted_at', null);
+
+  // Apply filters
+  if (filters && Array.isArray(filters)) {
+    for (const filter of filters) {
+      const { field, operator, value } = filter;
+
+      // Handle nested fields (e.g., 'job.name')
+      const actualField = field.includes('.') ? field.replace('.', '->>') : field;
+
+      switch (operator) {
+        case 'eq':
+          query = query.eq(actualField, value);
+          break;
+        case 'neq':
+          query = query.neq(actualField, value);
+          break;
+        case 'gt':
+          query = query.gt(actualField, value);
+          break;
+        case 'gte':
+          query = query.gte(actualField, value);
+          break;
+        case 'lt':
+          query = query.lt(actualField, value);
+          break;
+        case 'lte':
+          query = query.lte(actualField, value);
+          break;
+        case 'like':
+          query = query.like(actualField, value);
+          break;
+        case 'ilike':
+          query = query.ilike(actualField, `%${value}%`);
+          break;
+        case 'in':
+          if (Array.isArray(value)) {
+            query = query.in(actualField, value);
+          }
+          break;
+        case 'is_null':
+          query = query.is(actualField, null);
+          break;
+        case 'is_not_null':
+          query = query.not(actualField, 'is', null);
+          break;
+        case 'between':
+          if (Array.isArray(value) && value.length === 2) {
+            query = query.gte(actualField, value[0]).lte(actualField, value[1]);
+          }
+          break;
+        default:
+          // Skip unknown operators
+          break;
+      }
+    }
+  }
+
+  // Apply sorting
+  if (sort && Array.isArray(sort) && sort.length > 0) {
+    for (const s of sort) {
+      query = query.order(s.field, { ascending: s.direction === 'asc' });
+    }
+  } else {
+    // Default sort by created_at desc
+    query = query.order('created_at', { ascending: false });
+  }
+
+  // Apply pagination
+  const limitNum = Math.min(Math.max(1, parseInt(limit) || 500), 1000);
+  const offsetNum = Math.max(0, parseInt(offset) || 0);
+  query = query.range(offsetNum, offsetNum + limitNum - 1);
+
+  // Execute query
+  const { data, error, count } = await query;
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  // Handle grouping and aggregation (in-memory for now)
+  let resultData = data || [];
+  let aggregations = null;
+
+  if (grouping && grouping.groupBy && grouping.groupBy.length > 0) {
+    const groups = new Map();
+
+    for (const row of resultData) {
+      // Create group key
+      const keyParts = grouping.groupBy.map(field => {
+        if (field.includes('.')) {
+          const [joinName, fieldName] = field.split('.');
+          return row[joinName]?.[fieldName] || 'null';
+        }
+        return row[field] || 'null';
+      });
+      const groupKey = keyParts.join('|');
+
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          _groupKey: groupKey,
+          _groupValues: Object.fromEntries(grouping.groupBy.map((f, i) => [f, keyParts[i]])),
+          _rows: [],
+          _count: 0
+        });
+      }
+
+      groups.get(groupKey)._rows.push(row);
+      groups.get(groupKey)._count++;
+    }
+
+    // Apply aggregations
+    if (grouping.aggregations && Array.isArray(grouping.aggregations)) {
+      for (const [, group] of groups) {
+        for (const agg of grouping.aggregations) {
+          const { field, function: aggFn, alias } = agg;
+          const values = group._rows.map(r => parseFloat(r[field]) || 0);
+
+          let result;
+          switch (aggFn) {
+            case 'sum':
+              result = values.reduce((a, b) => a + b, 0);
+              break;
+            case 'avg':
+              result = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+              break;
+            case 'min':
+              result = values.length > 0 ? Math.min(...values) : 0;
+              break;
+            case 'max':
+              result = values.length > 0 ? Math.max(...values) : 0;
+              break;
+            case 'count':
+              result = group._count;
+              break;
+            default:
+              result = null;
+          }
+
+          group[alias || `${aggFn}_${field}`] = result;
+        }
+
+        // Remove internal fields
+        delete group._rows;
+      }
+    }
+
+    resultData = Array.from(groups.values());
+  }
+
+  // Calculate execution time
+  const executionTime = Date.now() - startTime;
+
+  // Log execution if template_id provided
+  if (template_id) {
+    await supabase
+      .from('v2_report_executions')
+      .insert({
+        template_id,
+        builder_id: builderId,
+        executed_by: req.user?.email || null,
+        runtime_filters: filters || null,
+        row_count: resultData.length,
+        execution_time_ms: executionTime
+      });
+  }
+
+  res.json({
+    data: resultData,
+    meta: {
+      total: count,
+      limit: limitNum,
+      offset: offsetNum,
+      hasMore: offsetNum + limitNum < (count || 0),
+      executionTimeMs: executionTime,
+      groupedBy: grouping?.groupBy || null
+    }
+  });
+}));
+
+// ============================================================
+// PREVIEW REPORT (same as execute but with smaller limit)
+// POST /api/reports/preview
+// ============================================================
+
+router.post('/preview', asyncHandler(async (req, res) => {
+  // Reuse execute logic with forced limit
+  req.body.limit = 10;
+  req.body.offset = 0;
+
+  // Forward to execute handler
+  const builderId = getBuilderId(req);
+  const {
+    entity_type,
+    columns,
+    filters,
+    grouping,
+    sort
+  } = req.body;
+
+  if (!entity_type || !ENTITY_SCHEMAS[entity_type]) {
+    throw new AppError('VALIDATION_ERROR', `Invalid entity type`);
+  }
+
+  const schema = ENTITY_SCHEMAS[entity_type];
+
+  // Build minimal select for preview
+  let selectClause = '*';
+  if (schema.joins) {
+    const joinParts = Object.entries(schema.joins).map(([name, join]) =>
+      `${name}:${join.table}(${join.fields.join(',')})`
+    );
+    selectClause = `*,${joinParts.join(',')}`;
+  }
+
+  let query = supabase
+    .from(schema.table)
+    .select(selectClause, { count: 'exact' })
+    .is('deleted_at', null)
+    .limit(10);
+
+  // Apply builder filter
+  if (builderId) {
+    const tablesWithBuilderId = ['v2_jobs', 'v2_invoices', 'v2_vendors', 'v2_purchase_orders', 'v2_draws', 'v2_expenses', 'v2_daily_logs'];
+    if (tablesWithBuilderId.includes(schema.table)) {
+      query = query.eq('builder_id', builderId);
+    }
+  }
+
+  // Apply filters
+  if (filters && Array.isArray(filters)) {
+    for (const filter of filters) {
+      const { field, operator, value } = filter;
+      switch (operator) {
+        case 'eq':
+          query = query.eq(field, value);
+          break;
+        case 'ilike':
+          query = query.ilike(field, `%${value}%`);
+          break;
+        case 'gte':
+          query = query.gte(field, value);
+          break;
+        case 'lte':
+          query = query.lte(field, value);
+          break;
+        // Add more as needed
+      }
+    }
+  }
+
+  // Apply sort
+  if (sort && Array.isArray(sort) && sort.length > 0) {
+    for (const s of sort) {
+      query = query.order(s.field, { ascending: s.direction === 'asc' });
+    }
+  } else {
+    query = query.order('created_at', { ascending: false });
+  }
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', error.message);
+  }
+
+  res.json({
+    preview: true,
+    data: data || [],
+    meta: {
+      total: count,
+      showing: (data || []).length,
+      hasMore: (count || 0) > 10
+    }
+  });
+}));
+
 module.exports = router;

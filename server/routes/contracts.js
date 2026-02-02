@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // STATS
@@ -14,12 +15,14 @@ const { asyncHandler, AppError } = require('../core/errors');
 
 router.get('/stats', asyncHandler(async (req, res) => {
   const { job_id } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_contracts')
     .select('id, contract_type, status, signature_status, expiration_date')
     .is('deleted_at', null);
 
+  if (builderId) query = query.eq('builder_id', builderId);
   if (job_id) query = query.eq('job_id', job_id);
 
   const { data: contracts } = await query;
@@ -62,6 +65,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 // Get all contracts with filters
 router.get('/', asyncHandler(async (req, res) => {
   const { job_id, company_id, vendor_id, type, status, signature_status, search, expiring_soon } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_contracts')
@@ -74,6 +78,7 @@ router.get('/', asyncHandler(async (req, res) => {
     `)
     .is('deleted_at', null);
 
+  if (builderId) query = query.eq('builder_id', builderId);
   if (job_id) query = query.eq('job_id', job_id);
   if (company_id) query = query.eq('company_id', company_id);
   if (vendor_id) query = query.eq('vendor_id', vendor_id);
@@ -100,8 +105,9 @@ router.get('/', asyncHandler(async (req, res) => {
 // Get single contract with details
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
-  const { data: contract, error } = await supabase
+  let contractQuery = supabase
     .from('v2_contracts')
     .select(`
       *,
@@ -112,8 +118,11 @@ router.get('/:id', asyncHandler(async (req, res) => {
       parent:v2_contracts!parent_contract_id(id, contract_number, name)
     `)
     .eq('id', id)
-    .is('deleted_at', null)
-    .single();
+    .is('deleted_at', null);
+
+  if (builderId) contractQuery = contractQuery.eq('builder_id', builderId);
+
+  const { data: contract, error } = await contractQuery.single();
 
   if (error || !contract) {
     throw new AppError('NOT_FOUND', 'Contract not found');
@@ -178,38 +187,43 @@ router.post('/', asyncHandler(async (req, res) => {
     notes,
     created_by
   } = req.body;
+  const builderId = getBuilderId(req);
 
   if (!name || !contract_type) {
     throw new AppError('VALIDATION_FAILED', 'Name and contract type are required');
   }
 
+  const contractData = {
+    name,
+    description,
+    contract_type,
+    category,
+    job_id: job_id || null,
+    company_id: company_id || null,
+    vendor_id: vendor_id || null,
+    contact_id: contact_id || null,
+    parent_contract_id: parent_contract_id || null,
+    contract_amount,
+    original_amount: contract_amount,
+    retainage_percent,
+    payment_terms,
+    start_date,
+    end_date,
+    expiration_date,
+    scope_of_work,
+    insurance_requirements,
+    bond_requirements,
+    warranty_terms,
+    notice_period_days,
+    notes,
+    created_by: created_by || req.user?.email || 'User'
+  };
+
+  if (builderId) contractData.builder_id = builderId;
+
   const { data, error } = await supabase
     .from('v2_contracts')
-    .insert({
-      name,
-      description,
-      contract_type,
-      category,
-      job_id: job_id || null,
-      company_id: company_id || null,
-      vendor_id: vendor_id || null,
-      contact_id: contact_id || null,
-      parent_contract_id: parent_contract_id || null,
-      contract_amount,
-      original_amount: contract_amount,
-      retainage_percent,
-      payment_terms,
-      start_date,
-      end_date,
-      expiration_date,
-      scope_of_work,
-      insurance_requirements,
-      bond_requirements,
-      warranty_terms,
-      notice_period_days,
-      notes,
-      created_by: created_by || 'User'
-    })
+    .insert(contractData)
     .select(`
       *,
       job:v2_jobs!job_id(id, name),

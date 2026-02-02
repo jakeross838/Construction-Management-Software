@@ -7,20 +7,84 @@ export interface Job {
   name: string;
   address?: string;
   client_name?: string;
+  client?: string;
+  client_email?: string;
+  client_phone?: string;
+  client_cell?: string;
   contract_amount?: number;
+  budget_amount?: number;
   status: string;
+  percent_complete?: number;
+  start_date?: string;
+  end_date?: string;
+  actual_end_date?: string;
+  target_margin?: number;
+  retainage_percent?: number;
+  notes?: string;
   created_at: string;
-  [key: string]: any;
+  updated_at?: string;
+  // Property Details
+  square_footage?: number;
+  stories?: number;
+  bedrooms?: number;
+  bathrooms?: number;
+  half_baths?: number;
+  garage_spaces?: number;
+  lot_size?: number;
+  // Structure Details
+  architectural_style?: string;
+  foundation_type?: string;
+  roof_type?: string;
+  exterior_finish?: string;
+  // Systems
+  hvac_system?: string;
+  electrical_service?: string;
+  plumbing_type?: string;
+  // Features
+  premium_features?: string[];
+  // Team
+  project_manager?: string;
+  site_supervisor?: string;
+  architect?: string;
+  engineer?: string;
+  // Additional Info
+  permit_number?: string;
+  parcel_id?: string;
+  flood_zone?: string;
+  year_built?: number;
+  construction_type?: string;
+  monthly_supervision_rate?: number;
 }
 
 export type JobInsert = Partial<Job>;
 export type JobUpdate = Partial<Job>;
 
-export function useJobs() {
+interface JobsPaginationParams {
+  page?: number;
+  limit?: number;
+}
+
+interface PaginatedJobsResponse {
+  data: Job[];
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
+export function useJobs(pagination?: JobsPaginationParams) {
   return useQuery({
-    queryKey: ['jobs'],
-    queryFn: async (): Promise<Job[]> => {
-      const response = await fetch('/api/jobs');
+    queryKey: ['jobs', pagination?.page, pagination?.limit],
+    queryFn: async (): Promise<Job[] | PaginatedJobsResponse> => {
+      const params = new URLSearchParams();
+      if (pagination?.page) params.append('page', String(pagination.page));
+      if (pagination?.limit) params.append('limit', String(pagination.limit));
+
+      const url = `/api/jobs${params.size > 0 ? `?${params.toString()}` : ''}`;
+      const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch jobs');
       return response.json();
     },
@@ -133,12 +197,22 @@ export const architecturalStyleOptions = [
   { value: 'farmhouse', label: 'Farmhouse' },
 ];
 
+// Job specs update type
+export type JobSpecs = Partial<Pick<Job,
+  | 'square_footage' | 'stories' | 'bedrooms' | 'bathrooms' | 'half_baths'
+  | 'garage_spaces' | 'lot_size' | 'architectural_style' | 'foundation_type'
+  | 'roof_type' | 'exterior_finish' | 'hvac_system' | 'electrical_service'
+  | 'plumbing_type' | 'premium_features' | 'project_manager' | 'site_supervisor'
+  | 'architect' | 'engineer' | 'permit_number' | 'parcel_id' | 'flood_zone'
+  | 'year_built' | 'construction_type' | 'monthly_supervision_rate'
+>>;
+
 // Job specs update mutation (uses dedicated /specs endpoint)
 export function useUpdateJobSpecs() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...specs }: { id: string; [key: string]: any }) => {
+    mutationFn: async ({ id, ...specs }: { id: string } & JobSpecs) => {
       const response = await fetch(`/api/jobs/${id}/specs`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

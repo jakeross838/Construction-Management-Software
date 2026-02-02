@@ -8,7 +8,20 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
+const { paginated } = require('../utils/api-response');
 const { AppError, asyncHandler, notFoundError, validationError, transitionError } = require('../core/errors');
+const {
+  decodeCursor,
+  buildCursorFromItem,
+  processCursorResults
+} = require('../utils/cursor-pagination');
+const {
+  PaginationType,
+  detectPaginationType,
+  cursorResponse,
+  offsetResponse,
+  noPaginationResponse
+} = require('../middleware/pagination');
 const { validate, schemas } = require('../middleware/validate');
 const { broadcastInvoiceUpdate, broadcast } = require('../core/realtime');
 const {
@@ -71,6 +84,8 @@ const {
 const { convertDocument, getSupportedExtensions } = require('../documents/converter');
 const { checkForDuplicates } = require('../matching/duplicate-check');
 const standards = require('../services/standards');
+const { getBuilderId } = require('../core/multi-tenant');
+const { triggerWebhooks } = require('./webhooks');
 
 // Multer for file uploads
 const upload = multer({
@@ -82,35 +97,121 @@ const upload = multer({
 // LIST & FILTER ENDPOINTS
 // ============================================================
 
-// List invoices (with optional filters)
+// List invoices (with optional filters and pagination)
+// Supports three modes:
+// 1. Cursor pagination: ?cursor=abc&limit=50 (recommended for real-time data)
+// 2. Offset pagination: ?page=1&limit=50 (backward compatible)
+// 3. No pagination: returns all results (backward compatible)
 router.get('/', validate(schemas.invoiceQuery), async (req, res) => {
   try {
-    const { job_id, status, vendor_id } = req.query;
+    const { job_id, status, vendor_id, page, limit, cursor } = req.query;
+    const builderId = getBuilderId(req);
+    const paginationType = detectPaginationType(req.query);
 
+    // Parse limit (common to both pagination types)
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+
+    // Define the select query
+    const selectQuery = `
+      *,
+      vendor:v2_vendors(id, name, trade),
+      job:v2_jobs(id, name),
+      po:v2_purchase_orders(id, po_number, total_amount),
+      allocations:v2_invoice_allocations(
+        id, amount, notes, job_id, change_order_id, po_id, cost_code_id,
+        cost_code:v2_cost_codes(id, code, name),
+        purchase_order:v2_purchase_orders(id, po_number)
+      ),
+      draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
+    `;
+
+    // Handle CURSOR pagination
+    if (paginationType === PaginationType.CURSOR) {
+      let query = supabase
+        .from('v2_invoices')
+        .select(selectQuery)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
+
+      // Apply filters
+      if (builderId) query = query.eq('builder_id', builderId);
+      if (job_id) query = query.eq('job_id', job_id);
+      if (status) query = query.eq('status', status);
+      if (vendor_id) query = query.eq('vendor_id', vendor_id);
+
+      // Apply cursor filter if provided
+      if (cursor) {
+        const cursorData = decodeCursor(cursor);
+        if (cursorData && cursorData.created_at) {
+          // For descending order: get items BEFORE cursor position
+          // Use compound filter for precise positioning
+          if (cursorData.id) {
+            query = query.or(
+              `created_at.lt.${cursorData.created_at},` +
+              `and(created_at.eq.${cursorData.created_at},id.lt.${cursorData.id})`
+            );
+          } else {
+            query = query.lt('created_at', cursorData.created_at);
+          }
+        }
+      }
+
+      // Fetch one extra to check if there are more items
+      query = query.limit(limitNum + 1);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // Process results
+      const result = processCursorResults(data || [], limitNum, ['created_at', 'id']);
+
+      return res.json(cursorResponse(result.data, result.nextCursor, result.hasMore));
+    }
+
+    // Handle OFFSET pagination (backward compatible)
+    if (paginationType === PaginationType.OFFSET) {
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const offset = (pageNum - 1) * limitNum;
+
+      let query = supabase
+        .from('v2_invoices')
+        .select(selectQuery, { count: 'exact' })
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+
+      // Apply filters
+      if (builderId) query = query.eq('builder_id', builderId);
+      if (job_id) query = query.eq('job_id', job_id);
+      if (status) query = query.eq('status', status);
+      if (vendor_id) query = query.eq('vendor_id', vendor_id);
+
+      query = query.range(offset, offset + limitNum - 1);
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      // Use the new standardized offset response
+      return res.json(offsetResponse(data || [], pageNum, limitNum, count || 0));
+    }
+
+    // NO pagination - return all results (backward compatible)
     let query = supabase
       .from('v2_invoices')
-      .select(`
-        *,
-        vendor:v2_vendors(id, name, trade),
-        job:v2_jobs(id, name),
-        po:v2_purchase_orders(id, po_number, total_amount),
-        allocations:v2_invoice_allocations(
-          id, amount, notes, job_id, change_order_id, po_id, cost_code_id,
-          cost_code:v2_cost_codes(id, code, name),
-          purchase_order:v2_purchase_orders(id, po_number)
-        ),
-        draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
-      `)
+      .select(selectQuery)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
+    // Apply filters
+    if (builderId) query = query.eq('builder_id', builderId);
     if (job_id) query = query.eq('job_id', job_id);
     if (status) query = query.eq('status', status);
     if (vendor_id) query = query.eq('vendor_id', vendor_id);
 
     const { data, error } = await query;
     if (error) throw error;
-    res.json(data);
+
+    return res.json(noPaginationResponse(data || []));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -118,7 +219,9 @@ router.get('/', validate(schemas.invoiceQuery), async (req, res) => {
 
 // Get invoices that need review
 router.get('/needs-review', asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  const builderId = getBuilderId(req);
+
+  let query = supabase
     .from('v2_invoices')
     .select(`
       *,
@@ -129,13 +232,19 @@ router.get('/needs-review', asyncHandler(async (req, res) => {
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
+  if (builderId) query = query.eq('builder_id', builderId);
+
+  const { data, error } = await query;
+
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
 }));
 
 // Get invoices with low AI confidence
 router.get('/low-confidence', asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  const builderId = getBuilderId(req);
+
+  let query = supabase
     .from('v2_invoices')
     .select(`
       *,
@@ -145,6 +254,10 @@ router.get('/low-confidence', asyncHandler(async (req, res) => {
     .eq('ai_processed', true)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
+
+  if (builderId) query = query.eq('builder_id', builderId);
+
+  const { data, error } = await query;
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -158,7 +271,9 @@ router.get('/low-confidence', asyncHandler(async (req, res) => {
 
 // Get invoices without job assignment
 router.get('/no-job', asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  const builderId = getBuilderId(req);
+
+  let query = supabase
     .from('v2_invoices')
     .select(`
       *,
@@ -167,6 +282,10 @@ router.get('/no-job', asyncHandler(async (req, res) => {
     .is('job_id', null)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
+
+  if (builderId) query = query.eq('builder_id', builderId);
+
+  const { data, error } = await query;
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data);
@@ -179,7 +298,9 @@ router.get('/no-job', asyncHandler(async (req, res) => {
 // Get single invoice with full details
 router.get('/:id', validate(schemas.idParam), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const builderId = getBuilderId(req);
+
+    let query = supabase
       .from('v2_invoices')
       .select(`
         *,
@@ -194,8 +315,11 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
         ),
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
       `)
-      .eq('id', req.params.id)
-      .single();
+      .eq('id', req.params.id);
+
+    if (builderId) query = query.eq('builder_id', builderId);
+
+    const { data, error } = await query.single();
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -973,6 +1097,22 @@ router.post('/process', upload.single('file'), async (req, res) => {
       processingLog: result.messages || []
     });
 
+    // Trigger webhook for invoice creation
+    const builderId = getBuilderId(req);
+    if (builderId) {
+      triggerWebhooks(builderId, 'invoice.created', invoice.id, {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        vendor_id: invoice.vendor_id,
+        vendor_name: result.vendor?.name,
+        job_id: invoice.job_id,
+        job_name: result.matchedJob?.name,
+        amount: invoice.amount,
+        status: invoice.status,
+        created_at: invoice.created_at,
+      }).catch(err => logger.error('Webhook trigger failed', { error: err.message }));
+    }
+
     // Determine needs_review based on new thresholds
     const combinedConfidence = twoStageResult?.confidence || result.ai_confidence?.overall || 0;
     const needsReviewFromThreshold = combinedConfidence < CONFIDENCE_THRESHOLDS.HUMAN_REVIEW;
@@ -1683,6 +1823,25 @@ router.post('/:id/transition', validate(schemas.invoiceTransition), asyncHandler
 
   await logActivity(invoiceId, `status_${new_status}`, performedBy, { reason, from: invoice.status });
   broadcastInvoiceUpdate(updated, 'status_changed', performedBy);
+
+  // Trigger webhook for status change
+  const builderId = getBuilderId(req);
+  if (builderId) {
+    const eventType = new_status === 'approved' ? 'invoice.approved'
+      : new_status === 'paid' ? 'invoice.paid'
+      : 'invoice.updated';
+    triggerWebhooks(builderId, eventType, updated.id, {
+      id: updated.id,
+      invoice_number: updated.invoice_number,
+      vendor_id: updated.vendor_id,
+      job_id: updated.job_id,
+      amount: updated.amount,
+      status: updated.status,
+      previous_status: invoice.status,
+      performed_by: performedBy,
+      updated_at: updated.updated_at,
+    }).catch(err => logger.error('Webhook trigger failed', { error: err.message }));
+  }
 
   if (invoice.parent_invoice_id) {
     checkSplitReconciliation(invoice.parent_invoice_id).catch(err => logger.error('Split reconciliation failed', { error: err.message }));

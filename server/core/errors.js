@@ -281,44 +281,104 @@ function notFoundError(entityType, entityId) {
 // EXPRESS ERROR MIDDLEWARE
 // ============================================================
 
+// ============================================================
+// ERROR SANITIZATION
+// ============================================================
+
+/**
+ * Sanitize error response for production
+ * Hides internal details and returns generic messages for sensitive errors
+ * @param {Object} errorResponse - The error response object to sanitize
+ * @param {string} requestId - Request ID for user reference
+ * @returns {Object} Sanitized error response
+ */
+function sanitizeError(errorResponse, requestId) {
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (!isProduction) {
+    return errorResponse;
+  }
+
+  // Codes that should show generic message in production
+  const sensitiveErrorCodes = [
+    'DATABASE_ERROR',
+    'UNKNOWN_ERROR',
+    'AI_EXTRACTION_FAILED',
+    'PDF_STAMP_FAILED',
+    'PDF_UNSTAMP_FAILED',
+    'STORAGE_UPLOAD_FAILED',
+    'STORAGE_DOWNLOAD_FAILED'
+  ];
+
+  // Create sanitized copy
+  const sanitized = { ...errorResponse };
+
+  // Hide internal details for sensitive errors
+  if (sensitiveErrorCodes.includes(errorResponse.code)) {
+    sanitized.message = `An error occurred. Please contact support with reference: ${requestId}`;
+    sanitized.details = { requestId };
+  } else {
+    // Keep user-friendly details for validation/not found errors
+    sanitized.details = errorResponse.details;
+  }
+
+  // Never expose stack traces in production
+  if (sanitized.details && sanitized.details.stack) {
+    delete sanitized.details.stack;
+  }
+
+  return sanitized;
+}
+
+// ============================================================
+// ERROR HANDLING MIDDLEWARE
+// ============================================================
+
 /**
  * Error handling middleware for Express
  * Place at end of middleware chain
  */
 function errorMiddleware(err, req, res, next) {
-  // Log error
-  console.error(`[${new Date().toISOString()}] Error:`, err.message);
+  // Log error (full details always logged internally)
+  console.error(`[${new Date().toISOString()}] Error [${req.requestId}]:`, err.message);
   if (err.stack && process.env.NODE_ENV !== 'production') {
     console.error(err.stack);
   }
 
+  const requestId = req.requestId || 'unknown';
+
   // Handle AppError
   if (err instanceof AppError) {
-    return res.status(err.status).json(err.toJSON());
+    const response = err.toJSON();
+    const sanitized = sanitizeError(response, requestId);
+    return res.status(err.status).json(sanitized);
   }
 
   // Handle Supabase/database errors
   if (err.code && typeof err.code === 'string' && err.code.startsWith('PGRST')) {
-    return res.status(400).json({
+    const response = {
       error: true,
       code: 'DATABASE_ERROR',
       message: err.message,
       details: { pgCode: err.code },
       retry: true,
       retryAfter: 1000
-    });
+    };
+    const sanitized = sanitizeError(response, requestId);
+    return res.status(400).json(sanitized);
   }
 
   // Handle generic errors
-  const isProduction = process.env.NODE_ENV === 'production';
-  return res.status(500).json({
+  const response = {
     error: true,
     code: 'UNKNOWN_ERROR',
-    message: isProduction ? 'An unexpected error occurred' : err.message,
-    details: isProduction ? {} : { stack: err.stack },
+    message: err.message,
+    details: { stack: err.stack },
     retry: true,
     retryAfter: 1000
-  });
+  };
+  const sanitized = sanitizeError(response, requestId);
+  return res.status(500).json(sanitized);
 }
 
 /**
@@ -382,6 +442,7 @@ module.exports = {
   lockedError,
   versionConflictError,
   notFoundError,
+  sanitizeError,
   errorMiddleware,
   asyncHandler,
   validateRequest

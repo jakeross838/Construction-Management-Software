@@ -1,0 +1,181 @@
+# =============================================================================
+# Ross Built Construction Management Software - Security Scanning
+# Runs on push to main, pull requests, and weekly schedule
+# =============================================================================
+
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Dependency Audit - Check for known vulnerabilities in npm packages
+  # ---------------------------------------------------------------------------
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Audit root dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true  # Don't fail on vulnerabilities, report them
+
+      - name: Audit client dependencies
+        run: cd client && npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Generate audit report
+        run: |
+          echo "## Root Dependencies" > audit-report.md
+          echo '```' >> audit-report.md
+          npm audit --json 2>/dev/null | jq -r '.vulnerabilities | to_entries[] | "\(.key): \(.value.severity)"' >> audit-report.md 2>/dev/null || echo "No vulnerabilities found" >> audit-report.md
+          echo '```' >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Client Dependencies" >> audit-report.md
+          echo '```' >> audit-report.md
+          cd client && npm audit --json 2>/dev/null | jq -r '.vulnerabilities | to_entries[] | "\(.key): \(.value.severity)"' >> ../audit-report.md 2>/dev/null || echo "No vulnerabilities found" >> ../audit-report.md
+          echo '```' >> ../audit-report.md
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report
+          path: audit-report.md
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # CodeQL Analysis - Static code analysis for security issues
+  # ---------------------------------------------------------------------------
+  codeql-analysis:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  # ---------------------------------------------------------------------------
+  # Secrets Scanning - Check for accidentally committed secrets
+  # ---------------------------------------------------------------------------
+  secrets-scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for scanning
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true  # Report but don't fail
+
+  # ---------------------------------------------------------------------------
+  # License Check - Ensure dependencies have compatible licenses
+  # ---------------------------------------------------------------------------
+  license-check:
+    name: License Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install license-checker
+        run: npm install -g license-checker
+
+      - name: Check root licenses
+        run: |
+          npm ci
+          license-checker --summary --production
+
+      - name: Check client licenses
+        run: |
+          cd client && npm ci
+          license-checker --summary --production
+
+  # ---------------------------------------------------------------------------
+  # Docker Image Scan - Scan Docker image for vulnerabilities
+  # ---------------------------------------------------------------------------
+  docker-scan:
+    name: Docker Image Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ross-built-cms:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'ross-built-cms:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true

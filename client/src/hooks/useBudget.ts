@@ -51,6 +51,32 @@ export function useBudgetLines(jobId?: string) {
   });
 }
 
+// API response types for budget summary
+interface BudgetSummaryLine {
+  costCode?: string;
+  costCodeId?: string;
+  description?: string;
+  category?: string;
+  budgeted?: number;
+  committed?: number;
+  billed?: number;
+  projected?: number;
+  variance?: number;
+}
+
+interface BudgetSummaryTotals {
+  budgeted: number;
+  committed: number;
+  billed: number;
+  projected: number;
+  variance: number;
+}
+
+interface BudgetSummaryResponse {
+  lines: BudgetSummaryLine[];
+  totals: BudgetSummaryTotals;
+}
+
 // Get budget summary with actual/committed from POs and invoices
 export function useBudgetSummary(jobId?: string) {
   return useQuery({
@@ -58,17 +84,17 @@ export function useBudgetSummary(jobId?: string) {
     queryFn: async (): Promise<BudgetCategory[]> => {
       if (!jobId) return [];
       // Use budget-summary endpoint which calculates actuals from invoices/POs
-      const data = await api<{ lines: any[]; totals: any }>(`/jobs/${jobId}/budget-summary`);
+      const data = await api<BudgetSummaryResponse>(`/jobs/${jobId}/budget-summary`);
 
       // Transform lines to BudgetCategory format
       // API returns: costCode, description, category, budgeted, committed, billed, projected, variance
       return (data.lines || [])
-        .filter((line: any) => line.budgeted > 0 || line.committed > 0 || line.billed > 0)
-        .map((line: any) => ({
+        .filter((line) => (line.budgeted ?? 0) > 0 || (line.committed ?? 0) > 0 || (line.billed ?? 0) > 0)
+        .map((line) => ({
           code: line.costCode || '',
           name: line.description || 'Unknown',
           category: line.category || '',
-          cost_code_id: line.costCodeId,
+          cost_code_id: line.costCodeId || '',
           budget: line.budgeted || 0,
           committed: line.committed || 0,
           actual: line.billed || 0,

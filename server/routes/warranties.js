@@ -12,7 +12,7 @@ const asyncHandler = fn => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
 // ============================================================
-// WARRANTIES
+// WARRANTIES - LIST & STATS
 // ============================================================
 
 /**
@@ -87,6 +87,193 @@ router.get('/stats', asyncHandler(async (req, res) => {
 
   res.json(stats);
 }));
+
+// ============================================================
+// CLAIMS - must be before /:id routes to avoid route conflict
+// ============================================================
+
+/**
+ * GET /api/warranties/:id/claims
+ * List claims for a warranty
+ */
+router.get('/:id/claims', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.query;
+
+  let query = supabase
+    .from('v2_warranty_claims')
+    .select('*')
+    .eq('warranty_id', id)
+    .order('claim_date', { ascending: false });
+
+  if (status) query = query.eq('status', status);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  res.json(data || []);
+}));
+
+/**
+ * POST /api/warranties/:id/claims
+ * Create a claim
+ */
+router.post('/:id/claims', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { issue_description, claim_date, claim_amount, created_by, notes } = req.body;
+
+  if (!issue_description || !claim_date) {
+    return res.status(400).json({
+      error: 'Issue description and claim date are required'
+    });
+  }
+
+  // Generate claim number
+  const { count } = await supabase
+    .from('v2_warranty_claims')
+    .select('*', { count: 'exact', head: true })
+    .eq('warranty_id', id);
+
+  const claimNumber = `CLM-${(count || 0) + 1}`.padStart(3, '0');
+
+  const { data, error } = await supabase
+    .from('v2_warranty_claims')
+    .insert({
+      warranty_id: id,
+      claim_number: claimNumber,
+      issue_description,
+      claim_date,
+      claim_amount,
+      created_by: created_by || 'Jake Ross',
+      notes,
+      status: 'submitted'
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // Update warranty claim count and last claim date
+  await supabase
+    .from('v2_warranties')
+    .update({
+      claim_count: (count || 0) + 1,
+      last_claim_date: claim_date,
+      status: 'claimed'
+    })
+    .eq('id', id);
+
+  res.status(201).json(data);
+}));
+
+/**
+ * PATCH /api/warranties/:warrantyId/claims/:claimId
+ * Update a claim
+ */
+router.patch('/:warrantyId/claims/:claimId', asyncHandler(async (req, res) => {
+  const { claimId } = req.params;
+  const updates = req.body;
+
+  delete updates.id;
+  delete updates.created_at;
+  delete updates.claim_number;
+
+  const { data, error } = await supabase
+    .from('v2_warranty_claims')
+    .update(updates)
+    .eq('id', claimId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Claim not found' });
+  }
+
+  res.json(data);
+}));
+
+/**
+ * POST /api/warranties/:warrantyId/claims/:claimId/resolve
+ * Resolve a claim
+ */
+router.post('/:warrantyId/claims/:claimId/resolve', asyncHandler(async (req, res) => {
+  const { claimId } = req.params;
+  const { resolution_description, approved_amount, resolved_by } = req.body;
+
+  const { data, error } = await supabase
+    .from('v2_warranty_claims')
+    .update({
+      status: 'completed',
+      resolution_description,
+      approved_amount,
+      resolution_date: new Date().toISOString().split('T')[0],
+      resolved_by: resolved_by || 'Jake Ross'
+    })
+    .eq('id', claimId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    return res.status(404).json({ error: 'Claim not found' });
+  }
+
+  res.json(data);
+}));
+
+// ============================================================
+// ATTACHMENTS - must be before /:id routes to avoid route conflict
+// ============================================================
+
+/**
+ * POST /api/warranties/:id/attachments
+ * Add attachment
+ */
+router.post('/:id/attachments', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, file_url, file_type, file_size, attachment_type, uploaded_by } = req.body;
+
+  if (!name || !file_url) {
+    return res.status(400).json({ error: 'Name and file URL are required' });
+  }
+
+  const { data, error } = await supabase
+    .from('v2_warranty_attachments')
+    .insert({
+      warranty_id: id,
+      name,
+      file_url,
+      file_type,
+      file_size,
+      attachment_type: attachment_type || 'warranty',
+      uploaded_by: uploaded_by || 'Jake Ross'
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+
+/**
+ * DELETE /api/warranties/:warrantyId/attachments/:attachmentId
+ * Delete attachment
+ */
+router.delete('/:warrantyId/attachments/:attachmentId', asyncHandler(async (req, res) => {
+  const { attachmentId } = req.params;
+
+  const { error } = await supabase
+    .from('v2_warranty_attachments')
+    .delete()
+    .eq('id', attachmentId);
+
+  if (error) throw error;
+  res.json({ success: true, message: 'Attachment deleted' });
+}));
+
+// ============================================================
+// WARRANTY CRUD - single warranty operations (/:id)
+// ============================================================
 
 /**
  * GET /api/warranties/:id
@@ -250,168 +437,6 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   }
 
   res.json({ success: true, message: 'Warranty deleted' });
-}));
-
-// ============================================================
-// CLAIMS
-// ============================================================
-
-/**
- * POST /api/warranties/:id/claims
- * Create a claim
- */
-router.post('/:id/claims', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { issue_description, claim_date, claim_amount, created_by, notes } = req.body;
-
-  if (!issue_description || !claim_date) {
-    return res.status(400).json({
-      error: 'Issue description and claim date are required'
-    });
-  }
-
-  // Generate claim number
-  const { count } = await supabase
-    .from('v2_warranty_claims')
-    .select('*', { count: 'exact', head: true })
-    .eq('warranty_id', id);
-
-  const claimNumber = `CLM-${(count || 0) + 1}`.padStart(3, '0');
-
-  const { data, error } = await supabase
-    .from('v2_warranty_claims')
-    .insert({
-      warranty_id: id,
-      claim_number: claimNumber,
-      issue_description,
-      claim_date,
-      claim_amount,
-      created_by: created_by || 'Jake Ross',
-      notes,
-      status: 'submitted'
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  // Update warranty claim count and last claim date
-  await supabase
-    .from('v2_warranties')
-    .update({
-      claim_count: (count || 0) + 1,
-      last_claim_date: claim_date,
-      status: 'claimed'
-    })
-    .eq('id', id);
-
-  res.status(201).json(data);
-}));
-
-/**
- * PATCH /api/warranties/:warrantyId/claims/:claimId
- * Update a claim
- */
-router.patch('/:warrantyId/claims/:claimId', asyncHandler(async (req, res) => {
-  const { claimId } = req.params;
-  const updates = req.body;
-
-  delete updates.id;
-  delete updates.created_at;
-  delete updates.claim_number;
-
-  const { data, error } = await supabase
-    .from('v2_warranty_claims')
-    .update(updates)
-    .eq('id', claimId)
-    .select()
-    .single();
-
-  if (error) throw error;
-  if (!data) {
-    return res.status(404).json({ error: 'Claim not found' });
-  }
-
-  res.json(data);
-}));
-
-/**
- * POST /api/warranties/:warrantyId/claims/:claimId/resolve
- * Resolve a claim
- */
-router.post('/:warrantyId/claims/:claimId/resolve', asyncHandler(async (req, res) => {
-  const { claimId } = req.params;
-  const { resolution_description, approved_amount, resolved_by } = req.body;
-
-  const { data, error } = await supabase
-    .from('v2_warranty_claims')
-    .update({
-      status: 'completed',
-      resolution_description,
-      approved_amount,
-      resolution_date: new Date().toISOString().split('T')[0],
-      resolved_by: resolved_by || 'Jake Ross'
-    })
-    .eq('id', claimId)
-    .select()
-    .single();
-
-  if (error) throw error;
-  if (!data) {
-    return res.status(404).json({ error: 'Claim not found' });
-  }
-
-  res.json(data);
-}));
-
-// ============================================================
-// ATTACHMENTS
-// ============================================================
-
-/**
- * POST /api/warranties/:id/attachments
- * Add attachment
- */
-router.post('/:id/attachments', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { name, file_url, file_type, file_size, attachment_type, uploaded_by } = req.body;
-
-  if (!name || !file_url) {
-    return res.status(400).json({ error: 'Name and file URL are required' });
-  }
-
-  const { data, error } = await supabase
-    .from('v2_warranty_attachments')
-    .insert({
-      warranty_id: id,
-      name,
-      file_url,
-      file_type,
-      file_size,
-      attachment_type: attachment_type || 'warranty',
-      uploaded_by: uploaded_by || 'Jake Ross'
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  res.status(201).json(data);
-}));
-
-/**
- * DELETE /api/warranties/:warrantyId/attachments/:attachmentId
- * Delete attachment
- */
-router.delete('/:warrantyId/attachments/:attachmentId', asyncHandler(async (req, res) => {
-  const { attachmentId } = req.params;
-
-  const { error } = await supabase
-    .from('v2_warranty_attachments')
-    .delete()
-    .eq('id', attachmentId);
-
-  if (error) throw error;
-  res.json({ success: true, message: 'Attachment deleted' });
 }));
 
 module.exports = router;

@@ -52,6 +52,11 @@ export interface ScheduleTask {
   confirmed_by: string | null;
   // Task type for color coding
   task_type: TaskType;
+  // Milestone flag
+  is_milestone: boolean;
+  // Baseline dates for variance tracking
+  baseline_start: string | null;
+  baseline_end: string | null;
 }
 
 // Universal color coding system
@@ -149,6 +154,9 @@ export function useScheduleTasks(jobId?: string | null) {
           task_type: task.task_type || 'work',
           critical_path: task.critical_path || false,
           predecessors,
+          is_milestone: task.is_milestone || task.task_type === 'milestone' || false,
+          baseline_start: task.baseline_start || null,
+          baseline_end: task.baseline_end || null,
         };
         // Apply universal color based on type/status
         mappedTask.color = getTaskColor(mappedTask);
