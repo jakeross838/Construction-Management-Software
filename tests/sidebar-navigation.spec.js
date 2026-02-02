@@ -107,7 +107,7 @@ test.describe('Page Loading', () => {
   });
 
   test('dashboard page should load without errors', async ({ page }) => {
-    const errors: string[] = [];
+    const errors = [];
     page.on('pageerror', err => errors.push(err.message));
     page.on('console', msg => {
       if (msg.type() === 'error') errors.push(msg.text());
@@ -125,7 +125,7 @@ test.describe('Page Loading', () => {
   });
 
   test('invoices page should load without errors', async ({ page }) => {
-    const errors: string[] = [];
+    const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
     await page.goto('/invoices');
@@ -139,7 +139,7 @@ test.describe('Page Loading', () => {
   });
 
   test('POs page should load without errors', async ({ page }) => {
-    const errors: string[] = [];
+    const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
     await page.goto('/purchase-orders');
@@ -153,7 +153,7 @@ test.describe('Page Loading', () => {
   });
 
   test('draws page should load without errors', async ({ page }) => {
-    const errors: string[] = [];
+    const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
     await page.goto('/draws');
@@ -167,7 +167,7 @@ test.describe('Page Loading', () => {
   });
 
   test('budgets page should load without errors', async ({ page }) => {
-    const errors: string[] = [];
+    const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
     await page.goto('/budget');
