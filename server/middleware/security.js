@@ -26,11 +26,12 @@ const SECURITY_CONFIG = {
   // Content Security Policy
   csp: {
     defaultSrc: ["'self'"],
-    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],  // Relaxed for dev; tighten in production
+    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com", "http://unpkg.com", "blob:"],  // Relaxed for dev; tighten in production
     styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
     fontSrc: ["'self'", "https://fonts.gstatic.com"],
     imgSrc: ["'self'", "data:", "blob:", "https:"],
     connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co"],
+    workerSrc: ["'self'", "blob:", "https://unpkg.com", "http://unpkg.com"],  // Allow PDF.js worker
     frameSrc: ["'none'"],
     objectSrc: ["'none'"],
     baseUri: ["'self'"],

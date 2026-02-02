@@ -230,6 +230,43 @@ app.get('/api/health', async (req, res) => {
   res.status(hasErrors ? 503 : 200).json(health);
 });
 
+// ============================================================
+// PDF PROXY - Fetch PDFs from Supabase storage to bypass CORS
+// ============================================================
+app.get('/api/proxy/pdf', asyncHandler(async (req, res) => {
+  const { url } = req.query;
+
+  if (!url) {
+    return res.status(400).json({ error: 'URL parameter required' });
+  }
+
+  // Validate URL is from our Supabase storage
+  const supabaseUrl = process.env.SUPABASE_URL || '';
+  if (!url.startsWith(supabaseUrl) && !url.includes('supabase.co')) {
+    return res.status(403).json({ error: 'Only Supabase storage URLs are allowed' });
+  }
+
+  try {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch PDF' });
+    }
+
+    // Set appropriate headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    // Stream the response
+    const arrayBuffer = await response.arrayBuffer();
+    res.send(Buffer.from(arrayBuffer));
+  } catch (error) {
+    console.error('PDF proxy error:', error);
+    res.status(500).json({ error: 'Failed to proxy PDF' });
+  }
+}));
+
 // Mount modular routes (these take precedence over legacy inline routes)
 app.use('/api/auth', authRoutes);
 app.use('/api/onboarding', onboardingRoutes);
