@@ -1,0 +1,345 @@
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { UserRole } from '@/types/auth';
+
+// Database types for our custom tables
+interface Builder {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  plan: 'basic' | 'professional' | 'enterprise' | 'trial';
+  plan_expires_at: string | null;
+  max_active_jobs: number;
+  max_users: number;
+}
+
+interface DbUser {
+  id: string;
+  builder_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+  role: UserRole;
+  builder?: Builder;
+}
+
+interface AuthContextType {
+  // Supabase auth state
+  session: Session | null;
+  supabaseUser: SupabaseUser | null;
+
+  // Our app user (from v2_users)
+  user: DbUser | null;
+  builder: Builder | null;
+
+  // Loading states
+  isLoading: boolean;
+  isInitialized: boolean;
+
+  // Auth functions
+  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, builderName: string, firstName?: string, lastName?: string) => Promise<{ error: Error | null }>;
+  signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: Error | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
+  resendConfirmation: (email: string) => Promise<{ error: Error | null }>;
+
+  // Refresh user data
+  refreshUser: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
+  const [user, setUser] = useState<DbUser | null>(null);
+  const [builder, setBuilder] = useState<Builder | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Fetch user profile from v2_users
+  const fetchUserProfile = async (authUserId: string) => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+        setBuilder(data.builder);
+      } else if (response.status === 404) {
+        // User authenticated but not in v2_users yet (shouldn't happen normally)
+        console.warn('Authenticated user not found in v2_users');
+        setUser(null);
+        setBuilder(null);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
+  // Initialize auth state on mount
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        // Get initial session
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+
+        if (initialSession) {
+          setSession(initialSession);
+          setSupabaseUser(initialSession.user);
+          await fetchUserProfile(initialSession.user.id);
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+      } finally {
+        setIsLoading(false);
+        setIsInitialized(true);
+      }
+    };
+
+    initializeAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, newSession) => {
+        setSession(newSession);
+        setSupabaseUser(newSession?.user || null);
+
+        if (event === 'SIGNED_IN' && newSession) {
+          await fetchUserProfile(newSession.user.id);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setBuilder(null);
+        } else if (event === 'TOKEN_REFRESHED' && newSession) {
+          // Session refreshed, user profile should still be valid
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Re-fetch user profile when session changes
+  useEffect(() => {
+    if (session?.user && !user) {
+      fetchUserProfile(session.user.id);
+    }
+  }, [session?.access_token]);
+
+  const signIn = async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        // Provide user-friendly error messages
+        let message = error.message;
+        if (error.message.includes('Invalid login credentials')) {
+          message = 'Invalid email or password. Please try again.';
+        } else if (error.message.includes('Email not confirmed')) {
+          message = 'Please confirm your email address before signing in. Check your inbox for a confirmation link.';
+        } else if (error.message.includes('rate limit')) {
+          message = 'Too many login attempts. Please try again in a few minutes.';
+        } else if (error.message.includes('network')) {
+          message = 'Network error. Please check your connection and try again.';
+        }
+        return { error: new Error(message) };
+      }
+
+      return { error: null };
+    } catch (unexpectedError) {
+      console.error('Unexpected error during sign in:', unexpectedError);
+      return { error: new Error('An unexpected error occurred. Please try again.') };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const signUp = async (
+    email: string,
+    password: string,
+    builderName: string,
+    firstName?: string,
+    lastName?: string
+  ) => {
+    setIsLoading(true);
+    try {
+      // First, create the Supabase auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            builder_name: builderName,
+            first_name: firstName,
+            last_name: lastName,
+          },
+        },
+      });
+
+      if (authError) {
+        // Provide user-friendly error messages
+        let message = authError.message;
+        if (authError.message.includes('already registered')) {
+          message = 'An account with this email already exists. Please sign in instead.';
+        } else if (authError.message.includes('rate limit')) {
+          message = 'Too many signup attempts. Please try again in a few minutes.';
+        } else if (authError.message.includes('invalid email')) {
+          message = 'Please enter a valid email address.';
+        } else if (authError.message.includes('password')) {
+          message = 'Password does not meet requirements. Please use at least 8 characters with uppercase, lowercase, and a number.';
+        }
+        return { error: new Error(message) };
+      }
+
+      if (!authData.user) {
+        return { error: new Error('Failed to create user. Please try again.') };
+      }
+
+      // Create the builder and user in our database via API
+      let response: Response;
+      try {
+        response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            authUserId: authData.user.id,
+            email,
+            builderName,
+            firstName,
+            lastName,
+          }),
+        });
+      } catch (networkError) {
+        // Network error - auth user was created but API call failed
+        console.error('Network error during signup:', networkError);
+        // Don't sign out - the user was created, they just need to try again
+        return { error: new Error('Network error. Your account was created - please try signing in.') };
+      }
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to create builder account';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // Response wasn't JSON
+          if (response.status === 500) {
+            errorMessage = 'Server error. Please try again later.';
+          } else if (response.status === 429) {
+            errorMessage = 'Too many requests. Please wait a moment and try again.';
+          }
+        }
+        // Clean up: sign out since we couldn't create the builder
+        await supabase.auth.signOut();
+        return { error: new Error(errorMessage) };
+      }
+
+      return { error: null };
+    } catch (unexpectedError) {
+      console.error('Unexpected error during signup:', unexpectedError);
+      return { error: new Error('An unexpected error occurred. Please try again.') };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const signOut = async () => {
+    setIsLoading(true);
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setBuilder(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    return { error };
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    return { error };
+  };
+
+  const refreshUser = async () => {
+    if (session?.user) {
+      await fetchUserProfile(session.user.id);
+    }
+  };
+
+  const resendConfirmation = async (email: string) => {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+    return { error };
+  };
+
+  const value: AuthContextType = {
+    session,
+    supabaseUser,
+    user,
+    builder,
+    isLoading,
+    isInitialized,
+    signIn,
+    signUp,
+    signOut,
+    resetPassword,
+    updatePassword,
+    resendConfirmation,
+    refreshUser,
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth(): AuthContextType {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
+
+// Hook to check if user is authenticated
+export function useIsAuthenticated(): boolean {
+  const { session, isInitialized } = useAuth();
+  return isInitialized && !!session;
+}
+
+// Hook to require authentication (redirects if not authenticated)
+export function useRequireAuth() {
+  const { session, isLoading, isInitialized } = useAuth();
+  return {
+    isAuthenticated: !!session,
+    isLoading: isLoading || !isInitialized,
+  };
+}

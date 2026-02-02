@@ -56,13 +56,13 @@ export function RecentActivity({ selectedJobId, jobs }: RecentActivityProps) {
         });
       }
       
-      // Add budget alert for jobs with low margin
-      if ((job.target_margin || 0) < 15) {
+      // Add budget alert for jobs with low margin (only if target_margin is set)
+      if (job.target_margin !== undefined && job.target_margin !== null && job.target_margin < 15) {
         allActivities.push({
           id: `alert-${job.id}`,
           type: 'alert' as const,
           title: 'Budget Alert',
-          description: `Target margin at ${job.target_margin}%`,
+          description: `Target margin at ${job.target_margin.toFixed(1)}%`,
           timestamp: `${index + 2} hours ago`,
           jobId: job.id,
           jobName: job.name,
