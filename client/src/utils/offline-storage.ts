@@ -287,12 +287,14 @@ export async function getUnsyncedDailyLogs(): Promise<OfflineDailyLog[]> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORES.OFFLINE_DAILY_LOGS, 'readonly');
     const store = tx.objectStore(STORES.OFFLINE_DAILY_LOGS);
-    const index = store.index('synced');
-    const request = index.getAll(IDBKeyRange.only(false));
+    // Note: We can't use IDBKeyRange.only(false) because booleans are not valid IndexedDB keys
+    // Instead, get all records and filter in memory
+    const request = store.getAll();
 
     request.onsuccess = () => {
       db.close();
-      resolve(request.result);
+      // Filter for unsynced items (synced is false or falsy)
+      resolve(request.result.filter((log: OfflineDailyLog) => !log.synced));
     };
 
     request.onerror = () => {
@@ -420,12 +422,14 @@ export async function getUnsyncedPhotos(): Promise<OfflinePhoto[]> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORES.OFFLINE_PHOTOS, 'readonly');
     const store = tx.objectStore(STORES.OFFLINE_PHOTOS);
-    const index = store.index('synced');
-    const request = index.getAll(IDBKeyRange.only(false));
+    // Note: We can't use IDBKeyRange.only(false) because booleans are not valid IndexedDB keys
+    // Instead, get all records and filter in memory
+    const request = store.getAll();
 
     request.onsuccess = () => {
       db.close();
-      resolve(request.result);
+      // Filter for unsynced items (synced is false or falsy)
+      resolve(request.result.filter((photo: OfflinePhoto) => !photo.synced));
     };
 
     request.onerror = () => {

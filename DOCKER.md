@@ -296,12 +296,138 @@ deploy:
       memory: 4G
 ```
 
+## SSL/HTTPS Setup
+
+### Option 1: Let's Encrypt with Certbot (Recommended)
+
+```bash
+# Install certbot
+sudo apt install certbot python3-certbot-nginx
+
+# Get certificate
+sudo certbot --nginx -d cms.yourdomain.com
+
+# Auto-renewal is configured automatically
+# Test renewal: sudo certbot renew --dry-run
+```
+
+### Option 2: Traefik Reverse Proxy (Docker-native)
+
+```yaml
+# docker-compose.prod.yml with Traefik
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=your@email.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik-certificates:/letsencrypt"
+    networks:
+      - rossbuilt-network
+
+  app:
+    image: rossbuilt-cms:latest
+    container_name: rossbuilt-cms
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`cms.yourdomain.com`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=3001"
+    networks:
+      - rossbuilt-network
+    # ... rest of app config
+```
+
+### Domain Configuration
+
+1. **DNS Setup**: Point your domain to your server's IP address
+   ```
+   A Record: cms.yourdomain.com -> YOUR_SERVER_IP
+   ```
+
+2. **Update Environment Variables**:
+   ```env
+   APP_URL=https://cms.yourdomain.com
+   QBO_REDIRECT_URI=https://cms.yourdomain.com/api/quickbooks/callback
+   XERO_REDIRECT_URI=https://cms.yourdomain.com/api/xero/callback
+   ```
+
+3. **Update OAuth Redirect URIs**: Update in QuickBooks Developer Portal and Xero Developer Portal
+
+## Production Deployment Checklist
+
+### Before Deployment
+
+- [ ] **Environment Variables**: All required variables set in `.env`
+- [ ] **Database**: Supabase project configured and migrations run
+- [ ] **DNS**: Domain pointed to server IP
+- [ ] **SSL Certificate**: Let's Encrypt or custom certificate ready
+- [ ] **Firewall**: Ports 80, 443 open; 3001 closed to public
+
+### Required Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Service role key (keep secret!) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `ANTHROPIC_API_KEY` | Yes | Claude API key for AI features |
+| `APP_URL` | Yes | Public URL (https://...) |
+| `STRIPE_SECRET_KEY` | Billing | Stripe API key |
+| `STRIPE_WEBHOOK_SECRET` | Billing | Stripe webhook secret |
+| `QBO_CLIENT_ID` | QuickBooks | QuickBooks OAuth client |
+| `XERO_CLIENT_ID` | Xero | Xero OAuth client |
+
+### After Deployment
+
+- [ ] **Health Check**: Visit `/api/health` - should return `{ "status": "ok" }`
+- [ ] **Login Test**: Test authentication flow
+- [ ] **File Upload**: Test PDF upload and AI processing
+- [ ] **Integrations**: Test QuickBooks/Xero OAuth flow
+- [ ] **Mobile**: Test PWA installation on mobile device
+- [ ] **Monitoring**: Set up uptime monitoring (e.g., UptimeRobot, Pingdom)
+- [ ] **Backups**: Configure automated database backups in Supabase
+
+### Monitoring & Alerting
+
+```bash
+# View real-time logs
+docker-compose logs -f app
+
+# Check container health
+docker inspect rossbuilt-cms | jq '.[0].State.Health'
+
+# Check resource usage
+docker stats rossbuilt-cms
+```
+
+### Recommended: Set up log aggregation with:
+- **Grafana Loki** for log search
+- **Prometheus + Grafana** for metrics
+- **Sentry** for error tracking
+
 ## CI/CD Integration
 
 ### GitHub Actions Example
 
 ```yaml
-name: Build and Push Docker Image
+name: Build and Deploy
 
 on:
   push:
@@ -318,6 +444,35 @@ jobs:
 
       - name: Push to registry
         run: |
-          docker tag rossbuilt-cms:${{ github.sha }} registry.example.com/rossbuilt-cms:latest
-          docker push registry.example.com/rossbuilt-cms:latest
+          echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+          docker tag rossbuilt-cms:${{ github.sha }} your-registry/rossbuilt-cms:latest
+          docker push your-registry/rossbuilt-cms:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/rossbuilt-cms
+            docker-compose pull app
+            docker-compose up -d app
+            docker image prune -f
+```
+
+### Rollback
+
+```bash
+# View available image tags
+docker images rossbuilt-cms
+
+# Rollback to previous version
+docker-compose down
+docker tag rossbuilt-cms:previous rossbuilt-cms:latest
+docker-compose up -d
 ```

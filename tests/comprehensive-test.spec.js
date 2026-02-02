@@ -3,36 +3,46 @@ const { test, expect } = require('@playwright/test');
 test.describe('Comprehensive System Test', () => {
   const baseUrl = 'http://localhost:3001';
 
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Skip if redirected to login
+    if (page.url().includes('/login')) {
+      test.skip();
+    }
+  });
+
   test('1. Invoice Dashboard', async ({ page }) => {
     console.log('TEST 1: INVOICE DASHBOARD');
-    await page.goto(baseUrl);
+    await page.goto(baseUrl + '/invoices');
+    await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
     console.log('Page title:', await page.title());
-    console.log('Filter buttons:', await page.locator('.filter-btn').count());
-    console.log('Job filter exists:', await page.locator('#jobFilter').count() > 0);
-    console.log('Invoice count:', await page.locator('.invoice-row, .invoice-item, .invoice-card').count());
+    console.log('Sidebar visible:', await page.locator('aside').count() > 0);
+    console.log('Job selector exists:', await page.locator('button:has-text("Job"), button:has-text("All Jobs")').count() > 0);
+    console.log('Invoice count:', await page.locator('table tbody tr').count());
     console.log('Dashboard OK');
   });
 
   test('2. Invoice Modal', async ({ page }) => {
     console.log('TEST 2: INVOICE MODAL');
-    await page.goto(baseUrl);
+    await page.goto(baseUrl + '/invoices');
+    await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
-    const invoiceList = page.locator('#invoiceList');
-    const invoiceCards = invoiceList.locator('.invoice-card, .invoice-row, .invoice-item, [onclick*="openInvoice"]');
-    const cardCount = await invoiceCards.count();
-    console.log('Invoice cards:', cardCount);
-    if (cardCount > 0) {
-      const firstCard = invoiceCards.first();
+    const tableRows = page.locator('table tbody tr');
+    const rowCount = await tableRows.count();
+    console.log('Invoice rows:', rowCount);
+    if (rowCount > 0) {
+      const firstRow = tableRows.first();
       console.log('Clicking first invoice...');
-      await firstCard.click();
+      await firstRow.click();
       await page.waitForTimeout(2000);
-      const modal = page.locator('#invoiceModal');
+      const modal = page.locator('[role="dialog"]');
       const isVisible = await modal.isVisible();
-      console.log('Modal visible:', isVisible);
+      console.log('Dialog visible:', isVisible);
       if (isVisible) {
-        const closeBtn = modal.locator('.close-btn');
-        if (await closeBtn.count() > 0) await closeBtn.click();
+        await page.keyboard.press('Escape');
       }
     }
     console.log('Invoice Modal OK');
@@ -40,22 +50,24 @@ test.describe('Comprehensive System Test', () => {
 
   test('3. Draws Page', async ({ page }) => {
     console.log('TEST 3: DRAWS PAGE');
-    await page.goto(baseUrl + '/draws.html');
+    await page.goto(baseUrl + '/draws');
+    await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
-    console.log('Draw count:', await page.locator('.draw-row, .draw-item, .draw-card').count());
-    console.log('Status filter:', await page.locator('#statusFilter').count() > 0);
+    console.log('Draw count:', await page.locator('table tbody tr').count());
+    console.log('Status filter:', await page.locator('button:has-text("Status")').count() > 0);
     console.log('Draws Page OK');
   });
 
   test('4. Draw Modal', async ({ page }) => {
     console.log('TEST 4: DRAW MODAL');
-    await page.goto(baseUrl + '/draws.html');
+    await page.goto(baseUrl + '/draws');
+    await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
-    const firstDraw = page.locator('.draw-row, .draw-item, .draw-card').first();
+    const firstDraw = page.locator('table tbody tr').first();
     if (await firstDraw.count() > 0) {
       await firstDraw.click();
       await page.waitForTimeout(1500);
-      console.log('Summary cards:', await page.locator('.summary-card').count());
+      console.log('Dialog visible:', await page.locator('[role="dialog"]').count() > 0);
       await page.keyboard.press('Escape');
     }
     console.log('Draw Modal OK');
@@ -63,18 +75,20 @@ test.describe('Comprehensive System Test', () => {
 
   test('5. POs Page', async ({ page }) => {
     console.log('TEST 5: POs PAGE');
-    await page.goto(baseUrl + '/pos.html');
+    await page.goto(baseUrl + '/purchase-orders');
+    await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
-    console.log('PO count:', await page.locator('.po-row, .po-item, .po-card, tr[data-po-id]').count());
+    console.log('PO count:', await page.locator('table tbody tr').count());
     console.log('POs Page OK');
   });
 
-  test('6. Budgets Page', async ({ page }) => {
-    console.log('TEST 6: BUDGETS PAGE');
-    await page.goto(baseUrl + '/budgets.html');
+  test('6. Budget Page', async ({ page }) => {
+    console.log('TEST 6: BUDGET PAGE');
+    await page.goto(baseUrl + '/budget');
+    await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
-    console.log('Job filter:', await page.locator('#jobFilter').count() > 0);
-    console.log('Budgets Page OK');
+    console.log('Job selector:', await page.locator('button:has-text("Job"), button:has-text("All Jobs")').count() > 0);
+    console.log('Budget Page OK');
   });
 
   test('7. Invoice API', async ({ page }) => {

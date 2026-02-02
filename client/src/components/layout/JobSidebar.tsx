@@ -28,9 +28,10 @@ const statusColors: Record<string, string> = {
 interface JobSidebarProps {
   selectedJobId?: string;
   onJobSelect?: (job: { id: string; name: string } | null) => void;
+  inSheet?: boolean;
 }
 
-export function JobSidebar({ selectedJobId, onJobSelect }: JobSidebarProps) {
+export function JobSidebar({ selectedJobId, onJobSelect, inSheet = false }: JobSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const location = useLocation();
@@ -49,37 +50,47 @@ export function JobSidebar({ selectedJobId, onJobSelect }: JobSidebarProps) {
   const activeJobs = filteredJobs.filter(j => j.status === 'active');
   const otherJobs = filteredJobs.filter(j => j.status !== 'active');
 
+  // In sheet mode, don't use fixed positioning and always expand
+  const effectiveCollapsed = inSheet ? false : collapsed;
+
   return (
-    <aside 
+    <aside
       className={cn(
-        "fixed left-0 top-16 z-30 h-[calc(100vh-4rem)] bg-sidebar border-r border-sidebar-border transition-all duration-300 flex flex-col",
-        collapsed ? "w-16" : "w-64"
+        "bg-sidebar border-r border-sidebar-border transition-all duration-300 flex flex-col",
+        inSheet
+          ? "h-full w-full"
+          : cn(
+              "fixed left-0 top-16 z-30 h-[calc(100vh-4rem)]",
+              effectiveCollapsed ? "w-16" : "w-64"
+            )
       )}
     >
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-sidebar-border shrink-0">
-        {!collapsed && (
+        {!effectiveCollapsed && (
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Jobs</span>
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => setCollapsed(!collapsed)}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-        </Button>
+        {!inSheet && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            {effectiveCollapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </Button>
+        )}
       </div>
 
       {/* Search */}
-      {!collapsed && (
+      {!effectiveCollapsed && (
         <div className="p-3 border-b border-sidebar-border shrink-0">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -96,7 +107,7 @@ export function JobSidebar({ selectedJobId, onJobSelect }: JobSidebarProps) {
       {/* Job List */}
       <ScrollArea className="flex-1">
         <div className="p-2">
-          {collapsed ? (
+          {effectiveCollapsed ? (
             // Collapsed view - just icons
             <div className="space-y-1">
               {/* All Jobs option */}

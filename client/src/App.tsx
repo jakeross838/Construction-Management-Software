@@ -61,6 +61,7 @@ import Permits from "./pages/Permits";
 import Pricing from "./pages/Pricing";
 import Plans from "./pages/Plans";
 import Clients from "./pages/Clients";
+import TimeTracking from "./pages/TimeTracking";
 import NotFound from "./pages/NotFound";
 
 // Portal pages
@@ -141,6 +142,7 @@ const App = () => (
           <Route path="/submittals" element={<ProtectedRoute><Submittals /></ProtectedRoute>} />
           <Route path="/inspections" element={<ProtectedRoute><Inspections /></ProtectedRoute>} />
           <Route path="/photos" element={<ProtectedRoute><Photos /></ProtectedRoute>} />
+          <Route path="/time-tracking" element={<ProtectedRoute><TimeTracking /></ProtectedRoute>} />
 
           {/* Financial */}
           <Route path="/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />

@@ -66,6 +66,7 @@ const navigationSections: NavSection[] = [
     items: [
       { label: 'Schedule', href: '/schedule', permission: 'canEditSchedule' },
       { label: 'Daily Logs', href: '/daily-logs', permission: 'canSubmitDailyLog' },
+      { label: 'Time Tracking', href: '/time-tracking' },
       { label: 'Tasks', href: '/tasks' },
       { label: 'Files', href: '/files', permission: 'canUploadFiles' },
       { label: 'Change Orders', href: '/change-orders' },
@@ -115,28 +116,64 @@ const navigationSections: NavSection[] = [
 
 interface TopNavigationProps {
   userRole: UserRole;
+  mobile?: boolean;
 }
 
-export function TopNavigation({ userRole }: TopNavigationProps) {
+// Key navigation items for mobile bottom bar
+const mobileNavItems = [
+  { icon: LayoutDashboard, label: 'Home', href: '/' },
+  { icon: DollarSign, label: 'Financial', href: '/invoices' },
+  { icon: Hammer, label: 'Ops', href: '/schedule' },
+  { icon: BarChart3, label: 'Reports', href: '/reports' },
+  { icon: Settings, label: 'More', href: '/settings' },
+];
+
+export function TopNavigation({ userRole, mobile = false }: TopNavigationProps) {
   const location = useLocation();
 
   const filteredSections = navigationSections.map(section => ({
     ...section,
-    items: section.items.filter(item => 
+    items: section.items.filter(item =>
       !item.permission || hasPermission(userRole, item.permission as any)
     ),
   })).filter(section => section.items.length > 0);
 
   const isActive = (href: string) => location.pathname === href;
-  const isSectionActive = (section: NavSection) => 
+  const isSectionActive = (section: NavSection) =>
     section.items.some(item => isActive(item.href));
 
+  // Mobile bottom navigation
+  if (mobile) {
+    return (
+      <nav className="flex items-center justify-around h-14 px-2">
+        {mobileNavItems.map((item) => {
+          const Icon = item.icon;
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={cn(
+                "flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg transition-colors",
+                active ? "text-primary" : "text-muted-foreground"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-[10px] font-medium">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
+
+  // Desktop dropdown navigation
   return (
     <nav className="flex items-center gap-1">
       {filteredSections.map((section) => {
         const SectionIcon = section.icon;
         const sectionActive = isSectionActive(section);
-        
+
         return (
           <DropdownMenu key={section.title}>
             <DropdownMenuTrigger asChild>
@@ -153,8 +190,8 @@ export function TopNavigation({ userRole }: TopNavigationProps) {
                 <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="start" 
+            <DropdownMenuContent
+              align="start"
               className="w-48 bg-popover z-50"
               sideOffset={8}
             >

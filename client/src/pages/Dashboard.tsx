@@ -7,20 +7,40 @@ import { useJob } from '@/contexts/JobContext';
 import { useDBJobs } from '@/hooks/useFinancialData';
 import { formatCurrency } from '@/types/financial';
 import { useMemo } from 'react';
-import { 
-  DollarSign, 
-  TrendingUp, 
-  Building2, 
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import {
+  DollarSign,
+  TrendingUp,
+  Building2,
   Clock,
   Calculator,
-  Users
+  Users,
+  ArrowUpRight,
+  ArrowDownRight,
+  AlertCircle,
+  CheckCircle,
+  Target,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  useExecutiveSummary,
+  useCashPosition,
+  usePipelineData,
+  formatCurrency as execFormatCurrency,
+  formatPercent,
+} from '@/hooks/useExecutiveDashboard';
 
 const Dashboard = () => {
   const { selectedJobId } = useJob();
   const { data: dbJobs = [], isLoading } = useDBJobs();
-  
+
+  // Executive data - only fetch when showing all jobs
+  const { data: execSummary, isLoading: execLoading } = useExecutiveSummary();
+  const { data: cashPosition, isLoading: cashLoading } = useCashPosition();
+  const { data: pipelineData, isLoading: pipelineLoading } = usePipelineData();
+
   const selectedJob = useMemo(() => {
     if (!selectedJobId) return null;
     return dbJobs.find(j => j.id === selectedJobId);
@@ -35,8 +55,8 @@ const Dashboard = () => {
   const metrics = useMemo(() => {
     const totalRevenue = filteredJobs.reduce((sum, j) => sum + (j.contract_amount || 0), 0);
     const totalBudget = filteredJobs.reduce((sum, j) => sum + (j.budget_amount || 0), 0);
-    const avgMargin = filteredJobs.length > 0 
-      ? filteredJobs.reduce((sum, j) => sum + (j.target_margin || 0), 0) / filteredJobs.length 
+    const avgMargin = filteredJobs.length > 0
+      ? filteredJobs.reduce((sum, j) => sum + (j.target_margin || 0), 0) / filteredJobs.length
       : 0;
     const avgPercentComplete = filteredJobs.length > 0
       ? filteredJobs.reduce((sum, j) => sum + (j.percent_complete || 0), 0) / filteredJobs.length
@@ -61,8 +81,8 @@ const Dashboard = () => {
     };
   }, [filteredJobs]);
 
-  const pageTitle = selectedJob ? selectedJob.name : 'All Jobs Dashboard';
-  const pageDescription = selectedJob 
+  const pageTitle = selectedJob ? selectedJob.name : 'Executive Dashboard';
+  const pageDescription = selectedJob
     ? `Financial overview for ${selectedJob.name}`
     : 'Company overview and financial intelligence';
 
@@ -96,7 +116,7 @@ const Dashboard = () => {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             title={selectedJob ? "Contract Value" : "Total Revenue (YTD)"}
-            value={formatCurrency(metrics.totalRevenue)}
+            value={formatCurrency(execSummary?.total_revenue || metrics.totalRevenue)}
             icon={DollarSign}
             change={{ value: 12.4, label: selectedJob ? 'of budget' : 'vs last year' }}
             trend="up"
@@ -110,19 +130,127 @@ const Dashboard = () => {
           />
           <MetricCard
             title={selectedJob ? "Job Status" : "Active Jobs"}
-            value={selectedJob ? (selectedJob.status === 'active' ? 'Active' : selectedJob.status) : String(metrics.activeCount)}
+            value={selectedJob ? (selectedJob.status === 'active' ? 'Active' : selectedJob.status) : String(execSummary?.total_jobs?.active || metrics.activeCount)}
             icon={Building2}
             change={{ value: selectedJob ? (selectedJob.percent_complete || 0) : 25, label: selectedJob ? '% complete' : 'capacity used' }}
             trend="neutral"
           />
           <MetricCard
-            title="Overhead Rate"
-            value="$42.50"
-            icon={Calculator}
-            change={{ value: -3.2, label: 'per labor hour' }}
-            trend="up"
+            title={selectedJob ? "Progress" : "Pending Invoices"}
+            value={selectedJob ? `${Math.round(metrics.avgPercentComplete)}%` : formatCurrency(execSummary?.total_invoices_pending?.amount || 0)}
+            icon={selectedJob ? Clock : AlertCircle}
+            change={{ value: execSummary?.total_invoices_pending?.count || 0, label: selectedJob ? 'complete' : 'invoices' }}
+            trend="neutral"
           />
         </div>
+
+        {/* Executive Insights - Only show when viewing all jobs */}
+        {!selectedJobId && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {/* Cash Position */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-medium">Cash Position</CardTitle>
+                  {cashPosition?.summary?.health && (
+                    <Badge variant={cashPosition.summary.health === 'positive' ? 'default' : 'destructive'}>
+                      {cashPosition.summary.health === 'positive' ? (
+                        <><CheckCircle className="h-3 w-3 mr-1" /> Healthy</>
+                      ) : (
+                        <><AlertCircle className="h-3 w-3 mr-1" /> Attention</>
+                      )}
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {cashLoading ? (
+                  <Skeleton className="h-20" />
+                ) : cashPosition ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">AR Outstanding</span>
+                      <span className="font-semibold text-green-600 flex items-center">
+                        <ArrowUpRight className="h-4 w-4 mr-1" />
+                        {execFormatCurrency(cashPosition.ar_total)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">AP Outstanding</span>
+                      <span className="font-semibold text-red-600 flex items-center">
+                        <ArrowDownRight className="h-4 w-4 mr-1" />
+                        {execFormatCurrency(cashPosition.ap_total)}
+                      </span>
+                    </div>
+                    <div className="border-t pt-2 flex items-center justify-between">
+                      <span className="text-sm font-medium">Net Position</span>
+                      <span className={`font-bold ${cashPosition.net_position >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {execFormatCurrency(cashPosition.net_position)}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            {/* AR Aging */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-medium">AR Aging</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {cashLoading ? (
+                  <Skeleton className="h-20" />
+                ) : cashPosition?.ar_aging ? (
+                  <div className="space-y-2">
+                    <AgingBar label="Current" amount={cashPosition.ar_aging.current} total={cashPosition.ar_total} color="bg-green-500" />
+                    <AgingBar label="30 Days" amount={cashPosition.ar_aging.days_30} total={cashPosition.ar_total} color="bg-yellow-500" />
+                    <AgingBar label="60 Days" amount={cashPosition.ar_aging.days_60} total={cashPosition.ar_total} color="bg-orange-500" />
+                    <AgingBar label="90+ Days" amount={cashPosition.ar_aging.days_90_plus} total={cashPosition.ar_total} color="bg-red-500" />
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            {/* Pipeline Health */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-medium">Sales Pipeline</CardTitle>
+                  {pipelineData?.summary?.pipeline_health && (
+                    <Badge variant={pipelineData.summary.pipeline_health === 'healthy' ? 'default' : 'secondary'}>
+                      {pipelineData.summary.pipeline_health === 'healthy' ? 'Healthy' : 'Needs Attention'}
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {pipelineLoading ? (
+                  <Skeleton className="h-20" />
+                ) : pipelineData ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Active Leads</span>
+                      <span className="font-semibold">{pipelineData.pipeline.total_count}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Pipeline Value</span>
+                      <span className="font-semibold">{execFormatCurrency(pipelineData.pipeline.total_value)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Conversion Rate</span>
+                      <span className="font-semibold">{formatPercent(pipelineData.conversion_rates.overall)}</span>
+                    </div>
+                    <div className="border-t pt-2 flex items-center justify-between">
+                      <span className="text-sm font-medium">Backlog</span>
+                      <span className="font-bold">{execFormatCurrency(pipelineData.backlog.total_value)}</span>
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Charts row */}
         <div className="grid gap-6 lg:grid-cols-3">
@@ -140,14 +268,14 @@ const Dashboard = () => {
           <RecentActivity selectedJobId={selectedJobId} jobs={dbJobs} />
         </div>
 
-        {/* Labor metrics */}
+        {/* Additional metrics row */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
-            title={selectedJob ? "Progress" : "Avg Completion"}
-            value={`${Math.round(metrics.avgPercentComplete)}%`}
-            icon={Clock}
-            change={{ value: 8.5, label: 'vs last month' }}
-            trend="up"
+            title="Committed"
+            value={formatCurrency(execSummary?.total_committed?.amount || metrics.totalBudget)}
+            icon={Target}
+            change={{ value: execSummary?.total_committed?.count || 0, label: 'POs' }}
+            trend="neutral"
           />
           <MetricCard
             title="Billable Rate"
@@ -175,5 +303,21 @@ const Dashboard = () => {
     </AppLayout>
   );
 };
+
+// Aging Bar Component
+function AgingBar({ label, amount, total, color }: { label: string; amount: number; total: number; color: string }) {
+  const percent = total > 0 ? (amount / total) * 100 : 0;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{execFormatCurrency(amount)}</span>
+      </div>
+      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className={`h-full ${color} transition-all`} style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
 
 export default Dashboard;
