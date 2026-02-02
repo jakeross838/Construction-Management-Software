@@ -86,6 +86,49 @@ router.post('/', validate(schemas.jobCreate), asyncHandler(async (req, res) => {
   res.status(201).json(data);
 }));
 
+// Helper function to enrich jobs with budget data
+async function enrichJobsWithBudgetData(jobs, builderId) {
+  if (!jobs || jobs.length === 0) return jobs;
+
+  const jobIds = jobs.map(j => j.id);
+
+  // Fetch budget lines for all jobs in one query
+  let budgetQuery = supabase
+    .from('v2_budget_lines')
+    .select('job_id, original_amount, revised_amount, committed_amount, actual_amount')
+    .in('job_id', jobIds)
+    .is('deleted_at', null);
+
+  if (builderId) {
+    budgetQuery = budgetQuery.eq('builder_id', builderId);
+  }
+
+  const { data: budgetLines } = await budgetQuery;
+
+  // Calculate totals per job
+  const budgetTotals = {};
+  for (const line of (budgetLines || [])) {
+    if (!budgetTotals[line.job_id]) {
+      budgetTotals[line.job_id] = {
+        budget_amount: 0,
+        committed_amount: 0,
+        actual_amount: 0
+      };
+    }
+    budgetTotals[line.job_id].budget_amount += parseFloat(line.revised_amount || line.original_amount || 0);
+    budgetTotals[line.job_id].committed_amount += parseFloat(line.committed_amount || 0);
+    budgetTotals[line.job_id].actual_amount += parseFloat(line.actual_amount || 0);
+  }
+
+  // Merge budget data into jobs
+  return jobs.map(job => ({
+    ...job,
+    budget_amount: budgetTotals[job.id]?.budget_amount || 0,
+    committed_amount: budgetTotals[job.id]?.committed_amount || 0,
+    actual_amount: budgetTotals[job.id]?.actual_amount || 0
+  }));
+}
+
 // Get all jobs (with optional pagination, cached for 1 minute)
 router.get('/', cacheResponse(JOBS_LIST_CACHE_TTL), asyncHandler(async (req, res) => {
   const builderId = getBuilderId(req);
@@ -118,9 +161,12 @@ router.get('/', cacheResponse(JOBS_LIST_CACHE_TTL), asyncHandler(async (req, res
     const { data, error, count } = await query;
     if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
 
+    // Enrich jobs with budget data
+    const jobsWithBudgets = await enrichJobsWithBudgetData(data || [], builderId);
+
     const totalPages = Math.ceil((count || 0) / limitNum);
     return res.json({
-      data: data || [],
+      data: jobsWithBudgets,
       meta: {
         page: pageNum,
         limit: limitNum,
@@ -134,7 +180,10 @@ router.get('/', cacheResponse(JOBS_LIST_CACHE_TTL), asyncHandler(async (req, res
   // Return plain array for backward compatibility
   const { data, error } = await query;
   if (error) throw new AppError('DATABASE_ERROR', error.message, { code: error.code });
-  res.json(data);
+
+  // Enrich jobs with budget data
+  const jobsWithBudgets = await enrichJobsWithBudgetData(data || [], builderId);
+  res.json(jobsWithBudgets);
 }));
 
 // Get single job
