@@ -102,7 +102,7 @@ test.describe('API Health & Database Connectivity', () => {
 test.describe('Catalog & Selections (Phase 66-69)', () => {
 
   test('Selections page loads', async ({ page }) => {
-    await page.goto(`${BASE_URL}/selections.html`);
+    await page.goto(`${BASE_URL}/selections`);
     await page.waitForLoadState('networkidle');
 
     // Check page loaded
@@ -111,7 +111,7 @@ test.describe('Catalog & Selections (Phase 66-69)', () => {
   });
 
   test('Catalog categories display', async ({ page }) => {
-    await page.goto(`${BASE_URL}/selections.html`);
+    await page.goto(`${BASE_URL}/selections`);
     await page.waitForLoadState('networkidle');
 
     // Look for category navigation or catalog grid
@@ -170,11 +170,11 @@ test.describe('Frontend UI & Navigation', () => {
   test('Main pages load without errors', async ({ page }) => {
     const pages = [
       '/',
-      '/index.html',
-      '/draws.html',
-      '/pos.html',
-      '/daily-log.html',
-      '/selections.html'
+      '/invoices',
+      '/draws',
+      '/purchase-orders',
+      '/daily-logs',
+      '/selections'
     ];
 
     for (const p of pages) {
@@ -195,7 +195,7 @@ test.describe('Frontend UI & Navigation', () => {
   });
 
   test('Sidebar navigation works', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Look for sidebar or navigation
@@ -210,7 +210,7 @@ test.describe('Frontend UI & Navigation', () => {
   });
 
   test('Job selector exists and works', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Look for job selector dropdown
@@ -231,7 +231,7 @@ test.describe('Frontend UI & Navigation', () => {
 test.describe('CSS & Visual Consistency', () => {
 
   test('Dark theme CSS variables are applied', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Check that dark theme colors are applied
@@ -245,7 +245,7 @@ test.describe('CSS & Visual Consistency', () => {
   });
 
   test('Modals have correct styling', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Check for modal CSS classes
@@ -277,7 +277,7 @@ test.describe('CSS & Visual Consistency', () => {
   });
 
   test('Buttons have hover states', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Find a button
@@ -300,7 +300,7 @@ test.describe('CSS & Visual Consistency', () => {
   });
 
   test('Tables have proper styling', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Look for tables
@@ -329,7 +329,7 @@ test.describe('CSS & Visual Consistency', () => {
 test.describe('Invoice Workflow', () => {
 
   test('Invoice list loads', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Wait for invoice list to populate
@@ -341,7 +341,7 @@ test.describe('Invoice Workflow', () => {
   });
 
   test('Invoice filter works', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Look for filter dropdown
@@ -374,7 +374,7 @@ test.describe('Invoice Workflow', () => {
 test.describe('Purchase Order Workflow', () => {
 
   test('PO page loads', async ({ page }) => {
-    await page.goto(`${BASE_URL}/pos.html`);
+    await page.goto(`${BASE_URL}/purchase-orders`);
     await page.waitForLoadState('networkidle');
 
     const title = await page.title();
@@ -382,7 +382,7 @@ test.describe('Purchase Order Workflow', () => {
   });
 
   test('PO list displays', async ({ page }) => {
-    await page.goto(`${BASE_URL}/pos.html`);
+    await page.goto(`${BASE_URL}/purchase-orders`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
@@ -406,7 +406,7 @@ test.describe('Purchase Order Workflow', () => {
 test.describe('Draws & G702/G703', () => {
 
   test('Draws page loads', async ({ page }) => {
-    await page.goto(`${BASE_URL}/draws.html`);
+    await page.goto(`${BASE_URL}/draws`);
     await page.waitForLoadState('networkidle');
 
     const content = await page.textContent('body');
@@ -429,7 +429,7 @@ test.describe('Draws & G702/G703', () => {
 test.describe('Daily Log', () => {
 
   test('Daily log page loads', async ({ page }) => {
-    await page.goto(`${BASE_URL}/daily-log.html`);
+    await page.goto(`${BASE_URL}/daily-logs`);
     await page.waitForLoadState('networkidle');
 
     const content = await page.textContent('body');
@@ -453,7 +453,7 @@ test.describe('Daily Log', () => {
 test.describe('Button & Click Handler Tests', () => {
 
   test('All visible buttons are clickable', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Get all visible buttons
@@ -470,7 +470,7 @@ test.describe('Button & Click Handler Tests', () => {
   });
 
   test('Modal open/close buttons work', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Look for any button that might open a modal
@@ -499,7 +499,7 @@ test.describe('Button & Click Handler Tests', () => {
   });
 
   test('Dropdown menus work', async ({ page }) => {
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Test select dropdowns
@@ -540,7 +540,7 @@ test.describe('Error Handling', () => {
       }
     });
 
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
@@ -615,7 +615,7 @@ test.describe('Performance', () => {
 
   test('Main page loads in under 5 seconds', async ({ page }) => {
     const start = Date.now();
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
     const duration = Date.now() - start;
 
@@ -639,7 +639,7 @@ test.describe('Responsive Design', () => {
 
   test('Works on mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     // Page should still be usable
@@ -649,7 +649,7 @@ test.describe('Responsive Design', () => {
 
   test('Works on tablet viewport', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto(`${BASE_URL}/index.html`);
+    await page.goto(`${BASE_URL}/invoices`);
     await page.waitForLoadState('networkidle');
 
     const content = await page.textContent('body');

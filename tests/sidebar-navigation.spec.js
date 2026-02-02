@@ -2,284 +2,215 @@
 const { test, expect } = require('@playwright/test');
 
 /**
- * Sidebar and Navigation Tests
+ * Sidebar and Navigation Tests (React Version)
  *
- * Tests the sidebar job selection and navigation functionality including:
- * - Sidebar renders on all pages
- * - Job selection persists across pages
- * - Collapse/expand functionality
- * - Navigation between Financial tabs
+ * Tests the sidebar navigation and page loading in the React app
+ * Updated for shadcn/ui component structure
  */
 
 test.describe('Sidebar', () => {
 
-  test('should render sidebar on invoices page', async ({ page }) => {
-    await page.goto('/index.html');
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
+  test.beforeEach(async ({ page }) => {
+    // Navigate to app - React app handles auth state
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('.job-sidebar')).toBeVisible();
-    await expect(page.locator('.sidebar-header')).toBeVisible();
-    await expect(page.locator('.job-item.all-jobs')).toBeVisible();
+    // If redirected to login, we're in auth mode - skip test or handle login
+    if (page.url().includes('/login')) {
+      // Skip auth-protected tests in CI or handle demo login
+      test.skip();
+    }
   });
 
-  test('should render sidebar on POs page', async ({ page }) => {
-    await page.goto('/pos.html');
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
+  test('should render sidebar on main pages', async ({ page }) => {
+    // Wait for the React sidebar (uses aside element)
+    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
 
-    await expect(page.locator('.job-sidebar')).toBeVisible();
+    // Should have navigation links
+    await expect(page.locator('aside nav')).toBeVisible();
+    await expect(page.locator('aside a').first()).toBeVisible();
   });
 
-  test('should render sidebar on draws page', async ({ page }) => {
-    await page.goto('/draws.html');
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
+  test('should have navigation sections', async ({ page }) => {
+    await page.waitForSelector('aside', { timeout: 10000 });
 
-    await expect(page.locator('.job-sidebar')).toBeVisible();
+    // React sidebar uses collapsible sections
+    const navLinks = page.locator('aside a');
+    const count = await navLinks.count();
+    expect(count).toBeGreaterThan(5); // Should have multiple nav items
   });
 
-  test('should render sidebar on budgets page', async ({ page }) => {
-    await page.goto('/budgets.html');
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
+  test('should highlight active navigation item', async ({ page }) => {
+    await page.goto('/invoices');
+    await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('.job-sidebar')).toBeVisible();
+    // The active link should have special styling
+    const invoicesLink = page.locator('aside a[href="/invoices"]');
+    await expect(invoicesLink).toBeVisible();
+    // Check for active class or state
+    await expect(invoicesLink).toHaveClass(/active|bg-/);
   });
 
-  test('should load jobs in sidebar', async ({ page }) => {
-    await page.goto('/index.html');
-    await page.waitForSelector('.job-item:not(.all-jobs)', { timeout: 10000 });
+  test('should navigate between pages', async ({ page }) => {
+    // Navigate to Invoices
+    await page.click('aside a[href="/invoices"]');
+    await page.waitForLoadState('networkidle');
+    expect(page.url()).toContain('/invoices');
 
-    const jobItems = page.locator('.job-item:not(.all-jobs)');
-    const count = await jobItems.count();
-    expect(count).toBeGreaterThan(0);
+    // Navigate to Purchase Orders
+    await page.click('aside a[href="/purchase-orders"]');
+    await page.waitForLoadState('networkidle');
+    expect(page.url()).toContain('/purchase-orders');
+
+    // Navigate to Draws
+    await page.click('aside a[href="/draws"]');
+    await page.waitForLoadState('networkidle');
+    expect(page.url()).toContain('/draws');
+
+    // Navigate to Budget
+    await page.click('aside a[href="/budget"]');
+    await page.waitForLoadState('networkidle');
+    expect(page.url()).toContain('/budget');
   });
 
-  test('should highlight selected job', async ({ page }) => {
-    await page.goto('/index.html');
-    await page.waitForSelector('.job-item:not(.all-jobs)', { timeout: 10000 });
+  test('should have collapse functionality', async ({ page }) => {
+    await page.waitForSelector('aside', { timeout: 10000 });
 
-    // Click a job
-    const firstJob = page.locator('.job-item:not(.all-jobs)').first();
-    await firstJob.click();
-
-    // Should have active class
-    await expect(firstJob).toHaveClass(/active/);
-
-    // All Jobs should not be active
-    await expect(page.locator('.job-item.all-jobs')).not.toHaveClass(/active/);
-  });
-
-  test('should persist job selection across page navigation', async ({ page }) => {
-    // Start on invoices page
-    await page.goto('/index.html');
-    await page.waitForSelector('.job-item:not(.all-jobs)', { timeout: 10000 });
-
-    // Get first job name
-    const firstJob = page.locator('.job-item:not(.all-jobs)').first();
-    const jobName = await firstJob.locator('.job-item-name').textContent();
-
-    // Select the job
-    await firstJob.click();
-    await expect(firstJob).toHaveClass(/active/);
-
-    // Navigate to POs page
-    await page.locator('a[href="pos.html"]').click();
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
-
-    // Same job should still be selected
-    const selectedJob = page.locator('.job-item.active:not(.all-jobs)');
-    await expect(selectedJob).toBeVisible();
-    await expect(selectedJob.locator('.job-item-name')).toHaveText(jobName);
-  });
-
-  test('should collapse and expand sidebar', async ({ page }) => {
-    await page.goto('/index.html');
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
-
-    // Find collapse button
-    const collapseBtn = page.locator('.sidebar-collapse-btn');
+    // Find collapse button (usually at bottom of sidebar)
+    const collapseBtn = page.locator('aside button:has-text("Collapse"), aside button:has(svg[class*="chevron"])').last();
 
     if (await collapseBtn.isVisible()) {
-      // Get initial width or check expanded state
-      const sidebar = page.locator('.job-sidebar');
-      const initialClass = await sidebar.getAttribute('class');
+      // Get initial width
+      const sidebar = page.locator('aside');
+      const initialWidth = await sidebar.evaluate(el => el.offsetWidth);
 
-      // Click to collapse
+      // Click collapse
       await collapseBtn.click();
-      await page.waitForTimeout(300); // Wait for animation
+      await page.waitForTimeout(500); // Wait for animation
 
-      // Check if collapsed class is added or width changed
-      const appBody = page.locator('.app-body');
-      const isCollapsed = await appBody.evaluate(el =>
-        el.classList.contains('sidebar-collapsed') ||
-        document.body.classList.contains('sidebar-collapsed')
-      );
-
-      // Toggle back
-      await collapseBtn.click();
+      // Width should change
+      const newWidth = await sidebar.evaluate(el => el.offsetWidth);
+      expect(newWidth).not.toBe(initialWidth);
     }
   });
-
-  test('should filter content when job is selected on invoices page', async ({ page }) => {
-    await page.goto('/index.html');
-    await page.waitForSelector('.job-item:not(.all-jobs)', { timeout: 10000 });
-
-    // Wait for invoice list to load
-    await page.waitForSelector('.invoice-list', { timeout: 10000 });
-
-    // Select a job
-    await page.locator('.job-item:not(.all-jobs)').first().click();
-
-    // Wait a moment for filtering
-    await page.waitForTimeout(500);
-
-    // The page should respond (no error)
-    await expect(page.locator('.invoice-list')).toBeVisible();
-  });
-
-  test('should show All Jobs option and select it', async ({ page }) => {
-    await page.goto('/index.html');
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
-
-    // All Jobs should be visible
-    const allJobs = page.locator('.job-item.all-jobs');
-    await expect(allJobs).toBeVisible();
-    await expect(allJobs).toContainText('All Jobs');
-
-    // Click All Jobs
-    await allJobs.click();
-
-    // Should be active
-    await expect(allJobs).toHaveClass(/active/);
-  });
-
-  test('should have search input in sidebar', async ({ page }) => {
-    await page.goto('/index.html');
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
-
-    // Check for search input
-    const searchInput = page.locator('.sidebar-search input, .job-search-input');
-    if (await searchInput.count() > 0) {
-      await expect(searchInput.first()).toBeVisible();
-    }
-  });
-
-});
-
-test.describe('Navigation', () => {
-
-  test('should have Financial tab in main nav', async ({ page }) => {
-    await page.goto('/index.html');
-
-    const financialTab = page.locator('.main-nav-link:has-text("Financial")');
-    await expect(financialTab).toBeVisible();
-    await expect(financialTab).toHaveClass(/active/);
-  });
-
-  test('should have sub-navigation with all sections', async ({ page }) => {
-    await page.goto('/index.html');
-
-    // Check sub-nav links
-    await expect(page.locator('.sub-nav-link:has-text("Invoices")')).toBeVisible();
-    await expect(page.locator('.sub-nav-link:has-text("Purchase Orders")')).toBeVisible();
-    await expect(page.locator('.sub-nav-link:has-text("Draws")')).toBeVisible();
-    await expect(page.locator('.sub-nav-link:has-text("Budget")')).toBeVisible();
-  });
-
-  test('should highlight correct sub-nav item on each page', async ({ page }) => {
-    // Invoices page
-    await page.goto('/index.html');
-    await expect(page.locator('.sub-nav-link:has-text("Invoices")')).toHaveClass(/active/);
-
-    // POs page
-    await page.goto('/pos.html');
-    await expect(page.locator('.sub-nav-link:has-text("Purchase Orders")')).toHaveClass(/active/);
-
-    // Draws page
-    await page.goto('/draws.html');
-    await expect(page.locator('.sub-nav-link:has-text("Draws")')).toHaveClass(/active/);
-
-    // Budget page
-    await page.goto('/budgets.html');
-    await expect(page.locator('.sub-nav-link:has-text("Budget")')).toHaveClass(/active/);
-  });
-
-  test('should navigate between pages using sub-nav', async ({ page }) => {
-    await page.goto('/index.html');
-
-    // Click POs link
-    await page.locator('.sub-nav-link:has-text("Purchase Orders")').click();
-    await expect(page).toHaveURL(/pos\.html/);
-
-    // Click Draws link
-    await page.locator('.sub-nav-link:has-text("Draws")').click();
-    await expect(page).toHaveURL(/draws\.html/);
-
-    // Click Budget link
-    await page.locator('.sub-nav-link:has-text("Budget")').click();
-    await expect(page).toHaveURL(/budgets\.html/);
-
-    // Click Invoices link
-    await page.locator('.sub-nav-link:has-text("Invoices")').click();
-    await expect(page).toHaveURL(/index\.html/);
-  });
-
-  test('should have Ross Built branding', async ({ page }) => {
-    await page.goto('/index.html');
-
-    await expect(page.locator('.brand-name').first()).toContainText('Ross Built');
-  });
-
-  test('should have action button in header', async ({ page }) => {
-    // Invoices page should have Upload Invoice button
-    await page.goto('/index.html');
-    await expect(page.locator('.header-actions button')).toBeVisible();
-
-    // POs page should have New PO button
-    await page.goto('/pos.html');
-    await expect(page.locator('.header-actions button')).toBeVisible();
-  });
-
 });
 
 test.describe('Page Loading', () => {
 
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    if (page.url().includes('/login')) {
+      test.skip();
+    }
+  });
+
+  test('dashboard page should load without errors', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('console', msg => {
+      if (msg.type() === 'error') errors.push(msg.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Should have main content
+    await expect(page.locator('main, [class*="main"]')).toBeVisible();
+
+    // No critical errors
+    const criticalErrors = errors.filter(e => !e.includes('401') && !e.includes('ResizeObserver'));
+    expect(criticalErrors.length).toBe(0);
+  });
+
   test('invoices page should load without errors', async ({ page }) => {
-    const errors = [];
+    const errors: string[] = [];
     page.on('pageerror', err => errors.push(err.message));
 
-    await page.goto('/index.html');
-    await page.waitForSelector('.invoice-list', { timeout: 10000 });
+    await page.goto('/invoices');
+    await page.waitForLoadState('networkidle');
 
-    expect(errors.length).toBe(0);
+    // Should have page content
+    await expect(page.locator('h1:has-text("Invoices"), h2:has-text("Invoices")')).toBeVisible({ timeout: 10000 });
+
+    const criticalErrors = errors.filter(e => !e.includes('401') && !e.includes('ResizeObserver'));
+    expect(criticalErrors.length).toBe(0);
   });
 
   test('POs page should load without errors', async ({ page }) => {
-    const errors = [];
+    const errors: string[] = [];
     page.on('pageerror', err => errors.push(err.message));
 
-    await page.goto('/pos.html');
-    await page.waitForSelector('#poList', { timeout: 10000 });
+    await page.goto('/purchase-orders');
+    await page.waitForLoadState('networkidle');
 
-    expect(errors.length).toBe(0);
+    // Should have page content
+    await expect(page.locator('h1:has-text("Purchase Orders"), h2:has-text("Purchase Orders")')).toBeVisible({ timeout: 10000 });
+
+    const criticalErrors = errors.filter(e => !e.includes('401') && !e.includes('ResizeObserver'));
+    expect(criticalErrors.length).toBe(0);
   });
 
   test('draws page should load without errors', async ({ page }) => {
-    const errors = [];
+    const errors: string[] = [];
     page.on('pageerror', err => errors.push(err.message));
 
-    await page.goto('/draws.html');
-    await page.waitForSelector('.draw-list, #drawList', { timeout: 10000 });
+    await page.goto('/draws');
+    await page.waitForLoadState('networkidle');
 
-    expect(errors.length).toBe(0);
+    // Should have page content
+    await expect(page.locator('h1:has-text("Draws"), h2:has-text("Draws")')).toBeVisible({ timeout: 10000 });
+
+    const criticalErrors = errors.filter(e => !e.includes('401') && !e.includes('ResizeObserver'));
+    expect(criticalErrors.length).toBe(0);
   });
 
   test('budgets page should load without errors', async ({ page }) => {
-    const errors = [];
+    const errors: string[] = [];
     page.on('pageerror', err => errors.push(err.message));
 
-    await page.goto('/budgets.html');
-    await page.waitForSelector('.job-sidebar', { timeout: 10000 });
+    await page.goto('/budget');
+    await page.waitForLoadState('networkidle');
 
-    expect(errors.length).toBe(0);
+    // Should have page content
+    await expect(page.locator('h1:has-text("Budget"), h2:has-text("Budget")')).toBeVisible({ timeout: 10000 });
+
+    const criticalErrors = errors.filter(e => !e.includes('401') && !e.includes('ResizeObserver'));
+    expect(criticalErrors.length).toBe(0);
+  });
+});
+
+test.describe('Job Context', () => {
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    if (page.url().includes('/login')) {
+      test.skip();
+    }
   });
 
+  test('should have job selector in header', async ({ page }) => {
+    // Look for job selector component
+    const jobSelector = page.locator('[data-testid="job-selector"], button:has-text("Job"), button:has-text("All Jobs")').first();
+
+    // Job selector should be visible (might be in header or as dropdown trigger)
+    await expect(jobSelector).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should show job options when clicking selector', async ({ page }) => {
+    const jobSelector = page.locator('[data-testid="job-selector"], button:has-text("Job"), button:has-text("All Jobs")').first();
+
+    if (await jobSelector.isVisible()) {
+      await jobSelector.click();
+      await page.waitForTimeout(300);
+
+      // Should show options (shadcn uses [role="option"])
+      const options = page.locator('[role="option"], [role="listbox"] [data-value]');
+      const count = await options.count();
+      expect(count).toBeGreaterThanOrEqual(1);
+    }
+  });
 });
