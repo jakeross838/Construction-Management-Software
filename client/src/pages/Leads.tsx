@@ -26,6 +26,7 @@ import {
   useMoveLeadToStage,
   usePipelineStages,
   useScoreLead,
+  useReviveLead,
   Lead,
   getNextStage,
 } from '@/hooks/useDBLeads';
@@ -92,6 +93,7 @@ const Leads = () => {
   const moveToStage = useMoveLeadToStage();
   const scoreLead = useScoreLead();
   const exportLeads = useExportLeads();
+  const reviveLead = useReviveLead();
 
   const filteredLeads = useMemo(() => {
     if (!searchQuery.trim()) return leads;
@@ -192,6 +194,14 @@ const Leads = () => {
     await moveToStage.mutateAsync({ id: lead.id, stage: 'won' });
   };
 
+  const handleReviveLead = async (leadId: string) => {
+    try {
+      await reviveLead.mutateAsync({ leadId, target_stage: 'new_inquiry' });
+    } catch (error) {
+      // Error handled by mutation
+    }
+  };
+
   const handleConvertToEstimate = (lead: any) => {
     toast.info(`Creating estimate for ${lead.name}...`);
     // TODO: Navigate to estimate creation with lead data pre-filled
@@ -211,7 +221,7 @@ const Leads = () => {
   };
 
   return (
-    <AppLayout>
+    <AppLayout hideJobSidebar={true}>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -326,6 +336,7 @@ const Leads = () => {
             onMoveToNextStage={handleMoveToNextStage}
             onMarkAsLost={handleMarkAsLost}
             onMarkAsWon={handleMarkAsWon}
+            onRevive={handleReviveLead}
           />
         ) : (
           <LeadMapView

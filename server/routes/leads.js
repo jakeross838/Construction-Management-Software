@@ -384,7 +384,7 @@ router.post('/', asyncHandler(async (req, res) => {
       qualification_score: qualification_score || 0,
       assigned_to,
       notes,
-      stage: 'inquiry',
+      stage: 'new_inquiry',
       stage_entered_at: new Date().toISOString()
     })
     .select()
@@ -393,7 +393,7 @@ router.post('/', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log initial stage
-  await logStageChange(lead.id, null, 'inquiry', 'System');
+  await logStageChange(lead.id, null, 'new_inquiry', 'System');
 
   res.status(201).json(lead);
 }));
@@ -652,7 +652,7 @@ router.post('/:id/revive', asyncHandler(async (req, res) => {
     throw new AppError('VALIDATION_ERROR', 'Only lost leads can be revived');
   }
 
-  const reviveStage = target_stage || 'inquiry';
+  const reviveStage = target_stage || 'new_inquiry';
   const newNotes = notes
     ? `[Revived ${new Date().toLocaleDateString()}] ${notes}\n\n${current.notes || ''}`
     : current.notes;

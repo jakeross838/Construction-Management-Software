@@ -56,7 +56,7 @@ const BusinessPlanning = () => {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <AppLayout hideJobSidebar>
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Loading business planning data...</span>
@@ -67,7 +67,7 @@ const BusinessPlanning = () => {
 
   if (error) {
     return (
-      <AppLayout>
+      <AppLayout hideJobSidebar>
         <div className="flex flex-col items-center justify-center h-64 space-y-4">
           <AlertTriangle className="h-12 w-12 text-destructive" />
           <p className="text-destructive">Failed to load business planning data</p>
@@ -100,7 +100,7 @@ const BusinessPlanning = () => {
   }));
 
   return (
-    <AppLayout>
+    <AppLayout hideJobSidebar>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

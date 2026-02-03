@@ -78,7 +78,7 @@ const CostCodes = () => {
   const codeToDelete = deleteId ? costCodes.find(c => c.id === deleteId) : null;
 
   return (
-    <AppLayout>
+    <AppLayout hideJobSidebar>
       <div className="space-y-6 animate-fade-in">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
