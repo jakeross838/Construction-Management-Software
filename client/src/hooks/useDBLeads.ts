@@ -78,23 +78,28 @@ export function useCreateLead() {
 
   return useMutation({
     mutationFn: async (lead: Partial<LeadInsert>) => {
+      // Parse name into first and last name
+      const fullName = lead.name || lead.client_name || 'Untitled Lead';
+      const nameParts = fullName.trim().split(/\s+/);
+      const firstName = nameParts[0] || 'Unknown';
+      const lastName = nameParts.slice(1).join(' ') || 'Lead';
+
       return api<Lead>('/leads', {
         method: 'POST',
         body: JSON.stringify({
-          name: lead.name || 'Untitled Lead',
-          client_name: lead.client_name,
-          client_email: lead.client_email,
-          client_phone: lead.client_phone,
-          address: lead.address,
-          description: lead.description,
+          first_name: firstName,
+          last_name: lastName,
+          email: lead.client_email || null,
+          phone: lead.client_phone || null,
+          project_address: lead.address || null,
+          project_description: lead.description || null,
           estimated_value: lead.estimated_value || 0,
-          square_footage: lead.square_footage,
-          source: lead.source,
+          square_footage: lead.square_footage || null,
+          lead_source_id: null, // TODO: Map source string to source ID
           stage: lead.stage || 'new_inquiry',
-          priority: lead.priority || 'medium',
-          assigned_to: lead.assigned_to,
-          notes: lead.notes,
-          next_follow_up: lead.next_follow_up,
+          assigned_to: lead.assigned_to || null,
+          notes: lead.notes || null,
+          next_follow_up: lead.next_follow_up || null,
         }),
       });
     },
@@ -399,6 +404,7 @@ export function useMarkLeadAsLost() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['lost-lead-analytics'] });
       toast.success('Lead marked as lost');
     },
     onError: (error: Error) => {
@@ -430,6 +436,7 @@ export function useReviveLead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['lost-lead-analytics'] });
       toast.success('Lead revived and returned to pipeline');
     },
     onError: (error: Error) => {

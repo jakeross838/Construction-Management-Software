@@ -132,7 +132,7 @@ const Clients = () => {
 
   if (error) {
     return (
-      <AppLayout>
+      <AppLayout hideJobSidebar>
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -145,7 +145,7 @@ const Clients = () => {
   }
 
   return (
-    <AppLayout>
+    <AppLayout hideJobSidebar>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

@@ -99,7 +99,7 @@ const Settings = () => {
   }
 
   return (
-    <AppLayout>
+    <AppLayout hideJobSidebar>
       <div className="space-y-6 animate-fade-in">
         <div>
           <h1 className="text-2xl font-semibold">Settings</h1>

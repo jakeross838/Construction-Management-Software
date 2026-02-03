@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
 import { useContracts, useContractStats, Contract } from '@/hooks/useContracts';
+import { ContractBuilder } from '@/components/contracts/ContractBuilder';
 
 type ContractStatus = 'draft' | 'active' | 'completed' | 'terminated' | 'expired' | 'cancelled';
 
@@ -54,6 +55,7 @@ const Contracts = () => {
   const { selectedJobId } = useJob();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
+  const [showBuilder, setShowBuilder] = useState(false);
 
   // Fetch contracts with filters
   const { data: contracts = [], isLoading, error } = useContracts({
@@ -106,7 +108,7 @@ const Contracts = () => {
             <h1 className="text-2xl font-semibold text-foreground">Contracts</h1>
             <p className="text-sm text-muted-foreground">Manage construction contracts</p>
           </div>
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={() => setShowBuilder(true)}>
             <Plus className="h-4 w-4" />
             New Contract
           </Button>
@@ -249,6 +251,27 @@ const Contracts = () => {
           )}
         </Card>
       </div>
+
+      {/* Contract Builder Dialog */}
+      <Dialog open={showBuilder} onOpenChange={setShowBuilder}>
+        <DialogContent
+          className="max-w-5xl max-h-[90vh] overflow-y-auto"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Create New Contract</DialogTitle>
+          </DialogHeader>
+          <ContractBuilder
+            jobId={selectedJobId || undefined}
+            onSave={(contractId) => {
+              setShowBuilder(false);
+              // Optionally navigate to the new contract or refresh the list
+            }}
+            onCancel={() => setShowBuilder(false)}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Contract Detail Dialog */}
       <Dialog open={!!selectedContract} onOpenChange={() => setSelectedContract(null)}>

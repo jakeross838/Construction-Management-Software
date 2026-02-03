@@ -122,7 +122,7 @@ const Vendors = () => {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <AppLayout hideJobSidebar>
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <Skeleton className="h-10 w-48" />
@@ -138,7 +138,7 @@ const Vendors = () => {
   }
 
   return (
-    <AppLayout>
+    <AppLayout hideJobSidebar>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

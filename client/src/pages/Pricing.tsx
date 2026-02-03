@@ -17,7 +17,7 @@ const Pricing = () => {
   const [activeTab, setActiveTab] = useState('materials');
 
   return (
-    <AppLayout>
+    <AppLayout hideJobSidebar>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <div className="flex items-start justify-between">

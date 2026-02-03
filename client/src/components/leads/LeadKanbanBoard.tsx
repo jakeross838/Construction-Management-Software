@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   FileText,
   GripVertical,
+  RotateCcw,
 } from 'lucide-react';
 import { LeadFull, sourceConfig } from '@/data/mockLeads';
 import { formatCurrency } from '@/data/mockData';
@@ -37,6 +38,7 @@ interface LeadKanbanBoardProps {
   onMoveToNextStage: (id: string) => void;
   onMarkAsLost: (id: string) => void;
   onMarkAsWon: (id: string) => void;
+  onRevive?: (id: string) => void;
 }
 
 // Fallback stages if none provided
@@ -52,6 +54,7 @@ const defaultStages: PipelineStage[] = [
   { id: '9', name: 'Final Estimate', slug: 'final_estimate', color: '#f97316', stage_order: 9, is_active: true, is_won_stage: false, is_lost_stage: false, description: null, required_fields: [], auto_actions: {}, created_at: '' },
   { id: '10', name: 'Contract Negotiation', slug: 'contract_negotiation', color: '#facc15', stage_order: 10, is_active: true, is_won_stage: false, is_lost_stage: false, description: null, required_fields: [], auto_actions: {}, created_at: '' },
   { id: '11', name: 'Won', slug: 'won', color: '#22c55e', stage_order: 11, is_active: true, is_won_stage: true, is_lost_stage: false, description: null, required_fields: [], auto_actions: {}, created_at: '' },
+  { id: '12', name: 'Lost', slug: 'lost', color: '#ef4444', stage_order: 12, is_active: true, is_won_stage: false, is_lost_stage: true, description: null, required_fields: [], auto_actions: {}, created_at: '' },
 ];
 
 export function LeadKanbanBoard({
@@ -63,6 +66,7 @@ export function LeadKanbanBoard({
   onMoveToNextStage,
   onMarkAsLost,
   onMarkAsWon,
+  onRevive,
 }: LeadKanbanBoardProps) {
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
@@ -72,10 +76,16 @@ export function LeadKanbanBoard({
     return leads.filter(lead => lead.stage === stageSlug);
   };
 
-  // Use provided stages or fallback to defaults, filter out lost stage for kanban view
-  const pipelineStages = (stages && stages.length > 0 ? stages : defaultStages)
-    .filter(s => !s.is_lost_stage)
-    .sort((a, b) => a.stage_order - b.stage_order);
+  // Use provided stages or fallback to defaults
+  // Always ensure Lost stage is included at the end
+  const lostStage: PipelineStage = { id: 'lost', name: 'Lost', slug: 'lost', color: '#ef4444', stage_order: 99, is_active: true, is_won_stage: false, is_lost_stage: true, description: null, required_fields: [], auto_actions: {}, created_at: '' };
+  
+  const baseStages = stages && stages.length > 0 ? stages : defaultStages;
+  const hasLostStage = baseStages.some(s => s.is_lost_stage || s.slug === 'lost');
+  
+  const pipelineStages = hasLostStage 
+    ? baseStages.sort((a, b) => a.stage_order - b.stage_order)
+    : [...baseStages, lostStage].sort((a, b) => a.stage_order - b.stage_order);
 
   const handleDragEnd = (result: DropResult) => {
     const { destination, draggableId } = result;
@@ -182,7 +192,8 @@ export function LeadKanbanBoard({
                                         <Pencil className="mr-2 h-4 w-4" />
                                         Edit Lead
                                       </DropdownMenuItem>
-                                      {!stage.is_won_stage && (
+                                      {/* Actions for active leads (not won or lost) */}
+                                      {!stage.is_won_stage && !stage.is_lost_stage && (
                                         <>
                                           <DropdownMenuSeparator />
                                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToNextStage(lead.id); }}>
@@ -209,6 +220,19 @@ export function LeadKanbanBoard({
                                           >
                                             <X className="mr-2 h-4 w-4" />
                                             Mark as Lost
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
+                                      {/* Actions for lost leads */}
+                                      {stage.is_lost_stage && onRevive && (
+                                        <>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem
+                                            className="text-green-600"
+                                            onClick={(e) => { e.stopPropagation(); onRevive(lead.id); }}
+                                          >
+                                            <RotateCcw className="mr-2 h-4 w-4" />
+                                            Revive Lead
                                           </DropdownMenuItem>
                                         </>
                                       )}
