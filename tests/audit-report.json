@@ -1,14 +1,37 @@
 {
-  "timestamp": "2026-01-16T02:12:28.217Z",
+  "timestamp": "2026-02-02T03:28:59.767Z",
   "summary": {
-    "passed": 0,
+    "passed": 2,
     "errors": 0,
-    "warnings": 0,
+    "warnings": 1,
     "improvements": 0
   },
-  "pageStats": {},
+  "pageStats": {
+    "PurchaseOrders": {
+      "poCount": 0
+    }
+  },
   "errors": [],
-  "warnings": [],
+  "warnings": [
+    {
+      "page": "PurchaseOrders",
+      "category": "UI",
+      "message": "Missing Create PO button",
+      "details": {},
+      "timestamp": "2026-02-02T03:28:59.107Z"
+    }
+  ],
   "improvements": [],
-  "passedChecks": []
+  "passedChecks": [
+    {
+      "page": "PurchaseOrders",
+      "check": "No JavaScript errors",
+      "timestamp": "2026-02-02T03:28:59.048Z"
+    },
+    {
+      "page": "PurchaseOrders",
+      "check": "0 purchase orders displayed",
+      "timestamp": "2026-02-02T03:28:59.094Z"
+    }
+  ]
 }
