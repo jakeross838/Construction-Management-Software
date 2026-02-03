@@ -8,6 +8,7 @@ export interface Contract {
   contract_type: 'prime' | 'subcontract' | 'proposal' | 'change_order' | 'amendment' | 'nda' | 'purchase_agreement' | 'other';
   category?: string;
   job_id?: string;
+  lead_id?: string;
   company_id?: string;
   vendor_id?: string;
   contact_id?: string;
