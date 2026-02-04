@@ -17,7 +17,6 @@ import { EstimateStats } from '@/components/estimates/EstimateStats';
 import { EstimateTable } from '@/components/estimates/EstimateTable';
 import { EstimateDetailDialog } from '@/components/estimates/EstimateDetailDialog';
 import { EstimateFormDialog } from '@/components/estimates/EstimateFormDialog';
-import { EstimateBuilder } from '@/components/estimates/EstimateBuilder';
 import { DBEstimateBuilder } from '@/components/estimates/DBEstimateBuilder';
 import { TemplatesTab } from '@/components/estimates/TemplatesTab';
 import { useEstimates } from '@/hooks/useEstimates';
@@ -96,7 +95,6 @@ const Estimates = () => {
   const [selectedEstimate, setSelectedEstimate] = useState<Estimate | null>(null);
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [editingEstimate, setEditingEstimate] = useState<Estimate | null>(null);
-  const [builderEstimate, setBuilderEstimate] = useState<Estimate | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<EstimateTemplate | null>(null);
 
   const filteredEstimates = useMemo(() => {
@@ -215,26 +213,6 @@ const Estimates = () => {
     toast.info('Template editing coming soon. Use "Save as Template" from an estimate to update.');
   };
 
-  const handleBuilderUpdate = useCallback((data: Partial<Estimate>) => {
-    if (!builderEstimate) return;
-    
-    const updated = { ...builderEstimate, ...data };
-    const recalculated = recalculateTotals(updated);
-    setBuilderEstimate(recalculated);
-  }, [builderEstimate, recalculateTotals]);
-
-  const handleBuilderSave = () => {
-    if (!builderEstimate) return;
-    updateEstimate(builderEstimate.id, builderEstimate);
-    toast.success('Estimate saved');
-  };
-
-  const handleBuilderSend = () => {
-    if (!builderEstimate) return;
-    handleSend(builderEstimate);
-    setBuilderEstimate(null);
-  };
-
   // If we're in DB builder mode (full-screen), show it
   if (builderEstimateId) {
     return (
@@ -242,24 +220,6 @@ const Estimates = () => {
         estimateId={builderEstimateId}
         onBack={() => setBuilderEstimateId(null)}
       />
-    );
-  }
-
-  // If we're in legacy builder mode, show the builder
-  if (builderEstimate) {
-    return (
-      <div className="h-screen bg-background">
-        <EstimateBuilder
-          estimate={builderEstimate}
-          onUpdate={handleBuilderUpdate}
-          onSave={handleBuilderSave}
-          onSend={handleBuilderSend}
-          onBack={() => {
-            handleBuilderSave();
-            setBuilderEstimate(null);
-          }}
-        />
-      </div>
     );
   }
 

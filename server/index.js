@@ -188,6 +188,57 @@ const historicalCostsRoutes = require('./routes/historical-costs');
 const inventoryRoutes = require('./routes/inventory');
 const signaturesRoutes = require('./routes/signatures');
 const { deprecatedRoutes } = require('./middleware/deprecation');
+const { optionalAuth, requireAuth } = require('./middleware/auth');
+
+// ============================================================
+// GLOBAL AUTH MIDDLEWARE - Secure by default
+// ============================================================
+// Routes that are fully public (no auth required)
+const PUBLIC_ROUTES = [
+  '/api/health',
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email',
+  '/api/auth/refresh',
+  '/api/webhooks',
+  '/api/proxy/pdf',
+  '/api/client-portal', // Has its own auth mechanism
+  '/api/onboarding',    // Pre-auth flow
+];
+
+// Routes that need optional auth (work with or without user)
+const OPTIONAL_AUTH_ROUTES = [
+  '/api/realtime',      // SSE connections
+  '/api/docs',          // Swagger docs
+];
+
+// Apply auth middleware to all /api routes
+app.use('/api', (req, res, next) => {
+  const path = req.path;
+
+  // Fully public routes - no auth needed
+  const isPublic = PUBLIC_ROUTES.some(route =>
+    path === route.replace('/api', '') ||
+    path.startsWith(route.replace('/api', '') + '/')
+  );
+  if (isPublic) {
+    return next();
+  }
+
+  // Optional auth routes - populate user if token present
+  const isOptional = OPTIONAL_AUTH_ROUTES.some(route =>
+    path === route.replace('/api', '') ||
+    path.startsWith(route.replace('/api', '') + '/')
+  );
+  if (isOptional) {
+    return optionalAuth(req, res, next);
+  }
+
+  // All other routes REQUIRE authentication
+  return requireAuth(req, res, next);
+});
 
 // ============================================================
 // HEALTH CHECK ENDPOINT

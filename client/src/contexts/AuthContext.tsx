@@ -343,3 +343,104 @@ export function useRequireAuth() {
     isLoading: isLoading || !isInitialized,
   };
 }
+
+// ============================================================
+// ROLE-BASED ACCESS CONTROL (RBAC) - mirrors server/middleware/auth.js
+// ============================================================
+
+// Permission definitions per role (must match backend)
+const rolePermissions: Record<string, Record<string, boolean>> = {
+  owner: {
+    canViewAllJobs: true, canCreateJobs: true, canViewFinancials: true, canManageExpenses: true,
+    canViewProfitability: true, canApproveInvoices: true, canCreatePO: true, canSubmitDraw: true,
+    canManageVendors: true, canManageEmployees: true, canViewLeads: true, canViewEstimates: true,
+    canGenerateProposals: true, canViewContracts: true, canEditSchedule: true, canSubmitDailyLog: true,
+    canUploadFiles: true, canViewSettings: true, canManageUsers: true,
+  },
+  admin: {
+    canViewAllJobs: true, canCreateJobs: true, canViewFinancials: true, canManageExpenses: true,
+    canViewProfitability: true, canApproveInvoices: true, canCreatePO: true, canSubmitDraw: true,
+    canManageVendors: true, canManageEmployees: true, canViewLeads: true, canViewEstimates: true,
+    canGenerateProposals: true, canViewContracts: true, canEditSchedule: true, canSubmitDailyLog: true,
+    canUploadFiles: true, canViewSettings: true, canManageUsers: true,
+  },
+  accounting: {
+    canViewAllJobs: true, canCreateJobs: false, canViewFinancials: true, canManageExpenses: true,
+    canViewProfitability: true, canApproveInvoices: true, canCreatePO: true, canSubmitDraw: true,
+    canManageVendors: true, canManageEmployees: false, canViewLeads: false, canViewEstimates: true,
+    canGenerateProposals: false, canViewContracts: true, canEditSchedule: false, canSubmitDailyLog: false,
+    canUploadFiles: false, canViewSettings: false, canManageUsers: false,
+  },
+  pm: {
+    canViewAllJobs: false, canCreateJobs: false, canViewFinancials: true, canManageExpenses: false,
+    canViewProfitability: false, canApproveInvoices: true, canCreatePO: true, canSubmitDraw: true,
+    canManageVendors: false, canManageEmployees: false, canViewLeads: false, canViewEstimates: true,
+    canGenerateProposals: true, canViewContracts: false, canEditSchedule: true, canSubmitDailyLog: true,
+    canUploadFiles: true, canViewSettings: false, canManageUsers: false,
+  },
+  supervisor: {
+    canViewAllJobs: false, canCreateJobs: false, canViewFinancials: false, canManageExpenses: false,
+    canViewProfitability: false, canApproveInvoices: false, canCreatePO: false, canSubmitDraw: false,
+    canManageVendors: false, canManageEmployees: false, canViewLeads: false, canViewEstimates: true,
+    canGenerateProposals: false, canViewContracts: false, canEditSchedule: true, canSubmitDailyLog: true,
+    canUploadFiles: true, canViewSettings: false, canManageUsers: false,
+  },
+  office: {
+    canViewAllJobs: true, canCreateJobs: false, canViewFinancials: false, canManageExpenses: false,
+    canViewProfitability: false, canApproveInvoices: false, canCreatePO: false, canSubmitDraw: false,
+    canManageVendors: false, canManageEmployees: false, canViewLeads: false, canViewEstimates: false,
+    canGenerateProposals: false, canViewContracts: false, canEditSchedule: false, canSubmitDailyLog: false,
+    canUploadFiles: false, canViewSettings: false, canManageUsers: false,
+  },
+  field_crew: {
+    canViewAllJobs: false, canCreateJobs: false, canViewFinancials: false, canManageExpenses: false,
+    canViewProfitability: false, canApproveInvoices: false, canCreatePO: false, canSubmitDraw: false,
+    canManageVendors: false, canManageEmployees: false, canViewLeads: false, canViewEstimates: false,
+    canGenerateProposals: false, canViewContracts: false, canEditSchedule: false, canSubmitDailyLog: true,
+    canUploadFiles: true, canViewSettings: false, canManageUsers: false,
+  },
+};
+
+export type Permission = keyof typeof rolePermissions.owner;
+
+// Hook to check permissions
+export function usePermissions() {
+  const { user } = useAuth();
+  const role = user?.role || 'field_crew';
+
+  const hasPermission = (permission: Permission): boolean => {
+    return rolePermissions[role]?.[permission] ?? false;
+  };
+
+  const hasAnyPermission = (...permissions: Permission[]): boolean => {
+    return permissions.some(p => hasPermission(p));
+  };
+
+  const hasAllPermissions = (...permissions: Permission[]): boolean => {
+    return permissions.every(p => hasPermission(p));
+  };
+
+  return {
+    role,
+    hasPermission,
+    hasAnyPermission,
+    hasAllPermissions,
+    isOwnerOrAdmin: role === 'owner' || role === 'admin',
+    canViewFinancials: hasPermission('canViewFinancials'),
+    canManageUsers: hasPermission('canManageUsers'),
+  };
+}
+
+// Component to conditionally render based on permission
+export function RequirePermission({
+  permission,
+  children,
+  fallback = null,
+}: {
+  permission: Permission;
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}) {
+  const { hasPermission } = usePermissions();
+  return hasPermission(permission) ? <>{children}</> : <>{fallback}</>;
+}

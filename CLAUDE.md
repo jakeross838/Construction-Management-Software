@@ -25,6 +25,52 @@ npm start
 | `client/.env` | React client environment (VITE_SUPABASE_*) |
 | `.mcp.json` | Claude Code MCP server config (Supabase + Chrome DevTools) |
 | `CLAUDE.md` | This documentation |
+| `.architect_vision.md` | Technical specs from Gemini (Architect) |
+| `AI_BRIDGE.json` | Shared state between Claude & Gemini |
+| `docs/CONSTRUCTION_STANDARDS.md` | Mandatory technical patterns |
+| `orchestrate.sh` | Automated dual-agent workflow |
+
+---
+
+## Dual-Agent Workflow (Claude + Gemini)
+
+### Role Hierarchy
+| Agent | Role | Responsibilities |
+|-------|------|------------------|
+| **Gemini** | Product Architect & Frontend Lead | Specs, UI/UX design, React components, final approval |
+| **Claude** | Lead Builder & System Integrator | Backend, APIs, database, security, testing |
+
+### Workflow Protocol
+```
+1. ARCHITECTING (Gemini)
+   → Writes technical spec to .architect_vision.md
+   → Defines DB schema, API contracts, UI components
+
+2. IMPLEMENTATION (Parallel)
+   → Claude: Backend (Express, Supabase, migrations)
+   → Gemini: Frontend (React, TypeScript, Tailwind)
+   → Both update AI_BRIDGE.json when ready
+
+3. VALIDATION
+   → Run tests: npm test
+   → Gemini reviews implementation against spec
+   → Mark api_contract_verified when approved
+
+4. COMPLETION
+   → Task archived to completed_tasks in AI_BRIDGE.json
+   → Ready for next task
+```
+
+### Quick Start
+```bash
+# Run the orchestrator for a new task
+./orchestrate.sh "Add punch list feature with photo annotations"
+```
+
+### Key Files for Dual-Agent Workflow
+- **`.architect_vision.md`**: Current task spec (Gemini writes, Claude implements)
+- **`AI_BRIDGE.json`**: Shared state tracking (backend_ready, frontend_ready, etc.)
+- **`docs/CONSTRUCTION_STANDARDS.md`**: Mandatory patterns (offline-first, audit logging, BIM/CAD)
 
 ### Environment Variables (.env)
 ```
