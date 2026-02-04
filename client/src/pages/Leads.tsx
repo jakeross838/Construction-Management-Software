@@ -39,6 +39,13 @@ import { PipelineAnalyticsCard } from '@/components/leads/PipelineAnalyticsCard'
 import { SourceAnalyticsCard } from '@/components/leads/SourceAnalyticsCard';
 import { NotificationSettingsCard } from '@/components/leads/NotificationSettingsCard';
 import { LeadImportDialog } from '@/components/leads/LeadImportDialog';
+import { ContractBuilder } from '@/components/contracts/ContractBuilder';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useExportLeads } from '@/hooks/useLeadImports';
 import { CompactStats } from '@/components/ui/compact-stats';
 import { toast } from 'sonner';
@@ -84,6 +91,8 @@ const Leads = () => {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [showContractBuilder, setShowContractBuilder] = useState(false);
+  const [contractLead, setContractLead] = useState<Lead | null>(null);
 
   const { data: leads = [], isLoading } = useDBLeads();
   const { data: pipelineStages = [] } = usePipelineStages();
@@ -205,6 +214,15 @@ const Leads = () => {
   const handleConvertToEstimate = (lead: any) => {
     toast.info(`Creating estimate for ${lead.name}...`);
     // TODO: Navigate to estimate creation with lead data pre-filled
+  };
+
+  const handleCreateContract = (lead: any) => {
+    const dbLead = leads.find(l => l.id === lead.id);
+    if (dbLead) {
+      setContractLead(dbLead);
+      setViewingLead(null); // Close detail dialog
+      setShowContractBuilder(true);
+    }
   };
 
   const handleCalculateScore = async (leadId: string) => {
@@ -365,6 +383,7 @@ const Leads = () => {
         onMarkAsWon={handleMarkAsWon}
         onMarkAsLost={handleMarkAsLost}
         onConvertToEstimate={handleConvertToEstimate}
+        onCreateContract={handleCreateContract}
         onCalculateScore={handleCalculateScore}
         stages={pipelineStages}
         score={viewingLead?.qualification_score}
@@ -376,6 +395,33 @@ const Leads = () => {
         open={isImportOpen}
         onOpenChange={setIsImportOpen}
       />
+
+      {/* Contract Builder Dialog */}
+      <Dialog open={showContractBuilder} onOpenChange={setShowContractBuilder}>
+        <DialogContent
+          className="max-w-5xl max-h-[90vh] overflow-y-auto"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              Create Contract {contractLead && `for ${contractLead.first_name} ${contractLead.last_name}`}
+            </DialogTitle>
+          </DialogHeader>
+          <ContractBuilder
+            leadId={contractLead?.id}
+            onSave={(contractId) => {
+              setShowContractBuilder(false);
+              setContractLead(null);
+              toast.success('Contract created successfully');
+            }}
+            onCancel={() => {
+              setShowContractBuilder(false);
+              setContractLead(null);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 };

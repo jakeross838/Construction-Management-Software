@@ -186,6 +186,7 @@ const planSetsRoutes = require('./routes/plan-sets');
 const estimateAssembliesRoutes = require('./routes/estimate-assemblies');
 const historicalCostsRoutes = require('./routes/historical-costs');
 const inventoryRoutes = require('./routes/inventory');
+const signaturesRoutes = require('./routes/signatures');
 const { deprecatedRoutes } = require('./middleware/deprecation');
 
 // ============================================================
@@ -364,6 +365,7 @@ app.use('/api/retainage', retainageRoutes);
 app.use('/api/time-tracking', timeTrackingRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/signatures', signaturesRoutes);
 
 // Route aliases for frontend compatibility
 // These redirect common alternative names to their canonical routes

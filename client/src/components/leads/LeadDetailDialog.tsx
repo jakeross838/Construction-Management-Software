@@ -20,6 +20,7 @@ import {
   Building2,
   Ruler,
   FileText,
+  FileSignature,
   ArrowRight,
   Pencil,
   X,
@@ -63,6 +64,7 @@ interface LeadDetailDialogProps {
   onMarkAsWon: (id: string) => void;
   onMarkAsLost: (id: string) => void;
   onConvertToEstimate?: (lead: LeadFull) => void;
+  onCreateContract?: (lead: LeadFull) => void;
   onCalculateScore?: (id: string) => void;
   stages?: PipelineStage[];
   score?: number | null;
@@ -78,6 +80,7 @@ export function LeadDetailDialog({
   onMarkAsWon,
   onMarkAsLost,
   onConvertToEstimate,
+  onCreateContract,
   onCalculateScore,
   stages,
   score,
@@ -186,6 +189,17 @@ export function LeadDetailDialog({
                 >
                   <FileText className="h-4 w-4 mr-2" />
                   Create Estimate
+                </Button>
+              )}
+              {onCreateContract && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onCreateContract(lead)}
+                >
+                  <FileSignature className="h-4 w-4 mr-2" />
+                  Create Contract
                 </Button>
               )}
               <Button

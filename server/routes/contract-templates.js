@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError } = require('../core/errors');
+const { generateContractPDF, embedSignature } = require('../services/contract-pdf-generator');
 const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
@@ -437,6 +438,11 @@ router.post('/variables/resolve', asyncHandler(async (req, res) => {
       switch (source.source_type) {
         case 'job':
           value = job?.[source.source_field];
+          // Fallback to lead for job fields
+          if (!value && lead && source.source_field) {
+            const leadField = source.source_field === 'name' ? 'project_address' : source.source_field;
+            value = lead?.[leadField];
+          }
           break;
         case 'lead':
           value = lead?.[source.source_field];
@@ -446,6 +452,18 @@ router.post('/variables/resolve', asyncHandler(async (req, res) => {
           break;
         case 'contact':
           value = contact?.[source.source_field];
+          // Fallback to lead data for contact fields when no contact provided
+          if (!value && lead) {
+            const leadFieldMap = {
+              'full_name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
+              'first_name': lead.first_name,
+              'last_name': lead.last_name,
+              'email': lead.email,
+              'phone': lead.phone,
+              'address': lead.project_address
+            };
+            value = leadFieldMap[source.source_field];
+          }
           break;
         case 'contract':
           value = contract?.[source.source_field];
@@ -672,5 +690,506 @@ function formatValue(value, formatType, options) {
       return value;
   }
 }
+
+// ============================================================
+// CONTRACT PRICING ENGINE
+// ============================================================
+
+// Get pricing types
+router.get('/pricing-types', asyncHandler(async (req, res) => {
+  res.json({
+    types: [
+      {
+        value: 'fixed_price',
+        label: 'Fixed Price / Lump Sum',
+        description: 'Single fixed price for the entire project',
+        fields: ['contract_amount', 'overhead_percent', 'profit_percent', 'contingency_percent']
+      },
+      {
+        value: 'cost_plus',
+        label: 'Cost Plus Fee',
+        description: 'Actual costs plus a builder fee percentage',
+        fields: ['base_cost', 'builder_fee_percent', 'allowances_total']
+      },
+      {
+        value: 'gmp',
+        label: 'Guaranteed Maximum Price (GMP)',
+        description: 'Cost plus with a price cap. Savings split between owner and builder.',
+        fields: ['base_cost', 'builder_fee_percent', 'gmp_amount', 'savings_split_owner_percent']
+      },
+      {
+        value: 'time_materials',
+        label: 'Time & Materials',
+        description: 'Hourly rates plus materials at cost',
+        fields: ['hourly_rate', 'materials_markup_percent']
+      },
+      {
+        value: 'unit_price',
+        label: 'Unit Price',
+        description: 'Fixed price per unit of work (e.g., per SF, per LF)',
+        fields: ['unit_prices']
+      }
+    ]
+  });
+}));
+
+// Calculate contract pricing
+router.post('/pricing/calculate', asyncHandler(async (req, res) => {
+  const {
+    pricing_type,
+    base_cost = 0,
+    builder_fee_percent = 15,
+    overhead_percent = 0,
+    profit_percent = 0,
+    contingency_percent = 0,
+    gmp_amount,
+    savings_split_owner_percent = 50,
+    allowances_total = 0
+  } = req.body;
+
+  let result = {
+    pricing_type,
+    base_cost: parseFloat(base_cost),
+    allowances_total: parseFloat(allowances_total),
+    breakdown: []
+  };
+
+  switch (pricing_type) {
+    case 'cost_plus':
+      const costPlusFee = result.base_cost * (builder_fee_percent / 100);
+      result.builder_fee_percent = builder_fee_percent;
+      result.builder_fee_amount = costPlusFee;
+      result.contract_amount = result.base_cost + costPlusFee + result.allowances_total;
+      result.breakdown = [
+        { label: 'Base Cost', amount: result.base_cost },
+        { label: `Builder Fee (${builder_fee_percent}%)`, amount: costPlusFee },
+        { label: 'Allowances', amount: result.allowances_total },
+        { label: 'Total Contract', amount: result.contract_amount, isTotal: true }
+      ];
+      break;
+
+    case 'gmp':
+      const gmpFee = result.base_cost * (builder_fee_percent / 100);
+      const calculatedTotal = result.base_cost + gmpFee + result.allowances_total;
+      const cappedAmount = gmp_amount ? Math.min(parseFloat(gmp_amount), calculatedTotal) : calculatedTotal;
+      const potentialSavings = gmp_amount ? Math.max(0, parseFloat(gmp_amount) - calculatedTotal) : 0;
+      const ownerSavings = potentialSavings * (savings_split_owner_percent / 100);
+      const builderSavings = potentialSavings - ownerSavings;
+
+      result.builder_fee_percent = builder_fee_percent;
+      result.builder_fee_amount = gmpFee;
+      result.gmp_amount = parseFloat(gmp_amount) || calculatedTotal;
+      result.savings_split_owner_percent = savings_split_owner_percent;
+      result.potential_savings = potentialSavings;
+      result.owner_savings = ownerSavings;
+      result.builder_savings = builderSavings;
+      result.contract_amount = cappedAmount;
+      result.breakdown = [
+        { label: 'Base Cost', amount: result.base_cost },
+        { label: `Builder Fee (${builder_fee_percent}%)`, amount: gmpFee },
+        { label: 'Allowances', amount: result.allowances_total },
+        { label: 'Calculated Total', amount: calculatedTotal },
+        { label: 'GMP Cap', amount: result.gmp_amount, isGmp: true },
+        { label: 'Contract Amount', amount: result.contract_amount, isTotal: true }
+      ];
+      if (potentialSavings > 0) {
+        result.breakdown.push(
+          { label: `Potential Savings`, amount: potentialSavings, isSavings: true },
+          { label: `Owner Share (${savings_split_owner_percent}%)`, amount: ownerSavings },
+          { label: `Builder Share (${100 - savings_split_owner_percent}%)`, amount: builderSavings }
+        );
+      }
+      break;
+
+    case 'fixed_price':
+    default:
+      const overheadAmt = result.base_cost * (overhead_percent / 100);
+      const afterOverhead = result.base_cost + overheadAmt;
+      const profitAmt = afterOverhead * (profit_percent / 100);
+      const contingencyAmt = result.base_cost * (contingency_percent / 100);
+      const fixedTotal = afterOverhead + profitAmt + contingencyAmt + result.allowances_total;
+
+      result.overhead_percent = overhead_percent;
+      result.overhead_amount = overheadAmt;
+      result.profit_percent = profit_percent;
+      result.profit_amount = profitAmt;
+      result.contingency_percent = contingency_percent;
+      result.contingency_amount = contingencyAmt;
+      result.contract_amount = fixedTotal;
+      result.breakdown = [
+        { label: 'Base Cost', amount: result.base_cost },
+        { label: `Overhead (${overhead_percent}%)`, amount: overheadAmt },
+        { label: `Profit (${profit_percent}%)`, amount: profitAmt },
+        { label: `Contingency (${contingency_percent}%)`, amount: contingencyAmt },
+        { label: 'Allowances', amount: result.allowances_total },
+        { label: 'Total Contract', amount: result.contract_amount, isTotal: true }
+      ];
+      break;
+  }
+
+  res.json(result);
+}));
+
+// Get estimate data for a job (to import into contract)
+router.get('/estimates/job/:jobId', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  // Get approved or most recent estimate for the job
+  const { data: estimates, error } = await supabase
+    .from('v2_estimates')
+    .select(`
+      id,
+      title,
+      total_amount,
+      status,
+      created_at,
+      updated_at
+    `)
+    .eq('job_id', jobId)
+    .is('deleted_at', null)
+    .order('status', { ascending: false })  // approved first
+    .order('updated_at', { ascending: false })
+    .limit(5);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  // If we have an approved estimate, get its line items
+  let lineItems = [];
+  const approvedEstimate = estimates?.find(e => e.status === 'approved') || estimates?.[0];
+
+  if (approvedEstimate) {
+    const { data: lines } = await supabase
+      .from('v2_estimate_lines')
+      .select(`
+        id,
+        description,
+        cost_type,
+        quantity,
+        unit,
+        unit_cost,
+        amount,
+        markup_percent,
+        markup_amount,
+        is_allowance,
+        cost_code:v2_cost_codes(code, name)
+      `)
+      .eq('estimate_id', approvedEstimate.id)
+      .order('sort_order');
+
+    lineItems = lines || [];
+  }
+
+  // Calculate totals by category
+  const categorySummary = lineItems.reduce((acc, line) => {
+    const cat = line.cost_type || 'other';
+    if (!acc[cat]) acc[cat] = 0;
+    acc[cat] += parseFloat(line.amount || 0);
+    return acc;
+  }, {});
+
+  const allowancesTotal = lineItems
+    .filter(l => l.is_allowance)
+    .reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+
+  const baseTotal = lineItems
+    .filter(l => !l.is_allowance)
+    .reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+
+  res.json({
+    estimates: estimates || [],
+    selectedEstimate: approvedEstimate,
+    lineItems,
+    summary: {
+      base_cost: baseTotal,
+      allowances_total: allowancesTotal,
+      total: approvedEstimate?.total_amount || (baseTotal + allowancesTotal),
+      by_category: categorySummary
+    }
+  });
+}));
+
+// ============================================================
+// PDF GENERATION
+// ============================================================
+
+// Generate contract PDF
+router.post('/documents/:id/pdf', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { include_florida_disclosure = false } = req.body;
+
+  // Get the contract document with resolved content
+  const { data: doc, error: docError } = await supabase
+    .from('v2_contract_documents')
+    .select(`
+      *,
+      template:v2_contract_templates(name, contract_type)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (docError || !doc) {
+    throw new AppError('NOT_FOUND', 'Contract document not found');
+  }
+
+  // Get company settings for branding
+  const { data: company } = await supabase
+    .from('v2_company_settings')
+    .select('*')
+    .limit(1)
+    .single();
+
+  // Generate PDF
+  const pdfBuffer = await generateContractPDF({
+    company: company || {},
+    contract: {
+      name: doc.name || doc.template?.name || 'Construction Contract',
+      contract_number: doc.document_number,
+      type: doc.template?.contract_type
+    },
+    content: doc.rendered_content || doc.content || '',
+    signers: [
+      { name: '', role: 'Builder/Contractor' },
+      { name: '', role: 'Property Owner' }
+    ],
+    includeSignatureLines: true,
+    includeFlorida713Disclosure: include_florida_disclosure ||
+      doc.florida_lien_disclosure_required
+  });
+
+  // Return as downloadable PDF
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${doc.name || 'contract'}.pdf"`);
+  res.send(pdfBuffer);
+}));
+
+// Preview contract PDF (returns base64)
+router.post('/documents/:id/pdf/preview', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { include_florida_disclosure = false } = req.body;
+
+  const { data: doc, error: docError } = await supabase
+    .from('v2_contract_documents')
+    .select(`
+      *,
+      template:v2_contract_templates(name, contract_type)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (docError || !doc) {
+    throw new AppError('NOT_FOUND', 'Contract document not found');
+  }
+
+  const { data: company } = await supabase
+    .from('v2_company_settings')
+    .select('*')
+    .limit(1)
+    .single();
+
+  const pdfBuffer = await generateContractPDF({
+    company: company || {},
+    contract: {
+      name: doc.name || doc.template?.name || 'Construction Contract',
+      contract_number: doc.document_number,
+      type: doc.template?.contract_type
+    },
+    content: doc.rendered_content || doc.content || '',
+    signers: [
+      { name: '', role: 'Builder/Contractor' },
+      { name: '', role: 'Property Owner' }
+    ],
+    includeSignatureLines: true,
+    includeFlorida713Disclosure: include_florida_disclosure ||
+      doc.florida_lien_disclosure_required
+  });
+
+  res.json({
+    pdf: pdfBuffer.toString('base64'),
+    filename: `${doc.name || 'contract'}.pdf`
+  });
+}));
+
+// Generate PDF from content directly (without saving document first)
+router.post('/pdf/generate', asyncHandler(async (req, res) => {
+  const {
+    content,
+    title = 'Contract',
+    contract_number,
+    signers = [],
+    include_florida_disclosure = false
+  } = req.body;
+
+  if (!content) {
+    throw new AppError('VALIDATION_FAILED', 'Content is required');
+  }
+
+  const { data: company } = await supabase
+    .from('v2_company_settings')
+    .select('*')
+    .limit(1)
+    .single();
+
+  const pdfBuffer = await generateContractPDF({
+    company: company || {},
+    contract: {
+      name: title,
+      contract_number
+    },
+    content,
+    signers: signers.length > 0 ? signers : [
+      { name: '', role: 'Builder/Contractor' },
+      { name: '', role: 'Property Owner' }
+    ],
+    includeSignatureLines: true,
+    includeFlorida713Disclosure: include_florida_disclosure
+  });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${title}.pdf"`);
+  res.send(pdfBuffer);
+}));
+
+// Embed signature into existing PDF
+router.post('/documents/:id/embed-signature', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { signature_data, signer_name, signer_role, x, y, page = 0, width = 150, height = 50 } = req.body;
+
+  if (!signature_data) {
+    throw new AppError('VALIDATION_FAILED', 'Signature data is required');
+  }
+
+  // Get the document's current PDF or generate one
+  const { data: doc, error: docError } = await supabase
+    .from('v2_contract_documents')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (docError || !doc) {
+    throw new AppError('NOT_FOUND', 'Contract document not found');
+  }
+
+  // For now, we'll regenerate the PDF and embed the signature
+  // In production, you'd store the PDF in storage and retrieve it
+  const { data: company } = await supabase
+    .from('v2_company_settings')
+    .select('*')
+    .limit(1)
+    .single();
+
+  let pdfBuffer = await generateContractPDF({
+    company: company || {},
+    contract: {
+      name: doc.name || 'Contract',
+      contract_number: doc.document_number
+    },
+    content: doc.rendered_content || doc.content || '',
+    signers: [],
+    includeSignatureLines: true,
+    includeFlorida713Disclosure: doc.florida_lien_disclosure_required
+  });
+
+  // Embed the signature
+  const signedPdfBuffer = await embedSignature(pdfBuffer, {
+    data: signature_data,
+    x: x || 50,
+    y: y || 200,
+    page,
+    width,
+    height
+  });
+
+  // Update document status
+  await supabase
+    .from('v2_contract_documents')
+    .update({
+      status: 'signed',
+      signed_at: new Date().toISOString(),
+      signed_by: signer_name
+    })
+    .eq('id', id);
+
+  res.json({
+    success: true,
+    pdf: signedPdfBuffer.toString('base64'),
+    filename: `${doc.name || 'contract'}-signed.pdf`
+  });
+}));
+
+// Get estimate data for a lead (when no job exists yet)
+router.get('/estimates/lead/:leadId', asyncHandler(async (req, res) => {
+  const { leadId } = req.params;
+
+  // Get lead data including estimated value
+  const { data: lead, error } = await supabase
+    .from('v2_leads')
+    .select('*')
+    .eq('id', leadId)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+  if (!lead) throw new AppError('NOT_FOUND', 'Lead not found');
+
+  // Check if lead has a job_id with estimates
+  let estimates = [];
+  let lineItems = [];
+  let summary = {
+    base_cost: lead.estimated_value || 0,
+    allowances_total: 0,
+    total: lead.estimated_value || 0,
+    by_category: {}
+  };
+
+  if (lead.job_id) {
+    const { data: jobEstimates } = await supabase
+      .from('v2_estimates')
+      .select('id, title, total_amount, status, created_at')
+      .eq('job_id', lead.job_id)
+      .is('deleted_at', null)
+      .order('status', { ascending: false })
+      .order('updated_at', { ascending: false })
+      .limit(5);
+
+    estimates = jobEstimates || [];
+
+    if (estimates.length > 0) {
+      const selectedEstimate = estimates.find(e => e.status === 'approved') || estimates[0];
+      const { data: lines } = await supabase
+        .from('v2_estimate_lines')
+        .select('*')
+        .eq('estimate_id', selectedEstimate.id)
+        .order('sort_order');
+
+      lineItems = lines || [];
+
+      const allowancesTotal = lineItems
+        .filter(l => l.is_allowance)
+        .reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+
+      const baseTotal = lineItems
+        .filter(l => !l.is_allowance)
+        .reduce((sum, l) => sum + parseFloat(l.amount || 0), 0);
+
+      summary = {
+        base_cost: baseTotal,
+        allowances_total: allowancesTotal,
+        total: selectedEstimate.total_amount || (baseTotal + allowancesTotal),
+        by_category: lineItems.reduce((acc, line) => {
+          const cat = line.cost_type || 'other';
+          if (!acc[cat]) acc[cat] = 0;
+          acc[cat] += parseFloat(line.amount || 0);
+          return acc;
+        }, {})
+      };
+    }
+  }
+
+  res.json({
+    lead,
+    estimates,
+    lineItems,
+    summary
+  });
+}));
 
 module.exports = router;

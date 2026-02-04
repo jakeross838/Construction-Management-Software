@@ -36,7 +36,11 @@ import {
   FileSignature,
   Scale,
   Info,
+  Calculator,
+  Download,
 } from 'lucide-react';
+import { ContractPricingEngine } from './ContractPricingEngine';
+import { SendForSignatureDialog } from './SendForSignatureDialog';
 import {
   useContractTemplates,
   useContractTemplate,
@@ -70,6 +74,9 @@ export function ContractBuilder({
   const [disclosureAcknowledged, setDisclosureAcknowledged] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [contractName, setContractName] = useState('');
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  const [savedDocumentId, setSavedDocumentId] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Fetch data
   const { data: templates = [], isLoading: loadingTemplates } = useContractTemplates({ active_only: true });
@@ -174,11 +181,50 @@ TO PROTECT YOURSELF:
         status: sendForSignature ? 'pending_signature' : 'draft',
       });
 
-      if (onSave) onSave(contract.id);
+      setSavedDocumentId(contract.id);
+
+      if (sendForSignature) {
+        setShowSendDialog(true);
+      } else if (onSave) {
+        onSave(contract.id);
+      }
     } catch (error) {
       console.error('Failed to create contract:', error);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!template || !renderedContent) return;
+
+    setIsDownloading(true);
+    try {
+      const response = await fetch('/api/contract-templates/pdf/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: renderedContent,
+          title: contractName || template.name || 'Contract',
+          include_florida_disclosure: template.requires_florida_lien_disclosure,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to generate PDF');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${contractName || 'contract'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Failed to download PDF:', error);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -231,6 +277,15 @@ TO PROTECT YOURSELF:
             </Button>
           )}
           <Button
+            variant="outline"
+            onClick={handleDownloadPDF}
+            disabled={!selectedTemplateId || !renderedContent || isDownloading}
+          >
+            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+            Download PDF
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => handleSave(false)}
             disabled={!selectedTemplateId || !contractName || isSaving}
           >
@@ -289,10 +344,14 @@ TO PROTECT YOURSELF:
       {/* Main Content */}
       {selectedTemplateId && template && (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="template" className="gap-2">
               <FileText className="h-4 w-4" />
               Template
+            </TabsTrigger>
+            <TabsTrigger value="pricing" className="gap-2">
+              <Calculator className="h-4 w-4" />
+              Pricing
             </TabsTrigger>
             <TabsTrigger value="variables" className="gap-2">
               <Variable className="h-4 w-4" />
@@ -373,6 +432,47 @@ TO PROTECT YOURSELF:
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Pricing Tab */}
+          <TabsContent value="pricing" className="space-y-4">
+            <ContractPricingEngine
+              jobId={jobId}
+              leadId={leadId}
+              onPricingChange={(pricing) => {
+                // Update variable values with calculated pricing
+                setVariableValues(prev => ({
+                  ...prev,
+                  CONTRACT_AMOUNT: pricing.contract_amount
+                    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(pricing.contract_amount)
+                    : '',
+                  GMP_AMOUNT: pricing.gmp_amount
+                    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(pricing.gmp_amount)
+                    : '',
+                  BUILDER_FEE_PERCENT: pricing.builder_fee_percent?.toString() || '',
+                  RETAINAGE_PERCENT: variableValues.RETAINAGE_PERCENT || '10',
+                }));
+              }}
+            />
+
+            {/* Pricing Summary Card */}
+            {variableValues.CONTRACT_AMOUNT && (
+              <Card className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <span className="font-medium text-green-800 dark:text-green-200">
+                        Contract Amount Set
+                      </span>
+                    </div>
+                    <span className="text-lg font-bold text-green-700 dark:text-green-300">
+                      {variableValues.CONTRACT_AMOUNT}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Variables Tab */}
@@ -620,6 +720,24 @@ TO PROTECT YOURSELF:
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Send for Signature Dialog */}
+      {savedDocumentId && (
+        <SendForSignatureDialog
+          open={showSendDialog}
+          onOpenChange={(open) => {
+            setShowSendDialog(open);
+            if (!open && onSave) {
+              onSave(savedDocumentId);
+            }
+          }}
+          documentId={savedDocumentId}
+          documentName={contractName || 'Contract'}
+          onSent={(requestId) => {
+            if (onSave) onSave(savedDocumentId);
+          }}
+        />
+      )}
     </div>
   );
 }
