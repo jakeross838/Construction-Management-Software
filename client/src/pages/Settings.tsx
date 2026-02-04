@@ -48,12 +48,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-// Integration hooks
-import {
-  useQuickBooksStatus,
-  useDisconnectQuickBooks,
-  getQuickBooksConnectUrl,
-} from '@/hooks/useQuickBooks';
+// Integration components and hooks
+import { QuickBooksSettings } from '@/components/settings/QuickBooksSettings';
 import {
   useXeroStatus,
   useDisconnectXero,
@@ -179,20 +175,9 @@ function FinancialTab() {
 
 // Integrations Tab
 function IntegrationsTab() {
-  const { data: qboStatus, isLoading: qboLoading } = useQuickBooksStatus();
   const { data: xeroStatus, isLoading: xeroLoading } = useXeroStatus();
-  const disconnectQbo = useDisconnectQuickBooks();
   const disconnectXero = useDisconnectXero();
   const { toast } = useToast();
-
-  const handleDisconnectQbo = async () => {
-    try {
-      await disconnectQbo.mutateAsync();
-      toast({ title: 'Disconnected', description: 'QuickBooks has been disconnected.' });
-    } catch (err) {
-      toast({ title: 'Error', description: (err as Error).message, variant: 'destructive' });
-    }
-  };
 
   const handleDisconnectXero = async () => {
     try {
@@ -205,65 +190,8 @@ function IntegrationsTab() {
 
   return (
     <div className="space-y-4">
-      {/* QuickBooks */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                <span className="font-bold text-green-600">QB</span>
-              </div>
-              <div>
-                <CardTitle className="text-lg">QuickBooks Online</CardTitle>
-                <CardDescription>Sync invoices, vendors, and payments</CardDescription>
-              </div>
-            </div>
-            {qboLoading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : qboStatus?.connected ? (
-              <Badge variant="default" className="gap-1">
-                <CheckCircle className="h-3 w-3" /> Connected
-              </Badge>
-            ) : (
-              <Badge variant="secondary">Not Connected</Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {qboStatus?.connected ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div>
-                  <p className="font-medium">{qboStatus.companyName}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Last synced: {qboStatus.lastSyncAt ? new Date(qboStatus.lastSyncAt).toLocaleDateString() : 'Never'}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
-                    <RefreshCw className="h-4 w-4 mr-1" /> Sync Now
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleDisconnectQbo}
-                    disabled={disconnectQbo.isPending}
-                  >
-                    Disconnect
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <Button asChild>
-              <a href={getQuickBooksConnectUrl()}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Connect QuickBooks
-              </a>
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+      {/* QuickBooks - Full Settings Component */}
+      <QuickBooksSettings />
 
       {/* Xero */}
       <Card>

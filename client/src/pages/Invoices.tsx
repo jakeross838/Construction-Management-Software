@@ -196,7 +196,7 @@ const Invoices = () => {
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-full sm:w-44">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -248,11 +248,12 @@ const Invoices = () => {
                   </span>
                 </div>
               </div>
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40px]">
-                      <Checkbox 
+                      <Checkbox
                         checked={statusInvoices.every(inv => selectedIds.includes(inv.id)) && statusInvoices.length > 0}
                         onCheckedChange={(checked) => {
                           if (checked) {
@@ -265,11 +266,11 @@ const Invoices = () => {
                     </TableHead>
                     <TableHead>Invoice #</TableHead>
                     <TableHead>Vendor</TableHead>
-                    <TableHead>Job</TableHead>
-                    <TableHead>PO #</TableHead>
-                    <TableHead>Budget Standing</TableHead>
-                    <TableHead>AI Confidence</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead className="hidden md:table-cell">Job</TableHead>
+                    <TableHead className="hidden lg:table-cell">PO #</TableHead>
+                    <TableHead className="hidden lg:table-cell">Budget Standing</TableHead>
+                    <TableHead className="hidden xl:table-cell">AI Confidence</TableHead>
+                    <TableHead className="hidden sm:table-cell">Date</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -299,9 +300,9 @@ const Invoices = () => {
                           </div>
                         </TableCell>
                         <TableCell>{getVendorName(invoice.vendor_id)}</TableCell>
-                        <TableCell>{getJobName(invoice.job_id)}</TableCell>
-                        <TableCell className="text-muted-foreground">{po?.po_number || '—'}</TableCell>
-                        <TableCell>
+                        <TableCell className="hidden md:table-cell">{getJobName(invoice.job_id)}</TableCell>
+                        <TableCell className="hidden lg:table-cell text-muted-foreground">{po?.po_number || '—'}</TableCell>
+                        <TableCell className="hidden lg:table-cell">
                           {budgetCtx ? (
                             <div className="flex flex-col">
                               <span className={budgetCtx.isOverBudget ? 'text-destructive font-medium' : 'text-foreground'}>
@@ -316,12 +317,12 @@ const Invoices = () => {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden xl:table-cell">
                           {invoice.matched_confidence?.overall ? (
                             <div className="flex items-center gap-1">
                               <Sparkles className="h-3 w-3 text-primary" />
-                              <AIConfidenceBadge 
-                                confidence={invoice.matched_confidence.overall} 
+                              <AIConfidenceBadge
+                                confidence={invoice.matched_confidence.overall}
                                 showPercent={false}
                               />
                             </div>
@@ -329,13 +330,14 @@ const Invoices = () => {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
+                        <TableCell className="hidden sm:table-cell">{formatDate(invoice.invoice_date)}</TableCell>
                         <TableCell className="font-medium text-right">{formatCurrency(invoice.amount)}</TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
+              </div>
             </Card>
           );
         })}

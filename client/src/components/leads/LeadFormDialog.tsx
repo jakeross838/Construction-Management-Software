@@ -84,7 +84,7 @@ export function LeadFormDialog({ open, onOpenChange, lead, onSubmit }: LeadFormD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-lg md:max-w-2xl max-h-[90vh] flex flex-col p-4 sm:p-6">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>{isEditing ? 'Edit Lead' : 'Add New Lead'}</DialogTitle>
         </DialogHeader>
@@ -96,7 +96,7 @@ export function LeadFormDialog({ open, onOpenChange, lead, onSubmit }: LeadFormD
                 {/* Contact Info */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium text-muted-foreground">Contact Information</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="name"
@@ -134,7 +134,7 @@ export function LeadFormDialog({ open, onOpenChange, lead, onSubmit }: LeadFormD
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="email"
@@ -181,7 +181,7 @@ export function LeadFormDialog({ open, onOpenChange, lead, onSubmit }: LeadFormD
                 {/* Project Info */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium text-muted-foreground">Project Information</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="projectType"
@@ -219,7 +219,7 @@ export function LeadFormDialog({ open, onOpenChange, lead, onSubmit }: LeadFormD
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="projectAddress"
@@ -271,7 +271,7 @@ export function LeadFormDialog({ open, onOpenChange, lead, onSubmit }: LeadFormD
                 {/* Follow Up */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium text-muted-foreground">Follow Up</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="assignedTo"

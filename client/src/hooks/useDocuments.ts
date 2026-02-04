@@ -70,6 +70,7 @@ interface FolderFilters {
 export const DOCUMENT_CATEGORIES = [
   { id: 'contracts', name: 'Contracts & Agreements' },
   { id: 'plans', name: 'Plans & Drawings' },
+  { id: 'bim', name: 'BIM/CAD Models' },
   { id: 'permits', name: 'Permits & Approvals' },
   { id: 'insurance', name: 'Insurance & Bonds' },
   { id: 'proposals', name: 'Proposals & Bids' },

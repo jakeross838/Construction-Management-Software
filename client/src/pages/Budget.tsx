@@ -210,18 +210,19 @@ const Budget = () => {
                     </Button>
                   </div>
                 ) : (
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-10"></TableHead>
                         <TableHead>Code</TableHead>
-                        <TableHead>Cost Code</TableHead>
+                        <TableHead className="hidden sm:table-cell">Cost Code</TableHead>
                         <TableHead className="text-right">Budget</TableHead>
-                        <TableHead className="text-right">Committed</TableHead>
+                        <TableHead className="hidden md:table-cell text-right">Committed</TableHead>
                         <TableHead className="text-right">Actual</TableHead>
-                        <TableHead className="text-right">Forecast</TableHead>
+                        <TableHead className="hidden lg:table-cell text-right">Forecast</TableHead>
                         <TableHead className="text-right">Variance</TableHead>
-                        <TableHead className="w-32">Progress</TableHead>
+                        <TableHead className="hidden md:table-cell w-32">Progress</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -243,20 +244,20 @@ const Budget = () => {
                               </Button>
                             </TableCell>
                             <TableCell className="font-mono text-sm">{category.code}</TableCell>
-                            <TableCell className="font-medium">{category.name}</TableCell>
+                            <TableCell className="hidden sm:table-cell font-medium">{category.name}</TableCell>
                             <TableCell className="text-right">{formatCurrency(category.budget)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(category.committed)}</TableCell>
+                            <TableCell className="hidden md:table-cell text-right">{formatCurrency(category.committed)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(category.actual)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(category.forecast)}</TableCell>
+                            <TableCell className="hidden lg:table-cell text-right">{formatCurrency(category.forecast)}</TableCell>
                             <TableCell className="text-right">
                               <span className={isOverBudget ? 'text-red-600' : 'text-green-600'}>
                                 {catVariance > 0 ? '+' : ''}{formatCurrency(catVariance)}
                               </span>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="hidden md:table-cell">
                               <div className="flex items-center gap-2">
-                                <Progress 
-                                  value={Math.min(actualPercent, 100)} 
+                                <Progress
+                                  value={Math.min(actualPercent, 100)}
                                   className={`h-2 flex-1 ${isOverBudget ? '[&>div]:bg-red-500' : ''}`}
                                 />
                                 <span className="text-xs text-muted-foreground w-10">
@@ -271,20 +272,21 @@ const Budget = () => {
                       {budgetCategories.length > 0 && (
                         <TableRow className="font-semibold bg-muted/50">
                           <TableCell></TableCell>
-                          <TableCell></TableCell>
                           <TableCell>Total</TableCell>
+                          <TableCell className="hidden sm:table-cell"></TableCell>
                           <TableCell className="text-right">{formatCurrency(totals.budget)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(totals.committed)}</TableCell>
+                          <TableCell className="hidden md:table-cell text-right">{formatCurrency(totals.committed)}</TableCell>
                           <TableCell className="text-right">{formatCurrency(totals.actual)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(totals.forecast)}</TableCell>
+                          <TableCell className="hidden lg:table-cell text-right">{formatCurrency(totals.forecast)}</TableCell>
                           <TableCell className={`text-right ${variance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                             {variance > 0 ? '+' : ''}{formatCurrency(variance)}
                           </TableCell>
-                          <TableCell></TableCell>
+                          <TableCell className="hidden md:table-cell"></TableCell>
                         </TableRow>
                       )}
                     </TableBody>
                   </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>

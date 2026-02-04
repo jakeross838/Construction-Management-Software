@@ -11,6 +11,7 @@ const { logActivity, checkSplitReconciliation, stampInvoice } = require('../serv
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../core/errors');
 const { validate, schemas } = require('../middleware/validate');
 const { getBuilderId } = require('../core/multi-tenant');
+const { broadcastNotification, broadcastDrawUpdate } = require('../core/realtime');
 // Storage and pdf-stamper functions removed - using unified stampInvoice instead
 
 // Helper: Log draw activity
@@ -1299,6 +1300,16 @@ router.patch('/:id/submit', asyncHandler(async (req, res) => {
       total_amount: updatedDraw.total_amount
     });
 
+    // Send real-time notification
+    broadcastNotification('info', `Draw #${updatedDraw.draw_number} submitted for approval`, {
+      title: 'Draw Submitted',
+      entityType: 'draw',
+      entityId: drawId,
+      link: `/draws?id=${drawId}`,
+      action: 'submitted',
+      performedBy: submitted_by
+    });
+
     res.json(updatedDraw);
 }));
 
@@ -1385,6 +1396,16 @@ router.patch('/:id/fund', asyncHandler(async (req, res) => {
       billed_amount: billedAmount,
       funded_amount: actualFunded,
       funding_difference: fundingDifference
+    });
+
+    // Send real-time notification
+    broadcastNotification('success', `Draw #${draw.draw_number} funded - $${actualFunded.toLocaleString()}`, {
+      title: 'Draw Funded',
+      entityType: 'draw',
+      entityId: drawId,
+      link: `/draws?id=${drawId}`,
+      action: 'funded',
+      performedBy: funded_by
     });
 
     // Get draw allocations and update invoices

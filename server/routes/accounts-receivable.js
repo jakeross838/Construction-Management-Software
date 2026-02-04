@@ -9,6 +9,11 @@ const { supabase } = require('../../config');
 const { AppError, asyncHandler, notFoundError } = require('../core/errors');
 const { getBuilderId } = require('../core/multi-tenant');
 const logger = require('../utils/logger');
+const {
+  PaginationType,
+  detectPaginationType,
+  offsetResponse
+} = require('../middleware/pagination');
 
 // ============================================================
 // HELPER FUNCTIONS
@@ -53,56 +58,92 @@ async function updateOverdueStatuses(builderId) {
 
 /**
  * GET /api/ar/invoices
- * List client invoices with filters
+ * List client invoices with filters and optional pagination
+ *
+ * Pagination modes:
+ * 1. Offset pagination: ?page=1&limit=50 (recommended for most use cases)
+ * 2. No pagination: returns all results (backward compatible)
  */
 router.get('/invoices', asyncHandler(async (req, res) => {
   const builderId = getBuilderId(req);
-  const { job_id, client_id, status, start_date, end_date } = req.query;
+  const { job_id, client_id, status, start_date, end_date, page, limit } = req.query;
+  const paginationType = detectPaginationType(req.query);
 
   // Update overdue statuses first
   if (builderId) {
     await updateOverdueStatuses(builderId);
   }
 
+  const selectQuery = `
+    *,
+    job:v2_jobs(id, name, address),
+    client:v2_clients(id, name, email),
+    draw:v2_draws(id, draw_number, status),
+    payments:v2_client_payments(id, amount, payment_date, payment_method, reference_number)
+  `;
+
+  // Build base query filters
+  const buildFilters = (query) => {
+    query = query.is('deleted_at', null);
+
+    if (builderId) {
+      query = query.eq('builder_id', builderId);
+    }
+
+    if (job_id) {
+      query = query.eq('job_id', job_id);
+    }
+
+    if (client_id) {
+      query = query.eq('client_id', client_id);
+    }
+
+    if (status) {
+      if (status === 'outstanding') {
+        query = query.in('status', ['sent', 'partial', 'overdue']);
+      } else {
+        query = query.eq('status', status);
+      }
+    }
+
+    if (start_date) {
+      query = query.gte('invoice_date', start_date);
+    }
+
+    if (end_date) {
+      query = query.lte('invoice_date', end_date);
+    }
+
+    return query;
+  };
+
+  // Handle OFFSET pagination
+  if (paginationType === PaginationType.OFFSET) {
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const offset = (pageNum - 1) * limitNum;
+
+    let query = supabase
+      .from('v2_client_invoices')
+      .select(selectQuery, { count: 'exact' });
+
+    query = buildFilters(query);
+    query = query.order('invoice_date', { ascending: false });
+    query = query.range(offset, offset + limitNum - 1);
+
+    const { data, error, count } = await query;
+    if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+    return res.json(offsetResponse(data || [], pageNum, limitNum, count || 0));
+  }
+
+  // NO pagination - return all results (backward compatible)
   let query = supabase
     .from('v2_client_invoices')
-    .select(`
-      *,
-      job:v2_jobs(id, name, address),
-      client:v2_clients(id, name, email),
-      draw:v2_draws(id, draw_number, status),
-      payments:v2_client_payments(id, amount, payment_date, payment_method, reference_number)
-    `)
-    .is('deleted_at', null)
-    .order('invoice_date', { ascending: false });
+    .select(selectQuery);
 
-  if (builderId) {
-    query = query.eq('builder_id', builderId);
-  }
-
-  if (job_id) {
-    query = query.eq('job_id', job_id);
-  }
-
-  if (client_id) {
-    query = query.eq('client_id', client_id);
-  }
-
-  if (status) {
-    if (status === 'outstanding') {
-      query = query.in('status', ['sent', 'partial', 'overdue']);
-    } else {
-      query = query.eq('status', status);
-    }
-  }
-
-  if (start_date) {
-    query = query.gte('invoice_date', start_date);
-  }
-
-  if (end_date) {
-    query = query.lte('invoice_date', end_date);
-  }
+  query = buildFilters(query);
+  query = query.order('invoice_date', { ascending: false });
 
   const { data, error } = await query;
 

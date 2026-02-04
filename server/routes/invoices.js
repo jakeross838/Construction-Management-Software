@@ -23,7 +23,7 @@ const {
   noPaginationResponse
 } = require('../middleware/pagination');
 const { validate, schemas } = require('../middleware/validate');
-const { broadcastInvoiceUpdate, broadcast } = require('../core/realtime');
+const { broadcastInvoiceUpdate, broadcast, broadcastNotification } = require('../core/realtime');
 const {
   logActivity,
   updatePOLineItemsForAllocations,
@@ -1823,6 +1823,36 @@ router.post('/:id/transition', validate(schemas.invoiceTransition), asyncHandler
 
   await logActivity(invoiceId, `status_${new_status}`, performedBy, { reason, from: invoice.status });
   broadcastInvoiceUpdate(updated, 'status_changed', performedBy);
+
+  // Send real-time toast notification for key status changes
+  if (new_status === 'approved') {
+    broadcastNotification('success', `Invoice #${updated.invoice_number || invoiceId.slice(0, 8)} approved`, {
+      title: 'Invoice Approved',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      link: `/invoices?id=${invoiceId}`,
+      action: 'approved',
+      performedBy
+    });
+  } else if (new_status === 'denied') {
+    broadcastNotification('warning', `Invoice #${updated.invoice_number || invoiceId.slice(0, 8)} denied`, {
+      title: 'Invoice Denied',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      link: `/invoices?id=${invoiceId}`,
+      action: 'denied',
+      performedBy
+    });
+  } else if (new_status === 'paid') {
+    broadcastNotification('success', `Invoice #${updated.invoice_number || invoiceId.slice(0, 8)} marked as paid`, {
+      title: 'Invoice Paid',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      link: `/invoices?id=${invoiceId}`,
+      action: 'paid',
+      performedBy
+    });
+  }
 
   // Trigger webhook for status change
   const builderId = getBuilderId(req);

@@ -25,9 +25,11 @@ import {
   List,
   Loader2,
   AlertCircle,
+  Box,
 } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
 import { useDocuments, useDocumentStats, Document, DOCUMENT_CATEGORIES } from '@/hooks/useDocuments';
+import { BIMViewerDialog } from '@/components/bim/BIMViewerDialog';
 
 const categoryIcons: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
   contracts: { icon: FileText, color: 'text-blue-500' },
@@ -40,8 +42,16 @@ const categoryIcons: Record<string, { icon: React.ComponentType<{ className?: st
   warranties: { icon: FileText, color: 'text-teal-500' },
   correspondence: { icon: FileText, color: 'text-gray-500' },
   photos: { icon: Image, color: 'text-amber-500' },
+  bim: { icon: Box, color: 'text-emerald-500' },
   other: { icon: File, color: 'text-gray-500' },
 };
+
+// Check if file is a BIM/IFC file
+function isBIMFile(fileName: string | undefined): boolean {
+  if (!fileName) return false;
+  const ext = fileName.toLowerCase().split('.').pop();
+  return ext === 'ifc' || ext === 'ifczip';
+}
 
 function formatFileSize(bytes: number | undefined): string {
   if (!bytes) return '0 KB';
@@ -55,6 +65,15 @@ const Files = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+
+  // BIM Viewer state
+  const [bimViewerOpen, setBimViewerOpen] = useState(false);
+  const [selectedBIMFile, setSelectedBIMFile] = useState<{ url: string; name: string } | null>(null);
+
+  const handleViewBIM = (fileUrl: string, fileName: string) => {
+    setSelectedBIMFile({ url: fileUrl, name: fileName });
+    setBimViewerOpen(true);
+  };
 
   // Fetch documents with filters
   const { data: documents = [], isLoading, error } = useDocuments({
@@ -246,6 +265,20 @@ const Files = () => {
                     <div className="flex items-center gap-1">
                       {doc.file_url && (
                         <>
+                          {isBIMFile(doc.file_name) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewBIM(doc.file_url!, doc.file_name || doc.name);
+                              }}
+                              title="View 3D Model"
+                            >
+                              <Box className="h-4 w-4 text-emerald-500" />
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                             <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
                               <Eye className="h-4 w-4" />
@@ -297,6 +330,16 @@ const Files = () => {
           </div>
         )}
       </div>
+
+      {/* BIM Viewer Dialog */}
+      {selectedBIMFile && (
+        <BIMViewerDialog
+          open={bimViewerOpen}
+          onOpenChange={setBimViewerOpen}
+          fileUrl={selectedBIMFile.url}
+          fileName={selectedBIMFile.name}
+        />
+      )}
     </AppLayout>
   );
 };
