@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // Job type based on backend API response
 export interface Job {
@@ -84,7 +85,7 @@ export function useJobs(pagination?: JobsPaginationParams) {
       if (pagination?.limit) params.append('limit', String(pagination.limit));
 
       const url = `/api/jobs${params.size > 0 ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url);
+      const response = await apiGet(url);
       if (!response.ok) throw new Error('Failed to fetch jobs');
       return response.json();
     },
@@ -96,7 +97,7 @@ export function useJob(id: string | null) {
     queryKey: ['jobs', id],
     queryFn: async (): Promise<Job | null> => {
       if (!id) return null;
-      const response = await fetch(`/api/jobs/${id}`);
+      const response = await apiGet(`/api/jobs/${id}`);
       if (!response.ok) throw new Error('Failed to fetch job');
       return response.json();
     },
@@ -109,11 +110,7 @@ export function useCreateJob() {
 
   return useMutation({
     mutationFn: async (job: Partial<JobInsert>) => {
-      const response = await fetch('/api/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(job),
-      });
+      const response = await apiPost('/api/jobs', job);
       if (!response.ok) throw new Error('Failed to create job');
       return response.json();
     },
@@ -133,11 +130,7 @@ export function useUpdateJob() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: JobUpdate & { id: string }) => {
-      const response = await fetch(`/api/jobs/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
+      const response = await apiPatch(`/api/jobs/${id}`, updates);
       if (!response.ok) throw new Error('Failed to update job');
       return response.json();
     },
@@ -158,7 +151,7 @@ export function useDeleteJob() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+      const response = await apiDelete(`/api/jobs/${id}`);
       if (!response.ok) throw new Error('Failed to delete job');
     },
     onSuccess: () => {
@@ -213,11 +206,7 @@ export function useUpdateJobSpecs() {
 
   return useMutation({
     mutationFn: async ({ id, ...specs }: { id: string } & JobSpecs) => {
-      const response = await fetch(`/api/jobs/${id}/specs`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(specs),
-      });
+      const response = await apiPatch(`/api/jobs/${id}/specs`, specs);
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.message || 'Failed to update job specs');

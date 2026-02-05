@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 
 // =====================================================
 // TYPES
@@ -149,9 +150,7 @@ export interface PipelineData {
 // =====================================================
 
 async function api<T>(endpoint: string): Promise<T> {
-  const response = await fetch(`/api/executive${endpoint}`, {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  const response = await apiGet(`/api/executive${endpoint}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.message || error.error || `HTTP ${response.status}`);

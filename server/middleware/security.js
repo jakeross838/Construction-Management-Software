@@ -30,7 +30,7 @@ const SECURITY_CONFIG = {
     styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
     fontSrc: ["'self'", "https://fonts.gstatic.com"],
     imgSrc: ["'self'", "data:", "blob:", "https:"],
-    connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co"],
+    connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
     workerSrc: ["'self'", "blob:", "https://unpkg.com", "http://unpkg.com"],  // Allow PDF.js worker
     frameSrc: ["'none'"],
     objectSrc: ["'none'"],

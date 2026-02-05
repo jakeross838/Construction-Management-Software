@@ -1,9 +1,9 @@
 // Ross Built Construction Management - Service Worker
-// Version 1.0.0
+// Version 1.0.1 - Fixed chrome-extension:// caching errors
 
-const CACHE_NAME = 'ross-built-v1';
-const STATIC_CACHE = 'ross-built-static-v1';
-const DYNAMIC_CACHE = 'ross-built-dynamic-v1';
+const CACHE_NAME = 'ross-built-v2';
+const STATIC_CACHE = 'ross-built-static-v2';
+const DYNAMIC_CACHE = 'ross-built-dynamic-v2';
 const OFFLINE_QUEUE = 'ross-built-offline-queue';
 
 // Static assets to cache on install
@@ -87,6 +87,11 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Skip non-HTTP(S) requests (chrome-extension://, etc.)
+  if (!url.protocol.startsWith('http')) {
+    return;
+  }
+
   // Skip non-GET requests for caching, but handle offline queue
   if (request.method !== 'GET') {
     // Handle POST/PATCH/DELETE when offline
@@ -133,9 +138,13 @@ async function networkFirstWithCache(request) {
     const response = await fetch(request);
 
     // Cache successful API responses for cacheable routes
-    if (response.ok && isCacheableApiRoute(url.pathname)) {
-      const cache = await caches.open(DYNAMIC_CACHE);
-      cache.put(request, response.clone());
+    if (response.ok && isCacheableApiRoute(url.pathname) && request.url.startsWith('http')) {
+      try {
+        const cache = await caches.open(DYNAMIC_CACHE);
+        cache.put(request, response.clone());
+      } catch (error) {
+        console.warn('[SW] Failed to cache API response:', url.pathname, error.message);
+      }
     }
 
     return response;
@@ -205,9 +214,14 @@ async function handleMutationRequest(request) {
 async function fetchAndCache(request) {
   const response = await fetch(request);
 
-  if (response.ok) {
-    const cache = await caches.open(STATIC_CACHE);
-    cache.put(request, response.clone());
+  // Only cache http(s) requests
+  if (response.ok && request.url.startsWith('http')) {
+    try {
+      const cache = await caches.open(STATIC_CACHE);
+      cache.put(request, response.clone());
+    } catch (error) {
+      console.warn('[SW] Failed to cache:', request.url, error.message);
+    }
   }
 
   return response;
