@@ -10,6 +10,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { AuthGuard, PublicOnlyGuard } from "@/components/auth/AuthGuard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { OfflineIndicator } from "@/components/common/OfflineIndicator";
+import { PWAInstallBanner } from "@/components/mobile/common/PWAInstallBanner";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
 import { Loader2 } from 'lucide-react';
 
@@ -98,6 +99,13 @@ const PortalMessages = lazy(() => import("./pages/portal/PortalMessages"));
 // Error pages
 const NotFound = lazy(() => import("./pages/NotFound"));
 
+// Mobile pages
+const MobileHome = lazy(() => import("./pages/mobile/MobileHome"));
+const MobileMore = lazy(() => import("./pages/mobile/MobileMore"));
+const MobileTimeClock = lazy(() => import("./pages/mobile/MobileTimeClock"));
+const MobilePhotos = lazy(() => import("./pages/mobile/MobilePhotos"));
+const MobileDailyLogs = lazy(() => import("./pages/mobile/MobileDailyLogs"));
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -150,6 +158,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <OfflineIndicator />
+      <PWAInstallBanner />
       <BrowserRouter>
         <Routes>
           {/* Public auth routes - not lazy loaded for fast auth */}
@@ -238,6 +247,13 @@ const App = () => (
           <Route path="/portal/dashboard" element={<LazyRoute><PortalDashboard /></LazyRoute>} />
           <Route path="/portal/photos" element={<LazyRoute><PortalPhotos /></LazyRoute>} />
           <Route path="/portal/messages" element={<LazyRoute><PortalMessages /></LazyRoute>} />
+
+          {/* Mobile PWA routes */}
+          <Route path="/m" element={<ProtectedLazyRoute><MobileHome /></ProtectedLazyRoute>} />
+          <Route path="/m/more" element={<ProtectedLazyRoute><MobileMore /></ProtectedLazyRoute>} />
+          <Route path="/m/time" element={<ProtectedLazyRoute><MobileTimeClock /></ProtectedLazyRoute>} />
+          <Route path="/m/photo" element={<ProtectedLazyRoute><MobilePhotos /></ProtectedLazyRoute>} />
+          <Route path="/m/logs" element={<ProtectedLazyRoute><MobileDailyLogs /></ProtectedLazyRoute>} />
 
           <Route path="*" element={<LazyRoute><NotFound /></LazyRoute>} />
         </Routes>
