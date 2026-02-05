@@ -32,14 +32,22 @@ interface NavSection {
   items: NavItem[];
 }
 
+// ============================================================================
+// RELEASE CONFIGURATION
+// Set to true to show all features, false to show only Phase 1 (Financial Core)
+// ============================================================================
+const FULL_RELEASE = false;
+
+// Phase 1 Released Features: Jobs, Invoices, POs, Change Orders, Draws, Budget, Vendors
 const navigationSections: NavSection[] = [
-  {
+  // PHASE 2 - Sales (hidden for now)
+  ...(FULL_RELEASE ? [{
     title: 'Sales',
     icon: Target,
     items: [
       { label: 'Leads', href: '/leads', permission: 'canViewLeads' },
     ],
-  },
+  }] : []),
   {
     title: 'Overview',
     icon: LayoutDashboard,
@@ -48,7 +56,8 @@ const navigationSections: NavSection[] = [
       { label: 'Job Details', href: '/job-details' },
     ],
   },
-  {
+  // PHASE 2 - Pre-Construction (hidden for now)
+  ...(FULL_RELEASE ? [{
     title: 'Pre-Con',
     icon: FileEdit,
     items: [
@@ -59,19 +68,23 @@ const navigationSections: NavSection[] = [
       { label: 'Contracts', href: '/contracts', permission: 'canViewContracts' },
       { label: 'Permitting', href: '/permits' },
     ],
-  },
+  }] : []),
+  // PHASE 1 - Operations (only Change Orders for now)
   {
     title: 'Operations',
     icon: Hammer,
     items: [
-      { label: 'Schedule', href: '/schedule', permission: 'canEditSchedule' },
-      { label: 'Daily Logs', href: '/daily-logs', permission: 'canSubmitDailyLog' },
-      { label: 'Time Tracking', href: '/time-tracking' },
-      { label: 'Tasks', href: '/tasks' },
-      { label: 'Files', href: '/files', permission: 'canUploadFiles' },
+      ...(FULL_RELEASE ? [
+        { label: 'Schedule', href: '/schedule', permission: 'canEditSchedule' },
+        { label: 'Daily Logs', href: '/daily-logs', permission: 'canSubmitDailyLog' },
+        { label: 'Time Tracking', href: '/time-tracking' },
+        { label: 'Tasks', href: '/tasks' },
+        { label: 'Files', href: '/files', permission: 'canUploadFiles' },
+      ] : []),
       { label: 'Change Orders', href: '/change-orders' },
     ],
   },
+  // PHASE 1 - Financial (core features)
   {
     title: 'Financial',
     icon: DollarSign,
@@ -80,11 +93,14 @@ const navigationSections: NavSection[] = [
       { label: 'Purchase Orders', href: '/purchase-orders', permission: 'canCreatePO' },
       { label: 'Draws', href: '/draws', permission: 'canSubmitDraw' },
       { label: 'Budget', href: '/budget', permission: 'canViewFinancials' },
-      { label: 'Expenses', href: '/expenses', permission: 'canManageExpenses' },
-      { label: 'Price Intelligence', href: '/pricing' },
+      ...(FULL_RELEASE ? [
+        { label: 'Expenses', href: '/expenses', permission: 'canManageExpenses' },
+        { label: 'Price Intelligence', href: '/pricing' },
+      ] : []),
     ],
   },
-  {
+  // PHASE 2 - Closeout (hidden for now)
+  ...(FULL_RELEASE ? [{
     title: 'Closeout',
     icon: ShieldCheck,
     items: [
@@ -93,26 +109,30 @@ const navigationSections: NavSection[] = [
       { label: 'Lien Releases', href: '/lien-releases' },
       { label: 'Final Docs', href: '/final-docs' },
     ],
-  },
-  {
+  }] : []),
+  // PHASE 2 - Reports (hidden for now)
+  ...(FULL_RELEASE ? [{
     title: 'Reports',
     icon: BarChart3,
     items: [
       { label: 'All Reports', href: '/reports', permission: 'canViewFinancials' },
     ],
-  },
+  }] : []),
+  // PHASE 1 - Settings (only Vendors and Cost Codes for now)
   {
     title: 'Settings',
     icon: Settings,
     items: [
       { label: 'Vendors', href: '/vendors', permission: 'canManageVendors' },
-      { label: 'Employees', href: '/employees', permission: 'canManageEmployees' },
-      { label: 'Expenses', href: '/expenses', permission: 'canManageExpenses' },
+      ...(FULL_RELEASE ? [
+        { label: 'Employees', href: '/employees', permission: 'canManageEmployees' },
+        { label: 'Expenses', href: '/expenses', permission: 'canManageExpenses' },
+      ] : []),
       { label: 'Cost Codes', href: '/cost-codes' },
       { label: 'Company', href: '/settings', permission: 'canViewSettings' },
     ],
   },
-];
+] as NavSection[];
 
 interface TopNavigationProps {
   userRole: UserRole;
@@ -120,12 +140,19 @@ interface TopNavigationProps {
 }
 
 // Key navigation items for mobile bottom bar
-const mobileNavItems = [
+const mobileNavItems = FULL_RELEASE ? [
   { icon: LayoutDashboard, label: 'Home', href: '/' },
   { icon: DollarSign, label: 'Financial', href: '/invoices' },
   { icon: Hammer, label: 'Ops', href: '/schedule' },
   { icon: BarChart3, label: 'Reports', href: '/reports' },
   { icon: Settings, label: 'More', href: '/settings' },
+] : [
+  // Phase 1 mobile nav - Financial focus
+  { icon: LayoutDashboard, label: 'Home', href: '/' },
+  { icon: DollarSign, label: 'Invoices', href: '/invoices' },
+  { icon: Hammer, label: 'POs', href: '/purchase-orders' },
+  { icon: Target, label: 'Draws', href: '/draws' },
+  { icon: Settings, label: 'More', href: '/vendors' },
 ];
 
 export function TopNavigation({ userRole, mobile = false }: TopNavigationProps) {
