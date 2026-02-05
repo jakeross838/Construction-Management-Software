@@ -63,6 +63,17 @@ import { toast } from 'sonner';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AIProcessingAnimation } from './AIProcessingAnimation';
+import { supabase } from '@/integrations/supabase/client';
+
+// Helper to get auth headers for authenticated requests
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (token) {
+    return { 'Authorization': `Bearer ${token}` };
+  }
+  return {};
+}
 
 // Document type definitions
 type DocumentType =
@@ -314,8 +325,10 @@ export function UnifiedAIUpload({
         formData.append('context_hint', effectiveContextHint);
       }
 
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/document-hub/classify', {
         method: 'POST',
+        headers: authHeaders,
         body: formData,
       });
 
@@ -418,8 +431,10 @@ export function UnifiedAIUpload({
           formData.append('file', uploadFile.file);
           if (jobId) formData.append('job_id', jobId);
 
+          const authHeaders = await getAuthHeaders();
           const response = await fetch('/api/invoices/process', {
             method: 'POST',
+            headers: authHeaders,
             body: formData,
           });
 
@@ -440,8 +455,10 @@ export function UnifiedAIUpload({
           formData.append('file', uploadFile.file);
           if (jobId) formData.append('job_id', jobId);
 
+          const authHeaders = await getAuthHeaders();
           const response = await fetch('/api/purchase-orders/process-document?preview=false', {
             method: 'POST',
+            headers: authHeaders,
             body: formData,
           });
 
@@ -460,8 +477,10 @@ export function UnifiedAIUpload({
           formData.append('file', uploadFile.file);
           if (jobId) formData.append('job_id', jobId);
 
+          const authHeaders = await getAuthHeaders();
           const response = await fetch('/api/photos', {
             method: 'POST',
+            headers: authHeaders,
             body: formData,
           });
 
@@ -482,8 +501,10 @@ export function UnifiedAIUpload({
           formData.append('document_type', docType);
           if (jobId) formData.append('job_id', jobId);
 
+          const authHeaders = await getAuthHeaders();
           const response = await fetch('/api/documents/upload', {
             method: 'POST',
+            headers: authHeaders,
             body: formData,
           });
 

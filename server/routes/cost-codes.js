@@ -30,8 +30,10 @@ router.get('/', cacheResponse(LIST_CACHE_TTL), asyncHandler(async (req, res) => 
     .select('*')
     .order('code');
 
-  // Filter by builder if authenticated
-  if (builderId) query = query.eq('builder_id', builderId);
+  // Filter by builder if authenticated - include shared (null) and builder-specific cost codes
+  if (builderId) {
+    query = query.or(`builder_id.eq.${builderId},builder_id.is.null`);
+  }
 
   const { data, error } = await query;
 

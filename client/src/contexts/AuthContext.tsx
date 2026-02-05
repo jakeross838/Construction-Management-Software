@@ -62,11 +62,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Fetch user profile from v2_users
-  const fetchUserProfile = async (authUserId: string) => {
+  const fetchUserProfile = async (authUserId: string, accessToken?: string) => {
     try {
+      // Use provided token or get fresh from Supabase (avoids stale closure)
+      const token = accessToken || (await supabase.auth.getSession()).data.session?.access_token;
+
+      if (!token) {
+        console.warn('No access token available for /api/auth/me');
+        return;
+      }
+
       const response = await fetch('/api/auth/me', {
         headers: {
-          'Authorization': `Bearer ${session?.access_token || ''}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -95,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (initialSession) {
           setSession(initialSession);
           setSupabaseUser(initialSession.user);
-          await fetchUserProfile(initialSession.user.id);
+          await fetchUserProfile(initialSession.user.id, initialSession.access_token);
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -114,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSupabaseUser(newSession?.user || null);
 
         if (event === 'SIGNED_IN' && newSession) {
-          await fetchUserProfile(newSession.user.id);
+          await fetchUserProfile(newSession.user.id, newSession.access_token);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setBuilder(null);
@@ -131,8 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Re-fetch user profile when session changes
   useEffect(() => {
-    if (session?.user && !user) {
-      fetchUserProfile(session.user.id);
+    if (session?.user && session?.access_token && !user) {
+      fetchUserProfile(session.user.id, session.access_token);
     }
   }, [session?.access_token]);
 
@@ -285,8 +293,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshUser = async () => {
-    if (session?.user) {
-      await fetchUserProfile(session.user.id);
+    if (session?.user && session?.access_token) {
+      await fetchUserProfile(session.user.id, session.access_token);
     }
   };
 

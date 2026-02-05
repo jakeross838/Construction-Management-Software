@@ -708,6 +708,9 @@ router.post('/process', upload.single('file'), async (req, res) => {
       });
     }
 
+    // Get builder_id from authenticated user
+    const builderId = getBuilderId(req);
+
     const originalFilename = req.file.originalname;
     const fileBuffer = req.file.buffer;
     const mimetype = req.file.mimetype;
@@ -960,6 +963,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
     const { data: invoice, error: invError } = await supabase
       .from('v2_invoices')
       .insert({
+        builder_id: builderId || null,
         job_id: jobId || null,
         vendor_id: result.vendor?.id || null,
         po_id: result.po?.id || null,
@@ -1098,7 +1102,6 @@ router.post('/process', upload.single('file'), async (req, res) => {
     });
 
     // Trigger webhook for invoice creation
-    const builderId = getBuilderId(req);
     if (builderId) {
       triggerWebhooks(builderId, 'invoice.created', invoice.id, {
         id: invoice.id,
@@ -1206,6 +1209,9 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No file provided' });
     }
 
+    // Get builder_id from authenticated user
+    const builderId = getBuilderId(req);
+
     const originalFilename = req.file.originalname;
     const fileBuffer = req.file.buffer;
 
@@ -1279,6 +1285,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
         const { data: invoice, error: invError } = await supabase
           .from('v2_invoices')
           .insert({
+            builder_id: builderId || null,
             job_id: jobId || null,
             vendor_id: result.vendor?.id || null,
             po_id: result.po?.id || null,

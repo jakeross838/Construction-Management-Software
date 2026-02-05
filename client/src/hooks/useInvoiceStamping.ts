@@ -1,11 +1,23 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { InvoiceStatus } from '@/types/financial';
+import { supabase } from '@/integrations/supabase/client';
 
-// API helper
+// Get auth headers from Supabase session
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (token) {
+    return { 'Authorization': `Bearer ${token}` };
+  }
+  return {};
+}
+
+// API helper with auth
 async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const authHeaders = await getAuthHeaders();
   const response = await fetch(`/api${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...authHeaders, ...options?.headers },
     ...options,
   });
   if (!response.ok) {
@@ -26,9 +38,10 @@ export function useStampInvoice() {
   return useMutation({
     mutationFn: async ({ invoiceId, status }: StampInvoiceParams) => {
       // Call Node.js backend for PDF stamping
+      const authHeaders = await getAuthHeaders();
       const response = await fetch(`/api/invoices/${invoiceId}/stamp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ status }),
       });
 
