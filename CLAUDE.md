@@ -1,5 +1,44 @@
 # Ross Built Construction Management Software
 
+## 🚨 CRITICAL RULES (NEVER VIOLATE)
+
+### Server Management - ALWAYS RUN IN BACKGROUND
+**NEVER run `npm start` or `npm run dev` in the foreground. This kills Claude Code session.**
+
+```bash
+# ✅ CORRECT - Always use run_in_background parameter
+Bash tool with: run_in_background: true
+
+# ❌ WRONG - Running server in foreground kills Claude
+npm start  (without run_in_background)
+```
+
+**MANDATORY: When starting the server, use these EXACT parameters:**
+```
+Tool: Bash
+Parameters:
+  command: cd "P:/Claude Projects/Construction Management Software" && npm start
+  run_in_background: true   ← THIS IS REQUIRED
+  description: Start server in background
+```
+
+**To restart the server safely:**
+```bash
+# Step 1: Kill existing server (run normally, not in background)
+pkill -f "node.*server" || taskkill /F /IM node.exe 2>nul || true
+
+# Step 2: Start new server (MUST use run_in_background: true)
+npm start   ← with run_in_background: true in Bash tool
+```
+
+**WHY THIS MATTERS:**
+- Foreground processes block Claude Code's terminal
+- When the terminal is blocked, the session dies
+- This has happened 100+ times - NEVER AGAIN
+
+---
+
+
 ## ⚡ QUICK REFERENCE (READ FIRST)
 
 ### Environment Setup
