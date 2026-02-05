@@ -1240,10 +1240,19 @@ async function stampReadyForApproval(pdfBuffer, approvalData) {
   return Buffer.from(stampedPdfBytes);
 }
 
+// Import v2 improved designs
+const { stampApprovalV2, stampInDrawV2, stampPaidV2 } = require('./pdf-stamper-v2');
+
 module.exports = {
-  stampApproval,
-  stampInDraw,
-  stampPaid,
+  // Use v2 improved designs by default
+  stampApproval: stampApprovalV2,
+  stampInDraw: stampInDrawV2,
+  stampPaid: stampPaidV2,
+  // Keep original versions available as legacy
+  stampApprovalLegacy: stampApproval,
+  stampInDrawLegacy: stampInDraw,
+  stampPaidLegacy: stampPaid,
+  // Other stamps (not yet redesigned)
   stampPartiallyPaid,
   stampPartiallyBilled,
   stampSplit,
