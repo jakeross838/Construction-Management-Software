@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  Search, 
+import { JobFormDialog } from '@/components/jobs/JobFormDialog';
+import {
+  Search,
   Building2,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,7 @@ interface JobSidebarProps {
 export function JobSidebar({ selectedJobId, onJobSelect, inSheet = false }: JobSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showNewJobDialog, setShowNewJobDialog] = useState(false);
   const location = useLocation();
   const { data: dbJobs = [], isLoading } = useDBJobs();
 
@@ -143,7 +145,7 @@ export function JobSidebar({ selectedJobId, onJobSelect, inSheet = false }: JobS
                   className={cn(
                     "w-full text-left rounded-lg px-2 py-2 transition-colors",
                     "hover:bg-sidebar-accent",
-                    !selectedJobId && "bg-primary/10 border border-primary/20"
+                    !selectedJobId && "bg-primary-brand-DEFAULT/10 border border-primary-brand-DEFAULT/20"
                   )}
                 >
                   <div className="flex items-center gap-2">
@@ -214,12 +216,23 @@ export function JobSidebar({ selectedJobId, onJobSelect, inSheet = false }: JobS
       {/* New Job Button */}
       {!collapsed && (
         <div className="p-3 border-t border-sidebar-border shrink-0">
-          <Button variant="outline" size="sm" className="w-full gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-2"
+            onClick={() => setShowNewJobDialog(true)}
+          >
             <Plus className="h-3.5 w-3.5" />
             New Job
           </Button>
         </div>
       )}
+
+      {/* New Job Dialog */}
+      <JobFormDialog
+        open={showNewJobDialog}
+        onOpenChange={setShowNewJobDialog}
+      />
     </aside>
   );
 }
@@ -237,7 +250,7 @@ function JobItem({ job, isSelected, onClick }: JobItemProps) {
       className={cn(
         "w-full text-left rounded-lg px-2 py-2 transition-colors",
         "hover:bg-sidebar-accent",
-        isSelected && "bg-primary/10 border border-primary/20"
+        isSelected && "bg-primary-brand-DEFAULT/10 border border-primary-brand-DEFAULT/20"
       )}
     >
       <div className="flex items-start gap-2">

@@ -32,16 +32,68 @@ async function invalidateJobsCache() {
 
 // Create a new job
 router.post('/', validate(schemas.jobCreate), asyncHandler(async (req, res) => {
-  const { name, address, client_name, contract_amount, status } = req.body;
+  const {
+    name, address, status,
+    // Client fields - accept both 'client' and 'client_name'
+    client, client_name,
+    // Financials
+    contract_amount, budget_amount, target_margin, retainage_percent, percent_complete,
+    // Dates
+    start_date, end_date,
+    // Team
+    project_manager, site_supervisor, architect, engineer,
+    // Client contact
+    client_email, client_phone, client_cell,
+    // Specs
+    square_footage, bedrooms, bathrooms, half_baths, stories, garage_spaces,
+    construction_type, architectural_style,
+    // Notes
+    notes
+  } = req.body;
   const builderId = getBuilderId(req);
 
+  // Build job data object, only including non-empty fields
   const jobData = {
     name,
-    address,
-    client_name,
-    contract_amount: contract_amount || null,
     status: status || 'active'
   };
+
+  // Handle client name - accept either 'client' or 'client_name'
+  const clientValue = client || client_name;
+  if (clientValue) {
+    jobData.client = clientValue;
+    jobData.client_name = clientValue;
+  }
+
+  // Optional string fields
+  if (address) jobData.address = address;
+  if (project_manager) jobData.project_manager = project_manager;
+  if (site_supervisor) jobData.site_supervisor = site_supervisor;
+  if (architect) jobData.architect = architect;
+  if (engineer) jobData.engineer = engineer;
+  if (client_email) jobData.client_email = client_email;
+  if (client_phone) jobData.client_phone = client_phone;
+  if (client_cell) jobData.client_cell = client_cell;
+  if (construction_type) jobData.construction_type = construction_type;
+  if (architectural_style) jobData.architectural_style = architectural_style;
+  if (notes) jobData.notes = notes;
+
+  // Numeric fields (allow 0)
+  if (contract_amount !== undefined && contract_amount !== null) jobData.contract_amount = contract_amount;
+  if (budget_amount !== undefined && budget_amount !== null) jobData.budget_amount = budget_amount;
+  if (target_margin !== undefined && target_margin !== null) jobData.target_margin = target_margin;
+  if (retainage_percent !== undefined && retainage_percent !== null) jobData.retainage_percent = retainage_percent;
+  if (percent_complete !== undefined && percent_complete !== null) jobData.percent_complete = percent_complete;
+  if (square_footage !== undefined && square_footage !== null) jobData.square_footage = square_footage;
+  if (bedrooms !== undefined && bedrooms !== null) jobData.bedrooms = bedrooms;
+  if (bathrooms !== undefined && bathrooms !== null) jobData.bathrooms = bathrooms;
+  if (half_baths !== undefined && half_baths !== null) jobData.half_baths = half_baths;
+  if (stories !== undefined && stories !== null) jobData.stories = stories;
+  if (garage_spaces !== undefined && garage_spaces !== null) jobData.garage_spaces = garage_spaces;
+
+  // Date fields
+  if (start_date) jobData.start_date = start_date;
+  if (end_date) jobData.end_date = end_date;
 
   // Add builder_id if authenticated
   if (builderId) {
