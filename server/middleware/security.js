@@ -32,8 +32,8 @@ const SECURITY_CONFIG = {
     imgSrc: ["'self'", "data:", "blob:", "https:"],
     connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
     workerSrc: ["'self'", "blob:", "https://unpkg.com", "http://unpkg.com"],  // Allow PDF.js worker
-    frameSrc: ["'none'"],
-    objectSrc: ["'none'"],
+    frameSrc: ["'self'", "https://*.supabase.co", "blob:"],  // Allow Supabase storage PDFs in iframes
+    objectSrc: ["'self'", "https://*.supabase.co", "blob:"],  // Allow PDF objects
     baseUri: ["'self'"],
     formAction: ["'self'"],
     frameAncestors: ["'none'"]

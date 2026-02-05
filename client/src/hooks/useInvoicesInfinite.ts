@@ -17,6 +17,7 @@
  */
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
 
 // Invoice type (matching backend response)
 export interface Invoice {
@@ -108,7 +109,7 @@ async function fetchInvoicesPage(
   if (filters.status) params.append('status', filters.status);
   if (filters.search) params.append('search', filters.search);
 
-  const response = await fetch(`/api/invoices?${params.toString()}`);
+  const response = await apiFetch(`/api/invoices?${params.toString()}`);
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
