@@ -21,7 +21,10 @@ import type { Draw } from '@/types/financial';
 
 const Draws = () => {
   const { selectedJobId } = useJob();
-  const { data: draws = [], isLoading } = useDraws(selectedJobId || undefined);
+  const { data: rawDraws, isLoading } = useDraws(selectedJobId || undefined);
+
+  // Ensure draws is always an array (handles null/undefined cases)
+  const draws = Array.isArray(rawDraws) ? rawDraws : [];
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');

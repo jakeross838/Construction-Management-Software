@@ -42,7 +42,10 @@ export function DrawFormDialog({ open, onOpenChange }: DrawFormDialogProps) {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
 
   // Fetch unassigned approved invoices for the selected job
-  const { data: availableInvoices = [], isLoading: loadingInvoices } = useUnassignedApprovedInvoices(formData.job_id);
+  const { data: rawInvoices, isLoading: loadingInvoices } = useUnassignedApprovedInvoices(formData.job_id);
+
+  // Ensure availableInvoices is always an array
+  const availableInvoices = Array.isArray(rawInvoices) ? rawInvoices : [];
 
   // Calculate total from selected invoices
   const selectedTotal = useMemo(() => {

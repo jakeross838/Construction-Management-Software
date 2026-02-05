@@ -78,6 +78,17 @@ import { PaymentStatusBadge } from './PaymentStatusBadge';
 import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { usePaymentHistory } from '@/hooks/useVendorPayments';
 import { useBudgetSummary } from '@/hooks/useBudget';
+import { supabase } from '@/integrations/supabase/client';
+
+// Helper to get auth headers for authenticated requests
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (token) {
+    return { 'Authorization': `Bearer ${token}` };
+  }
+  return {};
+}
 
 // Activity action icons and labels
 const activityConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -306,14 +317,15 @@ export function InvoiceDetailDialog({
       // Use the API endpoint to save allocations
       const validAllocs = allocations.filter(a => a.cost_code_id && parseFloat(a.amount) > 0);
 
+      const authHeaders = await getAuthHeaders();
       const response = await fetch(`/api/invoices/${invoice.id}/allocate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           allocations: validAllocs.map(a => ({
             cost_code_id: a.cost_code_id,
             amount: parseFloat(a.amount),
-            notes: a.description || null,
+            notes: a.description || '',
             job_id: invoice.job_id,
           })),
         }),
