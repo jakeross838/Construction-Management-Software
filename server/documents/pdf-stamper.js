@@ -1240,14 +1240,19 @@ async function stampReadyForApproval(pdfBuffer, approvalData) {
   return Buffer.from(stampedPdfBytes);
 }
 
-// Import v2 improved designs
+// Import v2 and v3 designs
 const { stampApprovalV2, stampInDrawV2, stampPaidV2 } = require('./pdf-stamper-v2');
+const { stampApprovalV3, stampInDrawV3, stampPaidV3 } = require('./pdf-stamper-v3');
 
 module.exports = {
-  // Use v2 improved designs by default
-  stampApproval: stampApprovalV2,
-  stampInDraw: stampInDrawV2,
-  stampPaid: stampPaidV2,
+  // Use v3 clean minimal design by default (Gemini design)
+  stampApproval: stampApprovalV3,
+  stampInDraw: stampInDrawV3,
+  stampPaid: stampPaidV3,
+  // Keep v2 available
+  stampApprovalV2,
+  stampInDrawV2,
+  stampPaidV2,
   // Keep original versions available as legacy
   stampApprovalLegacy: stampApproval,
   stampInDrawLegacy: stampInDraw,

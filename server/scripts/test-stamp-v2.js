@@ -1,11 +1,11 @@
 /**
- * Test script for PDF Stamper v2
+ * Test script for PDF Stamper v3 (Gemini's clean design)
  * Run with: node server/scripts/test-stamp-v2.js
  */
 
 const fs = require('fs');
 const path = require('path');
-const { stampApprovalV2, stampInDrawV2, stampPaidV2 } = require('../documents/pdf-stamper-v2');
+const { stampApprovalV3, stampInDrawV3, stampPaidV3 } = require('../documents/pdf-stamper-v3');
 
 async function testStamp() {
   console.log('Testing PDF Stamper v2...\n');
@@ -38,11 +38,11 @@ async function testStamp() {
     isPartial: false,
   };
 
-  console.log('\nApplying APPROVED stamp...');
-  let stampedPdf = await stampApprovalV2(pdfBuffer, stampData);
+  console.log('\nApplying APPROVED stamp (v3 Gemini design)...');
+  let stampedPdf = await stampApprovalV3(pdfBuffer, stampData);
 
   console.log('Applying IN DRAW badge...');
-  stampedPdf = await stampInDrawV2(stampedPdf, 3);
+  stampedPdf = await stampInDrawV3(stampedPdf, 3);
 
   // Save the result
   const outputPath = path.join(__dirname, '..', '..', 'test-output-stamp-v2.pdf');
@@ -51,7 +51,7 @@ async function testStamp() {
 
   // Also test PAID stamp
   console.log('\nTesting PAID watermark...');
-  const paidPdf = await stampPaidV2(pdfBuffer, '2/5/2026');
+  const paidPdf = await stampPaidV3(pdfBuffer, '2/5/2026');
   const paidOutputPath = path.join(__dirname, '..', '..', 'test-output-paid-v2.pdf');
   fs.writeFileSync(paidOutputPath, paidPdf);
   console.log('✓ Saved PAID watermark PDF to:', paidOutputPath);
@@ -65,7 +65,7 @@ async function testStamp() {
       { code: '21101', name: 'Cabinetry', amount: 25000 },
     ],
   };
-  const partialPdf = await stampApprovalV2(pdfBuffer, partialData);
+  const partialPdf = await stampApprovalV3(pdfBuffer, partialData);
   const partialOutputPath = path.join(__dirname, '..', '..', 'test-output-partial-v2.pdf');
   fs.writeFileSync(partialOutputPath, partialPdf);
   console.log('✓ Saved PARTIAL stamp PDF to:', partialOutputPath);
