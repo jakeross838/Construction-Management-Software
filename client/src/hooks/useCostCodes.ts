@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 
 export interface CostCode {
   id: string;
@@ -13,7 +14,7 @@ export const useCostCodes = () => {
   return useQuery({
     queryKey: ['cost-codes'],
     queryFn: async (): Promise<CostCode[]> => {
-      const response = await fetch('/api/cost-codes');
+      const response = await apiGet('/api/cost-codes');
       if (!response.ok) throw new Error('Failed to fetch cost codes');
       const data = await response.json();
       // API returns { costCodes: [...] } (camelCase)
@@ -27,7 +28,7 @@ export const useBaseCostCodes = () => {
   return useQuery({
     queryKey: ['cost-codes-base'],
     queryFn: async (): Promise<CostCode[]> => {
-      const response = await fetch('/api/cost-codes');
+      const response = await apiGet('/api/cost-codes');
       if (!response.ok) throw new Error('Failed to fetch cost codes');
       const data = await response.json();
       // API returns { costCodes: [...] } (camelCase)
@@ -41,7 +42,7 @@ export const useChangeCostCodes = () => {
   return useQuery({
     queryKey: ['cost-codes-change'],
     queryFn: async (): Promise<CostCode[]> => {
-      const response = await fetch('/api/cost-codes');
+      const response = await apiGet('/api/cost-codes');
       if (!response.ok) throw new Error('Failed to fetch cost codes');
       const data = await response.json();
       // API returns { costCodes: [...] } (camelCase)

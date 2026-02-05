@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 export interface Vendor {
   id: string;
@@ -45,7 +46,7 @@ export function useVendors(pagination?: VendorsPaginationParams) {
       if (pagination?.limit) params.append('limit', String(pagination.limit));
 
       const url = `/api/vendors${params.size > 0 ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url);
+      const response = await apiGet(url);
       if (!response.ok) throw new Error('Failed to fetch vendors');
       return response.json();
     },
@@ -57,11 +58,7 @@ export function useCreateVendor() {
 
   return useMutation({
     mutationFn: async (vendor: VendorInsert) => {
-      const response = await fetch('/api/vendors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(vendor),
-      });
+      const response = await apiPost('/api/vendors', vendor);
       if (!response.ok) throw new Error('Failed to create vendor');
       return response.json();
     },
@@ -81,11 +78,7 @@ export function useUpdateVendor() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: VendorUpdate) => {
-      const response = await fetch(`/api/vendors/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
+      const response = await apiPatch(`/api/vendors/${id}`, updates);
       if (!response.ok) throw new Error('Failed to update vendor');
       return response.json();
     },
@@ -105,7 +98,7 @@ export function useDeleteVendor() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/vendors/${id}`, { method: 'DELETE' });
+      const response = await apiDelete(`/api/vendors/${id}`);
       if (!response.ok) throw new Error('Failed to delete vendor');
     },
     onSuccess: () => {
@@ -140,11 +133,7 @@ export function useBulkImportVendors() {
     mutationFn: async (vendors: VendorInsert[]) => {
       const results = await Promise.allSettled(
         vendors.map(vendor =>
-          fetch('/api/vendors', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(vendor),
-          }).then(res => {
+          apiPost('/api/vendors', vendor).then(res => {
             if (!res.ok) throw new Error('Failed');
             return res.json();
           })

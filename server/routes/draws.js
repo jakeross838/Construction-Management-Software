@@ -341,7 +341,13 @@ router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
     let thisPeriodCOByAlloc = {};
     let thisPeriodUnlinkedCO = { amount: 0, allocations: [] };
 
-    const invoices = drawInvoices?.map(di => di.invoice).filter(Boolean).map(inv => ({
+    // Deduplicate invoices (in case of any duplicate draw_invoice entries)
+    const seenInvoiceIds = new Set();
+    const invoices = drawInvoices?.map(di => di.invoice).filter(inv => {
+      if (!inv || seenInvoiceIds.has(inv.id)) return false;
+      seenInvoiceIds.add(inv.id);
+      return true;
+    }).map(inv => ({
       ...inv,
       vendor_name: inv.vendor?.name || null,
       invoice_allocations: inv.allocations
@@ -663,10 +669,13 @@ router.post('/:id/add-invoices', validateRequest({
       .single();
 
     try {
-      // Insert all draw_invoices first
+      // Insert all draw_invoices first (using upsert to handle potential duplicates)
       const { error: insertError } = await supabase
         .from('v2_draw_invoices')
-        .insert(invoice_ids.map(id => ({ draw_id: drawId, invoice_id: id })));
+        .upsert(
+          invoice_ids.map(id => ({ draw_id: drawId, invoice_id: id })),
+          { onConflict: 'draw_id,invoice_id', ignoreDuplicates: true }
+        );
 
       if (insertError) throw insertError;
 

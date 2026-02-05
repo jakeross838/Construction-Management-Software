@@ -1,18 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-
-// API helper
-async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || error.message || `HTTP ${response.status}`);
-  }
-  return response.json();
-}
+import { apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 interface CreateCostCodeData {
   code: string;
@@ -31,10 +19,12 @@ export const useCreateCostCode = () => {
 
   return useMutation({
     mutationFn: async (data: CreateCostCodeData) => {
-      return api('/cost-codes', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      const response = await apiPost('/api/cost-codes', data);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cost-codes'] });
@@ -52,10 +42,12 @@ export const useUpdateCostCode = () => {
 
   return useMutation({
     mutationFn: async ({ id, ...data }: UpdateCostCodeData) => {
-      return api(`/cost-codes/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      });
+      const response = await apiPatch(`/api/cost-codes/${id}`, data);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cost-codes'] });
@@ -73,7 +65,12 @@ export const useDeleteCostCode = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      return api(`/cost-codes/${id}`, { method: 'DELETE' });
+      const response = await apiDelete(`/api/cost-codes/${id}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cost-codes'] });
@@ -93,10 +90,11 @@ export const useBulkImportCostCodes = () => {
   return useMutation({
     mutationFn: async (codes: CreateCostCodeData[]) => {
       const results = await Promise.allSettled(
-        codes.map(code => api('/cost-codes', {
-          method: 'POST',
-          body: JSON.stringify(code),
-        }))
+        codes.map(async code => {
+          const response = await apiPost('/api/cost-codes', code);
+          if (!response.ok) throw new Error('Failed');
+          return response.json();
+        })
       );
 
       const succeeded = results.filter(r => r.status === 'fulfilled').length;

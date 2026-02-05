@@ -89,17 +89,27 @@ router.get('/', validate(schemas.poQuery), async (req, res) => {
       if (error) throw error;
 
       // Flatten vendor and job data for frontend compatibility
-      const flattened = (data || []).map(po => ({
-        ...po,
-        vendor_name: po.vendor?.name || null,
-        vendor_address: po.vendor?.address || null,
-        vendor_phone: po.vendor?.phone || null,
-        vendor_email: po.vendor?.email || null,
-        vendor_contact: po.vendor?.contact_name || null,
-        job_name: po.job?.name || null,
-        job_address: po.job?.address || null,
-        job_client: po.job?.client_name || null,
-      }));
+      const flattened = (data || []).map(po => {
+        // Calculate invoiced_amount from line items
+        const invoiced_amount = (po.line_items || []).reduce(
+          (sum, li) => sum + (parseFloat(li.invoiced_amount) || 0), 0
+        );
+        const total = parseFloat(po.current_amount || po.total_amount) || 0;
+        return {
+          ...po,
+          vendor_name: po.vendor?.name || null,
+          vendor_address: po.vendor?.address || null,
+          vendor_phone: po.vendor?.phone || null,
+          vendor_email: po.vendor?.email || null,
+          vendor_contact: po.vendor?.contact_name || null,
+          job_name: po.job?.name || null,
+          job_address: po.job?.address || null,
+          job_client: po.job?.client_name || null,
+          // Calculated fields
+          invoiced_amount,
+          remaining_amount: Math.max(0, total - invoiced_amount),
+        };
+      });
 
       const totalPages = Math.ceil((count || 0) / limitNum);
       return res.json({
@@ -119,17 +129,27 @@ router.get('/', validate(schemas.poQuery), async (req, res) => {
     if (error) throw error;
 
     // Flatten vendor and job data for frontend compatibility
-    const flattened = (data || []).map(po => ({
-      ...po,
-      vendor_name: po.vendor?.name || null,
-      vendor_address: po.vendor?.address || null,
-      vendor_phone: po.vendor?.phone || null,
-      vendor_email: po.vendor?.email || null,
-      vendor_contact: po.vendor?.contact_name || null,
-      job_name: po.job?.name || null,
-      job_address: po.job?.address || null,
-      job_client: po.job?.client_name || null,
-    }));
+    const flattened = (data || []).map(po => {
+      // Calculate invoiced_amount from line items
+      const invoiced_amount = (po.line_items || []).reduce(
+        (sum, li) => sum + (parseFloat(li.invoiced_amount) || 0), 0
+      );
+      const total = parseFloat(po.current_amount || po.total_amount) || 0;
+      return {
+        ...po,
+        vendor_name: po.vendor?.name || null,
+        vendor_address: po.vendor?.address || null,
+        vendor_phone: po.vendor?.phone || null,
+        vendor_email: po.vendor?.email || null,
+        vendor_contact: po.vendor?.contact_name || null,
+        job_name: po.job?.name || null,
+        job_address: po.job?.address || null,
+        job_client: po.job?.client_name || null,
+        // Calculated fields
+        invoiced_amount,
+        remaining_amount: Math.max(0, total - invoiced_amount),
+      };
+    });
 
     res.json(flattened);
   } catch (err) {
@@ -408,6 +428,12 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
       .is('deleted_at', null)
       .order('co_number', { ascending: true });
 
+    // Calculate invoiced_amount from line items
+    const invoiced_amount = (data.line_items || []).reduce(
+      (sum, li) => sum + (parseFloat(li.invoiced_amount) || 0), 0
+    );
+    const total = parseFloat(data.current_amount || data.total_amount) || 0;
+
     // Flatten vendor and job data for frontend compatibility (matches list endpoint)
     const flattened = {
       ...data,
@@ -419,6 +445,9 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
       job_name: data.job?.name || null,
       job_address: data.job?.address || null,
       job_client: data.job?.client_name || null,
+      // Calculated fields
+      invoiced_amount,
+      remaining_amount: Math.max(0, total - invoiced_amount),
       // Flatten line items cost codes
       line_items: (data.line_items || []).map(item => ({
         ...item,

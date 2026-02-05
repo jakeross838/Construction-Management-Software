@@ -733,7 +733,7 @@ export function useUploadPOAttachment() {
       formData.append('file', file);
       if (category) formData.append('category', category);
 
-      const response = await fetch(`/api/purchase-orders/${poId}/attachments`, {
+      const response = await apiFetch(`/api/purchase-orders/${poId}/attachments`, {
         method: 'POST',
         body: formData,
       });

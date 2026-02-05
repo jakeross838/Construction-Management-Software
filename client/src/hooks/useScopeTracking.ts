@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
 
-// API helper
+// API helper with auth
 async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
+  const response = await apiFetch(`/api${endpoint}`, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
   });
@@ -39,10 +40,18 @@ export function useScopeCategories() {
   return useQuery({
     queryKey: ['scope-categories'],
     queryFn: async () => {
-      const response = await api<{ categories: ScopeCategory[] }>('/scope-categories');
-      return response.categories || [];
+      try {
+        const response = await api<{ categories: ScopeCategory[] }>('/scope-categories');
+        return response.categories || [];
+      } catch (error) {
+        // Return empty array if scope categories table doesn't exist
+        // This is optional functionality for performance tracking
+        console.warn('Scope categories not available:', error);
+        return [];
+      }
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: false, // Don't retry if table doesn't exist
   });
 }
 
