@@ -162,6 +162,7 @@ async function updateCOInvoicedAmounts(allocations) {
 /**
  * PO-INT-01: Recalculate PO line item invoiced_amount from actual allocations.
  * Only counts allocations from approved/in_draw/paid invoices.
+ * Handles duplicate cost codes by using po_line_item_id first, then proportional distribution.
  */
 async function recalculatePOLineItemInvoiced(poId, costCodeId = null) {
   const validStatuses = ['approved', 'in_draw', 'paid'];
@@ -169,7 +170,7 @@ async function recalculatePOLineItemInvoiced(poId, costCodeId = null) {
   // Get all line items for this PO
   let query = supabase
     .from('v2_po_line_items')
-    .select('id, cost_code_id, invoiced_amount')
+    .select('id, cost_code_id, amount, invoiced_amount')
     .eq('po_id', poId);
 
   if (costCodeId) {
@@ -179,21 +180,64 @@ async function recalculatePOLineItemInvoiced(poId, costCodeId = null) {
   const { data: lineItems, error: liError } = await query;
   if (liError || !lineItems) return;
 
-  for (const li of lineItems) {
-    // Sum all allocations linked to this PO and cost code
-    const { data: allocations } = await supabase
-      .from('v2_invoice_allocations')
-      .select(`
-        amount,
-        invoice:v2_invoices!inner(status)
-      `)
-      .eq('po_id', poId)
-      .eq('cost_code_id', li.cost_code_id);
+  // Get all allocations for this PO from valid invoices
+  const { data: allAllocations } = await supabase
+    .from('v2_invoice_allocations')
+    .select(`
+      id,
+      amount,
+      cost_code_id,
+      po_line_item_id,
+      invoice:v2_invoices!inner(status)
+    `)
+    .eq('po_id', poId);
 
-    // Only count allocations from approved/in_draw/paid invoices
-    const totalInvoiced = (allocations || [])
-      .filter(a => validStatuses.includes(a.invoice?.status))
+  const validAllocations = (allAllocations || [])
+    .filter(a => validStatuses.includes(a.invoice?.status));
+
+  // Separate allocations with direct line item links vs cost-code-only
+  const directLinked = validAllocations.filter(a => a.po_line_item_id);
+  const costCodeOnly = validAllocations.filter(a => !a.po_line_item_id);
+
+  // Group cost-code-only allocations by cost_code_id
+  const costCodeAllocMap = {};
+  for (const alloc of costCodeOnly) {
+    const ccId = alloc.cost_code_id;
+    if (!costCodeAllocMap[ccId]) costCodeAllocMap[ccId] = 0;
+    costCodeAllocMap[ccId] += parseFloat(alloc.amount || 0);
+  }
+
+  // Count how many line items share each cost code (for proportional distribution)
+  const costCodeLineItems = {};
+  for (const li of lineItems) {
+    const ccId = li.cost_code_id;
+    if (!costCodeLineItems[ccId]) costCodeLineItems[ccId] = [];
+    costCodeLineItems[ccId].push(li);
+  }
+
+  for (const li of lineItems) {
+    // Sum directly-linked allocations for this line item
+    const directTotal = directLinked
+      .filter(a => a.po_line_item_id === li.id)
       .reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+
+    // For cost-code-only allocations, distribute proportionally if multiple line items share the cost code
+    let costCodeTotal = 0;
+    const ccId = li.cost_code_id;
+    const totalForCostCode = costCodeAllocMap[ccId] || 0;
+    if (totalForCostCode > 0) {
+      const siblings = costCodeLineItems[ccId] || [];
+      if (siblings.length === 1) {
+        costCodeTotal = totalForCostCode;
+      } else {
+        // Proportional distribution based on line item amount
+        const siblingTotal = siblings.reduce((s, sib) => s + (parseFloat(sib.amount) || 0), 0);
+        const liAmount = parseFloat(li.amount) || 0;
+        costCodeTotal = siblingTotal > 0 ? (liAmount / siblingTotal) * totalForCostCode : 0;
+      }
+    }
+
+    const totalInvoiced = Math.round((directTotal + costCodeTotal) * 100) / 100;
 
     // Update line item
     const { error: updateError } = await supabase

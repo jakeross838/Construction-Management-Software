@@ -263,7 +263,7 @@ router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
       .from('v2_draw_invoices')
       .select(`
         invoice:v2_invoices(
-          id, invoice_number, invoice_date, amount, status, pdf_url, pdf_stamped_url,
+          id, invoice_number, invoice_date, amount, status, pdf_url, pdf_stamped_url, deleted_at,
           vendor:v2_vendors(id, name),
           allocations:v2_invoice_allocations(
             id, amount, notes, change_order_id,
@@ -341,10 +341,10 @@ router.get('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
     let thisPeriodCOByAlloc = {};
     let thisPeriodUnlinkedCO = { amount: 0, allocations: [] };
 
-    // Deduplicate invoices (in case of any duplicate draw_invoice entries)
+    // Deduplicate invoices and filter out soft-deleted ones
     const seenInvoiceIds = new Set();
     const invoices = drawInvoices?.map(di => di.invoice).filter(inv => {
-      if (!inv || seenInvoiceIds.has(inv.id)) return false;
+      if (!inv || seenInvoiceIds.has(inv.id) || inv.deleted_at) return false;
       seenInvoiceIds.add(inv.id);
       return true;
     }).map(inv => ({

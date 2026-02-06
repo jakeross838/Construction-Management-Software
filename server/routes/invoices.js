@@ -1003,6 +1003,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
       const allocations = result.suggested_allocations.map(alloc => ({
         invoice_id: invoice.id,
         job_id: invoice.job_id,
+        po_id: invoice.po_id || null,
         cost_code_id: alloc.cost_code_id,
         amount: Math.round((alloc.amount || 0) * scaleFactor * 100) / 100, // Scale and round to cents
         notes: alloc.line_item_descriptions?.join('; ') || alloc.name || null
@@ -1050,6 +1051,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
             allocations.push({
               invoice_id: invoice.id,
               job_id: invoice.job_id,
+              po_id: invoice.po_id || null,
               cost_code_id: costCode.id,
               amount: item.amount || 0,
               notes: item.description
