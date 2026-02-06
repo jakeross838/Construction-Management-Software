@@ -17,12 +17,20 @@ const { supabase } = require('../../config');
 // Initialize Anthropic client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// System prompt that gives Claude full context of the Ross Built CMS
-const SYSTEM_PROMPT = `You are an AI assistant for Ross Built Custom Homes' construction management system.
+const DEFAULT_COMPANY_NAME = 'your company';
+
+/**
+ * Build system prompt for daily log intelligence with dynamic company name
+ * @param {string} companyName - The builder's company name
+ * @returns {string} The system prompt
+ */
+function buildDailyLogSystemPrompt(companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
+  return `You are an AI assistant for ${cn}'s construction management system.
 You analyze daily construction logs and generate intelligence insights.
 
 SYSTEM CONTEXT:
-- Ross Built is a custom home builder in Florida
+- ${cn} is a custom home builder
 - The system tracks jobs, vendors, POs, invoices, catalog items, schedules, and daily logs
 - Daily logs capture: crew hours by trade, material deliveries, work completed, delays
 - The catalog has products with estimated labor_hours, install_duration_hours, lead_time_days
@@ -77,6 +85,7 @@ Return ONLY valid JSON (no markdown code blocks):
     "total_insights": 0
   }
 }`;
+}
 
 
 /**
@@ -162,7 +171,7 @@ async function gatherContextForAnalysis(dailyLogId) {
 /**
  * Process a completed daily log using AI analysis
  */
-async function processDailyLogIntelligence(dailyLogId) {
+async function processDailyLogIntelligence(dailyLogId, companyName) {
   console.log(`Processing intelligence for daily log: ${dailyLogId}`);
 
   try {
@@ -242,7 +251,7 @@ Analyze this data and return insights about:
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: buildDailyLogSystemPrompt(companyName),
       messages: [{ role: 'user', content: userPrompt }]
     });
 

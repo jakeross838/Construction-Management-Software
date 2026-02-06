@@ -33,7 +33,8 @@ router.post('/daily-log/:id/process', asyncHandler(async (req, res) => {
   }
 
   // Process intelligence
-  const result = await processDailyLogIntelligence(id);
+  const companyName = req.builder?.name || 'your company';
+  const result = await processDailyLogIntelligence(id, companyName);
 
   res.json(result);
 }));

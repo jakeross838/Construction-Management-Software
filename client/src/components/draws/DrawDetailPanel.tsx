@@ -59,6 +59,7 @@ import {
   useArchiveDraw,
 } from '@/hooks/useDrawMutations';
 import { cn } from '@/lib/utils';
+import { apiGet } from '@/lib/api';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 import { COInvoicesDialog } from './COInvoicesDialog';
 import { LienReleaseQuickView } from './LienReleaseQuickView';
@@ -285,7 +286,7 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
     if (!draw) return;
     try {
       toast.info('Generating Excel export...');
-      const response = await fetch(`/api/draws/${draw.id}/export/excel`);
+      const response = await apiGet(`/api/draws/${draw.id}/export/excel`);
       if (!response.ok) throw new Error('Export failed');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -306,7 +307,7 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
     if (!draw) return;
     try {
       toast.info('Generating PDF export...');
-      const response = await fetch(`/api/draws/${draw.id}/export/pdf`);
+      const response = await apiGet(`/api/draws/${draw.id}/export/pdf`);
       if (!response.ok) throw new Error('Export failed');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);

@@ -560,7 +560,7 @@ router.get('/settings', asyncHandler(async (req, res) => {
   if (!data) {
     return res.json({
       provider: emailService.isEmailConfigured() ? 'sendgrid' : 'none',
-      from_name: 'Ross Built Custom Homes',
+      from_name: req.builder?.name || 'Your Company',
       from_email: process.env.SENDGRID_FROM_EMAIL || 'noreply@rossbuilt.com',
       reply_to_email: null,
       signature_html: null,

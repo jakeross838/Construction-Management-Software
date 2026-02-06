@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { apiGet, apiPost } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,23 +85,19 @@ interface ContractPricingEngineProps {
 
 // API functions
 const fetchPricingTypes = async (): Promise<{ types: PricingType[] }> => {
-  const res = await fetch('/api/contract-templates/pricing-types');
+  const res = await apiGet('/api/contract-templates/pricing-types');
   if (!res.ok) throw new Error('Failed to fetch pricing types');
   return res.json();
 };
 
 const fetchEstimateData = async (type: 'job' | 'lead', id: string): Promise<{ summary: EstimateSummary }> => {
-  const res = await fetch(`/api/contract-templates/estimates/${type}/${id}`);
+  const res = await apiGet(`/api/contract-templates/estimates/${type}/${id}`);
   if (!res.ok) throw new Error('Failed to fetch estimate data');
   return res.json();
 };
 
 const calculatePricing = async (params: Record<string, any>): Promise<PricingResult> => {
-  const res = await fetch('/api/contract-templates/pricing/calculate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const res = await apiPost('/api/contract-templates/pricing/calculate', params);
   if (!res.ok) throw new Error('Failed to calculate pricing');
   return res.json();
 };

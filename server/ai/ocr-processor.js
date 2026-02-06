@@ -212,11 +212,17 @@ async function extractEmbeddedImages(pdfBuffer) {
   return images;
 }
 
+const DEFAULT_COMPANY_NAME = 'your company';
+
 /**
- * Invoice extraction schema for Claude Vision
+ * Build vision extraction prompt with dynamic company name
+ * @param {string} companyName - The builder's company name
+ * @returns {string} The extraction prompt
  */
-const VISION_EXTRACTION_PROMPT = `You are analyzing a CONSTRUCTION INVOICE image for a home builder called "Ross Built Custom Homes".
-This invoice is from a vendor/subcontractor billing Ross Built for work on a construction project.
+function buildVisionExtractionPrompt(companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
+  return `You are analyzing a CONSTRUCTION INVOICE image for a home builder called "${cn}".
+This invoice is from a vendor/subcontractor billing ${cn} for work on a construction project.
 
 CRITICAL: This is a CONSTRUCTION invoice - look for JOB/PROJECT references which are essential:
 - Client/homeowner name (e.g., "Drummond", "Smith", "Jones") - often appears as "Ship To", "Project", "Job", "Customer"
@@ -227,7 +233,7 @@ CRITICAL: This is a CONSTRUCTION invoice - look for JOB/PROJECT references which
 Extract and return ONLY a valid JSON object:
 {
   "vendor": {
-    "companyName": "string - the company SENDING this invoice (NOT Ross Built)",
+    "companyName": "string - the company SENDING this invoice (NOT ${cn})",
     "email": "string or null",
     "phone": "string or null",
     "address": "string or null - vendor's business address",
@@ -240,7 +246,7 @@ Extract and return ONLY a valid JSON object:
   "invoiceType": "string: 'standard' | 'credit_memo' | 'debit_memo'",
   "job": {
     "reference": "string or null - ANY job/project identifier: client name, project name, job number",
-    "clientName": "string or null - homeowner/client name like 'Drummond', 'Smith' (NOT Ross Built, NOT the vendor)",
+    "clientName": "string or null - homeowner/client name like 'Drummond', 'Smith' (NOT ${cn}, NOT the vendor)",
     "address": "string or null - JOB SITE address where construction work was performed (NOT vendor address)"
   },
   "lineItems": [
@@ -268,11 +274,12 @@ CRITICAL RULES:
 5. Parse dates as YYYY-MM-DD
 6. If this is a payment confirmation (like FPL, utility), look for the SERVICE ADDRESS
 7. For lumber yards, look for "Ship To" or "Deliver To" as the job address`;
+}
 
 /**
  * Extract invoice data from images using Claude Vision
  */
-async function extractFromImages(images, filename) {
+async function extractFromImages(images, filename, companyName) {
   if (!images || images.length === 0) {
     throw new Error('No images to process');
   }
@@ -297,7 +304,7 @@ async function extractFromImages(images, filename) {
   // Add the extraction prompt
   content.push({
     type: 'text',
-    text: VISION_EXTRACTION_PROMPT
+    text: buildVisionExtractionPrompt(companyName)
   });
 
   try {
@@ -343,7 +350,7 @@ async function extractFromImages(images, filename) {
  * Main OCR processing function
  * Called when text extraction fails or yields minimal results
  */
-async function processWithOCR(pdfBuffer, filename) {
+async function processWithOCR(pdfBuffer, filename, companyName) {
   logger.info('Starting OCR processing', { filename });
 
   // Try to extract embedded images from PDF
@@ -360,7 +367,7 @@ async function processWithOCR(pdfBuffer, filename) {
   }
 
   // Send images to Claude Vision for extraction
-  return await extractFromImages(images, filename);
+  return await extractFromImages(images, filename, companyName);
 }
 
 module.exports = {

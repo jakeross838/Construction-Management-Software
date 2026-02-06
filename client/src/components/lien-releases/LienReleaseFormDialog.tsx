@@ -8,6 +8,7 @@ import { useCreateLienRelease, useUpdateLienRelease, releaseTypeOptions, release
 import { useVendors } from '@/hooks/useVendors';
 import { useDBJobs } from '@/hooks/useFinancialData';
 import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 import { useJob } from '@/contexts/JobContext';
 
 interface LienReleaseFormDialogProps {
@@ -41,7 +42,7 @@ export function LienReleaseFormDialog({ open, onOpenChange, release, defaultJobI
     queryKey: ['draws-for-job', jobId],
     queryFn: async () => {
       if (!jobId) return [];
-      const response = await fetch(`/api/draws?job_id=${jobId}`);
+      const response = await apiGet(`/api/draws?job_id=${jobId}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch draws: HTTP ${response.status}`);
       }

@@ -1371,7 +1371,7 @@ router.post('/:id/invites/:inviteId/send', asyncHandler(async (req, res) => {
 
   const body = `Dear ${vendor.name},
 
-Ross Built Custom Homes is pleased to invite you to submit a bid for the following scope of work:
+${req.builder?.name || 'Your Company'} is pleased to invite you to submit a bid for the following scope of work:
 
 PROJECT: ${pkg.job?.name || 'Project'}
 SCOPE: ${pkg.title}
@@ -1385,7 +1385,7 @@ Please review the attached documents and submit your proposal at your earliest c
 If you have any questions, please don't hesitate to contact us.
 
 Best regards,
-Ross Built Custom Homes`;
+${req.builder?.name || 'Your Company'}`;
 
   // Generate mailto link
   const mailtoLink = `mailto:${encodeURIComponent(vendor.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;

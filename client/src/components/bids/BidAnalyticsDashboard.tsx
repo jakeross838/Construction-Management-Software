@@ -12,6 +12,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 
 interface BidAnalytics {
   summary: {
@@ -57,7 +58,7 @@ function useBidAnalytics(jobId?: string) {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (jobId) params.append('job_id', jobId);
-      const response = await fetch(`/api/bids/analytics?${params}`);
+      const response = await apiGet(`/api/bids/analytics?${params}`);
       if (!response.ok) throw new Error('Failed to fetch analytics');
       return response.json() as Promise<BidAnalytics>;
     },

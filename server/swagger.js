@@ -1,6 +1,6 @@
 /**
  * OpenAPI/Swagger Configuration
- * API Documentation for Ross Built CMS
+ * API Documentation for Construction Management Software
  */
 
 const swaggerJsdoc = require('swagger-jsdoc');
@@ -10,17 +10,17 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Ross Built CMS API',
+      title: 'Construction Management Software API',
       version: '2.0.0',
-      description: 'Construction Management Software API for Ross Built Custom Homes',
+      description: 'Construction Management Software API',
       contact: {
-        name: 'Ross Built Custom Homes'
+        name: 'Support'
       }
     },
     servers: [
       {
-        url: 'http://localhost:3001',
-        description: 'Development server'
+        url: process.env.APP_URL || `http://localhost:${process.env.PORT || 3001}`,
+        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server'
       }
     ],
     tags: [

@@ -24,19 +24,32 @@ const SECURITY_CONFIG = {
   },
 
   // Content Security Policy
-  csp: {
+  csp: process.env.NODE_ENV === 'production' ? {
     defaultSrc: ["'self'"],
-    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com", "http://unpkg.com", "blob:"],  // Relaxed for dev; tighten in production
+    scriptSrc: ["'self'", "https://unpkg.com", "blob:"],
+    styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],  // unsafe-inline needed for styled-components/Tailwind
+    fontSrc: ["'self'", "https://fonts.gstatic.com"],
+    imgSrc: ["'self'", "data:", "blob:", "https:"],
+    connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+    workerSrc: ["'self'", "blob:", "https://unpkg.com"],
+    frameSrc: ["'self'", "https://*.supabase.co", "blob:", "data:"],
+    objectSrc: ["'self'", "https://*.supabase.co", "blob:", "data:"],
+    baseUri: ["'self'"],
+    formAction: ["'self'"],
+    frameAncestors: ["'self'"]
+  } : {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com", "http://unpkg.com", "blob:"],  // Relaxed for dev
     styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
     fontSrc: ["'self'", "https://fonts.gstatic.com"],
     imgSrc: ["'self'", "data:", "blob:", "https:"],
     connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
-    workerSrc: ["'self'", "blob:", "https://unpkg.com", "http://unpkg.com"],  // Allow PDF.js worker
-    frameSrc: ["'self'", "https://*.supabase.co", "blob:", "data:"],  // Allow Supabase storage PDFs in iframes
-    objectSrc: ["'self'", "https://*.supabase.co", "blob:", "data:"],  // Allow PDF objects
+    workerSrc: ["'self'", "blob:", "https://unpkg.com", "http://unpkg.com"],
+    frameSrc: ["'self'", "https://*.supabase.co", "blob:", "data:"],
+    objectSrc: ["'self'", "https://*.supabase.co", "blob:", "data:"],
     baseUri: ["'self'"],
     formAction: ["'self'"],
-    frameAncestors: ["'self'"]  // Allow embedding in same-origin frames (needed for PDF preview)
+    frameAncestors: ["'self'"]
   },
 
   // Referrer Policy

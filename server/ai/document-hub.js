@@ -265,8 +265,16 @@ const DOCUMENT_TYPES = {
   purchase_order: 'A document authorizing a purchase from a vendor'
 };
 
-// System context for AI - explains Ross Built CMS data model
-const SYSTEM_CONTEXT = `You are an AI assistant for Ross Built Custom Homes' construction management system.
+const DEFAULT_COMPANY_NAME = 'your company';
+
+/**
+ * Build system context for AI with dynamic company name
+ * @param {string} companyName - The builder's company name
+ * @returns {string} The system context prompt
+ */
+function buildSystemContext(companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
+  return `You are an AI assistant for ${cn}'s construction management system.
 You analyze uploaded documents and extract structured data.
 
 SYSTEM DATA MODEL:
@@ -290,6 +298,7 @@ EXTRACTION GUIDELINES:
 - Identify PO references for invoice matching
 - Note lead times, warranty terms, permit requirements when present
 - Flag any quality concerns, damage notes, or issues`;
+}
 
 
 /**
@@ -340,7 +349,7 @@ Return ONLY a JSON object:
 /**
  * Extract data from document based on its type
  */
-async function extractDocumentData(fileUrl, mimeType, documentType, extractionTemplate) {
+async function extractDocumentData(fileUrl, mimeType, documentType, extractionTemplate, companyName) {
   const schema = extractionTemplate?.extraction_schema || {};
 
   // Prepare document for vision API
@@ -349,7 +358,7 @@ async function extractDocumentData(fileUrl, mimeType, documentType, extractionTe
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    system: SYSTEM_CONTEXT,
+    system: buildSystemContext(companyName),
     messages: [{
       role: 'user',
       content: [
@@ -422,7 +431,7 @@ async function determineRouting(documentType, extractedData, routingRules) {
 /**
  * Process a document through the full pipeline
  */
-async function processDocument(documentId) {
+async function processDocument(documentId, companyName) {
   logger.info('Processing document', { component: 'ai-hub', documentId });
   const startTime = Date.now();
 
@@ -474,7 +483,7 @@ async function processDocument(documentId) {
 
     // Step 2: Extract data
     logger.debug('Extracting data from document', { component: 'ai-hub', docType });
-    const extractedData = await extractDocumentData(doc.file_url, doc.mime_type, docType, template);
+    const extractedData = await extractDocumentData(doc.file_url, doc.mime_type, docType, template, companyName);
 
     // Step 3: Determine routing
     const routingDestinations = await determineRouting(docType, extractedData, template?.routing_rules);

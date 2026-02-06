@@ -237,6 +237,7 @@ router.post('/process-document', upload.single('file'), asyncHandler(async (req,
   }
 
   const previewOnly = req.query.preview === 'true';
+  const companyName = req.builder?.name || 'your company';
   const { processPODocument } = require('../ai/po-processor');
 
   try {
@@ -244,7 +245,8 @@ router.post('/process-document', upload.single('file'), asyncHandler(async (req,
     const results = await processPODocument(
       req.file.buffer,
       req.file.originalname,
-      req.file.mimetype
+      req.file.mimetype,
+      companyName
     );
 
     // In preview mode, don't return auto-created PO
@@ -1732,7 +1734,7 @@ router.get('/:id/pdf', asyncHandler(async (req, res) => {
   const formatMoney = (amt) => '$' + (parseFloat(amt) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Header
-  drawText('ROSS BUILT CUSTOM HOMES', 50, height - 50, { size: 16, bold: true });
+  drawText((req.builder?.name || 'Your Company').toUpperCase(), 50, height - 50, { size: 16, bold: true });
   drawText('305 67th St West, Bradenton, FL 34209', 50, height - 68, { size: 9, color: rgb(0.4, 0.4, 0.4) });
 
   drawText('PURCHASE ORDER', width - 200, height - 50, { size: 14, bold: true });

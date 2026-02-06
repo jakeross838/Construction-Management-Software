@@ -213,7 +213,7 @@ const PUBLIC_ROUTES = [
 // Routes that need optional auth (work with or without user)
 const OPTIONAL_AUTH_ROUTES = [
   '/api/realtime',      // SSE connections
-  '/api/docs',          // Swagger docs
+  ...(process.env.NODE_ENV === 'production' ? [] : ['/api/docs']),  // Swagger docs only public in dev
 ];
 
 // Apply auth middleware to all /api routes
@@ -2915,7 +2915,7 @@ app.get('/api/purchase-orders/:id/pdf', asyncHandler(async (req, res) => {
   const formatMoney = (amt) => '$' + (parseFloat(amt) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Header
-  drawText('ROSS BUILT CUSTOM HOMES', 50, height - 50, { size: 16, bold: true });
+  drawText((req.builder?.name || 'Your Company').toUpperCase(), 50, height - 50, { size: 16, bold: true });
   drawText('305 67th St West, Bradenton, FL 34209', 50, height - 68, { size: 9, color: rgb(0.4, 0.4, 0.4) });
 
   drawText('PURCHASE ORDER', width - 200, height - 50, { size: 14, bold: true });
@@ -3516,6 +3516,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
     const originalFilename = req.file.originalname;
     const fileBuffer = req.file.buffer;
     const mimetype = req.file.mimetype;
+    const companyName = req.builder?.name || 'your company';
 
     logger.info('Processing upload', { component: 'upload', filename: originalFilename, mimetype, size: fileBuffer.length });
 
@@ -3537,7 +3538,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
 
     if (converted.fileType === 'PDF') {
       // Standard PDF processing
-      result = await processInvoice(fileBuffer, originalFilename);
+      result = await processInvoice(fileBuffer, originalFilename, companyName);
     } else if (converted.fileType === 'IMAGE') {
       // Image processing via Claude Vision
       logger.debug('Using Claude Vision for image', { component: 'upload', mediaType: converted.data.mediaType });
@@ -3546,7 +3547,8 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       const extracted = await extractInvoiceFromImage(
         converted.data.base64,
         converted.data.mediaType,
-        originalFilename
+        originalFilename,
+        companyName
       );
 
       // Build result similar to processInvoice output
@@ -3628,7 +3630,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       logger.debug('Processing document as text', { component: 'upload', fileType: converted.fileType });
 
       const documentText = converted.data.text;
-      const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
+      const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType, companyName);
 
       // Build result similar to processInvoice output
       result = {
@@ -3949,6 +3951,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
     const fileBuffer = req.file.buffer;
     const mimetype = req.file.mimetype;
     const uploadedBy = req.body.uploaded_by || 'System';
+    const companyName = req.builder?.name || 'your company';
 
     logger.info('Processing document', { component: 'document-processor', filename: originalFilename, mimetype });
 
@@ -3971,7 +3974,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
 
     if (converted.fileType === 'PDF') {
       // Standard PDF processing with document classification
-      result = await processDocument(pdfBuffer, originalFilename, { uploadedBy });
+      result = await processDocument(pdfBuffer, originalFilename, { uploadedBy }, companyName);
     } else if (converted.fileType === 'IMAGE') {
       // Image processing - extract invoice data using vision
       logger.debug('Using Claude Vision for image', { component: 'document-processor' });
@@ -3979,7 +3982,8 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       const extracted = await extractInvoiceFromImage(
         converted.data.base64,
         converted.data.mediaType,
-        originalFilename
+        originalFilename,
+        companyName
       );
 
       // Build result similar to processDocument output
@@ -4065,7 +4069,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
       logger.debug('Processing as text', { component: 'document-processor', fileType: converted.fileType });
 
       const documentText = converted.data.text;
-      const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
+      const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType, companyName);
 
       const { findMatchingJob, findOrCreateVendor, findOrCreatePO } = require('./ai/processor');
 
@@ -4373,11 +4377,12 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
     const originalFilename = req.file.originalname;
     const pdfBuffer = req.file.buffer;
     const uploadedBy = req.body.uploaded_by || 'System';
+    const companyName = req.builder?.name || 'your company';
 
     logger.info('Processing multi-page document', { component: 'multi-page', filename: originalFilename });
 
     // Process the combined document (extraction only)
-    const result = await processMultiPageDocument(pdfBuffer, originalFilename, { uploadedBy });
+    const result = await processMultiPageDocument(pdfBuffer, originalFilename, { uploadedBy }, companyName);
 
     // Now save each processed page to the database
     for (const page of result.processedPages) {
@@ -6641,7 +6646,9 @@ app.get('/api/jobs/:id/budget/export', async (req, res) => {
       .single();
 
     // Get budget summary
-    const budgetRes = await fetch(`http://localhost:${PORT}/api/jobs/${jobId}/budget-summary`);
+    const budgetRes = await fetch(`http://127.0.0.1:${port}/api/jobs/${jobId}/budget-summary`, {
+      headers: req.headers.authorization ? { 'Authorization': req.headers.authorization } : {}
+    });
     const budgetData = await budgetRes.json();
 
     // Create workbook
@@ -9364,7 +9371,7 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
     g702.addRow(['']);
     g702.addRow(['', `TO OWNER: ${draw.job?.client_name || '-'}`, `APPLICATION NO: ${draw.draw_number}`]);
     g702.addRow(['', `PROJECT: ${draw.job?.name || '-'}`, `PERIOD TO: ${draw.period_end || '-'}`]);
-    g702.addRow(['', 'FROM CONTRACTOR: Ross Built Custom Homes', '']);
+    g702.addRow(['', `FROM CONTRACTOR: ${req.builder?.name || 'Your Company'}`, '']);
     g702.addRow(['']);
 
     const contractSum = parseFloat(draw.job?.contract_amount) || 0;
@@ -9736,7 +9743,7 @@ app.get('/api/draws/:id/export/pdf', async (req, res) => {
 
     y -= 30;
     g702Page.drawText('FROM CONTRACTOR:', { x: 50, y, size: 9 });
-    g702Page.drawText('Ross Built Custom Homes', { x: 160, y, size: 9 });
+    g702Page.drawText(req.builder?.name || 'Your Company', { x: 160, y, size: 9 });
 
     // G702 Line Items Table
     y -= 40;
@@ -12602,10 +12609,11 @@ app.post('/api/lien-releases/process', upload.single('pdf'), asyncHandler(async 
   const { uploaded_by } = req.body;
   const pdfBuffer = req.file.buffer;
   const originalFilename = req.file.originalname;
+  const companyName = req.builder?.name || 'your company';
 
   // Import and use the lien release processor
   const { processLienRelease } = require('./ai/processor');
-  const result = await processLienRelease(pdfBuffer, originalFilename);
+  const result = await processLienRelease(pdfBuffer, originalFilename, companyName);
 
   if (!result.success) {
     return res.status(422).json({
@@ -13199,6 +13207,18 @@ app.get('*', (req, res) => {
   }
   res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
+
+// ============================================================
+// PRODUCTION ENVIRONMENT VALIDATION
+// ============================================================
+if (process.env.NODE_ENV === 'production') {
+  const requiredProdVars = ['CORS_ORIGIN', 'APP_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+  const missing = requiredProdVars.filter(v => !process.env[v]);
+  if (missing.length > 0) {
+    console.error(`FATAL: Missing required production environment variables: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+}
 
 app.listen(port, () => {
   console.log('');

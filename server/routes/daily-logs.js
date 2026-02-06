@@ -867,7 +867,8 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
     // Process intelligence feedback
     let intelligenceResult = null;
     try {
-      intelligenceResult = await processDailyLogIntelligence(id);
+      const companyName = req.builder?.name || 'your company';
+      intelligenceResult = await processDailyLogIntelligence(id, companyName);
       logger.info('Intelligence processed for daily log', { component: 'DailyLog', dailyLogId: id, summary: intelligenceResult.summary });
     } catch (err) {
       logger.error('Intelligence processing error', { component: 'DailyLog', dailyLogId: id, error: err.message });

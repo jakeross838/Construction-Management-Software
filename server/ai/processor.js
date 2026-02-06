@@ -143,13 +143,151 @@ loadMappingsFromDatabase();
 // v2_description_cost_mappings. See loadMappingsFromDatabase() above.
 
 // ============================================================
+// DYNAMIC COMPANY NAME HELPERS
+// ============================================================
+
+const DEFAULT_COMPANY_NAME = 'your company';
+
+/**
+ * Build the system prompt for invoice extraction with dynamic company name
+ * @param {string} companyName - The builder's company name
+ * @returns {string} The system prompt
+ */
+function buildInvoiceSystemPrompt(companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
+  return `You are an expert construction invoice processing assistant for ${cn}, a custom home builder.
+
+CRITICAL IDENTIFICATION RULES:
+1. ${cn} is ALWAYS the general contractor being billed - NEVER the vendor
+2. The VENDOR is the subcontractor/supplier company SENDING the invoice - they performed work or supplied materials
+3. Look for "Bill To:", "Invoice To:", "Customer:" fields - these typically show ${cn}
+4. Look for company letterhead, logo, or "From:" - this is typically the VENDOR
+
+EXTRACTION ACCURACY REQUIREMENTS:
+1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown including any prefixes like "INV-"
+2. Amounts: Extract the TOTAL AMOUNT DUE, not subtotals. Look for "Total", "Amount Due", "Balance Due", "Grand Total"
+3. Dates: Convert all dates to YYYY-MM-DD format. For dates like "12.19.2025", convert to "2025-12-19". Look for "Invoice Date", "Date", "Dated"
+4. Line items: Extract ALL work items with their individual amounts
+
+JOB/PROJECT IDENTIFICATION - CRITICAL:
+Job references can appear in MANY forms. Check ALL of these locations:
+1. "P.O.#" or "PO#" field - often contains client name or job reference (e.g., "Drummond")
+2. "Subject:" line - may contain job/project name
+3. "Job:", "Project:", "Site:", "Location:", "Re:" fields
+4. Any street address that is NOT the vendor's address
+5. Client/homeowner last name (jobs are often named after clients like "Drummond", "Smith", "Johnson")
+
+For the job.reference field, extract the BEST identifier found - this could be:
+- A client name like "Drummond" or "Smith"
+- A street address like "501 74th St"
+- A project name like "Drummond Change Orders"
+
+INVOICE TYPE DETECTION:
+Determine if this is a standard invoice, credit memo, or debit memo:
+- Look for "Credit Memo", "Credit Note", "CM", "Refund", "Return", "Adjustment" = credit_memo
+- Look for "Debit Memo", "Debit Note", "DM", "Additional Charge" = debit_memo
+- NEGATIVE amounts usually indicate credit_memo
+- If none of these indicators, use "standard"
+
+SPLIT INVOICE DETECTION:
+Check if this document needs to be split for either reason:
+
+A) MULTI-INVOICE (multiple invoices in one document):
+- Look for multiple distinct "Invoice #", "Invoice Number", or "Inv #" values
+- Look for multiple "Total" or "Amount Due" sections with different values
+- Look for section headers like "Invoice 1", "Invoice 2" or page separators
+- Look for repeated vendor header/letterhead appearing multiple times
+If detected: set splitType="multi_invoice", list each invoice in suggestedSplits
+
+B) MULTI-JOB (one invoice covering multiple jobs/projects):
+- Look for multiple different job references, addresses, or client names
+- Look for line items grouped by job (e.g., "Drummond: $5000" then "Crews: $3000")
+- Look for multiple PO numbers referencing different jobs
+- Look for sections labeled with different project names
+If detected: set splitType="multi_job", list each job with amount in suggestedSplits
+
+Set splitSuggestion.shouldSplit to true if EITHER multi-invoice OR multi-job is detected.
+
+TRADE TYPE IDENTIFICATION:
+Determine trade type from line item descriptions:
+- "Electrical", "wiring", "panel", "circuit" = electrical
+- "Plumbing", "pipe", "drain", "fixture" = plumbing
+- "HVAC", "AC", "air conditioning", "ductwork" = hvac
+- "Drywall", "sheetrock", "gypsum" = drywall
+- "Framing", "lumber", "studs" = framing
+etc.
+
+CONFIDENCE SCORING GUIDELINES:
+- 0.95-1.0: Field is clearly visible, unambiguous, professional format
+- 0.80-0.94: Field is visible but has minor formatting issues or slight ambiguity
+- 0.60-0.79: Field is partially visible, requires some inference
+- 0.40-0.59: Field is mostly inferred from context clues
+- 0.00-0.39: Field not found or highly uncertain
+
+Return ONLY valid JSON, no markdown code blocks or explanations.`;
+}
+
+/**
+ * Build a shorter system prompt for image-based invoice extraction
+ * @param {string} companyName - The builder's company name
+ * @returns {string} The system prompt
+ */
+function buildImageInvoiceSystemPrompt(companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
+  return `You are an expert construction invoice processing assistant for ${cn}, a custom home builder.
+
+CRITICAL IDENTIFICATION RULES:
+1. ${cn} is ALWAYS the general contractor being billed - NEVER the vendor
+2. The VENDOR is the subcontractor/supplier company SENDING the invoice - they performed work or supplied materials
+3. Look for "Bill To:", "Invoice To:", "Customer:" fields - these typically show ${cn}
+4. Look for company letterhead, logo, or "From:" - this is typically the VENDOR
+
+EXTRACTION ACCURACY REQUIREMENTS:
+1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown
+2. Amounts: Extract the TOTAL AMOUNT DUE. Look for "Total", "Amount Due", "Balance Due"
+3. Dates: Convert all dates to YYYY-MM-DD format
+4. Line items: Extract ALL work items with their individual amounts
+
+JOB/PROJECT IDENTIFICATION:
+Job references can appear in MANY forms. Check ALL of these locations:
+1. "P.O.#" or "PO#" field - often contains client name or job reference
+2. "Subject:", "Job:", "Project:", "Site:", "Location:", "Re:" fields
+3. Any street address that is NOT the vendor's address
+4. Client/homeowner last name
+
+Return ONLY valid JSON, no markdown code blocks.`;
+}
+
+/**
+ * Build system prompt for lien release processing
+ * @param {string} companyName - The builder's company name
+ * @returns {string} The system prompt
+ */
+function buildLienReleaseSystemPrompt(companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
+  return `You are an expert construction document processor for ${cn}.
+You specialize in analyzing lien release/waiver documents.
+
+LIEN RELEASE TYPES:
+- Conditional Progress: Payment not yet received, covers ongoing work
+- Unconditional Progress: Payment received, covers ongoing work
+- Conditional Final: Payment not yet received, final completion
+- Unconditional Final: Payment received, final completion
+
+The vendor/claimant is the subcontractor GIVING UP lien rights.
+${cn} is typically the party being released (the customer/owner's contractor).
+
+Return ONLY valid JSON, no markdown code blocks.`;
+}
+
+// ============================================================
 // EXTRACTION SCHEMA
 // ============================================================
 
 const INVOICE_SCHEMA = `{
   "documentType": "invoice",
   "vendor": {
-    "companyName": "string, the company SENDING the invoice (NOT Ross Built)",
+    "companyName": "string, the company SENDING the invoice (NOT the general contractor)",
     "tradeType": "string: plumbing, electrical, hvac, drywall, framing, roofing, painting, flooring, tile, concrete, masonry, landscaping, pool, cabinets, countertops, windows_doors, insulation, stucco, siding, general, other",
     "address": "string or null",
     "phone": "string or null",
@@ -289,39 +427,18 @@ async function extractFromImage(base64Image, mediaType, schema, systemPrompt) {
  * Extract invoice data from a text document (Word, Excel)
  * Uses the existing text-based extraction with the extracted text
  */
-async function extractInvoiceFromText(documentText, filename, documentType) {
+async function extractInvoiceFromText(documentText, filename, documentType, companyName) {
   logger.info('Extracting invoice from text', { component: 'ai', documentType, chars: documentText.length });
-  return await extractInvoiceData(documentText, filename);
+  return await extractInvoiceData(documentText, filename, companyName);
 }
 
 /**
  * Extract invoice data from an image using Claude Vision
  */
-async function extractInvoiceFromImage(base64Image, mediaType, filename) {
+async function extractInvoiceFromImage(base64Image, mediaType, filename, companyName) {
   logger.info('Extracting invoice from image', { component: 'ai', filename, mediaType });
 
-  const systemPrompt = `You are an expert construction invoice processing assistant for Ross Built Custom Homes, a custom home builder in Florida.
-
-CRITICAL IDENTIFICATION RULES:
-1. Ross Built Custom Homes (or "Ross Built") is ALWAYS the general contractor being billed - NEVER the vendor
-2. The VENDOR is the subcontractor/supplier company SENDING the invoice - they performed work or supplied materials
-3. Look for "Bill To:", "Invoice To:", "Customer:" fields - these typically show Ross Built
-4. Look for company letterhead, logo, or "From:" - this is typically the VENDOR
-
-EXTRACTION ACCURACY REQUIREMENTS:
-1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown
-2. Amounts: Extract the TOTAL AMOUNT DUE. Look for "Total", "Amount Due", "Balance Due"
-3. Dates: Convert all dates to YYYY-MM-DD format
-4. Line items: Extract ALL work items with their individual amounts
-
-JOB/PROJECT IDENTIFICATION:
-Job references can appear in MANY forms. Check ALL of these locations:
-1. "P.O.#" or "PO#" field - often contains client name or job reference
-2. "Subject:", "Job:", "Project:", "Site:", "Location:", "Re:" fields
-3. Any street address that is NOT the vendor's address
-4. Client/homeowner last name
-
-Return ONLY valid JSON, no markdown code blocks.`;
+  const systemPrompt = buildImageInvoiceSystemPrompt(companyName);
 
   return await extractFromImage(base64Image, mediaType, INVOICE_SCHEMA, systemPrompt);
 }
@@ -333,7 +450,8 @@ Return ONLY valid JSON, no markdown code blocks.`;
 /**
  * Extract invoice data using Claude AI with confidence scores
  */
-async function extractInvoiceData(pdfText, filename) {
+async function extractInvoiceData(pdfText, filename, companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
   const prompt = `Analyze this invoice document and extract ALL information.
 
 FILE: ${filename}
@@ -346,7 +464,7 @@ ${INVOICE_SCHEMA}
 
 IMPORTANT:
 - The vendor is the company SENDING the invoice (doing the work)
-- Ross Built is the contractor being billed, NOT the vendor
+- ${cn} is the contractor being billed, NOT the vendor
 - Extract ALL line items with amounts
 - If cost codes are mentioned (like 09250 or "Division 9"), include them
 - Dates must be YYYY-MM-DD format
@@ -363,76 +481,7 @@ For extractionConfidence, rate each field 0-1:
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: `You are an expert construction invoice processing assistant for Ross Built Custom Homes, a custom home builder in Florida.
-
-CRITICAL IDENTIFICATION RULES:
-1. Ross Built Custom Homes (or "Ross Built") is ALWAYS the general contractor being billed - NEVER the vendor
-2. The VENDOR is the subcontractor/supplier company SENDING the invoice - they performed work or supplied materials
-3. Look for "Bill To:", "Invoice To:", "Customer:" fields - these typically show Ross Built
-4. Look for company letterhead, logo, or "From:" - this is typically the VENDOR
-
-EXTRACTION ACCURACY REQUIREMENTS:
-1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown including any prefixes like "INV-"
-2. Amounts: Extract the TOTAL AMOUNT DUE, not subtotals. Look for "Total", "Amount Due", "Balance Due", "Grand Total"
-3. Dates: Convert all dates to YYYY-MM-DD format. For dates like "12.19.2025", convert to "2025-12-19". Look for "Invoice Date", "Date", "Dated"
-4. Line items: Extract ALL work items with their individual amounts
-
-JOB/PROJECT IDENTIFICATION - CRITICAL:
-Job references can appear in MANY forms. Check ALL of these locations:
-1. "P.O.#" or "PO#" field - often contains client name or job reference (e.g., "Drummond")
-2. "Subject:" line - may contain job/project name
-3. "Job:", "Project:", "Site:", "Location:", "Re:" fields
-4. Any street address that is NOT the vendor's address
-5. Client/homeowner last name (jobs are often named after clients like "Drummond", "Smith", "Johnson")
-
-For the job.reference field, extract the BEST identifier found - this could be:
-- A client name like "Drummond" or "Smith"
-- A street address like "501 74th St"
-- A project name like "Drummond Change Orders"
-
-INVOICE TYPE DETECTION:
-Determine if this is a standard invoice, credit memo, or debit memo:
-- Look for "Credit Memo", "Credit Note", "CM", "Refund", "Return", "Adjustment" = credit_memo
-- Look for "Debit Memo", "Debit Note", "DM", "Additional Charge" = debit_memo
-- NEGATIVE amounts usually indicate credit_memo
-- If none of these indicators, use "standard"
-
-SPLIT INVOICE DETECTION:
-Check if this document needs to be split for either reason:
-
-A) MULTI-INVOICE (multiple invoices in one document):
-- Look for multiple distinct "Invoice #", "Invoice Number", or "Inv #" values
-- Look for multiple "Total" or "Amount Due" sections with different values
-- Look for section headers like "Invoice 1", "Invoice 2" or page separators
-- Look for repeated vendor header/letterhead appearing multiple times
-If detected: set splitType="multi_invoice", list each invoice in suggestedSplits
-
-B) MULTI-JOB (one invoice covering multiple jobs/projects):
-- Look for multiple different job references, addresses, or client names
-- Look for line items grouped by job (e.g., "Drummond: $5000" then "Crews: $3000")
-- Look for multiple PO numbers referencing different jobs
-- Look for sections labeled with different project names
-If detected: set splitType="multi_job", list each job with amount in suggestedSplits
-
-Set splitSuggestion.shouldSplit to true if EITHER multi-invoice OR multi-job is detected.
-
-TRADE TYPE IDENTIFICATION:
-Determine trade type from line item descriptions:
-- "Electrical", "wiring", "panel", "circuit" = electrical
-- "Plumbing", "pipe", "drain", "fixture" = plumbing
-- "HVAC", "AC", "air conditioning", "ductwork" = hvac
-- "Drywall", "sheetrock", "gypsum" = drywall
-- "Framing", "lumber", "studs" = framing
-etc.
-
-CONFIDENCE SCORING GUIDELINES:
-- 0.95-1.0: Field is clearly visible, unambiguous, professional format
-- 0.80-0.94: Field is visible but has minor formatting issues or slight ambiguity
-- 0.60-0.79: Field is partially visible, requires some inference
-- 0.40-0.59: Field is mostly inferred from context clues
-- 0.00-0.39: Field not found or highly uncertain
-
-Return ONLY valid JSON, no markdown code blocks or explanations.`,
+      system: buildInvoiceSystemPrompt(companyName),
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -1496,7 +1545,7 @@ async function findOrCreatePO(jobId, vendorId, invoiceData, jobName) {
  * @param {string} filename - Original filename
  * @returns {Promise<Object>} - Raw extracted data with extraction confidence
  */
-async function extractInvoiceRaw(pdfBuffer, filename) {
+async function extractInvoiceRaw(pdfBuffer, filename, companyName) {
   const result = {
     success: false,
     extracted: null,
@@ -1510,29 +1559,7 @@ async function extractInvoiceRaw(pdfBuffer, filename) {
     result.messages.push('Using Claude Vision for extraction...');
     result.extractionMethod = 'vision';
 
-    const systemPrompt = `You are an expert construction invoice processing assistant for Ross Built Custom Homes, a custom home builder in Florida.
-
-CRITICAL IDENTIFICATION RULES:
-1. Ross Built Custom Homes (or "Ross Built") is ALWAYS the general contractor being billed - NEVER the vendor
-2. The VENDOR is the subcontractor/supplier company SENDING the invoice - they performed work or supplied materials
-3. Look for "Bill To:", "Invoice To:", "Customer:" fields - these typically show Ross Built
-4. Look for company letterhead, logo, or "From:" - this is typically the VENDOR
-
-EXTRACTION ACCURACY REQUIREMENTS:
-1. Invoice numbers: Look for "Invoice #", "Inv #", "Invoice No.", "Reference #" - extract exactly as shown
-2. Amounts: Extract the TOTAL AMOUNT DUE. Look for "Total", "Amount Due", "Balance Due"
-3. Dates: Convert all dates to YYYY-MM-DD format
-4. Line items: Extract ALL work items with their individual amounts
-
-JOB/PROJECT IDENTIFICATION:
-Job references can appear in MANY forms. Check ALL of these locations:
-1. "P.O.#" or "PO#" field - often contains client name or job reference
-2. "Subject:", "Job:", "Project:", "Site:", "Location:", "Re:" fields
-3. Any street address that is NOT the vendor's address
-4. Client/homeowner last name
-
-Focus on ACCURATE extraction. Validation will happen in Stage 2.
-Return ONLY valid JSON, no markdown code blocks.`;
+    const systemPrompt = buildImageInvoiceSystemPrompt(companyName) + '\n\nFocus on ACCURATE extraction. Validation will happen in Stage 2.';
 
     const base64PDF = pdfBuffer.toString('base64');
 
@@ -1668,7 +1695,7 @@ function calculateFinalConfidence(extractionConfidence, validationScore) {
  * @param {string} filename - Original filename
  * @returns {Promise<Object>} - Processing results with combined confidence
  */
-async function processInvoiceTwoStage(pdfBuffer, filename) {
+async function processInvoiceTwoStage(pdfBuffer, filename, companyName) {
   const result = {
     success: false,
     extracted: null,
@@ -1684,7 +1711,7 @@ async function processInvoiceTwoStage(pdfBuffer, filename) {
   try {
     // Stage 1: Raw extraction
     result.messages.push('Stage 1: Extracting invoice data with Claude Vision...');
-    const stage1 = await extractInvoiceRaw(pdfBuffer, filename);
+    const stage1 = await extractInvoiceRaw(pdfBuffer, filename, companyName);
 
     if (!stage1.success || !stage1.extracted) {
       result.success = false;
@@ -1791,7 +1818,7 @@ function calculateOverallExtractionConfidence(extractionConfidence) {
  * @param {string} originalFilename - Original filename
  * @returns {Promise<object>} - Processing results with confidence scores
  */
-async function processInvoice(pdfBuffer, originalFilename) {
+async function processInvoice(pdfBuffer, originalFilename, companyName) {
   const results = {
     success: false,
     ai_processed: true,
@@ -1832,7 +1859,7 @@ async function processInvoice(pdfBuffer, originalFilename) {
 
       try {
         // Use Vision API for OCR extraction
-        extracted = await ocrProcessor.processWithOCR(pdfBuffer, originalFilename);
+        extracted = await ocrProcessor.processWithOCR(pdfBuffer, originalFilename, companyName);
         results.messages.push('Successfully extracted data via OCR');
         results.ai_extracted_data.extraction_method = 'vision_ocr';
       } catch (ocrErr) {
@@ -1840,13 +1867,13 @@ async function processInvoice(pdfBuffer, originalFilename) {
         logger.error('OCR failed', { component: 'ocr', error: ocrErr.message });
         results.messages.push(`OCR failed: ${ocrErr.message} - falling back to text extraction`);
         results.review_flags.push('low_text_quality');
-        extracted = await extractInvoiceData(pdfText || '', originalFilename);
+        extracted = await extractInvoiceData(pdfText || '', originalFilename, companyName);
         results.ai_extracted_data.extraction_method = 'text_fallback';
       }
     } else {
       // Normal text-based extraction
       results.messages.push('Extracting invoice data with AI...');
-      extracted = await extractInvoiceData(pdfText || '', originalFilename);
+      extracted = await extractInvoiceData(pdfText || '', originalFilename, companyName);
       results.ai_extracted_data.extraction_method = 'text';
     }
 
@@ -2222,7 +2249,7 @@ const LIEN_RELEASE_SCHEMA = `{
     "address": "string or null, property address",
     "owner": "string or null, property owner name"
   },
-  "customer": "string or null, who the release is made to (usually Ross Built)",
+  "customer": "string or null, who the release is made to (usually the general contractor)",
   "amount": "number or null, the payment amount being released",
   "throughDate": "string or null, YYYY-MM-DD format - date through which work/payment is covered",
   "releaseDate": "string or null, YYYY-MM-DD format - date the release was signed",
@@ -2247,7 +2274,8 @@ const LIEN_RELEASE_SCHEMA = `{
 /**
  * Extract lien release data using Claude AI
  */
-async function extractLienReleaseData(pdfText, filename) {
+async function extractLienReleaseData(pdfText, filename, companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
   const prompt = `Analyze this lien release/waiver document and extract ALL information.
 
 FILE: ${filename}
@@ -2267,7 +2295,7 @@ CRITICAL IDENTIFICATION RULES:
 
 2. The VENDOR is the company releasing/waiving their lien rights (the subcontractor/supplier)
 3. Look for "Claimant", "Contractor", "Maker" - this is usually the vendor
-4. Ross Built is typically the "Customer" or "Maker" being released TO
+4. ${cn} is typically the "Customer" or "Maker" being released TO
 
 5. For AMOUNT:
    - Look for payment amount, often handwritten or typed
@@ -2293,19 +2321,7 @@ Return ONLY valid JSON, no markdown.`;
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: `You are an expert construction document processor for Ross Built Custom Homes in Florida.
-You specialize in analyzing lien release/waiver documents.
-
-LIEN RELEASE TYPES:
-- Conditional Progress: Payment not yet received, covers ongoing work
-- Unconditional Progress: Payment received, covers ongoing work
-- Conditional Final: Payment not yet received, final completion
-- Unconditional Final: Payment received, final completion
-
-The vendor/claimant is the subcontractor GIVING UP lien rights.
-Ross Built is typically the party being released (the customer/owner's contractor).
-
-Return ONLY valid JSON, no markdown code blocks.`,
+      system: buildLienReleaseSystemPrompt(companyName),
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -2362,7 +2378,7 @@ Return ONLY valid JSON, no markdown code blocks.`,
  * @param {string} originalFilename - Original filename
  * @returns {Promise<object>} - Processing results with confidence scores
  */
-async function processLienRelease(pdfBuffer, originalFilename) {
+async function processLienRelease(pdfBuffer, originalFilename, companyName) {
   const results = {
     success: false,
     ai_processed: true,
@@ -2394,29 +2410,17 @@ async function processLienRelease(pdfBuffer, originalFilename) {
 
     if (isScannedPDF) {
       // Use Claude's vision capability for scanned PDFs
-      const systemPrompt = `You are an expert construction document processor for Ross Built Custom Homes in Florida.
-You specialize in analyzing lien release/waiver documents from scanned images.
-
-LIEN RELEASE TYPES:
-- conditional_progress: Payment not yet received, covers ongoing work
-- unconditional_progress: Payment received, covers ongoing work
-- conditional_final: Payment not yet received, final completion
-- unconditional_final: Payment received, final completion
-
-The vendor/claimant is the subcontractor GIVING UP lien rights.
-Ross Built is typically the party being released (the customer/owner's contractor).
+      const systemPrompt = buildLienReleaseSystemPrompt(companyName) + `
 
 EXTRACTION TIPS FOR SCANNED DOCUMENTS:
 - Look carefully at handwritten text for amounts and dates
 - The header/title usually indicates the release type
 - Vendor name is often in letterhead or at the bottom
-- Job address/owner may be handwritten in blanks
-
-Return ONLY valid JSON, no markdown code blocks.`;
+- Job address/owner may be handwritten in blanks`;
 
       extracted = await extractFromScannedPDF(pdfBuffer, LIEN_RELEASE_SCHEMA, systemPrompt);
     } else {
-      extracted = await extractLienReleaseData(pdfText || '', originalFilename);
+      extracted = await extractLienReleaseData(pdfText || '', originalFilename, companyName);
     }
 
     // Normalize the extracted data (for both text and vision extraction)
@@ -2639,7 +2643,7 @@ Return JSON only:
  * @param {Object} options - Processing options
  * @returns {Promise<Object>} - Processing result with document type and extracted data
  */
-async function processDocument(pdfBuffer, originalFilename, options = {}) {
+async function processDocument(pdfBuffer, originalFilename, options = {}, companyName) {
   const result = {
     success: false,
     documentType: null,
@@ -2670,7 +2674,7 @@ async function processDocument(pdfBuffer, originalFilename, options = {}) {
     switch (classification.type) {
       case DOCUMENT_TYPES.INVOICE:
         result.messages.push('Processing as invoice...');
-        const invoiceResult = await processInvoice(pdfBuffer, originalFilename, options.uploadedBy);
+        const invoiceResult = await processInvoice(pdfBuffer, originalFilename, companyName);
         result.data = invoiceResult;
         result.success = invoiceResult.success;
         result.redirect = {
@@ -2685,7 +2689,7 @@ async function processDocument(pdfBuffer, originalFilename, options = {}) {
 
       case DOCUMENT_TYPES.LIEN_RELEASE:
         result.messages.push('Processing as lien release...');
-        const lienResult = await processLienRelease(pdfBuffer, originalFilename);
+        const lienResult = await processLienRelease(pdfBuffer, originalFilename, companyName);
         result.data = lienResult;
         result.success = lienResult.success;
         // Note: lien release needs to be saved separately - we return the extracted data
@@ -2766,7 +2770,7 @@ async function processDocument(pdfBuffer, originalFilename, options = {}) {
         // Default to invoice processing for construction documents
         result.messages.push('Document type unclear - attempting to process as invoice');
         result.documentType = DOCUMENT_TYPES.INVOICE;
-        const fallbackResult = await processInvoice(pdfBuffer, originalFilename, options.uploadedBy);
+        const fallbackResult = await processInvoice(pdfBuffer, originalFilename, companyName);
         result.data = fallbackResult;
         result.success = fallbackResult.success;
         result.redirect = {
@@ -3243,7 +3247,7 @@ async function splitPDFByInvoices(pdfBuffer, invoiceBoundaries) {
  * @param {Object} options - Processing options
  * @returns {Promise<Object>} - Results for all invoices
  */
-async function processMultiInvoicePDF(pdfBuffer, originalFilename, options = {}) {
+async function processMultiInvoicePDF(pdfBuffer, originalFilename, options = {}, companyName) {
   const results = {
     success: true,
     isMultiInvoice: false,
@@ -3266,7 +3270,7 @@ async function processMultiInvoicePDF(pdfBuffer, originalFilename, options = {})
     if (!analysis.isMultiInvoice) {
       results.messages.push('Single invoice detected, processing normally');
       // Process as single invoice
-      const singleResult = await processInvoice(pdfBuffer, originalFilename);
+      const singleResult = await processInvoice(pdfBuffer, originalFilename, companyName);
       results.invoicesProcessed.push({
         invoiceIndex: 1,
         pageRange: `1-${analysis.totalPages}`,
@@ -3289,7 +3293,7 @@ async function processMultiInvoicePDF(pdfBuffer, originalFilename, options = {})
         const splitFilename = originalFilename.replace('.pdf', `_inv${split.invoiceIndex}.pdf`);
 
         // Process the split PDF
-        const invoiceResult = await processInvoice(split.buffer, splitFilename);
+        const invoiceResult = await processInvoice(split.buffer, splitFilename, companyName);
 
         // IMPORTANT: Attach the PDF buffer to the result for upload
         invoiceResult.pdfBuffer = split.buffer;
@@ -3371,7 +3375,7 @@ async function splitPDF(pdfBuffer) {
  * @param {Object} options - Processing options
  * @returns {Promise<Object>} - Results for all pages
  */
-async function processMultiPageDocument(pdfBuffer, originalFilename, options = {}) {
+async function processMultiPageDocument(pdfBuffer, originalFilename, options = {}, companyName) {
   const results = {
     success: true,
     totalPages: 0,
@@ -3401,7 +3405,7 @@ async function processMultiPageDocument(pdfBuffer, originalFilename, options = {
         const pageFilename = originalFilename.replace('.pdf', `_page${page.pageNumber}.pdf`);
 
         // Process with the master document processor
-        const pageResult = await processDocument(page.buffer, pageFilename, options);
+        const pageResult = await processDocument(page.buffer, pageFilename, options, companyName);
 
         if (pageResult.success) {
           results.processedPages.push({

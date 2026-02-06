@@ -110,7 +110,7 @@ async function generateProposalPDF(data) {
     });
     // Company info to the right of logo
     const textX = MARGIN + logoDims.width + 20;
-    page.drawText(company.company_name || 'Ross Built Custom Homes', {
+    page.drawText(company.company_name || 'Your Company', {
       x: textX, y: y - 15, font: boldFont, size: 14, color: BRAND_COLOR
     });
     page.drawText(company.address || '', {
@@ -127,7 +127,7 @@ async function generateProposalPDF(data) {
     y -= Math.max(logoDims.height, 60) + 20;
   } else {
     // No logo - just text header
-    page.drawText(company.company_name || 'Ross Built Custom Homes', {
+    page.drawText(company.company_name || 'Your Company', {
       x: MARGIN, y, font: boldFont, size: 16, color: BRAND_COLOR
     });
     y -= 40;

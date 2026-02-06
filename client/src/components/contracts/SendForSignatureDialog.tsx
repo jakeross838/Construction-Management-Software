@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { apiPost } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -54,11 +55,7 @@ const createSignatureRequest = async (data: {
   original_document_url?: string;
   created_by?: string;
 }) => {
-  const res = await fetch('/api/signatures/requests', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  const res = await apiPost('/api/signatures/requests', data);
   if (!res.ok) {
     const error = await res.json();
     throw new Error(error.message || 'Failed to create signature request');
@@ -67,11 +64,7 @@ const createSignatureRequest = async (data: {
 };
 
 const sendSignatureRequest = async (requestId: string, sentBy: string) => {
-  const res = await fetch(`/api/signatures/requests/${requestId}/send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sent_by: sentBy }),
-  });
+  const res = await apiPost(`/api/signatures/requests/${requestId}/send`, { sent_by: sentBy });
   if (!res.ok) {
     const error = await res.json();
     throw new Error(error.message || 'Failed to send signature request');

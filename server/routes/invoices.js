@@ -711,6 +711,7 @@ router.post('/process', requirePermission('canApproveInvoices'), upload.single('
 
     // Get builder_id from authenticated user
     const builderId = getBuilderId(req);
+    const companyName = req.builder?.name || 'your company';
 
     const originalFilename = req.file.originalname;
     const fileBuffer = req.file.buffer;
@@ -733,15 +734,15 @@ router.post('/process', requirePermission('canApproveInvoices'), upload.single('
 
     if (converted.fileType === 'PDF') {
       // Use two-stage pipeline for PDFs
-      twoStageResult = await processInvoiceTwoStage(fileBuffer, originalFilename);
+      twoStageResult = await processInvoiceTwoStage(fileBuffer, originalFilename, companyName);
 
       // Fall back to original process if two-stage fails
       if (!twoStageResult.success) {
         logger.info('Falling back to original processInvoice', { component: 'TwoStage' });
-        result = await processInvoice(fileBuffer, originalFilename);
+        result = await processInvoice(fileBuffer, originalFilename, companyName);
       } else {
         // Build result from two-stage pipeline
-        result = await processInvoice(fileBuffer, originalFilename);
+        result = await processInvoice(fileBuffer, originalFilename, companyName);
 
         // Enhance result with two-stage data
         result.twoStageResult = {
@@ -777,7 +778,8 @@ router.post('/process', requirePermission('canApproveInvoices'), upload.single('
       const extracted = await extractInvoiceFromImage(
         converted.data.base64,
         converted.data.mediaType,
-        originalFilename
+        originalFilename,
+        companyName
       );
 
       result = {
@@ -850,7 +852,7 @@ router.post('/process', requirePermission('canApproveInvoices'), upload.single('
       }
     } else if (converted.fileType === 'WORD' || converted.fileType === 'EXCEL') {
       const documentText = converted.data.text;
-      const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType);
+      const extracted = await extractInvoiceFromText(documentText, originalFilename, converted.fileType, companyName);
 
       result = {
         success: true,
@@ -1214,6 +1216,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
 
     // Get builder_id from authenticated user
     const builderId = getBuilderId(req);
+    const companyName = req.builder?.name || 'your company';
 
     const originalFilename = req.file.originalname;
     const fileBuffer = req.file.buffer;
@@ -1221,7 +1224,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
     logger.info('Batch processing multi-invoice PDF', { component: 'MultiInvoice', filename: originalFilename });
 
     // Process the multi-invoice PDF
-    const batchResult = await processMultiInvoicePDF(fileBuffer, originalFilename);
+    const batchResult = await processMultiInvoicePDF(fileBuffer, originalFilename, {}, companyName);
 
     if (!batchResult.isMultiInvoice) {
       // Single invoice - redirect to normal flow response

@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { apiPost } from '@/lib/api';
 
 interface Job {
   id: string;
@@ -157,38 +158,23 @@ export function DailyLogForm() {
     },
   });
 
-  // Get auth headers
-  const getHeaders = async () => {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : '',
-    };
-  };
-
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (status: 'draft' | 'completed') => {
-      const headers = await getHeaders();
-      const response = await fetch('/api/daily-logs', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          job_id: selectedJobId,
-          log_date: logDate,
-          weather_conditions: weather,
-          temperature_high: tempHigh ? parseInt(tempHigh) : null,
-          temperature_low: tempLow ? parseInt(tempLow) : null,
-          work_completed: workCompleted || null,
-          delays_issues: delaysIssues || null,
-          site_visitors: siteVisitors || null,
-          safety_notes: safetyNotes || null,
-          status,
-          created_by: user?.email || 'mobile_user',
-          crew_entries: crewEntries.filter(c => c.vendor_id || c.trade),
-          delivery_entries: deliveryEntries.filter(d => d.description),
-        }),
+      const response = await apiPost('/api/daily-logs', {
+        job_id: selectedJobId,
+        log_date: logDate,
+        weather_conditions: weather,
+        temperature_high: tempHigh ? parseInt(tempHigh) : null,
+        temperature_low: tempLow ? parseInt(tempLow) : null,
+        work_completed: workCompleted || null,
+        delays_issues: delaysIssues || null,
+        site_visitors: siteVisitors || null,
+        safety_notes: safetyNotes || null,
+        status,
+        created_by: user?.email || 'mobile_user',
+        crew_entries: crewEntries.filter(c => c.vendor_id || c.trade),
+        delivery_entries: deliveryEntries.filter(d => d.description),
       });
 
       if (!response.ok) {

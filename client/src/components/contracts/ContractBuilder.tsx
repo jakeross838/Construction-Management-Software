@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { apiPost } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -200,14 +201,10 @@ TO PROTECT YOURSELF:
 
     setIsDownloading(true);
     try {
-      const response = await fetch('/api/contract-templates/pdf/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: renderedContent,
-          title: contractName || template.name || 'Contract',
-          include_florida_disclosure: template.requires_florida_lien_disclosure,
-        }),
+      const response = await apiPost('/api/contract-templates/pdf/generate', {
+        content: renderedContent,
+        title: contractName || template.name || 'Contract',
+        include_florida_disclosure: template.requires_florida_lien_disclosure,
       });
 
       if (!response.ok) throw new Error('Failed to generate PDF');

@@ -291,8 +291,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 router.post('/process/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const companyName = req.builder?.name || 'your company';
 
-    const result = await processDocument(id);
+    const result = await processDocument(id, companyName);
 
     if (result.success) {
       res.json({
@@ -367,7 +368,8 @@ router.post('/upload-and-process', upload.single('file'), async (req, res) => {
     }
 
     // Process immediately
-    const result = await processDocument(doc.id);
+    const companyName = req.builder?.name || 'your company';
+    const result = await processDocument(doc.id, companyName);
 
     res.json({
       success: result.success,

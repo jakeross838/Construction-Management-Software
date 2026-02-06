@@ -204,7 +204,7 @@ router.post('/:id/generate', asyncHandler(async (req, res) => {
 
   // Generate PDF
   const pdfBuffer = await generateProposalPDF({
-    company: company || { company_name: 'Ross Built Custom Homes' },
+    company: company || { company_name: 'Your Company' },
     job: proposal.job || {},
     estimate: {
       ...proposal.estimate,

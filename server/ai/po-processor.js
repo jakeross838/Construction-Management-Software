@@ -176,12 +176,21 @@ async function extractFromImage(base64Image, mediaType, systemPrompt) {
 // AI EXTRACTION
 // ============================================================
 
-const SYSTEM_PROMPT = `You are an expert construction document processing assistant for Ross Built Custom Homes, a custom home builder in Florida.
+const DEFAULT_COMPANY_NAME = 'your company';
+
+/**
+ * Build system prompt for PO document processing with dynamic company name
+ * @param {string} companyName - The builder's company name
+ * @returns {string} The system prompt
+ */
+function buildPOSystemPrompt(companyName) {
+  const cn = companyName || DEFAULT_COMPANY_NAME;
+  return `You are an expert construction document processing assistant for ${cn}, a custom home builder.
 
 DOCUMENT IDENTIFICATION:
 1. This is a PROPOSAL, QUOTE, ESTIMATE, or BID from a subcontractor/supplier
 2. The VENDOR is the company providing the quote - they will perform work or supply materials
-3. Ross Built (or the homeowner) is the RECIPIENT who will approve and pay
+3. ${cn} (or the homeowner) is the RECIPIENT who will approve and pay
 
 CRITICAL - LINE ITEM EXTRACTION:
 This is the MOST IMPORTANT part. Line items will be used to match against future invoices for payment verification.
@@ -224,7 +233,7 @@ Rules for line items:
 6. The sum of all line item amounts should equal the total amount
 
 VENDOR EXTRACTION:
-- Company name from letterhead, logo, or header (NOT Ross Built)
+- Company name from letterhead, logo, or header (NOT ${cn})
 - Full address, phone, email if available
 - Trade type based on what they're selling/installing
 
@@ -234,11 +243,12 @@ JOB/PROJECT IDENTIFICATION:
 - Project name or reference number
 
 Return ONLY valid JSON, no markdown code blocks.`;
+}
 
 /**
  * Extract PO data from text using Claude AI
  */
-async function extractPOData(documentText, filename) {
+async function extractPOData(documentText, filename, companyName) {
   const prompt = `Analyze this proposal/quote document and extract ALL information.
 
 FILE: ${filename}
@@ -261,7 +271,7 @@ CRITICAL INSTRUCTIONS:
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: buildPOSystemPrompt(companyName),
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -746,7 +756,7 @@ async function learnCostCodeMapping(description, costCodeId, vendorTrade = null)
  * @param {string} mimeType - File MIME type
  * @returns {Promise<object>} - Processing results
  */
-async function processPODocument(fileBuffer, filename, mimeType = 'application/pdf') {
+async function processPODocument(fileBuffer, filename, mimeType = 'application/pdf', companyName) {
   const results = {
     success: false,
     extracted: null,
@@ -769,15 +779,15 @@ async function processPODocument(fileBuffer, filename, mimeType = 'application/p
 
       if (isScanned) {
         results.messages.push('Scanned PDF detected - using vision AI...');
-        extracted = await extractFromScannedPDF(fileBuffer, SYSTEM_PROMPT);
+        extracted = await extractFromScannedPDF(fileBuffer, buildPOSystemPrompt(companyName));
       } else {
         results.messages.push('Extracting data from PDF...');
-        extracted = await extractPOData(pdfText, filename);
+        extracted = await extractPOData(pdfText, filename, companyName);
       }
     } else if (isImage) {
       results.messages.push('Extracting data from image...');
       const base64 = fileBuffer.toString('base64');
-      extracted = await extractFromImage(base64, mimeType, SYSTEM_PROMPT);
+      extracted = await extractFromImage(base64, mimeType, buildPOSystemPrompt(companyName));
     } else {
       throw new Error(`Unsupported file type: ${mimeType}`);
     }

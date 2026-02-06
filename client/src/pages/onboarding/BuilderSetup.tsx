@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiGet, apiPost, apiPatch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -67,11 +68,7 @@ export default function BuilderSetup() {
     if (!session?.access_token) return;
 
     try {
-      const response = await fetch('/api/onboarding/status', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+      const response = await apiGet('/api/onboarding/status');
       const data = await response.json();
       setStatus(data);
 
@@ -105,14 +102,7 @@ export default function BuilderSetup() {
     setError(null);
 
     try {
-      const response = await fetch('/api/onboarding/company', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify(company),
-      });
+      const response = await apiPatch('/api/onboarding/company', company);
 
       if (!response.ok) {
         const data = await response.json();
@@ -134,12 +124,7 @@ export default function BuilderSetup() {
     setError(null);
 
     try {
-      const response = await fetch('/api/onboarding/cost-codes/sample', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+      const response = await apiPost('/api/onboarding/cost-codes/sample');
 
       if (!response.ok) {
         const data = await response.json();
@@ -165,12 +150,7 @@ export default function BuilderSetup() {
     setError(null);
 
     try {
-      const response = await fetch('/api/onboarding/complete', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+      const response = await apiPost('/api/onboarding/complete');
 
       if (!response.ok) {
         const data = await response.json();
@@ -192,12 +172,7 @@ export default function BuilderSetup() {
     setError(null);
 
     try {
-      const response = await fetch('/api/onboarding/sample-data', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+      const response = await apiPost('/api/onboarding/sample-data');
 
       if (!response.ok) {
         const data = await response.json();

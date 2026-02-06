@@ -34,6 +34,7 @@ import {
   TaskGroup,
 } from '@/components/schedule/ScheduleFilters';
 import { toast } from 'sonner';
+import { apiGet } from '@/lib/api';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -106,7 +107,7 @@ const Schedule = () => {
     if (!selectedJobId) return;
     setIsExporting(true);
     try {
-      const response = await fetch(`/api/schedules/jobs/${selectedJobId}/export-pdf`);
+      const response = await apiGet(`/api/schedules/jobs/${selectedJobId}/export-pdf`);
       if (!response.ok) {
         throw new Error('Failed to generate PDF');
       }

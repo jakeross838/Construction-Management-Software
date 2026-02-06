@@ -20,6 +20,7 @@ import { formatCurrency, formatDate, invoiceStatusConfig } from '@/types/financi
 import type { ChangeOrder, Invoice } from '@/types/financial';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { apiGet } from '@/lib/api';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 
 interface COInvoicesDialogProps {
@@ -38,7 +39,7 @@ export function COInvoicesDialog({ changeOrder, open, onOpenChange }: COInvoices
     queryFn: async () => {
       if (!changeOrder?.po_id) return [];
 
-      const response = await fetch(`/api/invoices?po_id=${changeOrder.po_id}`);
+      const response = await apiGet(`/api/invoices?po_id=${changeOrder.po_id}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch invoices: HTTP ${response.status}`);
       }
