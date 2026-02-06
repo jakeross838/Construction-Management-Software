@@ -38,7 +38,16 @@ tmpclaude-*
 
 # Runtime files
 server.pid
+server.log
 test-results/
+debug-report.json
+
+# Temp files
+temp_*.js
+temp_*.sql
+
+# Test HTML files
+test-*.html
 
 # Client build
 client/dist/
