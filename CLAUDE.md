@@ -60,14 +60,75 @@ npm test            # Run tests
 
 Detailed documentation for each feature is in `docs/features/`:
 
-| Feature | Status | Documentation |
-|---------|--------|---------------|
-| **Invoices** | Stable | [docs/features/invoices/](docs/features/invoices/) |
-| **Purchase Orders** | Stable | [docs/features/purchase-orders/](docs/features/purchase-orders/) |
-| **Draws** | Stable | [docs/features/draws/](docs/features/draws/) |
-| **Jobs** | Stable | [docs/features/jobs/](docs/features/jobs/) |
-| **Budget** | Stable | [docs/features/budget/](docs/features/budget/) |
-| **Estimates** | Stable | [docs/features/estimates/](docs/features/estimates/) |
+### Financial Management
+| Feature | Documentation |
+|---------|---------------|
+| **Invoices** | [docs/features/invoices/](docs/features/invoices/) |
+| **Purchase Orders** | [docs/features/purchase-orders/](docs/features/purchase-orders/) |
+| **Draws** | [docs/features/draws/](docs/features/draws/) |
+| **Budget** | [docs/features/budget/](docs/features/budget/) |
+| **Estimates** | [docs/features/estimates/](docs/features/estimates/) |
+| **Cash Flow** | [docs/features/cash-flow/](docs/features/cash-flow/) |
+| **Change Orders** | [docs/features/change-orders/](docs/features/change-orders/) |
+| **Expenses** | [docs/features/expenses/](docs/features/expenses/) |
+| **Profitability** | [docs/features/profitability/](docs/features/profitability/) |
+| **WIP Schedule** | [docs/features/wip-schedule/](docs/features/wip-schedule/) |
+| **Lien Releases** | [docs/features/lien-releases/](docs/features/lien-releases/) |
+| **P&L Dashboard** | [docs/features/pnl-dashboard/](docs/features/pnl-dashboard/) |
+
+### Project Management
+| Feature | Documentation |
+|---------|---------------|
+| **Jobs** | [docs/features/jobs/](docs/features/jobs/) |
+| **Schedule** | [docs/features/schedule/](docs/features/schedule/) |
+| **Tasks** | [docs/features/tasks/](docs/features/tasks/) |
+| **Daily Logs** | [docs/features/daily-logs/](docs/features/daily-logs/) |
+| **Inspections** | [docs/features/inspections/](docs/features/inspections/) |
+| **Punch Lists** | [docs/features/punch-lists/](docs/features/punch-lists/) |
+| **Permits** | [docs/features/permits/](docs/features/permits/) |
+| **RFIs** | [docs/features/rfis/](docs/features/rfis/) |
+
+### Documents & Files
+| Feature | Documentation |
+|---------|---------------|
+| **Photos** | [docs/features/photos/](docs/features/photos/) |
+| **Files** | [docs/features/files/](docs/features/files/) |
+| **Plans** | [docs/features/plans/](docs/features/plans/) |
+| **Submittals** | [docs/features/submittals/](docs/features/submittals/) |
+| **Final Docs** | [docs/features/final-docs/](docs/features/final-docs/) |
+
+### Pre-Construction
+| Feature | Documentation |
+|---------|---------------|
+| **Leads** | [docs/features/leads/](docs/features/leads/) |
+| **Bids** | [docs/features/bids/](docs/features/bids/) |
+| **Proposals** | [docs/features/proposals/](docs/features/proposals/) |
+| **Contracts** | [docs/features/contracts/](docs/features/contracts/) |
+| **Selections** | [docs/features/selections/](docs/features/selections/) |
+
+### Contacts & Resources
+| Feature | Documentation |
+|---------|---------------|
+| **Vendors** | [docs/features/vendors/](docs/features/vendors/) |
+| **Clients** | [docs/features/clients/](docs/features/clients/) |
+| **Employees** | [docs/features/employees/](docs/features/employees/) |
+
+### Admin & Settings
+| Feature | Documentation |
+|---------|---------------|
+| **Dashboard** | [docs/features/dashboard/](docs/features/dashboard/) |
+| **Reports** | [docs/features/reports/](docs/features/reports/) |
+| **Cost Codes** | [docs/features/cost-codes/](docs/features/cost-codes/) |
+| **Time Tracking** | [docs/features/time-tracking/](docs/features/time-tracking/) |
+| **Settings** | [docs/features/settings/](docs/features/settings/) |
+| **Warranties** | [docs/features/warranties/](docs/features/warranties/) |
+| **Business Planning** | [docs/features/business-planning/](docs/features/business-planning/) |
+| **Pricing** | [docs/features/pricing/](docs/features/pricing/) |
+
+### Style Guide
+| Resource | Location |
+|----------|----------|
+| **UI/Styling Guide** | [docs/UI_STYLE_GUIDE.md](docs/UI_STYLE_GUIDE.md) |
 
 ---
 
