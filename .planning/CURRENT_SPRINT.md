@@ -2,39 +2,46 @@
 
 ## Status
 **Last Updated**: 2026-02-06
-**Sprint Goal**: Project reorganization and documentation cleanup
+**Focus**: Fresh start with organized documentation
+
+---
 
 ## Active Work
 
-### Completed This Sprint
-- [x] Runtime cleanup - cleared stale processes
-- [x] Documentation reorganization - moved 20+ docs to organized locations
-- [x] Created feature documentation for 6 core features
-- [x] Simplified CLAUDE.md from 1000+ to ~200 lines
-- [x] Archived 80 completed phase folders
+*No active tasks - ready for new work*
 
-### In Progress
-- [ ] Create HANDOFF.md for new developers
-- [ ] Verify all documentation links work
+---
 
-### Upcoming
-- [ ] Add remaining feature docs (Schedule, Daily Logs, etc.)
-- [ ] Update README with new structure
+## Recently Completed
+
+### Documentation Reorganization (2026-02-06)
+- ✅ Created documentation for all 35+ features
+- ✅ Created comprehensive UI/Styling Guide
+- ✅ Set up multi-computer workflow (sync/push scripts)
+- ✅ Archived old planning structure
+- ✅ Simplified MASTER_PLAN.md
+
+---
+
+## How to Use This File
+
+When starting work:
+1. Add task under "Active Work" with status
+2. Reference the feature's `docs/features/<feature>/` folder
+3. Update feature's PLAN.md if making improvements
+
+When finishing work:
+1. Move completed items to "Recently Completed"
+2. Update any relevant feature documentation
+3. Commit changes with `npm run push`
 
 ---
 
 ## Quick Links
 
-| Resource | Path |
-|----------|------|
-| Master Plan | `.planning/MASTER_PLAN.md` |
+| Resource | Location |
+|----------|----------|
 | Feature Docs | `docs/features/` |
-| Archived Phases | `.planning/phases/completed/` |
-| Audits | `.planning/audits/` |
-
----
-
-## Notes
-- Feature docs prioritized: Invoices, POs, Draws, Jobs, Budget, Estimates
-- Historical docs preserved in `docs/archive/`
-- Detailed phase history in `.planning/phases/completed/`
+| UI Style Guide | `docs/UI_STYLE_GUIDE.md` |
+| Master Plan | `.planning/MASTER_PLAN.md` |
+| Codebase Info | `.planning/codebase/` |
