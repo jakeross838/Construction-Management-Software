@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiFetch, apiPost, apiPut, apiPatch } from '@/lib/api';
 
 const API_BASE = '/api/lead-notifications';
 
@@ -76,7 +77,7 @@ export function useNotificationPreferences(userId: string = 'default-user') {
   return useQuery({
     queryKey: ['lead-notification-preferences', userId],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/preferences?user_id=${userId}`);
+      const res = await apiFetch(`${API_BASE}/preferences?user_id=${userId}`);
       if (!res.ok) throw new Error('Failed to fetch preferences');
       return res.json() as Promise<NotificationPreferences>;
     },
@@ -89,11 +90,7 @@ export function useUpdateNotificationPreferences() {
 
   return useMutation({
     mutationFn: async (preferences: Partial<NotificationPreferences>) => {
-      const res = await fetch(`${API_BASE}/preferences`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(preferences),
-      });
+      const res = await apiPut(`${API_BASE}/preferences`, preferences);
       if (!res.ok) throw new Error('Failed to update preferences');
       return res.json();
     },
@@ -119,7 +116,7 @@ export function useLeadNotifications(options: { userId?: string; unreadOnly?: bo
         unread: String(unreadOnly),
         limit: String(limit),
       });
-      const res = await fetch(`${API_BASE}?${params}`);
+      const res = await apiFetch(`${API_BASE}?${params}`);
       if (!res.ok) throw new Error('Failed to fetch notifications');
       return res.json() as Promise<LeadNotification[]>;
     },
@@ -132,7 +129,7 @@ export function useUnreadNotificationCount(userId: string = 'default-user') {
   return useQuery({
     queryKey: ['lead-notification-count', userId],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/count?user_id=${userId}`);
+      const res = await apiFetch(`${API_BASE}/count?user_id=${userId}`);
       if (!res.ok) throw new Error('Failed to fetch count');
       const data = await res.json();
       return data.count as number;
@@ -147,9 +144,7 @@ export function useMarkNotificationRead() {
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
-      const res = await fetch(`${API_BASE}/${notificationId}/read`, {
-        method: 'PATCH',
-      });
+      const res = await apiPatch(`${API_BASE}/${notificationId}/read`);
       if (!res.ok) throw new Error('Failed to mark as read');
       return res.json();
     },
@@ -166,11 +161,7 @@ export function useMarkAllNotificationsRead() {
 
   return useMutation({
     mutationFn: async (userId: string = 'default-user') => {
-      const res = await fetch(`${API_BASE}/read-all`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId }),
-      });
+      const res = await apiPatch(`${API_BASE}/read-all`, { user_id: userId });
       if (!res.ok) throw new Error('Failed to mark all as read');
       return res.json();
     },
@@ -191,7 +182,7 @@ export function useLeadReminders(options: { userId?: string; leadId?: string } =
     queryFn: async () => {
       const params = new URLSearchParams({ user_id: userId });
       if (leadId) params.append('lead_id', leadId);
-      const res = await fetch(`${API_BASE}/reminders?${params}`);
+      const res = await apiFetch(`${API_BASE}/reminders?${params}`);
       if (!res.ok) throw new Error('Failed to fetch reminders');
       return res.json() as Promise<LeadReminder[]>;
     },
@@ -204,11 +195,7 @@ export function useCreateReminder() {
 
   return useMutation({
     mutationFn: async (reminder: { lead_id: string; reminder_at: string; message?: string; reminder_type?: string }) => {
-      const res = await fetch(`${API_BASE}/reminders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reminder),
-      });
+      const res = await apiPost(`${API_BASE}/reminders`, reminder);
       if (!res.ok) throw new Error('Failed to create reminder');
       return res.json();
     },
@@ -228,9 +215,7 @@ export function useDismissReminder() {
 
   return useMutation({
     mutationFn: async (reminderId: string) => {
-      const res = await fetch(`${API_BASE}/reminders/${reminderId}/dismiss`, {
-        method: 'PATCH',
-      });
+      const res = await apiPatch(`${API_BASE}/reminders/${reminderId}/dismiss`);
       if (!res.ok) throw new Error('Failed to dismiss reminder');
       return res.json();
     },
@@ -246,7 +231,7 @@ export function useStaleleads(days: number = 7) {
   return useQuery({
     queryKey: ['stale-leads', days],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/stale-leads?days=${days}`);
+      const res = await apiFetch(`${API_BASE}/stale-leads?days=${days}`);
       if (!res.ok) throw new Error('Failed to fetch stale leads');
       return res.json();
     },
@@ -258,7 +243,7 @@ export function useEmailTemplates() {
   return useQuery({
     queryKey: ['lead-email-templates'],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/templates`);
+      const res = await apiFetch(`${API_BASE}/templates`);
       if (!res.ok) throw new Error('Failed to fetch templates');
       return res.json() as Promise<EmailTemplate[]>;
     },
@@ -271,11 +256,7 @@ export function useUpdateEmailTemplate() {
 
   return useMutation({
     mutationFn: async ({ id, ...template }: { id: string; subject?: string; body_html?: string; body_text?: string; is_active?: boolean }) => {
-      const res = await fetch(`${API_BASE}/templates/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(template),
-      });
+      const res = await apiPut(`${API_BASE}/templates/${id}`, template);
       if (!res.ok) throw new Error('Failed to update template');
       return res.json();
     },

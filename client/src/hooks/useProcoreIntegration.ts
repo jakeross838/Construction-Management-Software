@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, apiPost, apiPatch } from '@/lib/api';
 
 // ============================================================
 // TYPES
@@ -97,19 +98,19 @@ export interface FullSyncResult {
 const API_BASE = '/api/integrations/procore';
 
 async function fetchConnectionStatus(): Promise<ProcoreConnectionStatus> {
-  const response = await fetch(`${API_BASE}/status`);
+  const response = await apiFetch(`${API_BASE}/status`);
   if (!response.ok) throw new Error('Failed to fetch Procore status');
   return response.json();
 }
 
 async function fetchAuthUrl(): Promise<{ url: string }> {
-  const response = await fetch(`${API_BASE}/auth-url`);
+  const response = await apiFetch(`${API_BASE}/auth-url`);
   if (!response.ok) throw new Error('Failed to get Procore auth URL');
   return response.json();
 }
 
 async function disconnectProcore(): Promise<void> {
-  const response = await fetch(`${API_BASE}/disconnect`, { method: 'POST' });
+  const response = await apiPost(`${API_BASE}/disconnect`);
   if (!response.ok) throw new Error('Failed to disconnect Procore');
 }
 
@@ -117,11 +118,7 @@ async function updateSettings(settings: {
   sync_settings?: Partial<ProcoreSyncSettings>;
   enabled?: boolean;
 }): Promise<{ settings: ProcoreIntegration }> {
-  const response = await fetch(`${API_BASE}/settings`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings),
-  });
+  const response = await apiPatch(`${API_BASE}/settings`, settings);
   if (!response.ok) throw new Error('Failed to update Procore settings');
   return response.json();
 }
@@ -130,11 +127,7 @@ async function triggerSync(options: {
   type?: 'jobs' | 'vendors' | 'rfis' | 'submittals' | 'full';
   job_id?: string;
 }): Promise<FullSyncResult> {
-  const response = await fetch(`${API_BASE}/sync`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(options),
-  });
+  const response = await apiPost(`${API_BASE}/sync`, options);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.message || 'Sync failed');
@@ -143,33 +136,25 @@ async function triggerSync(options: {
 }
 
 async function syncJobs(): Promise<SyncResult> {
-  const response = await fetch(`${API_BASE}/sync/jobs`, { method: 'POST' });
+  const response = await apiPost(`${API_BASE}/sync/jobs`);
   if (!response.ok) throw new Error('Failed to sync jobs');
   return response.json();
 }
 
 async function syncVendors(): Promise<SyncResult> {
-  const response = await fetch(`${API_BASE}/sync/vendors`, { method: 'POST' });
+  const response = await apiPost(`${API_BASE}/sync/vendors`);
   if (!response.ok) throw new Error('Failed to sync vendors');
   return response.json();
 }
 
 async function syncRFIs(jobId?: string): Promise<SyncResult> {
-  const response = await fetch(`${API_BASE}/sync/rfis`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ job_id: jobId }),
-  });
+  const response = await apiPost(`${API_BASE}/sync/rfis`, { job_id: jobId });
   if (!response.ok) throw new Error('Failed to sync RFIs');
   return response.json();
 }
 
 async function syncSubmittals(jobId?: string): Promise<SyncResult> {
-  const response = await fetch(`${API_BASE}/sync/submittals`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ job_id: jobId }),
-  });
+  const response = await apiPost(`${API_BASE}/sync/submittals`, { job_id: jobId });
   if (!response.ok) throw new Error('Failed to sync submittals');
   return response.json();
 }
@@ -183,7 +168,7 @@ async function fetchSyncLog(options?: {
   if (options?.type) params.set('type', options.type);
 
   const url = `${API_BASE}/log${params.toString() ? `?${params}` : ''}`;
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) throw new Error('Failed to fetch sync log');
   const data = await response.json();
   return data.logs;
@@ -198,7 +183,7 @@ async function fetchMappings(options?: {
   if (options?.limit) params.set('limit', String(options.limit));
 
   const url = `${API_BASE}/mappings${params.toString() ? `?${params}` : ''}`;
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) throw new Error('Failed to fetch mappings');
   const data = await response.json();
   return data.mappings;

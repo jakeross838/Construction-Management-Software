@@ -29,10 +29,10 @@ export function LienReleaseFormDialog({ open, onOpenChange, release, defaultJobI
   const [jobId, setJobId] = useState('');
   const [drawId, setDrawId] = useState('');
   const [vendorId, setVendorId] = useState('');
-  const [releaseType, setReleaseType] = useState('conditional');
+  const [releaseType, setReleaseType] = useState('conditional_progress');
   const [amount, setAmount] = useState('');
   const [throughDate, setThroughDate] = useState('');
-  const [status, setStatus] = useState('pending');
+  const [status, setStatus] = useState('received');
   const [notes, setNotes] = useState('');
 
   const { data: vendors = [] } = useVendors();
@@ -71,10 +71,10 @@ export function LienReleaseFormDialog({ open, onOpenChange, release, defaultJobI
       setJobId(effectiveJobId);
       setDrawId(defaultDrawId || '');
       setVendorId('');
-      setReleaseType('conditional');
+      setReleaseType('conditional_progress');
       setAmount('');
       setThroughDate('');
-      setStatus('pending');
+      setStatus('received');
       setNotes('');
     }
   }, [release, open, effectiveJobId, defaultDrawId]);

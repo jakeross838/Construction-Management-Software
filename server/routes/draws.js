@@ -596,7 +596,7 @@ router.get('/:id/activity', asyncHandler(async (req, res) => {
 // ============================================================
 
 // Update draw
-router.patch('/:id', validate(schemas.drawUpdate), asyncHandler(async (req, res) => {
+router.patch('/:id', requirePermission('canSubmitDraw'), validate(schemas.drawUpdate), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { draw_number, period_end, notes, g702_overrides } = req.body;
 
@@ -629,7 +629,7 @@ router.patch('/:id', validate(schemas.drawUpdate), asyncHandler(async (req, res)
 // ============================================================
 
 // Add invoices to draw
-router.post('/:id/add-invoices', validateRequest({
+router.post('/:id/add-invoices', requirePermission('canSubmitDraw'), validateRequest({
   params: { id: { type: 'uuid' } },
   body: { invoice_ids: { required: true } }
 }), asyncHandler(async (req, res) => {
@@ -878,7 +878,7 @@ router.post('/:id/add-invoices', validateRequest({
 }));
 
 // Remove invoice from draw
-router.post('/:id/remove-invoice', asyncHandler(async (req, res) => {
+router.post('/:id/remove-invoice', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { invoice_id, performed_by = 'System' } = req.body;
 
@@ -963,7 +963,7 @@ router.post('/:id/remove-invoice', asyncHandler(async (req, res) => {
 }));
 
 // Bulk remove invoices from draw
-router.post('/:id/remove-invoices', asyncHandler(async (req, res) => {
+router.post('/:id/remove-invoices', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
   const drawId = req.params.id;
   const { invoice_ids, performed_by = 'System' } = req.body;
 
@@ -1052,7 +1052,7 @@ router.post('/:id/remove-invoices', asyncHandler(async (req, res) => {
 }));
 
 // Reorder invoices within draw
-router.post('/:id/reorder-invoices', asyncHandler(async (req, res) => {
+router.post('/:id/reorder-invoices', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
   const drawId = req.params.id;
   const { invoice_ids } = req.body;
 
@@ -1084,7 +1084,7 @@ router.post('/:id/reorder-invoices', asyncHandler(async (req, res) => {
 }));
 
 // Add all approved invoices for job to draw
-router.post('/:id/add-all-approved', asyncHandler(async (req, res) => {
+router.post('/:id/add-all-approved', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
   const drawId = req.params.id;
   const { performed_by = 'System' } = req.body;
 
@@ -1324,7 +1324,7 @@ router.patch('/:id/submit', requirePermission('canSubmitDraw'), asyncHandler(asy
 }));
 
 // Unsubmit draw
-router.post('/:id/unsubmit', asyncHandler(async (req, res) => {
+router.post('/:id/unsubmit', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { reason, performed_by = 'System' } = req.body;
 
@@ -1499,7 +1499,7 @@ router.patch('/:id/fund', requirePermission('canSubmitDraw'), asyncHandler(async
 // DELETE
 // ============================================================
 
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
 
     // Get draw to check status
@@ -1547,7 +1547,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 }));
 
 // Archive a draw (soft delete - for any status)
-router.patch('/:id/archive', asyncHandler(async (req, res) => {
+router.patch('/:id/archive', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
 
     // Get draw
@@ -1578,7 +1578,7 @@ router.patch('/:id/archive', asyncHandler(async (req, res) => {
 }));
 
 // Unarchive a draw
-router.patch('/:id/unarchive', asyncHandler(async (req, res) => {
+router.patch('/:id/unarchive', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
 
     // Get draw (including archived)
@@ -1612,13 +1612,13 @@ router.patch('/:id/unarchive', asyncHandler(async (req, res) => {
 // UTILITIES
 // ============================================================
 
-router.post('/:id/recalculate', asyncHandler(async (req, res) => {
+router.post('/:id/recalculate', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
     const newTotal = await updateDrawTotal(req.params.id);
     res.json({ success: true, new_total: newTotal });
 }));
 
 // Repair draw allocations from source invoices
-router.post('/:id/repair-allocations', asyncHandler(async (req, res) => {
+router.post('/:id/repair-allocations', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
   const drawId = req.params.id;
 
   // Get draw

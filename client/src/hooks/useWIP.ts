@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, apiPost } from '@/lib/api';
 
 const API_BASE = '/api/wip';
 
@@ -77,19 +78,19 @@ export interface WIPBillingReport {
 
 // API Functions
 async function fetchWIPDashboard(): Promise<WIPDashboard> {
-  const response = await fetch(`${API_BASE}/dashboard`);
+  const response = await apiFetch(`${API_BASE}/dashboard`);
   if (!response.ok) throw new Error('Failed to fetch WIP dashboard');
   return response.json();
 }
 
 async function fetchWIPCurrent(): Promise<WIPJob[]> {
-  const response = await fetch(`${API_BASE}/current`);
+  const response = await apiFetch(`${API_BASE}/current`);
   if (!response.ok) throw new Error('Failed to fetch current WIP');
   return response.json();
 }
 
 async function fetchWIPSummary(): Promise<WIPSummary> {
-  const response = await fetch(`${API_BASE}/summary`);
+  const response = await apiFetch(`${API_BASE}/summary`);
   if (!response.ok) throw new Error('Failed to fetch WIP summary');
   return response.json();
 }
@@ -99,29 +100,25 @@ async function fetchJobWIP(jobId: string): Promise<{
   wip: WIPJob;
   estimates: Array<{ id: string; estimate_type: string; total_estimated_cost: number; effective_date: string }>;
 }> {
-  const response = await fetch(`${API_BASE}/job/${jobId}`);
+  const response = await apiFetch(`${API_BASE}/job/${jobId}`);
   if (!response.ok) throw new Error('Failed to fetch job WIP');
   return response.json();
 }
 
 async function fetchAgingReport(): Promise<WIPAgingReport> {
-  const response = await fetch(`${API_BASE}/reports/aging`);
+  const response = await apiFetch(`${API_BASE}/reports/aging`);
   if (!response.ok) throw new Error('Failed to fetch aging report');
   return response.json();
 }
 
 async function fetchBillingReport(): Promise<WIPBillingReport> {
-  const response = await fetch(`${API_BASE}/reports/billing`);
+  const response = await apiFetch(`${API_BASE}/reports/billing`);
   if (!response.ok) throw new Error('Failed to fetch billing report');
   return response.json();
 }
 
 async function createWIPSnapshot(jobId: string, periodId: string): Promise<{ snapshot_id: string; success: boolean }> {
-  const response = await fetch(`${API_BASE}/job/${jobId}/snapshot`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ period_id: periodId }),
-  });
+  const response = await apiPost(`${API_BASE}/job/${jobId}/snapshot`, { period_id: periodId });
   if (!response.ok) throw new Error('Failed to create WIP snapshot');
   return response.json();
 }

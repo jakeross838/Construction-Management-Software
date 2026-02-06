@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, apiPost, apiPatch } from '@/lib/api';
 
 const API_BASE = '/api/business-planning';
 
@@ -124,7 +125,7 @@ export interface BusinessPlanningDashboard {
 
 // API Functions
 async function fetchDashboard(): Promise<BusinessPlanningDashboard> {
-  const response = await fetch(`${API_BASE}/dashboard`);
+  const response = await apiFetch(`${API_BASE}/dashboard`);
   if (!response.ok) throw new Error('Failed to fetch business planning dashboard');
   return response.json();
 }
@@ -135,85 +136,61 @@ async function fetchPlans(params?: { year?: number; status?: string }): Promise<
   if (params?.status) searchParams.set('status', params.status);
 
   const query = searchParams.toString() ? `?${searchParams}` : '';
-  const response = await fetch(`${API_BASE}/plans${query}`);
+  const response = await apiFetch(`${API_BASE}/plans${query}`);
   if (!response.ok) throw new Error('Failed to fetch plans');
   return response.json();
 }
 
 async function fetchPlanDetail(planId: string): Promise<PlanDetail> {
-  const response = await fetch(`${API_BASE}/plans/${planId}`);
+  const response = await apiFetch(`${API_BASE}/plans/${planId}`);
   if (!response.ok) throw new Error('Failed to fetch plan detail');
   return response.json();
 }
 
 async function createPlan(plan: Partial<BusinessPlan>): Promise<BusinessPlan> {
-  const response = await fetch(`${API_BASE}/plans`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(plan),
-  });
+  const response = await apiPost(`${API_BASE}/plans`, plan);
   if (!response.ok) throw new Error('Failed to create plan');
   return response.json();
 }
 
 async function updatePlan(planId: string, updates: Partial<BusinessPlan>): Promise<BusinessPlan> {
-  const response = await fetch(`${API_BASE}/plans/${planId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`${API_BASE}/plans/${planId}`, updates);
   if (!response.ok) throw new Error('Failed to update plan');
   return response.json();
 }
 
 async function activatePlan(planId: string, approvedBy: string): Promise<BusinessPlan> {
-  const response = await fetch(`${API_BASE}/plans/${planId}/activate`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ approved_by: approvedBy }),
-  });
+  const response = await apiPatch(`${API_BASE}/plans/${planId}/activate`, { approved_by: approvedBy });
   if (!response.ok) throw new Error('Failed to activate plan');
   return response.json();
 }
 
 async function fetchMilestones(planId: string): Promise<Milestone[]> {
-  const response = await fetch(`${API_BASE}/plans/${planId}/milestones`);
+  const response = await apiFetch(`${API_BASE}/plans/${planId}/milestones`);
   if (!response.ok) throw new Error('Failed to fetch milestones');
   return response.json();
 }
 
 async function createMilestone(planId: string, milestone: Partial<Milestone>): Promise<Milestone> {
-  const response = await fetch(`${API_BASE}/plans/${planId}/milestones`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(milestone),
-  });
+  const response = await apiPost(`${API_BASE}/plans/${planId}/milestones`, milestone);
   if (!response.ok) throw new Error('Failed to create milestone');
   return response.json();
 }
 
 async function updateMilestone(milestoneId: string, updates: Partial<Milestone>): Promise<Milestone> {
-  const response = await fetch(`${API_BASE}/milestones/${milestoneId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`${API_BASE}/milestones/${milestoneId}`, updates);
   if (!response.ok) throw new Error('Failed to update milestone');
   return response.json();
 }
 
 async function fetchKPIs(): Promise<KPIDefinition[]> {
-  const response = await fetch(`${API_BASE}/kpis`);
+  const response = await apiFetch(`${API_BASE}/kpis`);
   if (!response.ok) throw new Error('Failed to fetch KPIs');
   return response.json();
 }
 
 async function setKPITarget(planId: string, target: Partial<KPITarget>): Promise<KPITarget> {
-  const response = await fetch(`${API_BASE}/plans/${planId}/kpi-targets`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(target),
-  });
+  const response = await apiPost(`${API_BASE}/plans/${planId}/kpi-targets`, target);
   if (!response.ok) throw new Error('Failed to set KPI target');
   return response.json();
 }

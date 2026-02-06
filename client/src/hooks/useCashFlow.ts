@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, apiPost } from '@/lib/api';
 
 const API_BASE = '/api/cash-flow';
 
@@ -88,20 +89,20 @@ export interface CashFlowByJob {
 
 // API Functions
 async function fetchCashFlowDashboard(): Promise<CashFlowDashboard> {
-  const response = await fetch(`${API_BASE}/dashboard`);
+  const response = await apiFetch(`${API_BASE}/dashboard`);
   if (!response.ok) throw new Error('Failed to fetch cash flow dashboard');
   return response.json();
 }
 
 async function fetchCashPosition(asOfDate?: string): Promise<CashPosition> {
   const params = asOfDate ? `?as_of_date=${asOfDate}` : '';
-  const response = await fetch(`${API_BASE}/position${params}`);
+  const response = await apiFetch(`${API_BASE}/position${params}`);
   if (!response.ok) throw new Error('Failed to fetch cash position');
   return response.json();
 }
 
 async function fetchWeeklyForecast(weeks: number = 12): Promise<WeeklyForecast[]> {
-  const response = await fetch(`${API_BASE}/forecast/weekly?weeks=${weeks}`);
+  const response = await apiFetch(`${API_BASE}/forecast/weekly?weeks=${weeks}`);
   if (!response.ok) throw new Error('Failed to fetch weekly forecast');
   return response.json();
 }
@@ -111,11 +112,7 @@ async function generateForecast(params: {
   weeks?: number;
   opening_balance?: number;
 }): Promise<{ forecasts: WeeklyForecast[]; count: number }> {
-  const response = await fetch(`${API_BASE}/forecast/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost(`${API_BASE}/forecast/generate`, params);
   if (!response.ok) throw new Error('Failed to generate forecast');
   return response.json();
 }
@@ -133,7 +130,7 @@ async function fetchUpcomingPayments(days: number = 30): Promise<{
     total: number;
   };
 }> {
-  const response = await fetch(`${API_BASE}/payments/upcoming?days=${days}`);
+  const response = await apiFetch(`${API_BASE}/payments/upcoming?days=${days}`);
   if (!response.ok) throw new Error('Failed to fetch upcoming payments');
   return response.json();
 }
@@ -142,7 +139,7 @@ async function fetchExpectedReceipts(): Promise<{
   receipts: ExpectedReceipt[];
   total: number;
 }> {
-  const response = await fetch(`${API_BASE}/receipts/expected`);
+  const response = await apiFetch(`${API_BASE}/receipts/expected`);
   if (!response.ok) throw new Error('Failed to fetch expected receipts');
   return response.json();
 }
@@ -156,13 +153,13 @@ async function fetchCashFlowByJob(params?: {
   if (params?.end_date) searchParams.set('end_date', params.end_date);
 
   const query = searchParams.toString() ? `?${searchParams}` : '';
-  const response = await fetch(`${API_BASE}/reports/by-job${query}`);
+  const response = await apiFetch(`${API_BASE}/reports/by-job${query}`);
   if (!response.ok) throw new Error('Failed to fetch cash flow by job');
   return response.json();
 }
 
 async function fetchCashFlowTrend(months: number = 6): Promise<WeeklyForecast[]> {
-  const response = await fetch(`${API_BASE}/reports/trend?months=${months}`);
+  const response = await apiFetch(`${API_BASE}/reports/trend?months=${months}`);
   if (!response.ok) throw new Error('Failed to fetch cash flow trend');
   return response.json();
 }
@@ -182,7 +179,7 @@ async function fetchCashFlowEntries(params?: {
   if (params?.job_id) searchParams.set('job_id', params.job_id);
 
   const query = searchParams.toString() ? `?${searchParams}` : '';
-  const response = await fetch(`${API_BASE}/entries${query}`);
+  const response = await apiFetch(`${API_BASE}/entries${query}`);
   if (!response.ok) throw new Error('Failed to fetch cash flow entries');
   return response.json();
 }

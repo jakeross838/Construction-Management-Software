@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiFetch, apiPost } from '@/lib/api';
 
 const API_BASE = '/api/lead-imports';
 
@@ -42,7 +43,7 @@ export function useImportHistory(limit: number = 20) {
   return useQuery({
     queryKey: ['lead-imports', limit],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}?limit=${limit}`);
+      const res = await apiFetch(`${API_BASE}?limit=${limit}`);
       if (!res.ok) throw new Error('Failed to fetch imports');
       return res.json() as Promise<LeadImport[]>;
     },
@@ -55,7 +56,7 @@ export function useImportDetails(importId: string | null) {
     queryKey: ['lead-import', importId],
     queryFn: async () => {
       if (!importId) return null;
-      const res = await fetch(`${API_BASE}/${importId}`);
+      const res = await apiFetch(`${API_BASE}/${importId}`);
       if (!res.ok) throw new Error('Failed to fetch import');
       return res.json() as Promise<LeadImport>;
     },
@@ -67,11 +68,7 @@ export function useImportDetails(importId: string | null) {
 export function usePreviewCSV() {
   return useMutation({
     mutationFn: async ({ csvContent, sampleSize = 5 }: { csvContent: string; sampleSize?: number }) => {
-      const res = await fetch(`${API_BASE}/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csv_content: csvContent, sample_size: sampleSize }),
-      });
+      const res = await apiPost(`${API_BASE}/preview`, { csv_content: csvContent, sample_size: sampleSize });
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.error || 'Failed to preview CSV');
@@ -101,15 +98,11 @@ export function useImportLeads() {
       mappings?: Record<string, string>;
       defaults?: Record<string, any>;
     }) => {
-      const res = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csv_content: csvContent,
-          file_name: fileName,
-          mappings,
-          defaults,
-        }),
+      const res = await apiPost(API_BASE, {
+        csv_content: csvContent,
+        file_name: fileName,
+        mappings,
+        defaults,
       });
       if (!res.ok) {
         const error = await res.json();
@@ -143,7 +136,7 @@ export function useMappingTemplates() {
   return useQuery({
     queryKey: ['lead-import-mappings'],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/mappings/templates`);
+      const res = await apiFetch(`${API_BASE}/mappings/templates`);
       if (!res.ok) throw new Error('Failed to fetch templates');
       return res.json() as Promise<ImportMapping[]>;
     },
@@ -156,11 +149,7 @@ export function useSaveMappingTemplate() {
 
   return useMutation({
     mutationFn: async (template: { name: string; description?: string; mappings: Record<string, string>; defaults?: Record<string, any> }) => {
-      const res = await fetch(`${API_BASE}/mappings/templates`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(template),
-      });
+      const res = await apiPost(`${API_BASE}/mappings/templates`, template);
       if (!res.ok) throw new Error('Failed to save template');
       return res.json();
     },
@@ -179,7 +168,7 @@ export function useLeadFields() {
   return useQuery({
     queryKey: ['lead-fields'],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/fields`);
+      const res = await apiFetch(`${API_BASE}/fields`);
       if (!res.ok) throw new Error('Failed to fetch fields');
       return res.json() as Promise<LeadField[]>;
     },
@@ -196,7 +185,7 @@ export function useExportLeads() {
       if (filters?.created_after) params.append('created_after', filters.created_after);
       if (filters?.created_before) params.append('created_before', filters.created_before);
 
-      const res = await fetch(`${API_BASE}/export?${params}`);
+      const res = await apiFetch(`${API_BASE}/export?${params}`);
       if (!res.ok) throw new Error('Failed to export leads');
 
       // Get the CSV content and trigger download

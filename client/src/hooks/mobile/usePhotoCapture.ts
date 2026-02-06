@@ -4,9 +4,9 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from './useGeolocation';
+import { apiFetch } from '@/lib/api';
 
 export type PhotoCategory = 'progress' | 'issue' | 'safety' | 'material' | 'before_after' | 'other';
 
@@ -71,15 +71,6 @@ export function usePhotoCapture(): UsePhotoCaptureReturn {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Get auth headers
-  const getHeaders = useCallback(async () => {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-    return {
-      'Authorization': token ? `Bearer ${token}` : '',
-    };
-  }, []);
 
   // Capture a photo from file input
   const capturePhoto = useCallback(async (file: File): Promise<CapturedPhoto | null> => {
@@ -172,14 +163,9 @@ export function usePhotoCapture(): UsePhotoCaptureReturn {
       formData.append('taken_at', photo.timestamp.toISOString());
       formData.append('uploaded_by', user?.email || 'mobile_user');
 
-      const headers = await getHeaders();
-
-      const response = await fetch(API_BASE, {
+      // Use apiFetch for FormData - don't set Content-Type, browser will set it with boundary
+      const response = await apiFetch(API_BASE, {
         method: 'POST',
-        headers: {
-          ...headers,
-          // Don't set Content-Type for FormData - browser will set it with boundary
-        },
         body: formData,
       });
 
@@ -195,7 +181,7 @@ export function usePhotoCapture(): UsePhotoCaptureReturn {
       setError(err instanceof Error ? err.message : 'Failed to upload photo');
       return null;
     }
-  }, [user?.email, getHeaders]);
+  }, [user?.email]);
 
   // Upload all captured photos
   const uploadAllPhotos = useCallback(async (

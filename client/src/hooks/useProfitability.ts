@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, apiPost } from '@/lib/api';
 
 const API_BASE = '/api/profitability';
 
@@ -132,7 +133,7 @@ export interface JobProfitabilitySnapshot {
 
 // API Functions
 async function fetchProfitabilitySummary(): Promise<ProfitabilitySummary> {
-  const response = await fetch(`${API_BASE}/summary`);
+  const response = await apiFetch(`${API_BASE}/summary`);
   if (!response.ok) {
     throw new Error('Failed to fetch profitability summary');
   }
@@ -140,7 +141,7 @@ async function fetchProfitabilitySummary(): Promise<ProfitabilitySummary> {
 }
 
 async function fetchProfitabilityDashboard(): Promise<ProfitabilityDashboard> {
-  const response = await fetch(`${API_BASE}/dashboard`);
+  const response = await apiFetch(`${API_BASE}/dashboard`);
   if (!response.ok) {
     throw new Error('Failed to fetch profitability dashboard');
   }
@@ -148,7 +149,7 @@ async function fetchProfitabilityDashboard(): Promise<ProfitabilityDashboard> {
 }
 
 async function fetchProfitabilityRanking(sortBy: 'profit' | 'margin' = 'margin'): Promise<JobProfitability[]> {
-  const response = await fetch(`${API_BASE}/ranking?sort_by=${sortBy}`);
+  const response = await apiFetch(`${API_BASE}/ranking?sort_by=${sortBy}`);
   if (!response.ok) {
     throw new Error('Failed to fetch profitability ranking');
   }
@@ -160,7 +161,7 @@ async function fetchJobProfitability(jobId: string): Promise<{
   profitability: Record<string, unknown>;
   direct_costs: Record<string, unknown>;
 }> {
-  const response = await fetch(`${API_BASE}/job/${jobId}`);
+  const response = await apiFetch(`${API_BASE}/job/${jobId}`);
   if (!response.ok) {
     throw new Error('Failed to fetch job profitability');
   }
@@ -168,7 +169,7 @@ async function fetchJobProfitability(jobId: string): Promise<{
 }
 
 async function fetchBudgetVsActual(jobId: string): Promise<BudgetVsActualResponse> {
-  const response = await fetch(`${API_BASE}/job/${jobId}/budget-vs-actual`);
+  const response = await apiFetch(`${API_BASE}/job/${jobId}/budget-vs-actual`);
   if (!response.ok) {
     throw new Error('Failed to fetch budget vs actual');
   }
@@ -176,7 +177,7 @@ async function fetchBudgetVsActual(jobId: string): Promise<BudgetVsActualRespons
 }
 
 async function fetchJobCostDetails(jobId: string): Promise<JobCostDetails> {
-  const response = await fetch(`${API_BASE}/job/${jobId}/costs`);
+  const response = await apiFetch(`${API_BASE}/job/${jobId}/costs`);
   if (!response.ok) {
     throw new Error('Failed to fetch job cost details');
   }
@@ -184,7 +185,7 @@ async function fetchJobCostDetails(jobId: string): Promise<JobCostDetails> {
 }
 
 async function fetchJobProfitabilityHistory(jobId: string): Promise<JobProfitabilitySnapshot[]> {
-  const response = await fetch(`${API_BASE}/job/${jobId}/history`);
+  const response = await apiFetch(`${API_BASE}/job/${jobId}/history`);
   if (!response.ok) {
     throw new Error('Failed to fetch job profitability history');
   }
@@ -192,11 +193,7 @@ async function fetchJobProfitabilityHistory(jobId: string): Promise<JobProfitabi
 }
 
 async function createProfitabilitySnapshot(jobId: string, periodId: string): Promise<{ snapshot_id: string; success: boolean }> {
-  const response = await fetch(`${API_BASE}/job/${jobId}/snapshot`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ period_id: periodId }),
-  });
+  const response = await apiPost(`${API_BASE}/job/${jobId}/snapshot`, { period_id: periodId });
   if (!response.ok) {
     throw new Error('Failed to create profitability snapshot');
   }
@@ -204,11 +201,7 @@ async function createProfitabilitySnapshot(jobId: string, periodId: string): Pro
 }
 
 async function createBatchSnapshots(periodId: string): Promise<{ created: number; total: number }> {
-  const response = await fetch(`${API_BASE}/snapshots/batch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ period_id: periodId }),
-  });
+  const response = await apiPost(`${API_BASE}/snapshots/batch`, { period_id: periodId });
   if (!response.ok) {
     throw new Error('Failed to create batch snapshots');
   }
@@ -219,11 +212,7 @@ async function compareJobs(jobIds: string[]): Promise<Array<{
   job: { id: string; name: string; status: string };
   profitability: Record<string, unknown>;
 }>> {
-  const response = await fetch(`${API_BASE}/compare`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ job_ids: jobIds }),
-  });
+  const response = await apiPost(`${API_BASE}/compare`, { job_ids: jobIds });
   if (!response.ok) {
     throw new Error('Failed to compare jobs');
   }

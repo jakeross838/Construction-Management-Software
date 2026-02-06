@@ -69,7 +69,7 @@ router.patch('/:id', requireFinancialAccess, asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', requireFinancialAccess, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { data, error } = await supabase.from('v2_budgets').update({ deleted_at: new Date().toISOString() }).eq('id', id).is('deleted_at', null).select().single();
   if (error) throw error;
@@ -93,7 +93,7 @@ router.get('/:id/lines', asyncHandler(async (req, res) => {
   res.json(data || []);
 }));
 
-router.post('/:id/lines', asyncHandler(async (req, res) => {
+router.post('/:id/lines', requireFinancialAccess, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { cost_code_id, category, description, sort_order, original_amount, unit_of_measure, quantity, unit_cost, notes, is_allowance } = req.body;
   const { data, error } = await supabase.from('v2_budget_lines').insert({ budget_id: id, cost_code_id, category, description, sort_order: sort_order || 0, original_amount: original_amount || 0, revised_amount: original_amount || 0, unit_of_measure, quantity, unit_cost, notes, is_allowance: is_allowance || false }).select('*, cost_code:v2_cost_codes(id, code, name)').single();
@@ -101,7 +101,7 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
   res.status(201).json(data);
 }));
 
-router.patch('/:budgetId/lines/:lineId', asyncHandler(async (req, res) => {
+router.patch('/:budgetId/lines/:lineId', requireFinancialAccess, asyncHandler(async (req, res) => {
   const { lineId } = req.params;
   const updates = req.body;
   delete updates.id; delete updates.budget_id; delete updates.created_at;
@@ -112,7 +112,7 @@ router.patch('/:budgetId/lines/:lineId', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-router.delete('/:budgetId/lines/:lineId', asyncHandler(async (req, res) => {
+router.delete('/:budgetId/lines/:lineId', requireFinancialAccess, asyncHandler(async (req, res) => {
   const { lineId } = req.params;
   const { data, error } = await supabase.from('v2_budget_lines').update({ deleted_at: new Date().toISOString() }).eq('id', lineId).is('deleted_at', null).select().single();
   if (error) throw error;

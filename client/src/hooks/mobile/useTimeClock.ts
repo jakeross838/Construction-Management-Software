@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiFetch, apiPost } from '@/lib/api';
 
 interface TimeClockEntry {
   id: string;
@@ -86,13 +86,9 @@ export function useTimeClock(): UseTimeClockReturn {
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
-  // Get auth headers
-  const getHeaders = useCallback(async () => {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
+  // Get custom headers (x-user-id for mobile identification)
+  const getCustomHeaders = useCallback(() => {
     return {
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : '',
       'x-user-id': user?.id || '',
     };
   }, [user?.id]);
@@ -100,8 +96,9 @@ export function useTimeClock(): UseTimeClockReturn {
   // Fetch current status
   const fetchStatus = useCallback(async () => {
     try {
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/status`, { headers });
+      const response = await apiFetch(`${API_BASE}/status`, {
+        headers: { 'Content-Type': 'application/json', ...getCustomHeaders() },
+      });
       if (!response.ok) throw new Error('Failed to fetch status');
       const data = await response.json();
       setStatus(data);
@@ -111,13 +108,14 @@ export function useTimeClock(): UseTimeClockReturn {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [getHeaders]);
+  }, [getCustomHeaders]);
 
   // Fetch summary stats
   const fetchSummary = useCallback(async () => {
     try {
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/summary`, { headers });
+      const response = await apiFetch(`${API_BASE}/summary`, {
+        headers: { 'Content-Type': 'application/json', ...getCustomHeaders() },
+      });
       if (!response.ok) throw new Error('Failed to fetch summary');
       const data = await response.json();
       setSummary(data);
@@ -126,13 +124,14 @@ export function useTimeClock(): UseTimeClockReturn {
       console.error('Error fetching time clock summary:', err);
       return null;
     }
-  }, [getHeaders]);
+  }, [getCustomHeaders]);
 
   // Fetch history
   const fetchHistory = useCallback(async (limit = 10) => {
     try {
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/history?limit=${limit}`, { headers });
+      const response = await apiFetch(`${API_BASE}/history?limit=${limit}`, {
+        headers: { 'Content-Type': 'application/json', ...getCustomHeaders() },
+      });
       if (!response.ok) throw new Error('Failed to fetch history');
       const data = await response.json();
       setHistory(data.entries || []);
@@ -141,7 +140,7 @@ export function useTimeClock(): UseTimeClockReturn {
       console.error('Error fetching time clock history:', err);
       return [];
     }
-  }, [getHeaders]);
+  }, [getCustomHeaders]);
 
   // Refresh all data
   const refresh = useCallback(async () => {
@@ -160,17 +159,12 @@ export function useTimeClock(): UseTimeClockReturn {
   ): Promise<boolean> => {
     try {
       setLoading(true);
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/clock-in`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          job_id: jobId || null,
-          latitude,
-          longitude,
-          notes,
-        }),
-      });
+      const response = await apiPost(`${API_BASE}/clock-in`, {
+        job_id: jobId || null,
+        latitude,
+        longitude,
+        notes,
+      }, { headers: getCustomHeaders() as Record<string, string> });
 
       if (!response.ok) {
         const data = await response.json();
@@ -186,7 +180,7 @@ export function useTimeClock(): UseTimeClockReturn {
     } finally {
       setLoading(false);
     }
-  }, [getHeaders, refresh]);
+  }, [getCustomHeaders, refresh]);
 
   // Clock out
   const clockOut = useCallback(async (
@@ -196,17 +190,12 @@ export function useTimeClock(): UseTimeClockReturn {
   ): Promise<boolean> => {
     try {
       setLoading(true);
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/clock-out`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          entry_id: status?.entry?.id,
-          latitude,
-          longitude,
-          notes,
-        }),
-      });
+      const response = await apiPost(`${API_BASE}/clock-out`, {
+        entry_id: status?.entry?.id,
+        latitude,
+        longitude,
+        notes,
+      }, { headers: getCustomHeaders() as Record<string, string> });
 
       if (!response.ok) {
         const data = await response.json();
@@ -222,7 +211,7 @@ export function useTimeClock(): UseTimeClockReturn {
     } finally {
       setLoading(false);
     }
-  }, [getHeaders, status?.entry?.id, refresh]);
+  }, [getCustomHeaders, status?.entry?.id, refresh]);
 
   // Start break
   const startBreak = useCallback(async (
@@ -230,15 +219,10 @@ export function useTimeClock(): UseTimeClockReturn {
   ): Promise<boolean> => {
     try {
       setLoading(true);
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/break/start`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          entry_id: status?.entry?.id,
-          break_type: breakType,
-        }),
-      });
+      const response = await apiPost(`${API_BASE}/break/start`, {
+        entry_id: status?.entry?.id,
+        break_type: breakType,
+      }, { headers: getCustomHeaders() as Record<string, string> });
 
       if (!response.ok) {
         const data = await response.json();
@@ -254,20 +238,15 @@ export function useTimeClock(): UseTimeClockReturn {
     } finally {
       setLoading(false);
     }
-  }, [getHeaders, status?.entry?.id, fetchStatus]);
+  }, [getCustomHeaders, status?.entry?.id, fetchStatus]);
 
   // End break
   const endBreak = useCallback(async (): Promise<boolean> => {
     try {
       setLoading(true);
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/break/end`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          break_id: status?.active_break?.id,
-        }),
-      });
+      const response = await apiPost(`${API_BASE}/break/end`, {
+        break_id: status?.active_break?.id,
+      }, { headers: getCustomHeaders() as Record<string, string> });
 
       if (!response.ok) {
         const data = await response.json();
@@ -283,7 +262,7 @@ export function useTimeClock(): UseTimeClockReturn {
     } finally {
       setLoading(false);
     }
-  }, [getHeaders, status?.active_break?.id, fetchStatus]);
+  }, [getCustomHeaders, status?.active_break?.id, fetchStatus]);
 
   // Update location
   const updateLocation = useCallback(async (
@@ -292,17 +271,12 @@ export function useTimeClock(): UseTimeClockReturn {
     accuracy?: number
   ): Promise<boolean> => {
     try {
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/location`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          entry_id: status?.entry?.id,
-          latitude,
-          longitude,
-          accuracy,
-        }),
-      });
+      const response = await apiPost(`${API_BASE}/location`, {
+        entry_id: status?.entry?.id,
+        latitude,
+        longitude,
+        accuracy,
+      }, { headers: getCustomHeaders() as Record<string, string> });
 
       if (!response.ok) {
         const data = await response.json();
@@ -314,7 +288,7 @@ export function useTimeClock(): UseTimeClockReturn {
       console.error('Error updating location:', err);
       return false;
     }
-  }, [getHeaders, status?.entry?.id]);
+  }, [getCustomHeaders, status?.entry?.id]);
 
   // Timer for elapsed time display
   useEffect(() => {

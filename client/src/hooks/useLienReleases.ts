@@ -17,18 +17,30 @@ async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
 export interface LienRelease {
   id: string;
   job_id: string;
-  draw_id: string;
   vendor_id: string;
+  draw_id: string | null;
   release_type: string;
-  amount: number;
+  release_date: string | null;
   through_date: string | null;
+  amount: number;
+  pdf_url: string | null;
+  ai_processed: boolean;
+  ai_confidence: Record<string, number> | null;
+  ai_extracted_data: Record<string, unknown> | null;
   status: string;
-  document_url: string | null;
-  received_at: string | null;
-  received_by: string | null;
+  needs_review: boolean;
+  review_flags: string[] | null;
+  notary_name: string | null;
+  notary_county: string | null;
+  notary_expiration: string | null;
+  signer_name: string | null;
+  signer_title: string | null;
   notes: string | null;
+  version: number;
   created_at: string;
-  updated_at: string;
+  uploaded_by: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
   // Joined data
   vendor?: { id: string; name: string } | null;
   draw?: { id: string; draw_number: number } | null;
@@ -37,11 +49,12 @@ export interface LienRelease {
 
 export type LienReleaseInsert = {
   job_id: string;
-  draw_id: string;
+  draw_id?: string | null;
   vendor_id: string;
   release_type: string;
   amount: number;
   through_date?: string | null;
+  release_date?: string | null;
   status?: string;
   notes?: string | null;
 };
@@ -65,7 +78,7 @@ export function useCreateLienRelease() {
     mutationFn: async (release: LienReleaseInsert) => {
       return api<LienRelease>('/lien-releases', {
         method: 'POST',
-        body: JSON.stringify({ ...release, status: release.status || 'pending' }),
+        body: JSON.stringify({ ...release, status: release.status || 'received' }),
       });
     },
     onSuccess: () => {
@@ -129,33 +142,33 @@ export function useMarkLienReleaseReceived() {
       return api<LienRelease>(`/lien-releases/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          status: 'received',
-          received_at: new Date().toISOString(),
-          received_by: receivedBy || null,
+          status: 'verified',
+          verified_at: new Date().toISOString(),
+          verified_by: receivedBy || null,
         }),
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lien-releases'] });
       queryClient.invalidateQueries({ queryKey: ['draws'] });
-      toast.success('Lien release marked as received');
+      toast.success('Lien release marked as verified');
     },
     onError: (error: Error) => {
-      console.error('Failed to mark lien release as received:', error);
+      console.error('Failed to mark lien release as verified:', error);
       toast.error('Failed to update lien release');
     },
   });
 }
 
 export const releaseTypeOptions = [
-  { value: 'conditional', label: 'Conditional' },
-  { value: 'unconditional', label: 'Unconditional' },
-  { value: 'final', label: 'Final' },
-  { value: 'partial', label: 'Partial' },
+  { value: 'conditional_progress', label: 'Conditional Waiver - Progress Payment' },
+  { value: 'unconditional_progress', label: 'Unconditional Waiver - Progress Payment' },
+  { value: 'conditional_final', label: 'Conditional Waiver - Final Payment' },
+  { value: 'unconditional_final', label: 'Unconditional Waiver - Final Payment' },
 ];
 
 export const releaseStatusOptions = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'requested', label: 'Requested' },
   { value: 'received', label: 'Received' },
+  { value: 'verified', label: 'Verified' },
+  { value: 'attached', label: 'Attached' },
 ];

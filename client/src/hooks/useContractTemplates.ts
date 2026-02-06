@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
 
 // Types
 export interface ContractTemplate {
@@ -74,9 +75,9 @@ export interface ContractDocument {
   template?: ContractTemplate;
 }
 
-// Helper for API calls
+// Helper for API calls using centralized auth-aware fetch
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

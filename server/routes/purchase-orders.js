@@ -231,7 +231,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 // ============================================================
 
 // Process a PO/Quote document with AI extraction (must be before /:id route)
-router.post('/process-document', upload.single('file'), asyncHandler(async (req, res) => {
+router.post('/process-document', requirePermission('canCreatePO'), upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) {
     throw new AppError('VALIDATION_FAILED', 'No file uploaded');
   }
@@ -351,7 +351,7 @@ router.post('/price-check', asyncHandler(async (req, res) => {
 
 // Learn cost code mapping from user correction
 // POST /api/purchase-orders/learn-cost-code
-router.post('/learn-cost-code', asyncHandler(async (req, res) => {
+router.post('/learn-cost-code', requirePermission('canCreatePO'), asyncHandler(async (req, res) => {
   const { description, cost_code_id, vendor_trade } = req.body;
 
   if (!description || !cost_code_id) {
@@ -569,7 +569,7 @@ router.post('/', requirePermission('canCreatePO'), validate(schemas.poCreate), a
 });
 
 // Update purchase order
-router.patch('/:id', validate(schemas.poUpdate), asyncHandler(async (req, res) => {
+router.patch('/:id', requirePermission('canCreatePO'), validate(schemas.poUpdate), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { line_items, ...updates } = req.body;
 
@@ -703,7 +703,7 @@ router.post('/:id/line-items/reorder', asyncHandler(async (req, res) => {
 }));
 
 // Delete (soft delete) purchase order
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', requirePermission('canCreatePO'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { deleted_by } = req.body;
 
@@ -735,7 +735,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 }));
 
 // Submit PO for approval
-router.post('/:id/submit', asyncHandler(async (req, res) => {
+router.post('/:id/submit', requirePermission('canCreatePO'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { submitted_by } = req.body;
 
@@ -1511,7 +1511,7 @@ router.post('/:poId/change-orders', asyncHandler(async (req, res) => {
 }));
 
 // Approve a change order
-router.post('/:poId/change-orders/:coId/approve', asyncHandler(async (req, res) => {
+router.post('/:poId/change-orders/:coId/approve', requirePermission('canCreatePO'), asyncHandler(async (req, res) => {
   const { poId, coId } = req.params;
   const { approved_by } = req.body;
 

@@ -46,8 +46,8 @@ import {
   Archive,
   MoreVertical,
 } from 'lucide-react';
-import { formatCurrency, formatDate, drawStatusConfig } from '@/types/financial';
-import type { G703LineItem, LienRelease, ChangeOrder, Invoice } from '@/types/financial';
+import { formatCurrency, formatDate, drawStatusConfig, lienReleaseTypeConfig, lienReleaseStatusConfig } from '@/types/financial';
+import type { G703LineItem, LienRelease, ChangeOrder, Invoice, LienReleaseType, LienReleaseStatus } from '@/types/financial';
 import { useDraw, useBudgetLines, useChangeOrdersByDraw, useLienReleasesByDraw } from '@/hooks/useFinancialData';
 import {
   useSubmitDraw,
@@ -882,34 +882,37 @@ export function DrawDetailPanel({ drawId, open, onOpenChange }: DrawDetailPanelP
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge 
-                                  variant="outline" 
-                                  className={cn(
-                                    "capitalize text-xs",
-                                    lr.release_type === 'unconditional' 
-                                      ? 'border-green-500 text-green-600' 
-                                      : 'border-amber-500 text-amber-600'
-                                  )}
-                                >
-                                  {lr.release_type}
-                                </Badge>
+                                {(() => {
+                                  const typeConf = lienReleaseTypeConfig[lr.release_type as LienReleaseType];
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className={cn("text-xs", typeConf?.color || 'text-amber-600')}
+                                    >
+                                      {typeConf?.label || lr.release_type}
+                                    </Badge>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell className="text-right font-medium">
                                 {formatCurrency(lr.amount)}
                               </TableCell>
                               <TableCell>{lr.through_date ? formatDate(lr.through_date) : '—'}</TableCell>
                               <TableCell>
-                                <Badge 
-                                  variant={lr.status === 'received' ? 'default' : 'outline'}
-                                  className={cn(
-                                    "capitalize",
-                                    lr.status === 'received' && 'bg-green-600',
-                                    lr.status === 'pending' && 'text-amber-600',
-                                    lr.status === 'requested' && 'text-blue-600'
-                                  )}
-                                >
-                                  {lr.status}
-                                </Badge>
+                                {(() => {
+                                  const statusConf = lienReleaseStatusConfig[lr.status as LienReleaseStatus];
+                                  return (
+                                    <Badge
+                                      variant={lr.status === 'verified' ? 'default' : 'outline'}
+                                      className={cn(
+                                        statusConf?.color || 'text-gray-600',
+                                        lr.status === 'verified' && 'bg-green-600'
+                                      )}
+                                    >
+                                      {statusConf?.label || lr.status}
+                                    </Badge>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell>
                                 {isDraft && (

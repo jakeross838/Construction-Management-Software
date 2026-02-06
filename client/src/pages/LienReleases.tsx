@@ -23,11 +23,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Download, Search, MoreHorizontal, Pencil, Trash2, CheckCircle, Filter } from 'lucide-react';
+import { Plus, Download, Search, MoreHorizontal, Pencil, Trash2, CheckCircle, Filter, FileCheck } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
 import { useLienReleases, useDeleteLienRelease, useMarkLienReleaseReceived, type LienRelease } from '@/hooks/useLienReleases';
 import { LienReleaseFormDialog } from '@/components/lien-releases/LienReleaseFormDialog';
-import { formatCurrency } from '@/types/financial';
+import { formatCurrency, lienReleaseTypeConfig, lienReleaseStatusConfig, type LienReleaseType, type LienReleaseStatus } from '@/types/financial';
 
 const LienReleases = () => {
   const { selectedJobId } = useJob();
@@ -55,7 +55,8 @@ const LienReleases = () => {
   const stats = useMemo(() => ({
     total: releases.length,
     received: releases.filter(l => l.status === 'received').length,
-    pending: releases.filter(l => l.status === 'pending' || l.status === 'requested').length,
+    verified: releases.filter(l => l.status === 'verified').length,
+    attached: releases.filter(l => l.status === 'attached').length,
     totalAmount: releases.reduce((s, l) => s + (l.amount || 0), 0),
   }), [releases]);
 
@@ -110,25 +111,25 @@ const LienReleases = () => {
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
-          <Card className="stat-card border-l-4 border-l-green-500">
+          <Card className="stat-card border-l-4 border-l-blue-500">
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Received</p>
               <p className="text-2xl font-semibold">{stats.received}</p>
             </CardContent>
           </Card>
-          <Card className="stat-card border-l-4 border-l-amber-500">
+          <Card className="stat-card border-l-4 border-l-green-500">
             <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Pending</p>
-              <p className="text-2xl font-semibold">{stats.pending}</p>
-            </CardContent>
-          </Card>
-          <Card className="stat-card border-l-4 border-l-blue-500">
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="text-2xl font-semibold">{stats.total}</p>
+              <p className="text-sm text-muted-foreground">Verified</p>
+              <p className="text-2xl font-semibold">{stats.verified}</p>
             </CardContent>
           </Card>
           <Card className="stat-card border-l-4 border-l-purple-500">
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground">Attached to Draw</p>
+              <p className="text-2xl font-semibold">{stats.attached}</p>
+            </CardContent>
+          </Card>
+          <Card className="stat-card border-l-4 border-l-amber-500">
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Total Value</p>
               <p className="text-2xl font-semibold">{formatCurrency(stats.totalAmount)}</p>
@@ -153,21 +154,21 @@ const LienReleases = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="requested">Requested</SelectItem>
               <SelectItem value="received">Received</SelectItem>
+              <SelectItem value="verified">Verified</SelectItem>
+              <SelectItem value="attached">Attached</SelectItem>
             </SelectContent>
           </Select>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="conditional">Conditional</SelectItem>
-              <SelectItem value="unconditional">Unconditional</SelectItem>
-              <SelectItem value="final">Final</SelectItem>
-              <SelectItem value="partial">Partial</SelectItem>
+              <SelectItem value="conditional_progress">Conditional - Progress</SelectItem>
+              <SelectItem value="unconditional_progress">Unconditional - Progress</SelectItem>
+              <SelectItem value="conditional_final">Conditional - Final</SelectItem>
+              <SelectItem value="unconditional_final">Unconditional - Final</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -205,15 +206,31 @@ const LienReleases = () => {
                     <TableCell>Draw #{r.draw?.draw_number || '—'}</TableCell>
                     <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="capitalize">{r.release_type}</Badge>
+                      {(() => {
+                        const typeConf = lienReleaseTypeConfig[r.release_type as LienReleaseType];
+                        return typeConf ? (
+                          <Badge variant="outline" className={typeConf.color}>
+                            {typeConf.label}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="capitalize">{r.release_type}</Badge>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       {r.through_date ? new Date(r.through_date).toLocaleDateString() : '—'}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={r.status === 'received' ? 'default' : 'secondary'} className="capitalize">
-                        {r.status}
-                      </Badge>
+                      {(() => {
+                        const statusConf = lienReleaseStatusConfig[r.status as LienReleaseStatus];
+                        return statusConf ? (
+                          <Badge className={`${statusConf.color} ${statusConf.bgColor} border-0`}>
+                            {statusConf.label}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="capitalize">{r.status}</Badge>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -227,16 +244,18 @@ const LienReleases = () => {
                             <Pencil className="h-4 w-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
-                          {r.status !== 'received' && (
+                          {r.status === 'received' && (
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleMarkReceived(r.id); }}>
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Mark Received
+                              <FileCheck className="h-4 w-4 mr-2" />
+                              Mark Verified
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); /* TODO: Download */ }}>
-                            <Download className="h-4 w-4 mr-2" />
-                            Download
-                          </DropdownMenuItem>
+                          {r.pdf_url && (
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); window.open(r.pdf_url!, '_blank'); }}>
+                              <Download className="h-4 w-4 mr-2" />
+                              Download
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem 
                             onClick={(e) => { e.stopPropagation(); setDeleteId(r.id); }}
                             className="text-destructive focus:text-destructive"

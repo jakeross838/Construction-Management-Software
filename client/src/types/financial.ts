@@ -460,27 +460,56 @@ export const coTypeConfig: Record<COType, { label: string; color: string }> = {
 // =====================================================
 // LIEN RELEASE TYPES
 // =====================================================
-export type LienReleaseType = 'conditional' | 'unconditional';
-export type LienReleaseStatus = 'pending' | 'requested' | 'received' | 'waived';
+export type LienReleaseType = 'conditional_progress' | 'unconditional_progress' | 'conditional_final' | 'unconditional_final';
+export type LienReleaseStatus = 'received' | 'verified' | 'attached';
 
 export interface LienRelease {
   id: string;
-  draw_id: string;
-  vendor_id: string;
-  vendor_name?: string;
   job_id: string;
+  vendor_id: string;
+  draw_id: string | null;
+  vendor_name?: string;
   job_name?: string;
   release_type: LienReleaseType;
-  amount: number;
+  release_date: string | null;
   through_date: string | null;
-  received_at: string | null;
-  received_by: string | null;
-  document_url: string | null;
+  amount: number;
+  pdf_url: string | null;
+  ai_processed: boolean;
+  ai_confidence: Record<string, number> | null;
+  ai_extracted_data: Record<string, unknown> | null;
   status: LienReleaseStatus;
+  needs_review: boolean;
+  review_flags: string[] | null;
+  notary_name: string | null;
+  notary_county: string | null;
+  notary_expiration: string | null;
+  signer_name: string | null;
+  signer_title: string | null;
   notes: string | null;
+  version: number;
   created_at: string;
-  updated_at: string;
+  uploaded_by: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
+  // Joined data
+  vendor?: { id: string; name: string } | null;
+  job?: { id: string; name: string } | null;
+  draw?: { id: string; draw_number: number } | null;
 }
+
+export const lienReleaseTypeConfig: Record<LienReleaseType, { label: string; color: string; bgColor: string }> = {
+  conditional_progress: { label: 'Conditional - Progress', color: 'text-amber-600', bgColor: 'bg-amber-50' },
+  unconditional_progress: { label: 'Unconditional - Progress', color: 'text-green-600', bgColor: 'bg-green-50' },
+  conditional_final: { label: 'Conditional - Final', color: 'text-orange-600', bgColor: 'bg-orange-50' },
+  unconditional_final: { label: 'Unconditional - Final', color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
+};
+
+export const lienReleaseStatusConfig: Record<LienReleaseStatus, { label: string; color: string; bgColor: string }> = {
+  received: { label: 'Received', color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  verified: { label: 'Verified', color: 'text-green-600', bgColor: 'bg-green-100' },
+  attached: { label: 'Attached', color: 'text-purple-600', bgColor: 'bg-purple-100' },
+};
 
 // =====================================================
 export function formatCurrency(amount: number): string {

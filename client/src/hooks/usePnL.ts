@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
 
 const API_BASE = '/api/pnl';
 
@@ -69,38 +70,38 @@ export interface RevenueByJob {
 // API Functions
 async function fetchPnLDashboard(year?: number): Promise<PnLDashboard> {
   const params = year ? `?year=${year}` : '';
-  const response = await fetch(`${API_BASE}/dashboard${params}`);
+  const response = await apiFetch(`${API_BASE}/dashboard${params}`);
   if (!response.ok) throw new Error('Failed to fetch P&L dashboard');
   return response.json();
 }
 
 async function fetchYTD(year?: number): Promise<PnLData> {
   const params = year ? `?year=${year}` : '';
-  const response = await fetch(`${API_BASE}/ytd${params}`);
+  const response = await apiFetch(`${API_BASE}/ytd${params}`);
   if (!response.ok) throw new Error('Failed to fetch YTD P&L');
   return response.json();
 }
 
 async function fetchPnLForRange(startDate: string, endDate: string): Promise<PnLData> {
-  const response = await fetch(`${API_BASE}/calculate?start_date=${startDate}&end_date=${endDate}`);
+  const response = await apiFetch(`${API_BASE}/calculate?start_date=${startDate}&end_date=${endDate}`);
   if (!response.ok) throw new Error('Failed to calculate P&L');
   return response.json();
 }
 
 async function fetchPnLTrend(): Promise<MonthlyTrend[]> {
-  const response = await fetch(`${API_BASE}/trend`);
+  const response = await apiFetch(`${API_BASE}/trend`);
   if (!response.ok) throw new Error('Failed to fetch P&L trend');
   return response.json();
 }
 
 async function fetchRevenueByJob(): Promise<RevenueByJob[]> {
-  const response = await fetch(`${API_BASE}/revenue/by-job`);
+  const response = await apiFetch(`${API_BASE}/revenue/by-job`);
   if (!response.ok) throw new Error('Failed to fetch revenue by job');
   return response.json();
 }
 
 async function fetchCostsByCategory(): Promise<CostBreakdown[]> {
-  const response = await fetch(`${API_BASE}/costs/by-category`);
+  const response = await apiFetch(`${API_BASE}/costs/by-category`);
   if (!response.ok) throw new Error('Failed to fetch costs by category');
   return response.json();
 }

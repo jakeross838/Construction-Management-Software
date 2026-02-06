@@ -1208,7 +1208,7 @@ router.post('/analyze-multi', upload.single('file'), async (req, res) => {
  * Process a multi-invoice PDF: split and process each invoice
  * Returns results for all detected invoices
  */
-router.post('/process-batch', upload.single('file'), async (req, res) => {
+router.post('/process-batch', requirePermission('canApproveInvoices'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
@@ -1365,7 +1365,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
 // ============================================================
 
 // Update invoice (partial)
-router.patch('/:id', validate(schemas.invoiceUpdate), asyncHandler(async (req, res) => {
+router.patch('/:id', requirePermission('canApproveInvoices'), validate(schemas.invoiceUpdate), asyncHandler(async (req, res) => {
   const invoiceId = req.params.id;
   const updates = req.body;
   const performedBy = updates.performed_by || updates.updated_by || 'System';
@@ -1420,7 +1420,7 @@ router.patch('/:id', validate(schemas.invoiceUpdate), asyncHandler(async (req, r
 }));
 
 // Allocate invoice to cost codes
-router.post('/:id/allocate', validate(schemas.invoiceAllocations), async (req, res) => {
+router.post('/:id/allocate', requirePermission('canApproveInvoices'), validate(schemas.invoiceAllocations), async (req, res) => {
   const invoiceId = req.params.id;
   let rollbackData = null;
 
@@ -1664,7 +1664,7 @@ router.post('/:id/allocate', validate(schemas.invoiceAllocations), async (req, r
 // STATUS TRANSITION ENDPOINT
 // ============================================================
 
-router.post('/:id/transition', validate(schemas.invoiceTransition), asyncHandler(async (req, res) => {
+router.post('/:id/transition', requirePermission('canApproveInvoices'), validate(schemas.invoiceTransition), asyncHandler(async (req, res) => {
   const invoiceId = req.params.id;
   const { new_status, performed_by: performedBy, reason, allocations, draw_id, overridePoOverage } = req.body;
 
@@ -1901,7 +1901,7 @@ router.post('/:id/transition', validate(schemas.invoiceTransition), asyncHandler
  * POST /api/invoices/:id/stamp
  * Manually trigger PDF stamping for an invoice
  */
-router.post('/:id/stamp', asyncHandler(async (req, res) => {
+router.post('/:id/stamp', requirePermission('canApproveInvoices'), asyncHandler(async (req, res) => {
   const { id: invoiceId } = req.params;
   const { status } = req.body;
 
@@ -1937,7 +1937,7 @@ router.post('/:id/stamp', asyncHandler(async (req, res) => {
 // SPLIT INVOICE ENDPOINTS
 // ============================================================
 
-router.post('/:id/split', async (req, res) => {
+router.post('/:id/split', requirePermission('canApproveInvoices'), async (req, res) => {
   try {
     const { id } = req.params;
     const { splits, performed_by = 'System' } = req.body;
@@ -2084,7 +2084,7 @@ router.post('/:id/split', async (req, res) => {
   }
 });
 
-router.post('/:id/unsplit', async (req, res) => {
+router.post('/:id/unsplit', requirePermission('canApproveInvoices'), async (req, res) => {
   try {
     const { id } = req.params;
     const { performed_by = 'System' } = req.body;
@@ -2158,7 +2158,7 @@ router.post('/:id/unsplit', async (req, res) => {
 // PAYMENT ENDPOINTS
 // ============================================================
 
-router.patch('/:id/pay', async (req, res) => {
+router.patch('/:id/pay', requirePermission('canApproveInvoices'), async (req, res) => {
   try {
     const invoiceId = req.params.id;
     const { payment_method, payment_reference, payment_date, payment_amount } = req.body;
@@ -2214,7 +2214,7 @@ router.patch('/:id/pay', async (req, res) => {
   }
 });
 
-router.patch('/:id/unpay', async (req, res) => {
+router.patch('/:id/unpay', requirePermission('canApproveInvoices'), async (req, res) => {
   try {
     const invoiceId = req.params.id;
 
@@ -2382,7 +2382,7 @@ router.post('/bulk/deny', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/bulk/add-to-draw', asyncHandler(async (req, res) => {
+router.post('/bulk/add-to-draw', requirePermission('canApproveInvoices'), asyncHandler(async (req, res) => {
   const { invoice_ids, draw_id, performed_by: performedBy } = req.body;
 
   if (!invoice_ids || !draw_id) {
@@ -2470,7 +2470,7 @@ router.post('/bulk/add-to-draw', asyncHandler(async (req, res) => {
  * POST /api/invoices/:id/fix-allocation
  * Body: { allocation_id, fix_action: 'remove' | 'reassign', reassign_to?: { po_id, line_item_id, co_id } }
  */
-router.post('/:id/fix-allocation', asyncHandler(async (req, res) => {
+router.post('/:id/fix-allocation', requirePermission('canApproveInvoices'), asyncHandler(async (req, res) => {
   const { id: invoiceId } = req.params;
   const { allocation_id, fix_action, reassign_to, performed_by } = req.body;
 
@@ -2557,7 +2557,7 @@ router.post('/:id/fix-allocation', asyncHandler(async (req, res) => {
 // DELETE ENDPOINT
 // ============================================================
 
-router.delete('/:id', validate(schemas.idParam), asyncHandler(async (req, res) => {
+router.delete('/:id', requirePermission('canApproveInvoices'), validate(schemas.idParam), asyncHandler(async (req, res) => {
   const invoiceId = req.params.id;
   const { performed_by: performedBy = 'System' } = req.body;
 

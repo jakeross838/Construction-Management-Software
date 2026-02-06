@@ -7,17 +7,16 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { formatCurrency, formatDate } from '@/types/financial';
-import type { LienRelease } from '@/types/financial';
-import { 
-  ShieldCheck, 
-  Building2, 
-  Calendar, 
+import { formatCurrency, formatDate, lienReleaseTypeConfig, lienReleaseStatusConfig } from '@/types/financial';
+import type { LienRelease, LienReleaseType, LienReleaseStatus } from '@/types/financial';
+import {
+  ShieldCheck,
+  Building2,
+  Calendar,
   DollarSign,
   CheckCircle,
-  Clock,
-  Mail,
-  AlertTriangle,
+  FileInput,
+  Paperclip,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -28,16 +27,15 @@ interface LienReleaseQuickViewProps {
 }
 
 const statusConfig = {
-  pending: { label: 'Pending', color: 'text-amber-600', bgColor: 'bg-amber-50', icon: Clock },
-  requested: { label: 'Requested', color: 'text-blue-600', bgColor: 'bg-blue-50', icon: Mail },
-  received: { label: 'Received', color: 'text-green-600', bgColor: 'bg-green-50', icon: CheckCircle },
-  waived: { label: 'Waived', color: 'text-gray-600', bgColor: 'bg-gray-50', icon: AlertTriangle },
+  received: { label: 'Received', color: 'text-blue-600', bgColor: 'bg-blue-50', icon: FileInput },
+  verified: { label: 'Verified', color: 'text-green-600', bgColor: 'bg-green-50', icon: CheckCircle },
+  attached: { label: 'Attached', color: 'text-purple-600', bgColor: 'bg-purple-50', icon: Paperclip },
 };
 
 export function LienReleaseQuickView({ lienRelease, open, onOpenChange }: LienReleaseQuickViewProps) {
   if (!lienRelease) return null;
   
-  const config = statusConfig[lienRelease.status as keyof typeof statusConfig] || statusConfig.pending;
+  const config = statusConfig[lienRelease.status as keyof typeof statusConfig] || statusConfig.received;
   const StatusIcon = config.icon;
   
   return (
@@ -58,17 +56,17 @@ export function LienReleaseQuickView({ lienRelease, open, onOpenChange }: LienRe
         <div className="space-y-4">
           {/* Status & Type */}
           <div className="flex items-center gap-2">
-            <Badge 
-              variant="outline" 
-              className={cn(
-                "capitalize",
-                lienRelease.release_type === 'unconditional' 
-                  ? 'border-green-500 text-green-600' 
-                  : 'border-amber-500 text-amber-600'
-              )}
-            >
-              {lienRelease.release_type}
-            </Badge>
+            {(() => {
+              const typeConf = lienReleaseTypeConfig[lienRelease.release_type as LienReleaseType];
+              return (
+                <Badge
+                  variant="outline"
+                  className={cn(typeConf?.color || 'text-amber-600')}
+                >
+                  {typeConf?.label || lienRelease.release_type}
+                </Badge>
+              );
+            })()}
             <Badge variant="outline" className={cn(config.color, config.bgColor, "gap-1")}>
               <StatusIcon className="h-3 w-3" />
               {config.label}
@@ -102,12 +100,12 @@ export function LienReleaseQuickView({ lienRelease, open, onOpenChange }: LienRe
                 </p>
               </div>
             </div>
-            {lienRelease.received_at && (
+            {lienRelease.verified_at && (
               <div className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Received</p>
-                  <p className="text-sm font-medium">{formatDate(lienRelease.received_at)}</p>
+                  <p className="text-xs text-muted-foreground">Verified</p>
+                  <p className="text-sm font-medium">{formatDate(lienRelease.verified_at)}</p>
                 </div>
               </div>
             )}
