@@ -45,7 +45,9 @@
     "security:audit": "npm audit && node scripts/security-scan.js",
     "security:scan": "node scripts/security-scan.js",
     "security:scan:verbose": "node scripts/security-scan.js --verbose",
-    "security:fix": "npm audit fix"
+    "security:fix": "npm audit fix",
+    "sync": "scripts\\sync.cmd",
+    "push": "scripts\\push.cmd"
   },
   "author": "Ross Built Custom Homes",
   "license": "UNLICENSED",

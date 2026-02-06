@@ -238,10 +238,28 @@ Upload → [received] → [needs_approval] → [approved] → [in_draw] → [pai
 
 ---
 
+## Multi-Computer Workflow
+
+When working across multiple computers:
+
+```cmd
+# Starting work (always sync first)
+npm run sync
+npm start
+
+# Ending work (push before switching)
+npm run push
+```
+
+See [docs/MULTI_COMPUTER_WORKFLOW.md](docs/MULTI_COMPUTER_WORKFLOW.md) for detailed instructions.
+
+---
+
 ## Additional Resources
 
 - **Development Guide**: `docs/development/STYLE_GUIDE.md`
 - **Docker Setup**: `docs/deployment/DOCKER.md`
+- **Multi-Computer Workflow**: `docs/MULTI_COMPUTER_WORKFLOW.md`
 - **Planning**: `.planning/MASTER_PLAN.md`
 - **Archived Docs**: `docs/archive/`
 
