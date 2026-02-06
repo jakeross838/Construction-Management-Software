@@ -143,7 +143,7 @@ export default function MobileMore() {
 
         {/* App Version */}
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Ross Built CMS v1.0.0 (PWA)
+          Construction CMS v1.0.0
         </p>
       </div>
     </MobileLayout>

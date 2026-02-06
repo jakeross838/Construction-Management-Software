@@ -11,7 +11,7 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({
-  title = 'Ross Built',
+  title = 'Construction CMS',
   notificationsCount = 0,
   onMenuClick,
   onNotificationsClick,

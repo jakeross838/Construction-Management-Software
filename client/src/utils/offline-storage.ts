@@ -5,7 +5,7 @@
  * Used by the PWA for background sync functionality.
  */
 
-const DB_NAME = 'RossBuiltOfflineDB';
+const DB_NAME = 'ConstructionCMSOfflineDB';
 const DB_VERSION = 2;
 
 // Store names

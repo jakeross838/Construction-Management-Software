@@ -561,7 +561,7 @@ router.get('/settings', asyncHandler(async (req, res) => {
     return res.json({
       provider: emailService.isEmailConfigured() ? 'sendgrid' : 'none',
       from_name: req.builder?.name || 'Your Company',
-      from_email: process.env.SENDGRID_FROM_EMAIL || 'noreply@rossbuilt.com',
+      from_email: process.env.SENDGRID_FROM_EMAIL || process.env.NOREPLY_EMAIL || 'noreply@example.com',
       reply_to_email: null,
       signature_html: null,
       footer_html: null

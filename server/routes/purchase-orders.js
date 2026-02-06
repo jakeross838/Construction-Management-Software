@@ -155,7 +155,7 @@ router.get('/', validate(schemas.poQuery), async (req, res) => {
 
     res.json(flattened);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -464,7 +464,7 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
 
     res.json(flattened);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -564,7 +564,7 @@ router.post('/', requirePermission('canCreatePO'), validate(schemas.poCreate), a
 
     res.json({ ...po, warnings });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

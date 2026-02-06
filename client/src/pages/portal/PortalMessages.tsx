@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { PortalSession } from '@/hooks/useClientPortal';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/api';
 
 interface Message {
   id: string;
@@ -48,7 +49,9 @@ const PortalMessages = () => {
 
     const fetchMessages = async () => {
       try {
-        const response = await fetch('/api/client-portal/portal/messages', {
+        // Portal uses its own session tokens (not Supabase JWT), so skipAuth is required
+        const response = await apiFetch('/api/client-portal/portal/messages', {
+          skipAuth: true,
           headers: {
             'Authorization': `Bearer ${session.session_token}`,
           },
@@ -84,7 +87,9 @@ const PortalMessages = () => {
 
     setIsSending(true);
     try {
-      const response = await fetch('/api/client-portal/portal/messages', {
+      // Portal uses its own session tokens (not Supabase JWT), so skipAuth is required
+      const response = await apiFetch('/api/client-portal/portal/messages', {
+        skipAuth: true,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

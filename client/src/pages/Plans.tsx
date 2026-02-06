@@ -207,7 +207,7 @@ const Plans = () => {
         <div className="text-center text-sm text-muted-foreground">
           <p>All plans include a 14-day free trial. No credit card required to start.</p>
           <p className="mt-2">
-            Need a custom plan? <a href="mailto:sales@rossbuilt.com" className="text-primary hover:underline">Contact our sales team</a>
+            Need a custom plan? <a href="/contact" className="text-primary hover:underline">Contact our sales team</a>
           </p>
         </div>
       </div>

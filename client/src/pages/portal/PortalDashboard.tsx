@@ -15,6 +15,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { PortalSession } from '@/hooks/useClientPortal';
+import { apiFetch } from '@/lib/api';
 
 interface DashboardData {
   project: {
@@ -65,7 +66,9 @@ const PortalDashboard = () => {
 
     const fetchDashboard = async () => {
       try {
-        const response = await fetch('/api/client-portal/portal/dashboard', {
+        // Portal uses its own session tokens (not Supabase JWT), so skipAuth is required
+        const response = await apiFetch('/api/client-portal/portal/dashboard', {
+          skipAuth: true,
           headers: {
             'Authorization': `Bearer ${session.session_token}`,
           },

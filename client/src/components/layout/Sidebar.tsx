@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { 
   LayoutDashboard, 
@@ -134,6 +135,7 @@ export function Sidebar({ userRole }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>(['Overview', 'Financial', 'Settings']);
   const location = useLocation();
+  const { builder } = useAuth();
 
   const toggleSection = (title: string) => {
     setOpenSections(prev => 
@@ -165,8 +167,8 @@ export function Sidebar({ userRole }: SidebarProps) {
               <Building2 className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold text-foreground">Ross Built</h1>
-              <p className="text-xs text-muted-foreground">Custom Homes</p>
+              <h1 className="text-sm font-semibold text-foreground">{builder?.name || 'Construction CMS'}</h1>
+              <p className="text-xs text-muted-foreground">Management Platform</p>
             </div>
           </div>
         )}

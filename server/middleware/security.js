@@ -368,13 +368,17 @@ function sqlInjectionDetection(options = {}) {
       }
     }
 
-    // Log any issues found (but don't block - this is detection only)
+    // Block requests with SQL injection patterns
     if (issues.length > 0) {
       logger.warn('Potential SQL injection detected in request', {
         path: req.path,
         method: req.method,
         ip: req.ip,
         issues: issues.slice(0, 5)
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid input detected'
       });
     }
 

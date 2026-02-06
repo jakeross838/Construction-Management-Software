@@ -212,7 +212,7 @@ router.post('/classify', upload.single('file'), async (req, res) => {
 
   } catch (err) {
     console.error('Classification error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -279,7 +279,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
   } catch (err) {
     console.error('Document upload error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -309,7 +309,7 @@ router.post('/process/:id', async (req, res) => {
 
   } catch (err) {
     console.error('Document processing error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -379,7 +379,7 @@ router.post('/upload-and-process', upload.single('file'), async (req, res) => {
 
   } catch (err) {
     console.error('Upload and process error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -420,7 +420,7 @@ router.get('/queue', async (req, res) => {
 
   } catch (err) {
     console.error('Queue fetch error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -438,7 +438,7 @@ router.get('/pending-review', async (req, res) => {
 
   } catch (err) {
     console.error('Pending review fetch error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -469,7 +469,7 @@ router.get('/:id', async (req, res) => {
 
   } catch (err) {
     console.error('Document fetch error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -499,7 +499,7 @@ router.post('/:id/confirm-route', async (req, res) => {
 
   } catch (err) {
     console.error('Confirm route error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -526,7 +526,7 @@ router.post('/:id/skip-route', async (req, res) => {
 
   } catch (err) {
     console.error('Skip route error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -566,7 +566,7 @@ router.get('/stats/overview', async (req, res) => {
 
   } catch (err) {
     console.error('Stats fetch error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -604,7 +604,7 @@ router.delete('/:id', async (req, res) => {
 
   } catch (err) {
     console.error('Document delete error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 

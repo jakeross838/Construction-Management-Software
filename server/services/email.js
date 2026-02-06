@@ -158,7 +158,7 @@ async function sendEmail({
         to: toAddresses,
         cc: ccAddresses.length ? ccAddresses : undefined,
         bcc: bccAddresses.length ? bccAddresses : undefined,
-        from: from || process.env.SENDGRID_FROM_EMAIL || 'noreply@rossbuilt.com',
+        from: from || process.env.SENDGRID_FROM_EMAIL || process.env.NOREPLY_EMAIL || 'noreply@example.com',
         replyTo: replyTo,
         subject,
         text: body,

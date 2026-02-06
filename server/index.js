@@ -90,6 +90,7 @@ const {
 
 const { setupSwagger } = require('./swagger');
 const { getUserName } = require('./utils/shared');
+const { getBuilderId, withBuilderFilter, tables } = require('./core/multi-tenant');
 
 // Create Express app with middleware from app.js
 const app = createApp();
@@ -1020,7 +1021,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1038,7 +1039,7 @@ app.get('/api/jobs', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1053,7 +1054,7 @@ app.get('/api/jobs/:id', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1102,7 +1103,7 @@ app.delete('/api/jobs/:id', async (req, res) => {
     res.json({ success: true, message: 'Job archived successfully' });
   } catch (err) {
     logger.error('Error archiving job', { error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1133,7 +1134,7 @@ app.get('/api/jobs/:id/purchase-orders', async (req, res) => {
     
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1151,7 +1152,7 @@ app.get('/api/vendors', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1166,7 +1167,7 @@ app.post('/api/vendors', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1585,7 +1586,7 @@ app.get('/api/cost-codes', async (req, res) => {
     if (error) throw error;
     res.json({ costCodes: data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1606,7 +1607,7 @@ app.post('/api/cost-codes', async (req, res) => {
     if (error) throw error;
     res.json({ costCode: data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1626,7 +1627,7 @@ app.patch('/api/cost-codes/:id', async (req, res) => {
     if (error) throw error;
     res.json({ costCode: data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1643,7 +1644,7 @@ app.delete('/api/cost-codes/:id', async (req, res) => {
     if (error) throw error;
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1663,7 +1664,7 @@ app.get('/api/cost-codes/trade-mappings', async (req, res) => {
     if (error) throw error;
     res.json({ mappings: data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1688,7 +1689,7 @@ app.post('/api/cost-codes/trade-mappings', async (req, res) => {
     if (error) throw error;
     res.json({ mapping: data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1705,7 +1706,7 @@ app.delete('/api/cost-codes/trade-mappings/:id', async (req, res) => {
     if (error) throw error;
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1741,7 +1742,7 @@ app.get('/api/purchase-orders', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1831,7 +1832,7 @@ app.get('/api/purchase-orders/:id', async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1911,7 +1912,7 @@ app.post('/api/purchase-orders', async (req, res) => {
 
     res.json(po);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -3016,9 +3017,9 @@ app.get('/api/purchase-orders/:id/pdf', asyncHandler(async (req, res) => {
 // ============================================================
 
 // List invoices (with optional filters)
-app.get('/api/invoices', async (req, res) => {
-  try {
+app.get('/api/invoices', asyncHandler(async (req, res) => {
     const { job_id, status, vendor_id } = req.query;
+    const builderId = getBuilderId(req);
 
     let query = supabase
       .from('v2_invoices')
@@ -3033,7 +3034,8 @@ app.get('/api/invoices', async (req, res) => {
         ),
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
       `)
-      .is('deleted_at', null)  // Filter out soft-deleted invoices
+      .eq('builder_id', builderId)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (job_id) query = query.eq('job_id', job_id);
@@ -3043,13 +3045,11 @@ app.get('/api/invoices', async (req, res) => {
     const { data, error } = await query;
     if (error) throw error;
     res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get invoices that need review (must be before :id route)
 app.get('/api/invoices/needs-review', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_invoices')
     .select(`
@@ -3057,6 +3057,7 @@ app.get('/api/invoices/needs-review', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       vendor:v2_vendors(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('needs_review', true)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -3067,6 +3068,7 @@ app.get('/api/invoices/needs-review', asyncHandler(async (req, res) => {
 
 // Get invoices with low AI confidence (must be before :id route)
 app.get('/api/invoices/low-confidence', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_invoices')
     .select(`
@@ -3074,6 +3076,7 @@ app.get('/api/invoices/low-confidence', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       vendor:v2_vendors(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('ai_processed', true)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -3091,12 +3094,14 @@ app.get('/api/invoices/low-confidence', asyncHandler(async (req, res) => {
 
 // Get invoices without job assignment (must be before :id route)
 app.get('/api/invoices/no-job', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_invoices')
     .select(`
       *,
       vendor:v2_vendors(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('job_id', null)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -3106,8 +3111,8 @@ app.get('/api/invoices/no-job', asyncHandler(async (req, res) => {
 }));
 
 // Get single invoice with full details
-app.get('/api/invoices/:id', async (req, res) => {
-  try {
+app.get('/api/invoices/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     logger.debug('Fetching invoice', { invoiceId: req.params.id });
     const { data, error } = await supabase
       .from('v2_invoices')
@@ -3124,8 +3129,9 @@ app.get('/api/invoices/:id', async (req, res) => {
         ),
         draw_invoices:v2_draw_invoices(draw_id, draw:v2_draws(id, draw_number, status))
       `)
+      .eq('builder_id', builderId)
       .eq('id', req.params.id)
-      .is('deleted_at', null)  // Filter out soft-deleted invoices
+      .is('deleted_at', null)
       .single();
 
     logger.debug('Vendor from query', { vendor: data?.vendor });
@@ -3145,14 +3151,23 @@ app.get('/api/invoices/:id', async (req, res) => {
     }
 
     res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get invoice activity log
-app.get('/api/invoices/:id/activity', async (req, res) => {
-  try {
+app.get('/api/invoices/:id/activity', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+    // Verify invoice belongs to this builder
+    const { data: invoice, error: invError } = await supabase
+      .from('v2_invoices')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('builder_id', builderId)
+      .single();
+
+    if (invError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
     const { data, error } = await supabase
       .from('v2_invoice_activity')
       .select('*')
@@ -3161,14 +3176,11 @@ app.get('/api/invoices/:id/activity', async (req, res) => {
 
     if (error) throw error;
     res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get invoice approval context (budget + PO status + CO status for decision-making)
-app.get('/api/invoices/:id/approval-context', async (req, res) => {
-  try {
+app.get('/api/invoices/:id/approval-context', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     // Get the invoice with allocations, job, and PO
     const { data: invoice, error: invoiceError } = await supabase
       .from('v2_invoices')
@@ -3183,6 +3195,7 @@ app.get('/api/invoices/:id/approval-context', async (req, res) => {
           line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount)
         )
       `)
+      .eq('builder_id', builderId)
       .eq('id', req.params.id)
       .single();
 
@@ -3368,15 +3381,23 @@ app.get('/api/invoices/:id/approval-context', async (req, res) => {
     }
 
     res.json(result);
-  } catch (err) {
-    logger.error('Error getting approval context', { error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get invoice allocations
-app.get('/api/invoices/:id/allocations', async (req, res) => {
-  try {
+app.get('/api/invoices/:id/allocations', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+    // Verify invoice belongs to this builder
+    const { data: invoice, error: invError } = await supabase
+      .from('v2_invoices')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('builder_id', builderId)
+      .single();
+
+    if (invError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
     const { data, error } = await supabase
       .from('v2_invoice_allocations')
       .select(`
@@ -3396,14 +3417,11 @@ app.get('/api/invoices/:id/allocations', async (req, res) => {
 
     if (error) throw error;
     res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get available funding sources (POs and COs) for a job
-app.get('/api/jobs/:jobId/funding-sources', async (req, res) => {
-  try {
+app.get('/api/jobs/:jobId/funding-sources', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { jobId } = req.params;
 
     // Get open/active POs for the job
@@ -3416,6 +3434,7 @@ app.get('/api/jobs/:jobId/funding-sources', async (req, res) => {
           cost_code:v2_cost_codes(id, code, name)
         )
       `)
+      .eq('builder_id', builderId)
       .eq('job_id', jobId)
       .in('status', ['open', 'active'])
       .is('deleted_at', null)
@@ -3449,15 +3468,11 @@ app.get('/api/jobs/:jobId/funding-sources', async (req, res) => {
       purchase_orders: posWithRemaining,
       change_orders: cosWithRemaining
     });
-  } catch (err) {
-    logger.error('Error getting funding sources', { error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Upload invoice with PDF
-app.post('/api/invoices/upload', upload.single('pdf'), async (req, res) => {
-  try {
+app.post('/api/invoices/upload', upload.single('pdf'), asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { job_id, vendor_id, invoice_number, invoice_date, due_date, amount, notes, uploaded_by } = req.body;
 
     let pdf_url = null;
@@ -3476,6 +3491,7 @@ app.post('/api/invoices/upload', upload.single('pdf'), async (req, res) => {
     const { data: invoice, error } = await supabase
       .from('v2_invoices')
       .insert({
+        builder_id: builderId,
         job_id,
         vendor_id: vendor_id || null,
         invoice_number,
@@ -3498,14 +3514,11 @@ app.post('/api/invoices/upload', upload.single('pdf'), async (req, res) => {
     });
 
     res.json(invoice);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // AI-powered invoice processing - accepts PDF, images, Word, Excel
-app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
-  try {
+app.post('/api/invoices/process', upload.single('file'), asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     if (!req.file) {
       return res.status(400).json({
         error: 'No file provided',
@@ -3761,6 +3774,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
     const { data: invoice, error: invError } = await supabase
       .from('v2_invoices')
       .insert({
+        builder_id: builderId,
         job_id: jobId || null,
         vendor_id: result.vendor?.id || null,
         po_id: result.po?.id || null,
@@ -3924,11 +3938,7 @@ app.post('/api/invoices/process', upload.single('file'), async (req, res) => {
       }
     });
 
-  } catch (err) {
-    logger.error('AI processing error', { error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // MASTER DOCUMENT PROCESSOR - Universal upload endpoint
@@ -4360,7 +4370,7 @@ app.post('/api/documents/process', upload.single('file'), async (req, res) => {
 
   } catch (err) {
     logger.error('Document processing error', { error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4524,13 +4534,13 @@ app.post('/api/documents/process-multipage', upload.single('pdf'), async (req, r
 
   } catch (err) {
     logger.error('Multi-page document processing error', { component: 'multi-page', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Code invoice (assign job, vendor, PO, cost codes)
-app.patch('/api/invoices/:id/code', async (req, res) => {
-  try {
+app.patch('/api/invoices/:id/code', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const invoiceId = req.params.id;
     const { job_id, vendor_id, po_id, cost_codes, allocations, coded_by } = req.body;
     // Support both cost_codes (from frontend) and allocations (legacy)
@@ -4548,6 +4558,7 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
         coded_by
       })
       .eq('id', invoiceId)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -4589,14 +4600,11 @@ app.patch('/api/invoices/:id/code', async (req, res) => {
     });
 
     res.json(invoice);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Approve invoice (with PDF stamping)
-app.patch('/api/invoices/:id/approve', async (req, res) => {
-  try {
+app.patch('/api/invoices/:id/approve', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const invoiceId = req.params.id;
     const { approved_by } = req.body;
 
@@ -4616,6 +4624,7 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
           cost_code:v2_cost_codes(code, name)
         )
       `)
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .single();
 
@@ -4914,6 +4923,7 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
         first_draw_id: addedToDraw ? draftDraw.id : null
       })
       .eq('id', invoiceId)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -4991,14 +5001,11 @@ app.patch('/api/invoices/:id/approve', async (req, res) => {
     }
 
     res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Deny invoice - moves to archived 'denied' status
-app.patch('/api/invoices/:id/deny', async (req, res) => {
-  try {
+app.patch('/api/invoices/:id/deny', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const invoiceId = req.params.id;
     const { denied_by, denial_reason } = req.body;
 
@@ -5006,6 +5013,7 @@ app.patch('/api/invoices/:id/deny', async (req, res) => {
     const { data: invoice, error: getError } = await supabase
       .from('v2_invoices')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .single();
 
@@ -5030,6 +5038,7 @@ app.patch('/api/invoices/:id/deny', async (req, res) => {
         denial_reason
       })
       .eq('id', invoiceId)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -5038,14 +5047,11 @@ app.patch('/api/invoices/:id/deny', async (req, res) => {
     await logActivity(invoiceId, 'denied', denied_by, { reason: denial_reason });
 
     res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Close out invoice - write off remaining balance and mark as paid
-app.post('/api/invoices/:id/close-out', async (req, res) => {
-  try {
+app.post('/api/invoices/:id/close-out', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const invoiceId = req.params.id;
     const { closed_out_by, reason, notes } = req.body;
 
@@ -5080,6 +5086,7 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
     const { data: invoice, error: getError } = await supabase
       .from('v2_invoices')
       .select('id, status, amount, paid_amount, parent_invoice_id')
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .single();
 
@@ -5121,6 +5128,7 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
         write_off_amount: writeOffAmount
       })
       .eq('id', invoiceId)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -5149,10 +5157,7 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
     }
 
     res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // SPLIT INVOICE ENDPOINTS
@@ -5162,8 +5167,8 @@ app.post('/api/invoices/:id/close-out', async (req, res) => {
  * Split an invoice into multiple child invoices
  * POST /api/invoices/:id/split
  */
-app.post('/api/invoices/:id/split', async (req, res) => {
-  try {
+app.post('/api/invoices/:id/split', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { splits, performed_by = 'System' } = req.body;
 
@@ -5176,6 +5181,7 @@ app.post('/api/invoices/:id/split', async (req, res) => {
     const { data: parent, error: fetchError } = await supabase
       .from('v2_invoices')
       .select('*, vendor:v2_vendors(id, name)')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -5250,6 +5256,7 @@ app.post('/api/invoices/:id/split', async (req, res) => {
       const { data: child, error: insertError } = await supabase
         .from('v2_invoices')
         .insert({
+          builder_id: builderId,
           parent_invoice_id: id,
           split_index: splitIndex,
           invoice_number: childInvoiceNumber,
@@ -5386,18 +5393,14 @@ app.post('/api/invoices/:id/split', async (req, res) => {
       children: childInvoices,
       message: `Invoice split into ${childInvoices.length} parts`
     });
-  } catch (err) {
-    logger.error('Error splitting invoice', { component: 'split', error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 /**
  * Unsplit an invoice - delete children and restore parent
  * POST /api/invoices/:id/unsplit
  */
-app.post('/api/invoices/:id/unsplit', async (req, res) => {
-  try {
+app.post('/api/invoices/:id/unsplit', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { performed_by = 'System' } = req.body;
 
@@ -5405,6 +5408,7 @@ app.post('/api/invoices/:id/unsplit', async (req, res) => {
     const { data: parent, error: fetchError } = await supabase
       .from('v2_invoices')
       .select('*')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -5509,24 +5513,21 @@ app.post('/api/invoices/:id/unsplit', async (req, res) => {
       deleted_children: childIds.length,
       message: `Invoice unsplit - ${childIds.length} child invoice(s) removed`
     });
-  } catch (err) {
-    logger.error('Error unsplitting invoice', { component: 'unsplit', error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 /**
  * Get all invoices in a family (parent + children)
  * GET /api/invoices/:id/family
  */
-app.get('/api/invoices/:id/family', async (req, res) => {
-  try {
+app.get('/api/invoices/:id/family', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     // Get the invoice to determine family structure
     const { data: invoice, error: invError } = await supabase
       .from('v2_invoices')
       .select('id, parent_invoice_id, is_split_parent')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .single();
 
@@ -5575,16 +5576,12 @@ app.get('/api/invoices/:id/family', async (req, res) => {
       parent,
       children: children || []
     });
-  } catch (err) {
-    logger.error('Error fetching invoice family', { component: 'invoice', error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Record vendor payment (we pay the vendor)
 // Supports partial payments - payment_status: unpaid → partial → paid
-app.patch('/api/invoices/:id/pay', async (req, res) => {
-  try {
+app.patch('/api/invoices/:id/pay', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const invoiceId = req.params.id;
     const { payment_method, payment_reference, payment_date, payment_amount, payment_notes, recorded_by } = req.body;
 
@@ -5602,6 +5599,7 @@ app.patch('/api/invoices/:id/pay', async (req, res) => {
     const { data: invoice, error: getError } = await supabase
       .from('v2_invoices')
       .select('id, status, amount, payment_status, paid_amount')
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .single();
 
@@ -5687,15 +5685,11 @@ app.patch('/api/invoices/:id/pay', async (req, res) => {
         fully_paid: isFullyPaid
       }
     });
-  } catch (err) {
-    logger.error('Error recording vendor payment', { component: 'payment', error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Void all vendor payments (reset to unpaid)
-app.patch('/api/invoices/:id/unpay', async (req, res) => {
-  try {
+app.patch('/api/invoices/:id/unpay', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const invoiceId = req.params.id;
     const { voided_by, reason } = req.body;
 
@@ -5703,6 +5697,7 @@ app.patch('/api/invoices/:id/unpay', async (req, res) => {
     const { data: invoice, error: getError } = await supabase
       .from('v2_invoices')
       .select('id, payment_status, paid_amount')
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .single();
 
@@ -5749,16 +5744,24 @@ app.patch('/api/invoices/:id/unpay', async (req, res) => {
     });
 
     res.json(updated);
-  } catch (err) {
-    logger.error('Error voiding vendor payments', { component: 'payment', error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Get payment history for an invoice
-app.get('/api/invoices/:id/payments', async (req, res) => {
-  try {
+app.get('/api/invoices/:id/payments', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const invoiceId = req.params.id;
+
+    // Verify invoice belongs to this builder
+    const { data: invoice, error: invError } = await supabase
+      .from('v2_invoices')
+      .select('id, amount, paid_amount, payment_status')
+      .eq('builder_id', builderId)
+      .eq('id', invoiceId)
+      .single();
+
+    if (invError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
 
     const { data: payments, error } = await supabase
       .from('v2_invoice_payments')
@@ -5768,31 +5771,20 @@ app.get('/api/invoices/:id/payments', async (req, res) => {
 
     if (error) throw error;
 
-    // Also get invoice summary
-    const { data: invoice } = await supabase
-      .from('v2_invoices')
-      .select('amount, paid_amount, payment_status')
-      .eq('id', invoiceId)
-      .single();
-
     res.json({
       payments: payments || [],
-      summary: invoice ? {
+      summary: {
         invoice_amount: parseFloat(invoice.amount || 0),
         total_paid: parseFloat(invoice.paid_amount || 0),
         remaining: parseFloat(invoice.amount || 0) - parseFloat(invoice.paid_amount || 0),
         payment_status: invoice.payment_status
-      } : null
+      }
     });
-  } catch (err) {
-    logger.error('Error fetching payment history', { component: 'payment', error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // Allocate invoice to cost codes
-app.post('/api/invoices/:id/allocate', async (req, res) => {
-  try {
+app.post('/api/invoices/:id/allocate', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const invoiceId = req.params.id;
     const { allocations } = req.body;
 
@@ -5800,6 +5792,7 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
     const { data: invoice } = await supabase
       .from('v2_invoices')
       .select('amount, billed_amount, paid_amount, status')
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .single();
 
@@ -5942,10 +5935,7 @@ app.post('/api/invoices/:id/allocate', async (req, res) => {
     }
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+}));
 
 // ============================================================
 // BUDGET API
@@ -5999,7 +5989,7 @@ app.get('/api/jobs/:id/budget', async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -6300,7 +6290,7 @@ app.get('/api/jobs/:id/budget-summary', async (req, res) => {
     });
   } catch (err) {
     logger.error('Budget summary error', { component: 'budget', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -6461,7 +6451,7 @@ app.get('/api/jobs/:jobId/cost-code/:costCodeId/details', async (req, res) => {
 
   } catch (err) {
     logger.error('Cost code details error', { component: 'budget', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -6504,7 +6494,7 @@ app.post('/api/jobs/:jobId/budget/:costCodeId/close', async (req, res) => {
     res.json({ success: true, budgetLine: data });
   } catch (err) {
     logger.error('Close budget line error', { component: 'budget', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -6545,7 +6535,7 @@ app.post('/api/jobs/:jobId/budget/:costCodeId/reopen', async (req, res) => {
     res.json({ success: true, budgetLine: data });
   } catch (err) {
     logger.error('Reopen budget line error', { component: 'budget', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -6629,7 +6619,7 @@ app.post('/api/jobs/:id/budget/import', async (req, res) => {
     res.json({ success: true, imported, costCodesCreated: created });
   } catch (err) {
     logger.error('Budget import error', { component: 'budget', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -6720,7 +6710,7 @@ app.get('/api/jobs/:id/budget/export', async (req, res) => {
     res.end();
   } catch (err) {
     logger.error('Budget export error', { component: 'budget', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -6767,7 +6757,7 @@ app.get('/api/draws', async (req, res) => {
 
     res.json(drawsWithTotals);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7152,7 +7142,7 @@ app.get('/api/draws/:id', async (req, res) => {
     });
   } catch (err) {
     logger.error('Error fetching draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7305,7 +7295,7 @@ app.get('/api/jobs/:id/approved-unbilled-invoices', async (req, res) => {
     });
   } catch (err) {
     logger.error('Error fetching approved unbilled invoices', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7435,7 +7425,7 @@ app.post('/api/jobs/:id/auto-generate-draw', async (req, res) => {
     });
   } catch (err) {
     logger.error('Error auto-generating draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7463,7 +7453,7 @@ app.patch('/api/draws/:id', async (req, res) => {
     res.json(data);
   } catch (err) {
     logger.error('Error updating draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7599,7 +7589,7 @@ app.post('/api/draws/:id/add-invoices', async (req, res) => {
       }))
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7761,7 +7751,7 @@ app.post('/api/draws/:id/remove-invoice', async (req, res) => {
     res.json({ success: true, new_total: newTotal, draw_number: draw.draw_number });
   } catch (err) {
     logger.error('Error removing invoice from draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7799,7 +7789,7 @@ app.delete('/api/draws/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     logger.error('Error deleting draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7836,7 +7826,7 @@ app.post('/api/draws/:id/recalculate', async (req, res) => {
     res.json({ success: true, new_total: newTotal });
   } catch (err) {
     logger.error('Error recalculating draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7938,7 +7928,7 @@ app.patch('/api/draws/:id/submit', async (req, res) => {
     res.json(draw);
   } catch (err) {
     logger.error('Error submitting draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -7997,7 +7987,7 @@ app.post('/api/draws/:id/unsubmit', async (req, res) => {
     res.json(draw);
   } catch (err) {
     logger.error('Error unsubmitting draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8167,7 +8157,7 @@ app.patch('/api/draws/:id/fund', async (req, res) => {
     res.json(draw);
   } catch (err) {
     logger.error('Error funding draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8185,7 +8175,7 @@ app.post('/api/draws/fix-legacy-status', async (req, res) => {
     res.json({ message: 'Legacy statuses fixed', updated: data?.length || 0, draws: data });
   } catch (err) {
     logger.error('Error fixing legacy statuses', { error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8234,7 +8224,7 @@ app.get('/api/jobs/:jobId/change-orders', async (req, res) => {
     res.json(data || []);
   } catch (err) {
     logger.error('Error fetching job change orders', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8269,7 +8259,7 @@ app.get('/api/change-orders/:id', async (req, res) => {
     res.json({ ...co, activity: activity || [] });
   } catch (err) {
     logger.error('Error fetching change order', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8339,7 +8329,7 @@ app.post('/api/jobs/:jobId/change-orders', async (req, res) => {
     res.status(201).json(co);
   } catch (err) {
     logger.error('Error creating change order', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8396,7 +8386,7 @@ app.patch('/api/change-orders/:id', async (req, res) => {
     res.json(co);
   } catch (err) {
     logger.error('Error updating change order', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8430,7 +8420,7 @@ app.delete('/api/change-orders/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     logger.error('Error deleting change order', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8456,7 +8446,7 @@ app.post('/api/change-orders/:id/submit', async (req, res) => {
     res.json(co);
   } catch (err) {
     logger.error('Error submitting change order', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8482,7 +8472,7 @@ app.post('/api/change-orders/:id/approve', async (req, res) => {
     res.json(co);
   } catch (err) {
     logger.error('Error approving change order', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8508,7 +8498,7 @@ app.post('/api/change-orders/:id/client-approve', async (req, res) => {
     res.json(co);
   } catch (err) {
     logger.error('Error recording client approval', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8536,7 +8526,7 @@ app.post('/api/change-orders/:id/bypass-client', async (req, res) => {
     res.json(co);
   } catch (err) {
     logger.error('Error bypassing client approval', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8562,7 +8552,7 @@ app.post('/api/change-orders/:id/reject', async (req, res) => {
     res.json(co);
   } catch (err) {
     logger.error('Error rejecting change order', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8588,7 +8578,7 @@ app.get('/api/change-orders/:id/invoices', async (req, res) => {
     res.json(links || []);
   } catch (err) {
     logger.error('Error fetching CO invoices', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8635,7 +8625,7 @@ app.post('/api/change-orders/:id/link-invoice', async (req, res) => {
     res.status(201).json(link);
   } catch (err) {
     logger.error('Error linking invoice to CO', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8657,7 +8647,7 @@ app.delete('/api/change-orders/:id/unlink-invoice/:invoiceId', async (req, res) 
     res.json({ success: true });
   } catch (err) {
     logger.error('Error unlinking invoice from CO', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8680,7 +8670,7 @@ app.get('/api/change-orders/:id/cost-codes', async (req, res) => {
     res.json(data || []);
   } catch (err) {
     logger.error('Error fetching CO cost codes', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8711,7 +8701,7 @@ app.put('/api/change-orders/:id/cost-codes', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     logger.error('Error saving CO cost codes', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8743,7 +8733,7 @@ app.get('/api/draws/:id/available-cos', async (req, res) => {
     res.json(available);
   } catch (err) {
     logger.error('Error fetching available COs', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8760,7 +8750,7 @@ app.get('/api/draws/:id/co-billings', async (req, res) => {
     res.json(billings || []);
   } catch (err) {
     logger.error('Error fetching CO billings', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8820,7 +8810,7 @@ app.post('/api/draws/:id/add-co-billing', async (req, res) => {
     res.status(201).json(billing);
   } catch (err) {
     logger.error('Error adding CO billing', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8844,7 +8834,7 @@ app.delete('/api/draws/:id/remove-co-billing/:coId', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     logger.error('Error removing CO billing', { component: 'change-order', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8870,7 +8860,7 @@ app.get('/api/draws/:id/attachments', async (req, res) => {
     res.json(attachments || []);
   } catch (err) {
     logger.error('Error fetching draw attachments', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8930,7 +8920,7 @@ app.post('/api/draws/:id/attachments', async (req, res) => {
     res.json(attachment);
   } catch (err) {
     logger.error('Error adding draw attachment', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -8986,7 +8976,7 @@ app.delete('/api/draws/:id/attachments/:attachmentId', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     logger.error('Error deleting draw attachment', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -9009,7 +8999,7 @@ app.get('/api/draws/:id/activity', async (req, res) => {
     res.json(activities || []);
   } catch (err) {
     logger.error('Error fetching draw activity', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -9047,7 +9037,7 @@ app.get('/api/jobs/:jobId/current-draw', async (req, res) => {
     res.json(draftDraw || null);
   } catch (err) {
     logger.error('Error getting current draw', { component: 'draw', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -9567,7 +9557,7 @@ app.get('/api/draws/:id/export/excel', async (req, res) => {
     res.end();
   } catch (err) {
     logger.error('Error exporting Excel', { component: 'export', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -9918,7 +9908,7 @@ app.get('/api/draws/:id/export/pdf', async (req, res) => {
     res.send(Buffer.from(pdfBytes));
   } catch (err) {
     logger.error('Error exporting PDF', { component: 'export', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -9973,7 +9963,7 @@ app.get('/api/jobs/:id/stats', async (req, res) => {
 
     res.json({ invoices: stats, draws: drawStats });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -9983,6 +9973,7 @@ app.get('/api/jobs/:id/stats', async (req, res) => {
 
 // Partial update (PATCH)
 app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const invoiceId = req.params.id;
   const updates = req.body;
   const performedBy = updates.performed_by || 'System';
@@ -9992,6 +9983,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
   const { data: existing, error: getError } = await supabase
     .from('v2_invoices')
     .select('*, allocations:v2_invoice_allocations(*)')
+    .eq('builder_id', builderId)
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .single();
@@ -10625,6 +10617,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
     .from('v2_invoices')
     .update(updateFields)
     .eq('id', invoiceId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -10726,6 +10719,7 @@ app.patch('/api/invoices/:id', asyncHandler(async (req, res) => {
 
 // Full update (PUT)
 app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const invoiceId = req.params.id;
   const { invoice: updates, allocations, performed_by: performedBy = 'System' } = req.body;
 
@@ -10733,6 +10727,7 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
   const { data: existing, error: getError } = await supabase
     .from('v2_invoices')
     .select('*, allocations:v2_invoice_allocations(*)')
+    .eq('builder_id', builderId)
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .single();
@@ -10785,6 +10780,7 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
     .from('v2_invoices')
     .update(updateFields)
     .eq('id', invoiceId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -10827,6 +10823,7 @@ app.put('/api/invoices/:id/full', asyncHandler(async (req, res) => {
 // ============================================================
 
 app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const invoiceId = req.params.id;
   const { new_status, performed_by: performedBy, reason, allocations, draw_id, overridePoOverage } = req.body;
 
@@ -10840,6 +10837,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
       po:v2_purchase_orders(id, po_number, description, total_amount),
       allocations:v2_invoice_allocations(id, amount, cost_code_id, po_line_item_id, change_order_id, pending_co, cost_code:v2_cost_codes(code, name))
     `)
+    .eq('builder_id', builderId)
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .single();
@@ -11271,6 +11269,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
     .from('v2_invoices')
     .update(updateData)
     .eq('id', invoiceId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -11310,6 +11309,7 @@ app.post('/api/invoices/:id/transition', asyncHandler(async (req, res) => {
 
 // Re-stamp a single invoice based on its current status
 app.post('/api/invoices/:id/stamp', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { status: requestedStatus } = req.body;
 
@@ -11317,6 +11317,7 @@ app.post('/api/invoices/:id/stamp', asyncHandler(async (req, res) => {
   const { data: invoice, error: fetchError } = await supabase
     .from('v2_invoices')
     .select('id, status')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -11337,7 +11338,7 @@ app.post('/api/invoices/:id/stamp', asyncHandler(async (req, res) => {
     logger.error('Stamp error', { component: 'stamp', error: error.message });
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to stamp invoice'
+      error: 'An internal error occurred'
     });
   }
 }));
@@ -11348,6 +11349,7 @@ app.post('/api/invoices/:id/stamp', asyncHandler(async (req, res) => {
 
 // Re-stamp all invoices that are missing stamps or need re-stamping
 app.post('/api/invoices/batch-restamp', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { status, force = false } = req.body;
 
   // Build query - get invoices that need stamping
@@ -11361,6 +11363,7 @@ app.post('/api/invoices/batch-restamp', asyncHandler(async (req, res) => {
       po:v2_purchase_orders(id, po_number, total_amount),
       allocations:v2_invoice_allocations(amount, cost_code_id)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (status) {
@@ -11528,6 +11531,7 @@ app.post('/api/invoices/batch-restamp', asyncHandler(async (req, res) => {
 // ============================================================
 
 app.patch('/api/invoices/:id/override', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const invoiceId = req.params.id;
   const { field, value, reason, performed_by: performedBy = 'System' } = req.body;
 
@@ -11541,6 +11545,7 @@ app.patch('/api/invoices/:id/override', asyncHandler(async (req, res) => {
   const { data: invoice, error: getError } = await supabase
     .from('v2_invoices')
     .select('*, ai_confidence, ai_overrides, review_flags, needs_review')
+    .eq('builder_id', builderId)
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .single();
@@ -11586,6 +11591,7 @@ app.patch('/api/invoices/:id/override', asyncHandler(async (req, res) => {
       needs_review
     })
     .eq('id', invoiceId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -11652,8 +11658,21 @@ app.get('/api/undo/available/:entityType/:entityId', asyncHandler(async (req, re
 }));
 
 app.post('/api/invoices/:id/undo', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const invoiceId = req.params.id;
   const { performed_by: performedBy = 'System' } = req.body;
+
+  // Verify invoice belongs to this builder
+  const { data: invCheck, error: invCheckError } = await supabase
+    .from('v2_invoices')
+    .select('id')
+    .eq('id', invoiceId)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (invCheckError || !invCheck) {
+    throw notFoundError('invoice', invoiceId);
+  }
 
   // Get available undo
   const undoInfo = await getAvailableUndo('invoice', invoiceId);
@@ -11746,6 +11765,7 @@ app.delete('/api/locks/entity/:entityType/:entityId', asyncHandler(async (req, r
 // ============================================================
 
 app.post('/api/invoices/bulk/approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { invoice_ids, performed_by: performedBy } = req.body;
 
   if (!invoice_ids || !Array.isArray(invoice_ids) || invoice_ids.length === 0) {
@@ -11759,6 +11779,7 @@ app.post('/api/invoices/bulk/approve', asyncHandler(async (req, res) => {
     const { data: invoice } = await supabase
       .from('v2_invoices')
       .select('*, allocations:v2_invoice_allocations(*)')
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .is('deleted_at', null)
       .single();
@@ -11795,6 +11816,7 @@ app.post('/api/invoices/bulk/approve', asyncHandler(async (req, res) => {
           approved_by: performedBy
         })
         .eq('id', invoiceId)
+        .eq('builder_id', builderId)
         .select()
         .single();
 
@@ -11817,6 +11839,7 @@ app.post('/api/invoices/bulk/approve', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/invoices/bulk/add-to-draw', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { invoice_ids, draw_id, performed_by: performedBy } = req.body;
 
   if (!invoice_ids || !draw_id) {
@@ -11827,6 +11850,7 @@ app.post('/api/invoices/bulk/add-to-draw', asyncHandler(async (req, res) => {
   const { data: draw } = await supabase
     .from('v2_draws')
     .select('id, status')
+    .eq('builder_id', builderId)
     .eq('id', draw_id)
     .single();
 
@@ -11844,6 +11868,7 @@ app.post('/api/invoices/bulk/add-to-draw', asyncHandler(async (req, res) => {
     const { data: invoice } = await supabase
       .from('v2_invoices')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .single();
 
@@ -11871,7 +11896,7 @@ app.post('/api/invoices/bulk/add-to-draw', asyncHandler(async (req, res) => {
 
     try {
       await supabase.from('v2_draw_invoices').insert({ draw_id, invoice_id: invoiceId });
-      await supabase.from('v2_invoices').update({ status: 'in_draw' }).eq('id', invoiceId);
+      await supabase.from('v2_invoices').update({ status: 'in_draw' }).eq('id', invoiceId).eq('builder_id', builderId);
       await logActivity(invoiceId, 'added_to_draw', performedBy, { draw_id, bulk: true });
       results.success.push(invoiceId);
     } catch (err) {
@@ -11898,6 +11923,7 @@ app.post('/api/invoices/bulk/add-to-draw', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/invoices/bulk/deny', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { invoice_ids, reason, performed_by: performedBy } = req.body;
 
   if (!invoice_ids || !reason) {
@@ -11910,6 +11936,7 @@ app.post('/api/invoices/bulk/deny', asyncHandler(async (req, res) => {
     const { data: invoice } = await supabase
       .from('v2_invoices')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', invoiceId)
       .single();
 
@@ -11930,7 +11957,7 @@ app.post('/api/invoices/bulk/deny', asyncHandler(async (req, res) => {
         denied_at: new Date().toISOString(),
         denied_by: performedBy,
         denial_reason: reason
-      }).eq('id', invoiceId);
+      }).eq('id', invoiceId).eq('builder_id', builderId);
 
       await logActivity(invoiceId, 'denied', performedBy, { reason, bulk: true });
       results.success.push(invoiceId);
@@ -11952,11 +11979,13 @@ app.post('/api/invoices/bulk/deny', asyncHandler(async (req, res) => {
 // ============================================================
 
 app.get('/api/invoices/:id/version', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const invoiceId = req.params.id;
 
   const { data: invoice, error } = await supabase
     .from('v2_invoices')
     .select('id, version, updated_at')
+    .eq('builder_id', builderId)
     .eq('id', invoiceId)
     .single();
 
@@ -11976,6 +12005,7 @@ app.get('/api/invoices/:id/version', asyncHandler(async (req, res) => {
 // ============================================================
 
 app.delete('/api/invoices/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const invoiceId = req.params.id;
   const { performed_by: performedBy = 'System' } = req.body;
 
@@ -11983,6 +12013,7 @@ app.delete('/api/invoices/:id', asyncHandler(async (req, res) => {
   const { data: invoice } = await supabase
     .from('v2_invoices')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .single();
@@ -12016,7 +12047,8 @@ app.delete('/api/invoices/:id', asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('v2_invoices')
     .update({ deleted_at: new Date().toISOString() })
-    .eq('id', invoiceId);
+    .eq('id', invoiceId)
+    .eq('builder_id', builderId);
 
   if (error) {
     throw new AppError('DATABASE_ERROR', 'Failed to delete invoice');
@@ -12277,12 +12309,14 @@ app.get('/api/jobs/:id/snapshots', asyncHandler(async (req, res) => {
 
 // Sync invoice billed_amount from actual draw history
 app.post('/api/invoices/:id/sync-billed', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const invoiceId = req.params.id;
 
   // Get invoice info
   const { data: invoice, error: invError } = await supabase
     .from('v2_invoices')
     .select('id, invoice_number, amount, billed_amount')
+    .eq('builder_id', builderId)
     .eq('id', invoiceId)
     .single();
 
@@ -12328,6 +12362,7 @@ app.post('/api/invoices/:id/sync-billed', asyncHandler(async (req, res) => {
     .from('v2_invoices')
     .update({ billed_amount: calculatedBilled })
     .eq('id', invoiceId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -12412,6 +12447,7 @@ app.post('/api/budgets/sync-totals', asyncHandler(async (req, res) => {
 
 // Sync all invoices' billed_amount (bulk fix)
 app.post('/api/invoices/sync-all-billed', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   // Get all invoices that have been in draws
@@ -12422,6 +12458,7 @@ app.post('/api/invoices/sync-all-billed', asyncHandler(async (req, res) => {
       draw_invoices:v2_draw_invoices(draw_id),
       allocations:v2_invoice_allocations(amount)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) {

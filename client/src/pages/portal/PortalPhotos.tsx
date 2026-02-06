@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { PortalSession } from '@/hooks/useClientPortal';
+import { apiFetch } from '@/lib/api';
 
 interface Photo {
   id: string;
@@ -58,7 +59,9 @@ const PortalPhotos = () => {
 
     const fetchPhotos = async () => {
       try {
-        const response = await fetch('/api/client-portal/portal/photos', {
+        // Portal uses its own session tokens (not Supabase JWT), so skipAuth is required
+        const response = await apiFetch('/api/client-portal/portal/photos', {
+          skipAuth: true,
           headers: {
             'Authorization': `Bearer ${session.session_token}`,
           },

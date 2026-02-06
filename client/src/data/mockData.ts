@@ -46,10 +46,10 @@ export const invoices: Invoice[] = [
 
 // Purchase Orders
 export const purchaseOrders: PurchaseOrder[] = [
-  { id: '1', poNumber: 'PO-Drummond-0043', jobId: '1', jobName: 'Drummond', vendorId: '1', vendorName: 'Florida Sunshine Carpentry', description: 'Framing labor - 2nd floor and roof', totalAmount: 25000, invoicedAmount: 17760, remainingAmount: 7240, status: 'open', lineItems: [{ id: '1', costCodeId: '1', costCode: '06100', costCodeName: 'Rough Carpentry', description: 'Framing labor - 2nd floor', amount: 17500, invoicedAmount: 17760 }, { id: '2', costCodeId: '1', costCode: '06100', costCodeName: 'Rough Carpentry', description: 'Framing labor - roof', amount: 7500, invoicedAmount: 0 }], createdAt: '2026-01-15', approvedAt: '2026-01-15', approvedBy: 'Jake Ross' },
+  { id: '1', poNumber: 'PO-Drummond-0043', jobId: '1', jobName: 'Drummond', vendorId: '1', vendorName: 'Florida Sunshine Carpentry', description: 'Framing labor - 2nd floor and roof', totalAmount: 25000, invoicedAmount: 17760, remainingAmount: 7240, status: 'open', lineItems: [{ id: '1', costCodeId: '1', costCode: '06100', costCodeName: 'Rough Carpentry', description: 'Framing labor - 2nd floor', amount: 17500, invoicedAmount: 17760 }, { id: '2', costCodeId: '1', costCode: '06100', costCodeName: 'Rough Carpentry', description: 'Framing labor - roof', amount: 7500, invoicedAmount: 0 }], createdAt: '2026-01-15', approvedAt: '2026-01-15', approvedBy: 'Demo Owner' },
   { id: '2', poNumber: 'PO-Drummond-0042', jobId: '1', jobName: 'Drummond', vendorId: '2', vendorName: 'Gulf Coast Electric', description: 'Electrical rough-in', totalAmount: 45000, invoicedAmount: 8450, remainingAmount: 36550, status: 'open', lineItems: [], createdAt: '2026-01-10', approvedAt: '2026-01-10', approvedBy: 'Mike Johnson' },
   { id: '3', poNumber: 'PO-Drummond-0041', jobId: '1', jobName: 'Drummond', vendorId: '3', vendorName: 'Sarasota Plumbing Co', description: 'Plumbing rough-in', totalAmount: 18500, invoicedAmount: 12300, remainingAmount: 6200, status: 'open', lineItems: [], createdAt: '2026-01-08' },
-  { id: '4', poNumber: 'PO-Drummond-0040', jobId: '1', jobName: 'Drummond', vendorId: '4', vendorName: 'ABC Concrete', description: 'Foundation concrete', totalAmount: 52700, invoicedAmount: 52700, remainingAmount: 0, status: 'closed', lineItems: [], createdAt: '2025-11-01', approvedAt: '2025-11-01', approvedBy: 'Jake Ross' },
+  { id: '4', poNumber: 'PO-Drummond-0040', jobId: '1', jobName: 'Drummond', vendorId: '4', vendorName: 'ABC Concrete', description: 'Foundation concrete', totalAmount: 52700, invoicedAmount: 52700, remainingAmount: 0, status: 'closed', lineItems: [], createdAt: '2025-11-01', approvedAt: '2025-11-01', approvedBy: 'Demo Owner' },
 ];
 
 // Draws
@@ -90,10 +90,10 @@ export const costCodes: CostCode[] = [
 
 // Employees
 export const employees: Employee[] = [
-  { id: '1', name: 'Jake Ross', email: 'jake@rossbuilt.com', role: 'Owner', status: 'active' },
-  { id: '2', name: 'Mike Johnson', email: 'mike@rossbuilt.com', role: 'Project Manager', status: 'active' },
-  { id: '3', name: 'Sarah Chen', email: 'sarah@rossbuilt.com', role: 'Project Manager', status: 'active' },
-  { id: '4', name: 'Tom Smith', email: 'tom@rossbuilt.com', role: 'Supervisor', hourlyRate: 35, status: 'active' },
+  { id: '1', name: 'Demo Owner', email: 'owner@example.com', role: 'Owner', status: 'active' },
+  { id: '2', name: 'Demo PM', email: 'pm@example.com', role: 'Project Manager', status: 'active' },
+  { id: '3', name: 'Demo PM 2', email: 'pm2@example.com', role: 'Project Manager', status: 'active' },
+  { id: '4', name: 'Demo Supervisor', email: 'supervisor@example.com', role: 'Supervisor', hourlyRate: 35, status: 'active' },
 ];
 
 // Expenses

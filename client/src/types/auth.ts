@@ -80,7 +80,7 @@ export function hasPermission(role: UserRole, permission: Permission): boolean {
 
 export const mockUser: User = {
   id: '1',
-  name: 'Jake Ross',
-  email: 'jake@rossbuilt.com',
+  name: 'Demo Owner',
+  email: 'owner@example.com',
   role: 'owner',
 };

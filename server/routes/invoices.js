@@ -214,7 +214,7 @@ router.get('/', validate(schemas.invoiceQuery), async (req, res) => {
 
     return res.json(noPaginationResponse(data || []));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -348,7 +348,7 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -364,7 +364,7 @@ router.get('/:id/activity', validate(schemas.idParam), async (req, res) => {
     if (error) throw error;
     res.json(data || []);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -384,7 +384,7 @@ router.get('/:id/allocations', validate(schemas.idParam), async (req, res) => {
     if (error) throw error;
     res.json(data || []);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -648,7 +648,7 @@ router.get('/:id/family', async (req, res) => {
 
     res.json({ is_split: true, parent, children: children || [] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -695,7 +695,7 @@ router.post('/upload', upload.single('pdf'), async (req, res) => {
 
     res.json(invoice);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1161,7 +1161,7 @@ router.post('/process', requirePermission('canApproveInvoices'), upload.single('
     });
   } catch (err) {
     logger.error('AI processing error', { error: err.message, stack: err.stack });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1200,7 +1200,7 @@ router.post('/analyze-multi', upload.single('file'), async (req, res) => {
 
   } catch (err) {
     logger.error('Multi-invoice analysis error', { component: 'MultiInvoice', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1356,7 +1356,7 @@ router.post('/process-batch', upload.single('file'), async (req, res) => {
 
   } catch (err) {
     logger.error('Batch processing error', { component: 'MultiInvoice', error: err.message });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1656,7 +1656,7 @@ router.post('/:id/allocate', validate(schemas.invoiceAllocations), async (req, r
       }
     }
 
-    res.status(500).json({ error: err.message, rollback_attempted: !!rollbackData });
+    res.status(500).json({ error: 'Internal server error', rollback_attempted: !!rollbackData });
   }
 });
 
@@ -2080,7 +2080,7 @@ router.post('/:id/split', async (req, res) => {
       message: `Invoice split into ${childInvoices.length} parts`
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -2150,7 +2150,7 @@ router.post('/:id/unsplit', async (req, res) => {
       message: `Invoice unsplit - ${childIds.length} child invoice(s) removed`
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -2210,7 +2210,7 @@ router.patch('/:id/pay', async (req, res) => {
 
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -2250,7 +2250,7 @@ router.patch('/:id/unpay', async (req, res) => {
 
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

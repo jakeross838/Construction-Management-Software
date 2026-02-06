@@ -41,7 +41,16 @@ async function requireAuth(req, res, next) {
           id,
           name,
           slug,
-          plan
+          plan,
+          address,
+          city,
+          state,
+          zip,
+          phone,
+          email,
+          website,
+          license_number,
+          logo_url
         )
       `)
       .eq('id', authUser.id)

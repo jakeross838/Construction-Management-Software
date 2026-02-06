@@ -74,7 +74,7 @@ export const mockLeads: LeadFull[] = [
     projectDescription: 'Custom 4BR/3BA single-story home with pool',
     projectAddress: '501 Gulf View Dr, Sarasota, FL 34242',
     squareFeet: 4200,
-    assignedTo: 'Jake Ross',
+    assignedTo: 'Demo Owner',
     nextFollowUp: '2026-01-24',
     notes: 'Very interested, referred by the Crews family.',
   },
@@ -92,7 +92,7 @@ export const mockLeads: LeadFull[] = [
     projectType: 'new_construction',
     projectDescription: 'Modern contemporary 5,800 SF two-story',
     squareFeet: 5800,
-    assignedTo: 'Jake Ross',
+    assignedTo: 'Demo Owner',
   },
   {
     id: '3',
@@ -140,7 +140,7 @@ export const mockLeads: LeadFull[] = [
     projectType: 'new_construction',
     projectDescription: 'Luxury estate home with guest house',
     squareFeet: 7500,
-    assignedTo: 'Jake Ross',
+    assignedTo: 'Demo Owner',
   },
   {
     id: '6',
@@ -156,7 +156,7 @@ export const mockLeads: LeadFull[] = [
     projectType: 'new_construction',
     projectDescription: 'Coastal modern home on waterfront lot',
     squareFeet: 5200,
-    assignedTo: 'Jake Ross',
+    assignedTo: 'Demo Owner',
   },
 ];
 

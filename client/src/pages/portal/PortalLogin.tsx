@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Home, AlertCircle, Mail } from 'lucide-react';
 import { useValidateMagicLink, PortalSession } from '@/hooks/useClientPortal';
+import { apiPost } from '@/lib/api';
 
 const PortalLogin = () => {
   const [searchParams] = useSearchParams();
@@ -40,11 +41,8 @@ const PortalLogin = () => {
     if (!email) return;
 
     try {
-      const response = await fetch('/api/client-portal/auth/request-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
+      // Portal login uses magic links, no auth token needed
+      const response = await apiPost('/api/client-portal/auth/request-link', { email }, { skipAuth: true });
 
       if (!response.ok) {
         const data = await response.json();

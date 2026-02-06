@@ -228,7 +228,7 @@ export const generatePDF = (reportId: string, reportName: string, jobId: string 
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
     doc.text(
-      `Ross Built CMS - Page ${i} of ${pageCount}`,
+      `Construction CMS - Page ${i} of ${pageCount}`,
       doc.internal.pageSize.getWidth() / 2,
       doc.internal.pageSize.getHeight() - 10,
       { align: 'center' }

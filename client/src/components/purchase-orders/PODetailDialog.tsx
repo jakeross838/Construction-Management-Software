@@ -20,10 +20,10 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePurchaseOrder, usePOAttachments, useUploadPOAttachment, useDeletePOAttachment } from '@/hooks/useFinancialData';
-import { 
-  formatCurrency, 
-  formatDate, 
-  poStatusConfig, 
+import {
+  formatCurrency,
+  formatDate,
+  poStatusConfig,
   invoiceStatusConfig,
   coStatusConfig,
 } from '@/types/financial';
@@ -31,6 +31,8 @@ import { Phone, User, Upload, FileText, Trash2, ExternalLink, Loader2, Paperclip
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 import { generatePOPdf } from '@/lib/poPdfGenerator';
 import { SendPOEmailDialog } from './SendPOEmailDialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { buildCompanyInfo } from '@/lib/companyInfo';
 
 interface PODetailDialogProps {
   poId: string | null;
@@ -43,7 +45,9 @@ export function PODetailDialog({ poId, open, onOpenChange }: PODetailDialogProps
   const { data: attachments = [], isLoading: attachmentsLoading } = usePOAttachments(poId || '');
   const uploadAttachment = useUploadPOAttachment();
   const deleteAttachment = useDeletePOAttachment();
-  
+  const { builder } = useAuth();
+  const companyInfo = buildCompanyInfo(builder);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
@@ -112,13 +116,12 @@ export function PODetailDialog({ poId, open, onOpenChange }: PODetailDialogProps
               <div className="p-6 border-b">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h1 className="text-2xl font-bold text-foreground">ROSS BUILT</h1>
-                    <p className="text-sm text-muted-foreground">CUSTOM HOMES</p>
+                    <h1 className="text-2xl font-bold text-foreground">{companyInfo.name.toUpperCase()}</h1>
                   </div>
                   <div className="text-right text-sm text-muted-foreground">
                     <p>Printed: {formatDate(new Date().toISOString())}</p>
-                    <p>305 67th Street West, Bradenton, FL 34209</p>
-                    <p>Phone: (941) 778-7600</p>
+                    {companyInfo.address && <p>{companyInfo.address}</p>}
+                    {companyInfo.phone && <p>Phone: {companyInfo.phone}</p>}
                   </div>
                 </div>
               </div>
@@ -140,7 +143,7 @@ export function PODetailDialog({ poId, open, onOpenChange }: PODetailDialogProps
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={() => generatePOPdf(po)}
+                      onClick={() => generatePOPdf(po, companyInfo)}
                       className="gap-1.5"
                     >
                       <Download className="h-4 w-4" />

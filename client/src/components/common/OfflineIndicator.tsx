@@ -217,7 +217,7 @@ export function OfflineIndicator({ className, showInstallPrompt = true }: Offlin
           <div className="flex items-center justify-between max-w-7xl mx-auto">
             <div className="flex items-center gap-2">
               <Download className="h-4 w-4" />
-              <span className="text-sm font-medium">Install Ross Built App</span>
+              <span className="text-sm font-medium">Install App</span>
               <span className="text-xs text-green-200">
                 Get quick access and offline support
               </span>

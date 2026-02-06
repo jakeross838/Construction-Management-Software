@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { supabase } from '@/integrations/supabase/client';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { UserRole } from '@/types/auth';
+import { apiFetch, apiPost } from '@/lib/api';
 
 // Database types for our custom tables
 interface Builder {
@@ -9,6 +10,14 @@ interface Builder {
   name: string;
   slug: string;
   logo_url: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  license_number: string | null;
   plan: 'basic' | 'professional' | 'enterprise' | 'trial';
   plan_expires_at: string | null;
   max_active_jobs: number;
@@ -72,7 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const response = await fetch('/api/auth/me', {
+      const response = await apiFetch('/api/auth/me', {
+        skipAuth: true,
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -220,19 +230,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Create the builder and user in our database via API
       let response: Response;
       try {
-        response = await fetch('/api/auth/signup', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            authUserId: authData.user.id,
-            email,
-            builderName,
-            firstName,
-            lastName,
-          }),
-        });
+        response = await apiPost('/api/auth/signup', {
+          authUserId: authData.user.id,
+          email,
+          builderName,
+          firstName,
+          lastName,
+        }, { skipAuth: true });
       } catch (networkError) {
         // Network error - auth user was created but API call failed
         console.error('Network error during signup:', networkError);

@@ -1,7 +1,7 @@
 {
-  "name": "Ross Built Construction Management",
-  "short_name": "Ross Built",
-  "description": "Construction Management Software for Ross Built Custom Homes",
+  "name": "Construction Management Software",
+  "short_name": "Construction Mgmt",
+  "description": "Construction Management Software",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0d1117",

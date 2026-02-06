@@ -70,6 +70,8 @@ import { generateCOPdf } from '@/lib/coPdfGenerator';
 import { SendCOEmailDialog } from './SendCOEmailDialog';
 import { COToPODialog } from './COToPODialog';
 import { CORevisionHistory } from './CORevisionHistory';
+import { useAuth } from '@/contexts/AuthContext';
+import { buildCompanyInfo } from '@/lib/companyInfo';
 
 interface CODetailPanelProps {
   coId: string | null;
@@ -83,6 +85,8 @@ export function CODetailPanel({ coId, open, onOpenChange }: CODetailPanelProps) 
   const approveCO = useApproveChangeOrder();
   const rejectCO = useRejectChangeOrder();
   const createRevision = useCreateRevision();
+  const { builder } = useAuth();
+  const companyInfo = buildCompanyInfo(builder);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -245,7 +249,7 @@ export function CODetailPanel({ coId, open, onOpenChange }: CODetailPanelProps) 
                               <Pencil className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => generateCOPdf(co)}>
+                            <DropdownMenuItem onClick={() => generateCOPdf(co, companyInfo)}>
                               <Download className="h-4 w-4 mr-2" />
                               Download PDF
                             </DropdownMenuItem>

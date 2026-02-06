@@ -105,6 +105,14 @@ router.get('/me', asyncHandler(async (req, res) => {
         name,
         slug,
         logo_url,
+        address,
+        city,
+        state,
+        zip,
+        phone,
+        email,
+        website,
+        license_number,
         plan,
         plan_expires_at,
         max_active_jobs,
@@ -498,6 +506,72 @@ router.get('/team', asyncHandler(async (req, res) => {
   }
 
   res.json({ team });
+}));
+
+/**
+ * GET /api/auth/builder-profile
+ * Get full builder/company profile for the current user's builder
+ */
+router.get('/builder-profile', asyncHandler(async (req, res) => {
+  const builderId = req.user?.builderId;
+  if (!builderId) {
+    throw new AppError(401, 'UNAUTHORIZED', 'Builder context required');
+  }
+
+  const { data: builder, error } = await supabase
+    .from('v2_builders')
+    .select('id, name, slug, logo_url, address, city, state, zip, phone, email, website, license_number, plan, settings')
+    .eq('id', builderId)
+    .single();
+
+  if (error || !builder) {
+    throw new AppError(404, 'NOT_FOUND', 'Builder profile not found');
+  }
+
+  res.json(builder);
+}));
+
+/**
+ * PATCH /api/auth/builder-profile
+ * Update builder/company profile (owner/admin only)
+ */
+router.patch('/builder-profile', asyncHandler(async (req, res) => {
+  const builderId = req.user?.builderId;
+  if (!builderId) {
+    throw new AppError(401, 'UNAUTHORIZED', 'Builder context required');
+  }
+
+  // Only owner/admin can update builder profile
+  if (!['owner', 'admin'].includes(req.user.role)) {
+    throw new AppError(403, 'FORBIDDEN', 'Only owners and admins can update company profile');
+  }
+
+  const allowedFields = ['name', 'address', 'city', 'state', 'zip', 'phone', 'email', 'website', 'license_number', 'logo_url', 'settings'];
+  const updates = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      updates[field] = req.body[field];
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'No valid fields to update');
+  }
+
+  updates.updated_at = new Date().toISOString();
+
+  const { data: builder, error } = await supabase
+    .from('v2_builders')
+    .update(updates)
+    .eq('id', builderId)
+    .select('id, name, slug, logo_url, address, city, state, zip, phone, email, website, license_number, plan, settings')
+    .single();
+
+  if (error) {
+    throw new AppError(500, 'UPDATE_FAILED', 'Failed to update builder profile');
+  }
+
+  res.json({ success: true, builder });
 }));
 
 module.exports = router;

@@ -443,7 +443,7 @@ export default function BuilderSetup() {
       <CardContent className="space-y-6">
         <div className="p-6 bg-muted/50 rounded-lg text-center">
           <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Welcome to Ross Built!</h3>
+          <h3 className="text-lg font-semibold mb-2">Welcome!</h3>
           <p className="text-muted-foreground">
             Your construction management platform is ready. Start by creating your first job
             or exploring the dashboard.
@@ -508,7 +508,7 @@ export default function BuilderSetup() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Building2 className="h-10 w-10 text-primary" />
-            <span className="text-3xl font-bold text-foreground">Ross Built</span>
+            <span className="text-3xl font-bold text-foreground">Construction CMS</span>
           </div>
           <p className="text-muted-foreground">Let's set up your account</p>
         </div>

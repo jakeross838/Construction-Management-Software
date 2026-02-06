@@ -80,7 +80,7 @@ export default function Login() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Building2 className="h-10 w-10 text-primary" />
-            <span className="text-3xl font-bold text-foreground">Ross Built</span>
+            <span className="text-3xl font-bold text-foreground">Construction Manager</span>
           </div>
           <p className="text-muted-foreground">Construction Management Platform</p>
         </div>

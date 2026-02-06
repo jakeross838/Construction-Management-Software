@@ -291,7 +291,7 @@ function QuickBooksSettingsDialog({
         <DialogHeader>
           <DialogTitle>QuickBooks Settings</DialogTitle>
           <DialogDescription>
-            Configure how data syncs between Ross Built and QuickBooks.
+            Configure how data syncs between your company and QuickBooks.
           </DialogDescription>
         </DialogHeader>
 

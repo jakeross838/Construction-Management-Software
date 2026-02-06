@@ -88,7 +88,7 @@ const geocodeAddress = async (address: string): Promise<{ lat: number; lon: numb
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
-      { headers: { 'User-Agent': 'RossBuiltConstructionApp/1.0' } }
+      { headers: { 'User-Agent': 'ConstructionCMSApp/1.0' } }
     );
     const data = await response.json();
     if (data && data.length > 0) {

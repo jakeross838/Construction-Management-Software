@@ -346,7 +346,7 @@ export function SubmittalFormDialog({
                   <FormItem>
                     <FormLabel>Submitted By</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Jake Ross" {...field} />
+                      <Input placeholder="e.g., John Smith" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

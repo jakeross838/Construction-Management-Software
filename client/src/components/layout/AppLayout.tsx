@@ -31,7 +31,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, hideJobSidebar = false }: AppLayoutProps) {
   const { selectedJobId, setSelectedJob } = useJob();
-  const { user } = useAuth();
+  const { user, builder } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
@@ -74,8 +74,8 @@ export function AppLayout({ children, hideJobSidebar = false }: AppLayoutProps) 
                 <Building2 className="h-4 w-4 md:h-5 md:w-5 text-primary-foreground" />
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-sm font-semibold text-foreground">Ross Built</h1>
-                <p className="text-xs text-muted-foreground">Custom Homes</p>
+                <h1 className="text-sm font-semibold text-foreground">{builder?.name || 'Construction CMS'}</h1>
+                <p className="text-xs text-muted-foreground">Management Platform</p>
               </div>
             </Link>
           </div>

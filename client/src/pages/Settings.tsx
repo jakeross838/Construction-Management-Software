@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -128,6 +129,8 @@ const Settings = () => {
 
 // Company Tab
 function CompanyTab() {
+  const { builder } = useAuth();
+  const fullAddress = [builder?.address, builder?.city, builder?.state, builder?.zip].filter(Boolean).join(', ');
   return (
     <Card>
       <CardHeader>
@@ -138,11 +141,11 @@ function CompanyTab() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <div><Label>Company Name</Label><Input defaultValue="Ross Built Construction" /></div>
-          <div><Label>License Number</Label><Input defaultValue="CGC1234567" /></div>
-          <div><Label>Phone</Label><Input defaultValue="(941) 555-0100" /></div>
-          <div><Label>Email</Label><Input defaultValue="info@rossbuilt.com" /></div>
-          <div className="md:col-span-2"><Label>Address</Label><Input defaultValue="123 Main Street, Sarasota, FL 34236" /></div>
+          <div><Label>Company Name</Label><Input defaultValue={builder?.name || ''} /></div>
+          <div><Label>License Number</Label><Input defaultValue={builder?.license_number || ''} /></div>
+          <div><Label>Phone</Label><Input defaultValue={builder?.phone || ''} /></div>
+          <div><Label>Email</Label><Input defaultValue={builder?.email || ''} /></div>
+          <div className="md:col-span-2"><Label>Address</Label><Input defaultValue={fullAddress} /></div>
         </div>
         <Button>Save Changes</Button>
       </CardContent>

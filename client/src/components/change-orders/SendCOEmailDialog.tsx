@@ -9,6 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Mail, Loader2, Send } from "lucide-react";
 import { generateCOPdfBase64 } from "@/lib/coPdfGenerator";
 import { ChangeOrder, formatCurrency } from "@/types/financial";
+import { useAuth } from '@/contexts/AuthContext';
+import { buildCompanyInfo } from '@/lib/companyInfo';
 
 interface SendCOEmailDialogProps {
   open: boolean;
@@ -21,6 +23,8 @@ interface SendCOEmailDialogProps {
 }
 
 export function SendCOEmailDialog({ open, onOpenChange, co }: SendCOEmailDialogProps) {
+  const { builder } = useAuth();
+  const companyInfo = buildCompanyInfo(builder);
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState(`Change Order ${co.co_number} - ${co.job_name || 'Project'}`);
   const [message, setMessage] = useState(
@@ -37,7 +41,7 @@ export function SendCOEmailDialog({ open, onOpenChange, co }: SendCOEmailDialogP
     setIsSending(true);
 
     try {
-      const pdfBase64 = generateCOPdfBase64(co);
+      const pdfBase64 = generateCOPdfBase64(co, companyInfo);
 
       const { data, error } = await supabase.functions.invoke('send-po-email', {
         body: {

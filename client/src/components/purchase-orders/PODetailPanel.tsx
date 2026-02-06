@@ -50,6 +50,8 @@ import { SendPOEmailDialog } from './SendPOEmailDialog';
 import { POFormDialog } from './POFormDialog';
 import { POLineItemsEditor } from './POLineItemsEditor';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { buildCompanyInfo } from '@/lib/companyInfo';
 
 interface PODetailPanelProps {
   poId: string | null;
@@ -65,6 +67,8 @@ export function PODetailPanel({ poId, open, onOpenChange }: PODetailPanelProps) 
   const uploadAttachment = useUploadPOAttachment();
   const deleteAttachment = useDeletePOAttachment();
   const updatePO = useUpdatePurchaseOrder();
+  const { builder } = useAuth();
+  const companyInfo = buildCompanyInfo(builder);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -242,7 +246,7 @@ export function PODetailPanel({ poId, open, onOpenChange }: PODetailPanelProps) 
                           <Mail className="h-4 w-4" />
                           Email
                         </Button>
-                        <Button variant="outline" size="sm" className="gap-2" onClick={() => generatePOPdf(po)}>
+                        <Button variant="outline" size="sm" className="gap-2" onClick={() => generatePOPdf(po, companyInfo)}>
                           <Download className="h-4 w-4" />
                           PDF
                         </Button>
