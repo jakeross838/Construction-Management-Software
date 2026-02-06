@@ -10,16 +10,86 @@ interface ApiOptions extends RequestInit {
   skipAuth?: boolean;
 }
 
+// Module-level token storage to avoid race conditions with Supabase SDK initialization
+// Also store in sessionStorage to survive HMR reloads
+let _accessToken: string | null = null;
+
+// Try to recover token from sessionStorage on module load (handles HMR)
+try {
+  _accessToken = sessionStorage.getItem('_api_access_token');
+} catch {
+  // sessionStorage not available
+}
+
 /**
- * Get authorization headers from current Supabase session
+ * Set the access token for API calls. Called by AuthContext when session is available.
+ */
+export function setAccessToken(token: string | null) {
+  _accessToken = token;
+  try {
+    if (token) {
+      sessionStorage.setItem('_api_access_token', token);
+    } else {
+      sessionStorage.removeItem('_api_access_token');
+    }
+  } catch {
+    // sessionStorage not available
+  }
+}
+
+/**
+ * Get authorization headers from stored token or Supabase session
  */
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-
-  if (token) {
-    return { 'Authorization': `Bearer ${token}` };
+  // First try the module-level stored token
+  if (_accessToken) {
+    return { 'Authorization': `Bearer ${_accessToken}` };
   }
+
+  // Check sessionStorage (survives HMR reloads)
+  try {
+    const sessionToken = sessionStorage.getItem('_api_access_token');
+    if (sessionToken) {
+      _accessToken = sessionToken;
+      return { 'Authorization': `Bearer ${sessionToken}` };
+    }
+  } catch {
+    // sessionStorage not available
+  }
+
+  // Check localStorage for Supabase token directly (most reliable)
+  try {
+    const storageKey = Object.keys(localStorage).find(k => k.includes('supabase') && k.includes('auth-token'));
+    if (storageKey) {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.access_token) {
+          _accessToken = parsed.access_token;
+          // Also store in sessionStorage for faster access
+          try {
+            sessionStorage.setItem('_api_access_token', parsed.access_token);
+          } catch {}
+          return { 'Authorization': `Bearer ${parsed.access_token}` };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to read token from localStorage:', e);
+  }
+
+  // Last resort: Supabase SDK (might not be initialized yet)
+  try {
+    const session = (await supabase.auth.getSession()).data.session;
+    const token = session?.access_token;
+    if (token) {
+      _accessToken = token;
+      return { 'Authorization': `Bearer ${token}` };
+    }
+  } catch (e) {
+    console.warn('Failed to get session from Supabase SDK:', e);
+  }
+
   return {};
 }
 

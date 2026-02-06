@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { LeadStage } from '@/types/job';
 import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Authenticated API helper using @/lib/api
 async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -81,9 +82,11 @@ export type LeadInsert = Omit<Lead, 'id' | 'created_at' | 'updated_at' | 'days_i
 export type LeadUpdate = Partial<LeadInsert> & { id: string };
 
 export function useDBLeads() {
+  const { isInitialized, user } = useAuth();
   return useQuery({
     queryKey: ['leads'],
     queryFn: () => api<Lead[]>('/leads'),
+    enabled: isInitialized && !!user, // Wait for auth to be ready
   });
 }
 
@@ -241,10 +244,12 @@ export interface PipelineStage {
 }
 
 export function usePipelineStages() {
+  const { isInitialized, user } = useAuth();
   return useQuery({
     queryKey: ['pipeline-stages'],
     queryFn: () => api<PipelineStage[]>('/leads/stages'),
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes - stages don't change often
+    enabled: isInitialized && !!user, // Wait for auth to be ready
   });
 }
 

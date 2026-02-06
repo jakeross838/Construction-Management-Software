@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { supabase } from '@/integrations/supabase/client';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { UserRole } from '@/types/auth';
-import { apiFetch, apiPost } from '@/lib/api';
+import { apiFetch, apiPost, setAccessToken } from '@/lib/api';
 
 // Database types for our custom tables
 interface Builder {
@@ -111,6 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { session: initialSession } } = await supabase.auth.getSession();
 
         if (initialSession) {
+          // Set token in api module BEFORE fetching profile
+          setAccessToken(initialSession.access_token);
           setSession(initialSession);
           setSupabaseUser(initialSession.user);
           await fetchUserProfile(initialSession.user.id, initialSession.access_token);
@@ -128,6 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
+        // Update token in api module
+        setAccessToken(newSession?.access_token || null);
         setSession(newSession);
         setSupabaseUser(newSession?.user || null);
 
@@ -274,6 +278,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     setIsLoading(true);
     try {
+      // Clear token from api module
+      setAccessToken(null);
       await supabase.auth.signOut();
       setUser(null);
       setBuilder(null);

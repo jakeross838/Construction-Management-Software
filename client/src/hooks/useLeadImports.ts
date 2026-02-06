@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE = '/api/lead-imports';
 
@@ -40,6 +41,7 @@ export interface LeadField {
 
 // Fetch import history
 export function useImportHistory(limit: number = 20) {
+  const { isInitialized, user } = useAuth();
   return useQuery({
     queryKey: ['lead-imports', limit],
     queryFn: async () => {
@@ -47,11 +49,13 @@ export function useImportHistory(limit: number = 20) {
       if (!res.ok) throw new Error('Failed to fetch imports');
       return res.json() as Promise<LeadImport[]>;
     },
+    enabled: isInitialized && !!user,
   });
 }
 
 // Fetch single import
 export function useImportDetails(importId: string | null) {
+  const { isInitialized, user } = useAuth();
   return useQuery({
     queryKey: ['lead-import', importId],
     queryFn: async () => {
@@ -60,7 +64,7 @@ export function useImportDetails(importId: string | null) {
       if (!res.ok) throw new Error('Failed to fetch import');
       return res.json() as Promise<LeadImport>;
     },
-    enabled: !!importId,
+    enabled: isInitialized && !!user && !!importId,
   });
 }
 
@@ -133,6 +137,7 @@ export function useImportLeads() {
 
 // Get mapping templates
 export function useMappingTemplates() {
+  const { isInitialized, user } = useAuth();
   return useQuery({
     queryKey: ['lead-import-mappings'],
     queryFn: async () => {
@@ -140,6 +145,7 @@ export function useMappingTemplates() {
       if (!res.ok) throw new Error('Failed to fetch templates');
       return res.json() as Promise<ImportMapping[]>;
     },
+    enabled: isInitialized && !!user,
   });
 }
 
@@ -165,6 +171,7 @@ export function useSaveMappingTemplate() {
 
 // Get available fields
 export function useLeadFields() {
+  const { isInitialized, user } = useAuth();
   return useQuery({
     queryKey: ['lead-fields'],
     queryFn: async () => {
@@ -172,6 +179,7 @@ export function useLeadFields() {
       if (!res.ok) throw new Error('Failed to fetch fields');
       return res.json() as Promise<LeadField[]>;
     },
+    enabled: isInitialized && !!user,
   });
 }
 
