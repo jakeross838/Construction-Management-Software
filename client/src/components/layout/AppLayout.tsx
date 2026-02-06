@@ -31,7 +31,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, hideJobSidebar = false }: AppLayoutProps) {
   const { selectedJobId, setSelectedJob } = useJob();
-  const { user, builder } = useAuth();
+  const { user, builder, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
@@ -133,7 +133,7 @@ export function AppLayout({ children, hideJobSidebar = false }: AppLayoutProps) 
                 <DropdownMenuItem>Profile Settings</DropdownMenuItem>
                 <DropdownMenuItem>Notifications</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive">Sign Out</DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive" onClick={() => signOut()}>Sign Out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
