@@ -17,12 +17,19 @@ export default defineConfig(({ mode }) => ({
         changeOrigin: true,
       },
     },
+    watch: {
+      // Use polling on Windows to avoid UNKNOWN watch errors
+      usePolling: true,
+      interval: 1000,
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // Dedupe React packages to prevent version conflicts
+    dedupe: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query', 'scheduler'],
   },
   build: {
     // Enable source maps for production debugging
@@ -62,15 +69,54 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  // Optimize dependencies
+  // Optimize dependencies - include all React-dependent packages together
   optimizeDeps: {
+    // Scan source files to find all dependencies
+    entries: ['src/**/*.tsx', 'src/**/*.ts'],
     include: [
       'react',
       'react-dom',
       'react-router-dom',
       '@tanstack/react-query',
       'lucide-react',
+      // Radix UI components
+      '@radix-ui/react-toast',
+      '@radix-ui/react-tooltip',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-select',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-alert-dialog',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-separator',
+      '@radix-ui/react-label',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-switch',
+      '@radix-ui/react-slider',
+      '@radix-ui/react-progress',
+      '@radix-ui/react-avatar',
+      '@radix-ui/react-accordion',
+      '@radix-ui/react-collapsible',
+      // Other React libraries
+      'sonner',
+      'react-hook-form',
+      'react-day-picker',
+      'react-dropzone',
+      'cmdk',
+      'recharts',
+      'vaul',
+      'embla-carousel-react',
+      'input-otp',
+      'next-themes',
+      'react-resizable-panels',
+      '@dnd-kit/core',
+      '@dnd-kit/sortable',
+      '@hello-pangea/dnd',
     ],
-    exclude: ['web-ifc-three'], // Large WASM dependency
+    exclude: ['web-ifc-three', 'react-pdf', 'react-leaflet'], // Large or problematic dependencies
+    esbuildOptions: {
+      jsx: 'automatic',
+    },
   },
 }));
