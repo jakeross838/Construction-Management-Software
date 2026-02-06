@@ -97,6 +97,7 @@ router.get('/me', asyncHandler(async (req, res) => {
       last_name,
       avatar_url,
       role,
+      role_id,
       notification_preferences,
       last_login_at,
       created_at,
@@ -127,6 +128,23 @@ router.get('/me', asyncHandler(async (req, res) => {
   if (userError || !user) {
     // User authenticated but not in v2_users - might need to complete signup
     throw new AppError(404, 'USER_NOT_FOUND', 'User profile not found. Please complete signup.');
+  }
+
+  // Auto-fix: If user has no role_id but has legacy role='owner', assign the owner role_id
+  if (!user.role_id && user.role === 'owner') {
+    const { data: ownerRole } = await supabase
+      .from('v2_roles')
+      .select('id')
+      .eq('name', 'owner')
+      .single();
+
+    if (ownerRole) {
+      await supabase
+        .from('v2_users')
+        .update({ role_id: ownerRole.id })
+        .eq('id', user.id);
+      user.role_id = ownerRole.id;
+    }
   }
 
   // Update last login
