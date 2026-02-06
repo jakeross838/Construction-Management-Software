@@ -128,7 +128,7 @@ router.patch('/burden-classes/:id', asyncHandler(async (req, res) => {
 
 // List employees
 router.get('/', asyncHandler(async (req, res) => {
-  const { status, burden_class_id, department } = req.query;
+  const { status, burden_class_id, department, active_only } = req.query;
 
   let query = supabase
     .from('v2_employees')
@@ -140,15 +140,18 @@ router.get('/', asyncHandler(async (req, res) => {
     .order('last_name');
 
   if (status) query = query.eq('status', status);
+  // Handle active_only parameter from frontend
+  if (active_only === 'true') query = query.eq('status', 'active');
   if (burden_class_id) query = query.eq('burden_class_id', burden_class_id);
   if (department) query = query.eq('department', department);
 
   const { data, error } = await query;
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  // Add calculated burden rate to each employee
+  // Add calculated burden rate and is_active field to each employee
   const employeesWithRates = data.map(emp => ({
     ...emp,
+    is_active: emp.status === 'active',
     effective_burden_rate: emp.custom_burden_rate ||
       emp.burden_class?.total_burden_rate ||
       0.40
@@ -191,12 +194,18 @@ router.post('/', asyncHandler(async (req, res) => {
     first_name, last_name, email, phone, employee_number,
     hire_date, role, burden_class_id, department,
     pay_type, pay_rate, custom_burden_rate,
-    emergency_contact_name, emergency_contact_phone
+    emergency_contact_name, emergency_contact_phone,
+    is_active, status // Handle both is_active and status
   } = req.body;
 
   if (!first_name || !last_name) {
     throw new AppError('VALIDATION_FAILED', 'first_name and last_name are required');
   }
+
+  // Determine status from is_active or status field
+  let employeeStatus = 'active'; // Default
+  if (status !== undefined) employeeStatus = status;
+  else if (is_active !== undefined) employeeStatus = is_active ? 'active' : 'inactive';
 
   const { data, error } = await supabase
     .from('v2_employees')
@@ -204,7 +213,8 @@ router.post('/', asyncHandler(async (req, res) => {
       first_name, last_name, email, phone, employee_number,
       hire_date, role, burden_class_id, department,
       pay_type: pay_type || 'hourly', pay_rate, custom_burden_rate,
-      emergency_contact_name, emergency_contact_phone
+      emergency_contact_name, emergency_contact_phone,
+      status: employeeStatus
     })
     .select(`
       *,
@@ -213,7 +223,11 @@ router.post('/', asyncHandler(async (req, res) => {
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
-  res.json(data);
+  // Add is_active field for frontend compatibility
+  res.json({
+    ...data,
+    is_active: data.status === 'active'
+  });
 }));
 
 // Update employee
@@ -223,7 +237,8 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     first_name, last_name, email, phone, employee_number,
     hire_date, termination_date, status, role, burden_class_id,
     department, pay_type, pay_rate, custom_burden_rate,
-    emergency_contact_name, emergency_contact_phone
+    emergency_contact_name, emergency_contact_phone,
+    is_active // Handle frontend's is_active field
   } = req.body;
 
   const updates = {};
@@ -235,6 +250,8 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   if (hire_date !== undefined) updates.hire_date = hire_date;
   if (termination_date !== undefined) updates.termination_date = termination_date;
   if (status !== undefined) updates.status = status;
+  // Handle is_active from frontend - convert to status field
+  if (is_active !== undefined) updates.status = is_active ? 'active' : 'inactive';
   if (role !== undefined) updates.role = role;
   if (burden_class_id !== undefined) updates.burden_class_id = burden_class_id;
   if (department !== undefined) updates.department = department;
@@ -248,14 +265,22 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_employees')
     .update(updates)
     .eq('id', id)
+    .is('deleted_at', null)
     .select(`
       *,
       burden_class:v2_burden_classes(id, name, total_burden_rate)
-    `)
-    .single();
+    `);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
-  res.json(data);
+  if (!data || data.length === 0) {
+    throw new AppError('NOT_FOUND', 'Employee not found');
+  }
+  // Add is_active field for frontend compatibility
+  const employee = data[0];
+  res.json({
+    ...employee,
+    is_active: employee.status === 'active'
+  });
 }));
 
 // Delete employee (soft delete)
