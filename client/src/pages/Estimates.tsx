@@ -24,6 +24,7 @@ import { useEstimateTemplates, EstimateTemplate } from '@/hooks/useEstimateTempl
 import { useDBEstimates, DBEstimate } from '@/hooks/useDBEstimates';
 import { Estimate, EstimateStatus } from '@/types/estimate';
 import { useJob } from '@/contexts/JobContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useDBJobs } from '@/hooks/useFinancialData';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -76,6 +77,8 @@ const Estimates = () => {
   } = useEstimates();
 
   const { data: templates } = useEstimateTemplates();
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
   const { selectedJobId, selectedJobName } = useJob();
   const { data: dbJobs = [] } = useDBJobs();
   const selectedJob = selectedJobId ? dbJobs.find(j => j.id === selectedJobId) : null;
@@ -485,7 +488,7 @@ const Estimates = () => {
                     job_id: selectedJobId,
                     title: newEstimateTitle.trim(),
                     notes: newEstimateNotes.trim() || undefined,
-                    created_by: 'Jake Ross',
+                    created_by: userName,
                   }, {
                     onSuccess: (newEst) => {
                       setShowCreateDBEstimate(false);
@@ -522,6 +525,8 @@ function DBEstimateDialog({
   const { data: lines = [], isLoading } = useDBEstimateLines(estimate?.id || '');
   const { data: costCodes = [] } = useCostCodes();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
 
   // Mutations
   const updateEstimate = useUpdateDBEstimate();
@@ -583,15 +588,15 @@ function DBEstimateDialog({
   };
 
   const handleSubmit = () => {
-    submitEstimate.mutate({ id: estimate.id, submitted_by: 'Jake Ross' });
+    submitEstimate.mutate({ id: estimate.id, submitted_by: userName });
   };
 
   const handleApprove = () => {
-    approveEstimate.mutate({ id: estimate.id, approved_by: 'Jake Ross' });
+    approveEstimate.mutate({ id: estimate.id, approved_by: userName });
   };
 
   const handleConvert = () => {
-    convertToBudget.mutate({ id: estimate.id, converted_by: 'Jake Ross' });
+    convertToBudget.mutate({ id: estimate.id, converted_by: userName });
   };
 
   const handleAddLine = () => {

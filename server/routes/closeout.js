@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { getUserName } = require('../utils/shared');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -129,7 +130,7 @@ router.post('/packages', asyncHandler(async (req, res) => {
       description,
       target_completion_date,
       notes,
-      created_by: created_by || 'Jake Ross',
+      created_by: getUserName(req),
       status: 'draft'
     })
     .select(`*, job:v2_jobs(id, name)`)
@@ -343,7 +344,7 @@ router.post('/punch-list', asyncHandler(async (req, res) => {
       estimated_cost,
       back_charge,
       notes,
-      created_by: created_by || 'Jake Ross',
+      created_by: getUserName(req),
       status: 'open'
     })
     .select(`
@@ -400,7 +401,7 @@ router.post('/punch-list/:id/complete', asyncHandler(async (req, res) => {
   const updateData = {
     status: 'completed',
     completed_at: new Date().toISOString(),
-    completed_by: completed_by || 'Jake Ross'
+    completed_by: getUserName(req)
   };
 
   if (actual_cost !== undefined) updateData.actual_cost = actual_cost;
@@ -437,7 +438,7 @@ router.post('/punch-list/:id/verify', asyncHandler(async (req, res) => {
   const updateData = {
     status: 'verified',
     verified_at: new Date().toISOString(),
-    verified_by: verified_by || 'Jake Ross'
+    verified_by: getUserName(req)
   };
 
   if (notes) updateData.notes = notes;
@@ -540,7 +541,7 @@ router.post('/punch-list/:id/photos', asyncHandler(async (req, res) => {
       file_size,
       photo_type: photo_type || 'issue',
       caption,
-      uploaded_by: uploaded_by || 'Jake Ross'
+      uploaded_by: getUserName(req)
     })
     .select()
     .single();
@@ -692,7 +693,7 @@ router.post('/inspections', asyncHandler(async (req, res) => {
       scheduled_date,
       permit_number,
       notes,
-      created_by: created_by || 'Jake Ross',
+      created_by: getUserName(req),
       status: 'scheduled'
     })
     .select(`*, job:v2_jobs(id, name)`)
@@ -936,10 +937,10 @@ router.post('/documents', asyncHandler(async (req, res) => {
       due_date,
       expiration_date,
       notes,
-      created_by: created_by || 'Jake Ross',
+      created_by: getUserName(req),
       status,
       submitted_at: file_url ? new Date().toISOString() : null,
-      submitted_by: file_url ? (created_by || 'Jake Ross') : null
+      submitted_by: file_url ? getUserName(req) : null
     })
     .select(`
       *,
@@ -1004,7 +1005,7 @@ router.post('/documents/:id/submit', asyncHandler(async (req, res) => {
       file_size,
       status: 'submitted',
       submitted_at: new Date().toISOString(),
-      submitted_by: submitted_by || 'Jake Ross'
+      submitted_by: getUserName(req)
     })
     .eq('id', id)
     .is('deleted_at', null)
@@ -1040,7 +1041,7 @@ router.post('/documents/:id/review', asyncHandler(async (req, res) => {
     .update({
       status,
       reviewed_at: new Date().toISOString(),
-      reviewed_by: reviewed_by || 'Jake Ross',
+      reviewed_by: getUserName(req),
       review_notes
     })
     .eq('id', id)
@@ -1212,7 +1213,7 @@ router.post('/lien-waivers', asyncHandler(async (req, res) => {
       amount,
       exceptions,
       notes,
-      created_by: created_by || 'Jake Ross',
+      created_by: getUserName(req),
       status: 'requested',
       requested_at: new Date().toISOString()
     })
@@ -1305,7 +1306,7 @@ router.post('/lien-waivers/:id/approve', asyncHandler(async (req, res) => {
     .update({
       status: 'approved',
       approved_at: new Date().toISOString(),
-      approved_by: approved_by || 'Jake Ross'
+      approved_by: getUserName(req)
     })
     .eq('id', id)
     .is('deleted_at', null)
@@ -1430,7 +1431,7 @@ router.post('/checklist/:id/complete', asyncHandler(async (req, res) => {
     .update({
       is_completed: true,
       completed_at: new Date().toISOString(),
-      completed_by: completed_by || 'Jake Ross'
+      completed_by: getUserName(req)
     })
     .eq('id', id)
     .select()

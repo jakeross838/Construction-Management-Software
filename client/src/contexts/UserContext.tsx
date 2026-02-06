@@ -1,5 +1,5 @@
 import React, { createContext, useContext, ReactNode, useMemo } from 'react';
-import { User, mockUser, hasPermission, Permission, UserRole } from '@/types/auth';
+import { User, hasPermission, Permission, UserRole } from '@/types/auth';
 import { useAuth } from './AuthContext';
 
 interface UserContextType {
@@ -26,8 +26,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
         role: authUser.role as UserRole,
       };
     }
-    // Fall back to mock user when not authenticated (for backwards compatibility during transition)
-    return mockUser;
+    // Return a safe default when not authenticated
+    return { id: '', name: 'User', email: '', role: 'field_crew' as UserRole };
   }, [authUser]);
 
   const value: UserContextType = useMemo(() => ({
@@ -48,12 +48,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
 export function useUser(): UserContextType {
   const context = useContext(UserContext);
   if (context === undefined) {
-    // Return default user if context not available (for backwards compatibility)
+    // Return safe default if context not available
+    const defaultUser: User = { id: '', name: 'User', email: '', role: 'field_crew' as UserRole };
     return {
-      user: mockUser,
-      userName: mockUser.name,
-      userRole: mockUser.role,
-      hasPermission: (permission: Permission) => hasPermission(mockUser.role, permission),
+      user: defaultUser,
+      userName: defaultUser.name,
+      userRole: defaultUser.role,
+      hasPermission: (permission: Permission) => hasPermission(defaultUser.role, permission),
       isLoading: false,
     };
   }

@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { getUserName } = require('../utils/shared');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -155,7 +156,7 @@ router.post('/', asyncHandler(async (req, res) => {
       assigned_to,
       due_date,
       date_required,
-      submitted_by: submitted_by || 'Jake Ross',
+      submitted_by: getUserName(req),
       notes,
       status: 'open'
     })
@@ -219,7 +220,7 @@ router.post('/:id/respond', asyncHandler(async (req, res) => {
       rfi_id: id,
       content,
       response_type: response_type || 'response',
-      responded_by: responded_by || 'Jake Ross'
+      responded_by: getUserName(req)
     })
     .select()
     .single();
@@ -232,7 +233,7 @@ router.post('/:id/respond', asyncHandler(async (req, res) => {
     .update({
       status: 'answered',
       response: content,
-      responded_by: responded_by || 'Jake Ross',
+      responded_by: getUserName(req),
       responded_at: new Date().toISOString()
     })
     .eq('id', id);
@@ -342,7 +343,7 @@ router.post('/:id/attachments', asyncHandler(async (req, res) => {
       file_type,
       file_size,
       attachment_type: attachment_type || 'question',
-      uploaded_by: uploaded_by || 'Jake Ross'
+      uploaded_by: getUserName(req)
     })
     .select()
     .single();

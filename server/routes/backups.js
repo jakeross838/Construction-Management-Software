@@ -14,6 +14,10 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { asyncHandler, AppError } = require('../core/errors');
+const { requireAdmin } = require('../middleware/auth');
+
+// Protect all backup routes - admin only
+router.use(requireAdmin);
 
 // Import backup utilities
 const BACKUP_DIR = path.join(__dirname, '..', '..', 'backups');

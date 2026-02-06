@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // Types
 export interface Role {
@@ -41,37 +42,33 @@ export interface TeamInvitation {
 
 // API Functions
 async function fetchRoles(): Promise<Role[]> {
-  const response = await fetch('/api/roles');
+  const response = await apiGet('/api/roles');
   if (!response.ok) throw new Error('Failed to fetch roles');
   const data = await response.json();
   return data.roles;
 }
 
 async function fetchPermissions(): Promise<{ permissions: Permission[]; grouped: Record<string, Permission[]> }> {
-  const response = await fetch('/api/roles/permissions/all');
+  const response = await apiGet('/api/roles/permissions/all');
   if (!response.ok) throw new Error('Failed to fetch permissions');
   return response.json();
 }
 
 async function fetchTeamMembers(): Promise<TeamMember[]> {
-  const response = await fetch('/api/roles/team/members');
+  const response = await apiGet('/api/roles/team/members');
   if (!response.ok) throw new Error('Failed to fetch team members');
   const data = await response.json();
   return data.members;
 }
 
 async function fetchMyPermissions(): Promise<{ permissions: string[]; role: { name: string; display_name: string } | null }> {
-  const response = await fetch('/api/roles/me/permissions');
+  const response = await apiGet('/api/roles/me/permissions');
   if (!response.ok) throw new Error('Failed to fetch permissions');
   return response.json();
 }
 
 async function updateMemberRole(userId: string, roleId: string): Promise<TeamMember> {
-  const response = await fetch(`/api/roles/team/${userId}/role`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role_id: roleId }),
-  });
+  const response = await apiPatch(`/api/roles/team/${userId}/role`, { role_id: roleId });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.message || 'Failed to update role');
@@ -86,11 +83,7 @@ async function inviteTeamMember(params: {
   last_name?: string;
   role_id?: string;
 }): Promise<TeamInvitation> {
-  const response = await fetch('/api/roles/team/invite', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost('/api/roles/team/invite', params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.message || 'Failed to invite team member');
@@ -100,9 +93,7 @@ async function inviteTeamMember(params: {
 }
 
 async function removeTeamMember(userId: string): Promise<void> {
-  const response = await fetch(`/api/roles/team/${userId}`, {
-    method: 'DELETE',
-  });
+  const response = await apiDelete(`/api/roles/team/${userId}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.message || 'Failed to remove team member');

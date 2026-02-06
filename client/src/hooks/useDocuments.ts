@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from '@/lib/api';
 
 export interface Document {
   id: string;
@@ -91,25 +92,25 @@ async function fetchDocuments(filters: DocumentFilters = {}): Promise<Document[]
   if (filters.search) params.append('search', filters.search);
   if (filters.include_deleted) params.append('include_deleted', 'true');
 
-  const response = await fetch(`/api/documents?${params}`);
+  const response = await apiGet(`/api/documents?${params}`);
   if (!response.ok) throw new Error('Failed to fetch documents');
   return response.json();
 }
 
 async function fetchDocumentStats(jobId: string): Promise<DocumentStats> {
-  const response = await fetch(`/api/documents/stats/${jobId}`);
+  const response = await apiGet(`/api/documents/stats/${jobId}`);
   if (!response.ok) throw new Error('Failed to fetch document stats');
   return response.json();
 }
 
 async function fetchDocument(id: string): Promise<Document> {
-  const response = await fetch(`/api/documents/${id}`);
+  const response = await apiGet(`/api/documents/${id}`);
   if (!response.ok) throw new Error('Failed to fetch document');
   return response.json();
 }
 
 async function uploadDocument(formData: FormData): Promise<Document> {
-  const response = await fetch('/api/documents/upload', {
+  const response = await apiFetch('/api/documents/upload', {
     method: 'POST',
     body: formData,
   });
@@ -118,17 +119,13 @@ async function uploadDocument(formData: FormData): Promise<Document> {
 }
 
 async function updateDocument(id: string, updates: Partial<Document>): Promise<Document> {
-  const response = await fetch(`/api/documents/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/documents/${id}`, updates);
   if (!response.ok) throw new Error('Failed to update document');
   return response.json();
 }
 
 async function deleteDocument(id: string): Promise<void> {
-  const response = await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/documents/${id}`);
   if (!response.ok) throw new Error('Failed to delete document');
 }
 
@@ -202,13 +199,13 @@ async function fetchFolders(filters: FolderFilters): Promise<DocumentFolder[]> {
   }
   if (filters.include_deleted) params.append('include_deleted', 'true');
 
-  const response = await fetch(`/api/documents/folders?${params}`);
+  const response = await apiGet(`/api/documents/folders?${params}`);
   if (!response.ok) throw new Error('Failed to fetch folders');
   return response.json();
 }
 
 async function fetchFolder(id: string): Promise<DocumentFolder> {
-  const response = await fetch(`/api/documents/folders/${id}`);
+  const response = await apiGet(`/api/documents/folders/${id}`);
   if (!response.ok) throw new Error('Failed to fetch folder');
   return response.json();
 }
@@ -223,11 +220,7 @@ async function createFolder(data: {
   sort_order?: number;
   created_by?: string;
 }): Promise<DocumentFolder> {
-  const response = await fetch('/api/documents/folders', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  const response = await apiPost('/api/documents/folders', data);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create folder');
@@ -236,11 +229,7 @@ async function createFolder(data: {
 }
 
 async function updateFolder(id: string, updates: Partial<DocumentFolder>): Promise<DocumentFolder> {
-  const response = await fetch(`/api/documents/folders/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/documents/folders/${id}`, updates);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to update folder');
@@ -249,7 +238,7 @@ async function updateFolder(id: string, updates: Partial<DocumentFolder>): Promi
 }
 
 async function deleteFolder(id: string, recursive = false): Promise<void> {
-  const response = await fetch(`/api/documents/folders/${id}`, {
+  const response = await apiFetch(`/api/documents/folders/${id}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ recursive }),
@@ -261,21 +250,13 @@ async function deleteFolder(id: string, recursive = false): Promise<void> {
 }
 
 async function moveDocument(documentId: string, folderId: string | null): Promise<Document> {
-  const response = await fetch(`/api/documents/${documentId}/move`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folder_id: folderId }),
-  });
+  const response = await apiPatch(`/api/documents/${documentId}/move`, { folder_id: folderId });
   if (!response.ok) throw new Error('Failed to move document');
   return response.json();
 }
 
 async function moveDocumentsBulk(documentIds: string[], folderId: string | null): Promise<{ success: boolean; moved: number }> {
-  const response = await fetch('/api/documents/move-bulk', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ document_ids: documentIds, folder_id: folderId }),
-  });
+  const response = await apiPost('/api/documents/move-bulk', { document_ids: documentIds, folder_id: folderId });
   if (!response.ok) throw new Error('Failed to move documents');
   return response.json();
 }

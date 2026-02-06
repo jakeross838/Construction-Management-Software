@@ -1,13 +1,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { LeadStage } from '@/types/job';
+import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from '@/lib/api';
 
-// API helper
+// Authenticated API helper using @/lib/api
 async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
+  const method = options?.method?.toUpperCase() || 'GET';
+  let response: Response;
+
+  if (method === 'GET') {
+    response = await apiGet(`/api${endpoint}`);
+  } else if (method === 'POST') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    response = await apiPost(`/api${endpoint}`, body);
+  } else if (method === 'PATCH') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    response = await apiPatch(`/api${endpoint}`, body);
+  } else if (method === 'DELETE') {
+    response = await apiDelete(`/api${endpoint}`);
+  } else {
+    response = await apiFetch(`/api${endpoint}`, options);
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || error.message || `HTTP ${response.status}`);
@@ -648,9 +662,9 @@ export function useUploadLeadDocument() {
       const formData = new FormData();
       formData.append('file', file);
       if (category) formData.append('category', category);
-      formData.append('uploaded_by', 'Jake Ross'); // TODO: Get from auth context
+      formData.append('uploaded_by', ''); // Server falls back to getUserName(req) via auth
 
-      const response = await fetch(`/api/leads/${leadId}/documents`, {
+      const response = await apiFetch(`/api/leads/${leadId}/documents`, {
         method: 'POST',
         body: formData,
       });

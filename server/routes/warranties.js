@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { getUserName } = require('../utils/shared');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -143,7 +144,7 @@ router.post('/:id/claims', asyncHandler(async (req, res) => {
       issue_description,
       claim_date,
       claim_amount,
-      created_by: created_by || 'Jake Ross',
+      created_by: getUserName(req),
       notes,
       status: 'submitted'
     })
@@ -207,7 +208,7 @@ router.post('/:warrantyId/claims/:claimId/resolve', asyncHandler(async (req, res
       resolution_description,
       approved_amount,
       resolution_date: new Date().toISOString().split('T')[0],
-      resolved_by: resolved_by || 'Jake Ross'
+      resolved_by: getUserName(req)
     })
     .eq('id', claimId)
     .select()
@@ -246,7 +247,7 @@ router.post('/:id/attachments', asyncHandler(async (req, res) => {
       file_type,
       file_size,
       attachment_type: attachment_type || 'warranty',
-      uploaded_by: uploaded_by || 'Jake Ross'
+      uploaded_by: getUserName(req)
     })
     .select()
     .single();

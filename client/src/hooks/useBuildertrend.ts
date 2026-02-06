@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiFetch } from '@/lib/api';
 
 // ============================================================
 // TYPES
@@ -96,7 +97,7 @@ async function importFile(
     formData.append('imported_by', options.imported_by);
   }
 
-  const response = await fetch(`/api/integrations/buildertrend/import/${type}`, {
+  const response = await apiFetch(`/api/integrations/buildertrend/import/${type}`, {
     method: 'POST',
     body: formData,
   });
@@ -121,7 +122,7 @@ async function fetchImports(params?: {
   if (params?.limit) searchParams.append('limit', params.limit.toString());
   if (params?.offset) searchParams.append('offset', params.offset.toString());
 
-  const response = await fetch(`/api/integrations/buildertrend/imports?${searchParams}`);
+  const response = await apiGet(`/api/integrations/buildertrend/imports?${searchParams}`);
   if (!response.ok) {
     throw new Error('Failed to fetch imports');
   }
@@ -132,7 +133,7 @@ async function fetchImportDetails(id: string): Promise<{
   import: BuildertrendImport;
   records: ImportRecord[];
 }> {
-  const response = await fetch(`/api/integrations/buildertrend/imports/${id}`);
+  const response = await apiGet(`/api/integrations/buildertrend/imports/${id}`);
   if (!response.ok) {
     throw new Error('Failed to fetch import details');
   }
@@ -140,7 +141,7 @@ async function fetchImportDetails(id: string): Promise<{
 }
 
 async function fetchTemplate(type: BuildertrendImportType): Promise<ImportTemplate> {
-  const response = await fetch(`/api/integrations/buildertrend/template/${type}`);
+  const response = await apiGet(`/api/integrations/buildertrend/template/${type}`);
   if (!response.ok) {
     throw new Error('Failed to fetch template');
   }
@@ -148,7 +149,7 @@ async function fetchTemplate(type: BuildertrendImportType): Promise<ImportTempla
 }
 
 async function downloadTemplate(type: BuildertrendImportType): Promise<void> {
-  const response = await fetch(`/api/integrations/buildertrend/template/${type}?format=csv`);
+  const response = await apiGet(`/api/integrations/buildertrend/template/${type}?format=csv`);
   if (!response.ok) {
     throw new Error('Failed to download template');
   }
@@ -169,7 +170,7 @@ async function previewFile(type: BuildertrendImportType, file: File): Promise<Pr
   formData.append('file', file);
   formData.append('type', type);
 
-  const response = await fetch('/api/integrations/buildertrend/preview', {
+  const response = await apiFetch('/api/integrations/buildertrend/preview', {
     method: 'POST',
     body: formData,
   });

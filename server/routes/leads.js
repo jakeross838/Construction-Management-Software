@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getUserName } = require('../utils/shared');
 
 // Multer for document uploads
 const upload = multer({
@@ -1222,7 +1223,7 @@ router.post('/:id/estimates', asyncHandler(async (req, res) => {
       status: 'draft',
       version: 1,
       notes: lead.project_description,
-      created_by: 'Jake Ross', // TODO: Get from auth
+      created_by: getUserName(req),
     })
     .select()
     .single();
@@ -1235,7 +1236,7 @@ router.post('/:id/estimates', asyncHandler(async (req, res) => {
     activity_type: 'note',
     subject: 'Estimate Created',
     description: `Created estimate ${estimateNumber}`,
-    performed_by: 'Jake Ross',
+    performed_by: getUserName(req),
     performed_at: new Date().toISOString(),
   });
 
@@ -1310,12 +1311,12 @@ router.post('/:id/convert-to-job', asyncHandler(async (req, res) => {
     activity_type: 'note',
     subject: 'Converted to Job',
     description: `Lead converted to job: ${job.name}`,
-    performed_by: 'Jake Ross',
+    performed_by: getUserName(req),
     performed_at: new Date().toISOString(),
   });
 
   // Log stage change
-  await logStageChange(id, lead.stage, 'won', 'Jake Ross');
+  await logStageChange(id, lead.stage, 'won', getUserName(req));
 
   res.status(201).json({
     success: true,

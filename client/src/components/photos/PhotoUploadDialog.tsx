@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useDropzone } from 'react-dropzone';
 import {
   Dialog,
@@ -45,6 +46,8 @@ export function PhotoUploadDialog({
   onOpenChange,
   defaultJobId,
 }: PhotoUploadDialogProps) {
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
   const { data: jobs } = useJobs();
   const uploadPhoto = useUploadPhoto();
   const [jobId, setJobId] = useState(defaultJobId || '');
@@ -96,7 +99,7 @@ export function PhotoUploadDialog({
         caption: fileData.caption || undefined,
         location: fileData.location || undefined,
         category: fileData.category,
-        uploaded_by: 'Jake Ross',
+        uploaded_by: userName,
       });
     }
 

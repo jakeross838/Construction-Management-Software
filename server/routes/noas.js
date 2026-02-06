@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { getUserName } = require('../utils/shared');
 
 const asyncHandler = fn => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -75,7 +76,7 @@ router.post('/', asyncHandler(async (req, res) => {
     if (expDate < today) status = 'expired';
     else if (expDate <= ninetyDays) status = 'expiring_soon';
   }
-  const { data, error } = await supabase.from('v2_noas').insert({ job_id, product_name, product_type, manufacturer, model_number, fl_approval_number, approval_type: approval_type || 'state', issue_date, expiration_date, wind_speed_rating, impact_rated: impact_rated || false, energy_rated: energy_rated || false, fire_rating, design_pressure, water_resistance, air_infiltration, document_url, document_name, status, notes, internal_notes, created_by: 'Jake Ross' }).select('*, job:v2_jobs(id, name)').single();
+  const { data, error } = await supabase.from('v2_noas').insert({ job_id, product_name, product_type, manufacturer, model_number, fl_approval_number, approval_type: approval_type || 'state', issue_date, expiration_date, wind_speed_rating, impact_rated: impact_rated || false, energy_rated: energy_rated || false, fire_rating, design_pressure, water_resistance, air_infiltration, document_url, document_name, status, notes, internal_notes, created_by: getUserName(req) }).select('*, job:v2_jobs(id, name)').single();
   if (error) throw error;
   res.status(201).json(data);
 }));
@@ -121,7 +122,7 @@ router.patch('/:noaId/usages/:usageId', asyncHandler(async (req, res) => {
 router.post('/:noaId/usages/:usageId/verify', asyncHandler(async (req, res) => {
   const { usageId } = req.params;
   const { verified_by } = req.body;
-  const { data, error } = await supabase.from('v2_noa_usages').update({ verified_at: new Date().toISOString(), verified_by: verified_by || 'Jake Ross' }).eq('id', usageId).select('*, job:v2_jobs(id, name)').single();
+  const { data, error } = await supabase.from('v2_noa_usages').update({ verified_at: new Date().toISOString(), verified_by: getUserName(req) }).eq('id', usageId).select('*, job:v2_jobs(id, name)').single();
   if (error) throw error;
   if (!data) return res.status(404).json({ error: 'NOA usage not found' });
   res.json(data);

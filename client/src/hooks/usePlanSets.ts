@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from '@/lib/api';
 
 // ============================================================
 // TYPES
@@ -183,20 +184,20 @@ async function fetchPlanSets(filters: PlanSetFilters = {}): Promise<PlanSet[]> {
   if (filters.search) params.append('search', filters.search);
   if (filters.include_superseded) params.append('include_superseded', 'true');
 
-  const response = await fetch(`/api/plan-sets?${params}`);
+  const response = await apiGet(`/api/plan-sets?${params}`);
   if (!response.ok) throw new Error('Failed to fetch plan sets');
   return response.json();
 }
 
 async function fetchPlanSet(id: string): Promise<PlanSet> {
-  const response = await fetch(`/api/plan-sets/${id}`);
+  const response = await apiGet(`/api/plan-sets/${id}`);
   if (!response.ok) throw new Error('Failed to fetch plan set');
   return response.json();
 }
 
 async function fetchPlanSetStats(jobId?: string): Promise<PlanSetStats> {
   const params = jobId ? `?job_id=${jobId}` : '';
-  const response = await fetch(`/api/plan-sets/stats${params}`);
+  const response = await apiGet(`/api/plan-sets/stats${params}`);
   if (!response.ok) throw new Error('Failed to fetch plan set stats');
   return response.json();
 }
@@ -209,30 +210,19 @@ async function createPlanSet(data: {
   notes?: string;
   created_by?: string;
 }): Promise<PlanSet> {
-  const response = await fetch('/api/plan-sets', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  const response = await apiPost('/api/plan-sets', data);
   if (!response.ok) throw new Error('Failed to create plan set');
   return response.json();
 }
 
 async function updatePlanSet(id: string, updates: Partial<PlanSet>): Promise<PlanSet> {
-  const response = await fetch(`/api/plan-sets/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/plan-sets/${id}`, updates);
   if (!response.ok) throw new Error('Failed to update plan set');
   return response.json();
 }
 
 async function deletePlanSet(id: string): Promise<void> {
-  const response = await fetch(`/api/plan-sets/${id}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-  });
+  const response = await apiDelete(`/api/plan-sets/${id}`);
   if (!response.ok) throw new Error('Failed to delete plan set');
 }
 
@@ -242,11 +232,7 @@ async function createNewVersion(id: string, data: {
   notes?: string;
   created_by?: string;
 }): Promise<PlanSet> {
-  const response = await fetch(`/api/plan-sets/${id}/new-version`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  const response = await apiPost(`/api/plan-sets/${id}/new-version`, data);
   if (!response.ok) throw new Error('Failed to create new version');
   return response.json();
 }
@@ -254,13 +240,13 @@ async function createNewVersion(id: string, data: {
 // Sheets
 async function fetchSheets(planSetId: string, discipline?: SheetDiscipline): Promise<PlanSheet[]> {
   const params = discipline ? `?discipline=${discipline}` : '';
-  const response = await fetch(`/api/plan-sets/${planSetId}/sheets${params}`);
+  const response = await apiGet(`/api/plan-sets/${planSetId}/sheets${params}`);
   if (!response.ok) throw new Error('Failed to fetch sheets');
   return response.json();
 }
 
 async function addSheet(planSetId: string, formData: FormData): Promise<PlanSheet> {
-  const response = await fetch(`/api/plan-sets/${planSetId}/sheets`, {
+  const response = await apiFetch(`/api/plan-sets/${planSetId}/sheets`, {
     method: 'POST',
     body: formData,
   });
@@ -269,25 +255,18 @@ async function addSheet(planSetId: string, formData: FormData): Promise<PlanShee
 }
 
 async function updateSheet(planSetId: string, sheetId: string, updates: Partial<PlanSheet>): Promise<PlanSheet> {
-  const response = await fetch(`/api/plan-sets/${planSetId}/sheets/${sheetId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/plan-sets/${planSetId}/sheets/${sheetId}`, updates);
   if (!response.ok) throw new Error('Failed to update sheet');
   return response.json();
 }
 
 async function deleteSheet(planSetId: string, sheetId: string): Promise<void> {
-  const response = await fetch(`/api/plan-sets/${planSetId}/sheets/${sheetId}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-  });
+  const response = await apiDelete(`/api/plan-sets/${planSetId}/sheets/${sheetId}`);
   if (!response.ok) throw new Error('Failed to delete sheet');
 }
 
 async function uploadThumbnail(planSetId: string, sheetId: string, formData: FormData): Promise<PlanSheet> {
-  const response = await fetch(`/api/plan-sets/${planSetId}/sheets/${sheetId}/thumbnail`, {
+  const response = await apiFetch(`/api/plan-sets/${planSetId}/sheets/${sheetId}/thumbnail`, {
     method: 'POST',
     body: formData,
   });
@@ -297,7 +276,7 @@ async function uploadThumbnail(planSetId: string, sheetId: string, formData: For
 
 // Distributions
 async function fetchDistributions(planSetId: string): Promise<PlanDistribution[]> {
-  const response = await fetch(`/api/plan-sets/${planSetId}/distributions`);
+  const response = await apiGet(`/api/plan-sets/${planSetId}/distributions`);
   if (!response.ok) throw new Error('Failed to fetch distributions');
   return response.json();
 }
@@ -308,29 +287,19 @@ async function distribute(planSetId: string, data: {
   notes?: string;
   sent_by?: string;
 }): Promise<{ success: boolean; message: string; distributions: PlanDistribution[] }> {
-  const response = await fetch(`/api/plan-sets/${planSetId}/distribute`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  const response = await apiPost(`/api/plan-sets/${planSetId}/distribute`, data);
   if (!response.ok) throw new Error('Failed to distribute plan set');
   return response.json();
 }
 
 async function updateDistribution(distributionId: string, updates: Partial<PlanDistribution>): Promise<PlanDistribution> {
-  const response = await fetch(`/api/plan-sets/distributions/${distributionId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/plan-sets/distributions/${distributionId}`, updates);
   if (!response.ok) throw new Error('Failed to update distribution');
   return response.json();
 }
 
 async function deleteDistribution(distributionId: string): Promise<void> {
-  const response = await fetch(`/api/plan-sets/distributions/${distributionId}`, {
-    method: 'DELETE',
-  });
+  const response = await apiDelete(`/api/plan-sets/distributions/${distributionId}`);
   if (!response.ok) throw new Error('Failed to delete distribution');
 }
 
@@ -340,7 +309,7 @@ async function fetchMarkups(sheetId: string, options?: { markup_type?: MarkupTyp
   if (options?.markup_type) params.append('markup_type', options.markup_type);
   if (options?.resolved !== undefined) params.append('resolved', String(options.resolved));
 
-  const response = await fetch(`/api/plan-sets/sheets/${sheetId}/markups?${params}`);
+  const response = await apiGet(`/api/plan-sets/sheets/${sheetId}/markups?${params}`);
   if (!response.ok) throw new Error('Failed to fetch markups');
   return response.json();
 }
@@ -351,29 +320,19 @@ async function createMarkup(sheetId: string, data: {
   revision?: string;
   created_by?: string;
 }): Promise<PlanMarkup> {
-  const response = await fetch(`/api/plan-sets/sheets/${sheetId}/markups`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  const response = await apiPost(`/api/plan-sets/sheets/${sheetId}/markups`, data);
   if (!response.ok) throw new Error('Failed to create markup');
   return response.json();
 }
 
 async function updateMarkup(markupId: string, updates: Partial<PlanMarkup>): Promise<PlanMarkup> {
-  const response = await fetch(`/api/plan-sets/markups/${markupId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/plan-sets/markups/${markupId}`, updates);
   if (!response.ok) throw new Error('Failed to update markup');
   return response.json();
 }
 
 async function deleteMarkup(markupId: string): Promise<void> {
-  const response = await fetch(`/api/plan-sets/markups/${markupId}`, {
-    method: 'DELETE',
-  });
+  const response = await apiDelete(`/api/plan-sets/markups/${markupId}`);
   if (!response.ok) throw new Error('Failed to delete markup');
 }
 
@@ -388,7 +347,7 @@ async function fetchVersionHistory(planSetId: string): Promise<Array<{
   created_at: string;
   created_by?: string;
 }>> {
-  const response = await fetch(`/api/plan-sets/${planSetId}/versions`);
+  const response = await apiGet(`/api/plan-sets/${planSetId}/versions`);
   if (!response.ok) throw new Error('Failed to fetch version history');
   return response.json();
 }
@@ -396,7 +355,7 @@ async function fetchVersionHistory(planSetId: string): Promise<Array<{
 // Activity
 async function fetchActivity(planSetId: string, limit?: number): Promise<PlanSetActivity[]> {
   const params = limit ? `?limit=${limit}` : '';
-  const response = await fetch(`/api/plan-sets/${planSetId}/activity${params}`);
+  const response = await apiGet(`/api/plan-sets/${planSetId}/activity${params}`);
   if (!response.ok) throw new Error('Failed to fetch activity');
   return response.json();
 }

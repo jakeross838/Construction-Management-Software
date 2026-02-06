@@ -1,12 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from '@/lib/api';
 
-// API helper
+// Authenticated API helper using @/lib/api
 async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
+  const method = options?.method?.toUpperCase() || 'GET';
+  let response: Response;
+
+  if (method === 'GET') {
+    response = await apiGet(`/api${endpoint}`);
+  } else if (method === 'POST') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    response = await apiPost(`/api${endpoint}`, body);
+  } else if (method === 'PATCH') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    response = await apiPatch(`/api${endpoint}`, body);
+  } else if (method === 'DELETE') {
+    response = await apiDelete(`/api${endpoint}`);
+  } else {
+    response = await apiFetch(`/api${endpoint}`, options);
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || error.message || `HTTP ${response.status}`);
@@ -327,7 +341,7 @@ export function useUploadBidDocument() {
       formData.append('document', file);
       formData.append('uploaded_by', 'User');
 
-      const response = await fetch(`/api/bids/${bidId}/documents`, {
+      const response = await apiFetch(`/api/bids/${bidId}/documents`, {
         method: 'POST',
         body: formData,
       });
@@ -352,7 +366,7 @@ export function useDeleteBidDocument() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ docId, bidId }: { docId: string; bidId: string }) => {
-      const response = await fetch(`/api/bids/documents/${docId}`, {
+      const response = await apiFetch(`/api/bids/documents/${docId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deleted_by: 'User' }),
@@ -386,11 +400,7 @@ export function useMoveDocument() {
       fromBidId: string;
       toBidId: string;
     }) => {
-      const response = await fetch(`/api/bids/documents/${docId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bid_id: toBidId, moved_by: 'User' }),
-      });
+      const response = await apiPatch(`/api/bids/documents/${docId}`, { bid_id: toBidId, moved_by: 'User' });
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -650,7 +660,7 @@ export function useUploadSubcontractorBidDocument() {
       formData.append('uploaded_by', 'User');
       formData.append('document_type', documentType);
 
-      const response = await fetch(`/api/bids/submissions/${submissionId}/documents`, {
+      const response = await apiFetch(`/api/bids/submissions/${submissionId}/documents`, {
         method: 'POST',
         body: formData,
       });
@@ -676,7 +686,7 @@ export function useDeleteSubcontractorBidDocument() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ docId, submissionId }: { docId: string; submissionId: string }) => {
-      const response = await fetch(`/api/bids/submissions/${submissionId}/documents/${docId}`, {
+      const response = await apiFetch(`/api/bids/submissions/${submissionId}/documents/${docId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deleted_by: 'User' }),
@@ -725,10 +735,7 @@ export function useExtractBidFromDocument() {
       submissionId: string;
       docId: string;
     }) => {
-      const response = await fetch(`/api/bids/submissions/${submissionId}/documents/${docId}/extract`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const response = await apiPost(`/api/bids/submissions/${submissionId}/documents/${docId}/extract`);
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -758,7 +765,7 @@ export function useExtractBidFromFile() {
       const formData = new FormData();
       formData.append('document', file);
 
-      const response = await fetch(`/api/bids/submissions/${submissionId}/extract`, {
+      const response = await apiFetch(`/api/bids/submissions/${submissionId}/extract`, {
         method: 'POST',
         body: formData,
       });

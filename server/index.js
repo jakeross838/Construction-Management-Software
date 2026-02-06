@@ -89,6 +89,7 @@ const {
 } = require('./core/realtime');
 
 const { setupSwagger } = require('./swagger');
+const { getUserName } = require('./utils/shared');
 
 // Create Express app with middleware from app.js
 const app = createApp();
@@ -189,7 +190,7 @@ const inventoryRoutes = require('./routes/inventory');
 const signaturesRoutes = require('./routes/signatures');
 const mobileRoutes = require('./routes/mobile');
 const { deprecatedRoutes } = require('./middleware/deprecation');
-const { optionalAuth, requireAuth } = require('./middleware/auth');
+const { optionalAuth, requireAuth, requirePermission } = require('./middleware/auth');
 
 // ============================================================
 // GLOBAL AUTH MIDDLEWARE - Secure by default
@@ -2798,7 +2799,7 @@ app.post('/api/purchase-orders/:poId/change-orders/:coId/approve', asyncHandler(
     .update({
       status: 'approved',
       approved_at: new Date().toISOString(),
-      approved_by: 'Jake Ross'
+      approved_by: getUserName(req)
     })
     .eq('id', coId);
 
@@ -7148,7 +7149,7 @@ app.get('/api/draws/:id', async (req, res) => {
   }
 });
 
-app.post('/api/jobs/:id/draws', validateRequest({
+app.post('/api/jobs/:id/draws', requirePermission('canSubmitDraw'), validateRequest({
   params: { id: { type: 'uuid' } }
 }), asyncHandler(async (req, res) => {
   const jobId = req.params.id;

@@ -6,6 +6,8 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { getUserName } = require('../utils/shared');
+const { requireFinancialAccess } = require('../middleware/auth');
 
 const asyncHandler = fn => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -46,17 +48,17 @@ router.get('/:id', asyncHandler(async (req, res) => {
   res.json({ ...budget, lines: lines || [] });
 }));
 
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', requireFinancialAccess, asyncHandler(async (req, res) => {
   const { job_id, name, description, status, contingency_percent, notes } = req.body;
   if (!job_id) return res.status(400).json({ error: 'Job ID is required' });
   const { data: existing } = await supabase.from('v2_budgets').select('version').eq('job_id', job_id).is('deleted_at', null).order('version', { ascending: false }).limit(1);
   const nextVersion = (existing?.[0]?.version || 0) + 1;
-  const { data, error } = await supabase.from('v2_budgets').insert({ job_id, name: name || 'Project Budget', description, version: nextVersion, status: status || 'draft', contingency_percent: contingency_percent || 5.00, notes, created_by: 'Jake Ross' }).select('*, job:v2_jobs(id, name)').single();
+  const { data, error } = await supabase.from('v2_budgets').insert({ job_id, name: name || 'Project Budget', description, version: nextVersion, status: status || 'draft', contingency_percent: contingency_percent || 5.00, notes, created_by: getUserName(req) }).select('*, job:v2_jobs(id, name)').single();
   if (error) throw error;
   res.status(201).json(data);
 }));
 
-router.patch('/:id', asyncHandler(async (req, res) => {
+router.patch('/:id', requireFinancialAccess, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
   delete updates.id; delete updates.created_at; delete updates.job_id; delete updates.version;
@@ -75,10 +77,10 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Budget deleted' });
 }));
 
-router.post('/:id/approve', asyncHandler(async (req, res) => {
+router.post('/:id/approve', requireFinancialAccess, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { approved_by } = req.body;
-  const { data, error } = await supabase.from('v2_budgets').update({ status: 'approved', approved_by: approved_by || 'Jake Ross', approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).is('deleted_at', null).select('*, job:v2_jobs(id, name)').single();
+  const { data, error } = await supabase.from('v2_budgets').update({ status: 'approved', approved_by: getUserName(req), approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).is('deleted_at', null).select('*, job:v2_jobs(id, name)').single();
   if (error) throw error;
   if (!data) return res.status(404).json({ error: 'Budget not found' });
   res.json(data);

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +50,8 @@ const activityConfig: Record<string, { icon: typeof Phone; label: string; color:
 };
 
 export function ActivityTimeline({ leadId }: ActivityTimelineProps) {
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<LeadActivityInsert>>({
     activity_type: 'call',
@@ -70,7 +73,7 @@ export function ActivityTimeline({ leadId }: ActivityTimelineProps) {
         description: formData.description,
         outcome: formData.outcome,
         duration_minutes: formData.duration_minutes,
-        performed_by: 'Jake Ross', // TODO: Get from auth context
+        performed_by: userName,
         performed_at: new Date().toISOString(),
       },
     });

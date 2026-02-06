@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // Types
 export interface NotificationTypes {
@@ -56,14 +57,14 @@ export interface TestResult {
 
 // API Functions
 async function fetchSlackIntegrations(): Promise<SlackIntegration[]> {
-  const response = await fetch('/api/integrations/slack');
+  const response = await apiGet('/api/integrations/slack');
   if (!response.ok) throw new Error('Failed to fetch Slack integrations');
   const data = await response.json();
   return data.integrations;
 }
 
 async function fetchSlackIntegration(id: string): Promise<SlackIntegration> {
-  const response = await fetch(`/api/integrations/slack/${id}`);
+  const response = await apiGet(`/api/integrations/slack/${id}`);
   if (!response.ok) throw new Error('Failed to fetch Slack integration');
   const data = await response.json();
   return data.integration;
@@ -75,11 +76,7 @@ async function createSlackIntegration(params: {
   channel_name?: string;
   notification_types?: Partial<NotificationTypes>;
 }): Promise<{ integration: SlackIntegration }> {
-  const response = await fetch('/api/integrations/slack', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost('/api/integrations/slack', params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create Slack integration');
@@ -97,11 +94,7 @@ async function updateSlackIntegration(
     enabled: boolean;
   }>
 ): Promise<SlackIntegration> {
-  const response = await fetch(`/api/integrations/slack/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/integrations/slack/${id}`, updates);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to update Slack integration');
@@ -111,26 +104,18 @@ async function updateSlackIntegration(
 }
 
 async function deleteSlackIntegration(id: string): Promise<void> {
-  const response = await fetch(`/api/integrations/slack/${id}`, {
-    method: 'DELETE',
-  });
+  const response = await apiDelete(`/api/integrations/slack/${id}`);
   if (!response.ok) throw new Error('Failed to delete Slack integration');
 }
 
 async function testSlackIntegration(id: string): Promise<TestResult> {
-  const response = await fetch(`/api/integrations/slack/${id}/test`, {
-    method: 'POST',
-  });
+  const response = await apiPost(`/api/integrations/slack/${id}/test`);
   if (!response.ok) throw new Error('Failed to test Slack integration');
   return response.json();
 }
 
 async function testSlackWebhookUrl(webhook_url: string): Promise<TestResult> {
-  const response = await fetch('/api/integrations/slack/test-url', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ webhook_url }),
-  });
+  const response = await apiPost('/api/integrations/slack/test-url', { webhook_url });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to test webhook URL');
@@ -139,14 +124,14 @@ async function testSlackWebhookUrl(webhook_url: string): Promise<TestResult> {
 }
 
 async function fetchSlackMessages(id: string, limit = 50): Promise<SlackMessage[]> {
-  const response = await fetch(`/api/integrations/slack/${id}/messages?limit=${limit}`);
+  const response = await apiGet(`/api/integrations/slack/${id}/messages?limit=${limit}`);
   if (!response.ok) throw new Error('Failed to fetch Slack messages');
   const data = await response.json();
   return data.messages;
 }
 
 async function fetchNotificationTypes(): Promise<NotificationType[]> {
-  const response = await fetch('/api/integrations/slack/notification-types');
+  const response = await apiGet('/api/integrations/slack/notification-types');
   if (!response.ok) throw new Error('Failed to fetch notification types');
   const data = await response.json();
   return data.notification_types;

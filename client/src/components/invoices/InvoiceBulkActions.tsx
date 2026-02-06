@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -48,6 +49,8 @@ export function InvoiceBulkActions({
   invoices,
   onClearSelection,
 }: InvoiceBulkActionsProps) {
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [addToDrawOpen, setAddToDrawOpen] = useState(false);
 
@@ -73,7 +76,7 @@ export function InvoiceBulkActions({
 
     await bulkApprove.mutateAsync({
       ids: toApprove.map(inv => inv.id),
-      approvedBy: 'Jake Ross',
+      approvedBy: userName,
     });
     onClearSelection();
   };

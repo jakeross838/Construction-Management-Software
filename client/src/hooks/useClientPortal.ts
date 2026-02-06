@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 export interface Client {
   id: string;
@@ -59,63 +60,51 @@ async function fetchClients(filters: ClientFilters = {}): Promise<Client[]> {
   const params = new URLSearchParams();
   if (filters.job_id) params.append('job_id', filters.job_id);
 
-  const response = await fetch(`/api/client-portal/clients?${params}`);
+  const response = await apiGet(`/api/client-portal/clients?${params}`);
   if (!response.ok) throw new Error('Failed to fetch clients');
   const data = await response.json();
   return data.clients;
 }
 
 async function fetchClient(id: string): Promise<Client> {
-  const response = await fetch(`/api/client-portal/clients/${id}`);
+  const response = await apiGet(`/api/client-portal/clients/${id}`);
   if (!response.ok) throw new Error('Failed to fetch client');
   return response.json();
 }
 
 async function createClient(client: Partial<Client> & { send_invitation?: boolean }): Promise<Client> {
-  const response = await fetch('/api/client-portal/clients', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(client),
-  });
+  const response = await apiPost('/api/client-portal/clients', client);
   if (!response.ok) throw new Error('Failed to create client');
   const data = await response.json();
   return data.client;
 }
 
 async function updateClient(id: string, updates: Partial<Client>): Promise<Client> {
-  const response = await fetch(`/api/client-portal/clients/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/client-portal/clients/${id}`, updates);
   if (!response.ok) throw new Error('Failed to update client');
   const data = await response.json();
   return data.client;
 }
 
 async function deleteClient(id: string): Promise<void> {
-  const response = await fetch(`/api/client-portal/clients/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/client-portal/clients/${id}`);
   if (!response.ok) throw new Error('Failed to delete client');
 }
 
 async function sendClientInvitation(id: string): Promise<void> {
-  const response = await fetch(`/api/client-portal/clients/${id}/invite`, { method: 'POST' });
+  const response = await apiPost(`/api/client-portal/clients/${id}/invite`);
   if (!response.ok) throw new Error('Failed to send invitation');
 }
 
 async function fetchPortalSettings(): Promise<ClientPortalSettings> {
-  const response = await fetch('/api/client-portal/settings');
+  const response = await apiGet('/api/client-portal/settings');
   if (!response.ok) throw new Error('Failed to fetch portal settings');
   const data = await response.json();
   return data.settings;
 }
 
 async function updatePortalSettings(settings: Partial<ClientPortalSettings>): Promise<ClientPortalSettings> {
-  const response = await fetch('/api/client-portal/settings', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings),
-  });
+  const response = await apiPatch('/api/client-portal/settings', settings);
   if (!response.ok) throw new Error('Failed to update portal settings');
   const data = await response.json();
   return data.settings;
@@ -126,18 +115,14 @@ async function fetchMessages(filters: { job_id?: string; client_id?: string } = 
   if (filters.job_id) params.append('job_id', filters.job_id);
   if (filters.client_id) params.append('client_id', filters.client_id);
 
-  const response = await fetch(`/api/client-portal/messages?${params}`);
+  const response = await apiGet(`/api/client-portal/messages?${params}`);
   if (!response.ok) throw new Error('Failed to fetch messages');
   const data = await response.json();
   return data.messages;
 }
 
 async function sendMessage(message: { job_id?: string; client_id: string; subject?: string; content: string; attachments?: string[] }): Promise<ClientMessage> {
-  const response = await fetch('/api/client-portal/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(message),
-  });
+  const response = await apiPost('/api/client-portal/messages', message);
   if (!response.ok) throw new Error('Failed to send message');
   const data = await response.json();
   return data.message;
@@ -249,11 +234,7 @@ export interface PortalSession {
 }
 
 async function validateMagicLink(token: string): Promise<PortalSession> {
-  const response = await fetch('/api/client-portal/auth/magic-link', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  });
+  const response = await apiPost('/api/client-portal/auth/magic-link', { token });
   if (!response.ok) throw new Error('Invalid or expired link');
   return response.json();
 }

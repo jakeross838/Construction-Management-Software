@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -50,6 +51,8 @@ export function POBulkActions({
   purchaseOrders,
   onClearSelection,
 }: POBulkActionsProps) {
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const bulkStatusChange = useBulkPOStatusChange();
@@ -72,7 +75,7 @@ export function POBulkActions({
 
     await bulkApproval.mutateAsync({
       ids: toApprove.map(po => po.id),
-      approvedBy: 'Jake Ross',
+      approvedBy: userName,
     });
     onClearSelection();
   };

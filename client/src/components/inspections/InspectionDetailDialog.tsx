@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,8 @@ export function InspectionDetailDialog({
   inspectionId,
   onEdit,
 }: InspectionDetailDialogProps) {
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
   const { data: inspection, isLoading } = useInspection(inspectionId);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [resultDialogOpen, setResultDialogOpen] = useState(false);
@@ -115,7 +118,7 @@ export function InspectionDetailDialog({
     await reinspectMutation.mutateAsync({
       id: inspectionId,
       scheduled_date: reinspectDate,
-      created_by: 'Jake Ross',
+      created_by: userName,
     });
     setReinspectOpen(false);
   };
@@ -132,7 +135,7 @@ export function InspectionDetailDialog({
     await resolveDeficiencyMutation.mutateAsync({
       id: deficiencyId,
       inspectionId,
-      resolved_by: 'Jake Ross',
+      resolved_by: userName,
     });
   };
 

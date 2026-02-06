@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 
 // Types
 export type NotificationChannel = 'in_app' | 'email' | 'sms' | 'push';
@@ -104,30 +105,26 @@ async function fetchNotifications(user: string, options?: {
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.offset) params.set('offset', String(options.offset));
 
-  const response = await fetch(`/api/notifications?${params}`);
+  const response = await apiGet(`/api/notifications?${params}`);
   if (!response.ok) throw new Error('Failed to fetch notifications');
   return response.json();
 }
 
 async function fetchUnreadCount(user: string): Promise<number> {
-  const response = await fetch(`/api/notifications/unread-count?user=${encodeURIComponent(user)}`);
+  const response = await apiGet(`/api/notifications/unread-count?user=${encodeURIComponent(user)}`);
   if (!response.ok) throw new Error('Failed to fetch unread count');
   const data = await response.json();
   return data.count;
 }
 
 async function fetchPreferences(user: string): Promise<NotificationPreferences> {
-  const response = await fetch(`/api/notifications/preferences?user=${encodeURIComponent(user)}`);
+  const response = await apiGet(`/api/notifications/preferences?user=${encodeURIComponent(user)}`);
   if (!response.ok) throw new Error('Failed to fetch preferences');
   return response.json();
 }
 
 async function updatePreferences(prefs: Partial<NotificationPreferences> & { user_name: string }): Promise<NotificationPreferences> {
-  const response = await fetch('/api/notifications/preferences', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(prefs),
-  });
+  const response = await apiPatch('/api/notifications/preferences', prefs);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || 'Failed to update preferences');
@@ -147,56 +144,46 @@ async function fetchNotificationLog(user: string, options?: {
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.offset) params.set('offset', String(options.offset));
 
-  const response = await fetch(`/api/notifications/log?${params}`);
+  const response = await apiGet(`/api/notifications/log?${params}`);
   if (!response.ok) throw new Error('Failed to fetch notification log');
   return response.json();
 }
 
 async function fetchNotificationStats(days = 30): Promise<NotificationStats> {
-  const response = await fetch(`/api/notifications/stats?days=${days}`);
+  const response = await apiGet(`/api/notifications/stats?days=${days}`);
   if (!response.ok) throw new Error('Failed to fetch notification stats');
   return response.json();
 }
 
 async function fetchSMSStatus(): Promise<SMSStatus> {
-  const response = await fetch('/api/notifications/sms/status');
+  const response = await apiGet('/api/notifications/sms/status');
   if (!response.ok) throw new Error('Failed to fetch SMS status');
   return response.json();
 }
 
 async function sendTestSMS(to: string, message?: string): Promise<{ success: boolean; sid?: string; error?: string }> {
-  const response = await fetch('/api/notifications/test-sms', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to, message }),
-  });
+  const response = await apiPost('/api/notifications/test-sms', { to, message });
   return response.json();
 }
 
 async function markAsRead(id: string): Promise<Notification> {
-  const response = await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+  const response = await apiPatch(`/api/notifications/${id}/read`);
   if (!response.ok) throw new Error('Failed to mark notification as read');
   return response.json();
 }
 
 async function markAllAsRead(user: string): Promise<void> {
-  const response = await fetch('/api/notifications/mark-all-read', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user }),
-  });
+  const response = await apiPost('/api/notifications/mark-all-read', { user });
   if (!response.ok) throw new Error('Failed to mark all notifications as read');
 }
 
 async function deleteNotification(id: string): Promise<void> {
-  const response = await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/notifications/${id}`);
   if (!response.ok) throw new Error('Failed to delete notification');
 }
 
 async function clearAllNotifications(user: string): Promise<void> {
-  const response = await fetch(`/api/notifications/clear-all/${encodeURIComponent(user)}`, {
-    method: 'DELETE',
-  });
+  const response = await apiDelete(`/api/notifications/clear-all/${encodeURIComponent(user)}`);
   if (!response.ok) throw new Error('Failed to clear notifications');
 }
 
@@ -211,11 +198,7 @@ async function sendNotification(params: {
   priority?: NotificationPriority;
   data?: Record<string, unknown>;
 }): Promise<SendNotificationResult> {
-  const response = await fetch('/api/notifications/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost('/api/notifications/send', params);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || 'Failed to send notification');
@@ -224,27 +207,19 @@ async function sendNotification(params: {
 }
 
 async function fetchTemplates(): Promise<SMSTemplate[]> {
-  const response = await fetch('/api/notifications/templates');
+  const response = await apiGet('/api/notifications/templates');
   if (!response.ok) throw new Error('Failed to fetch templates');
   return response.json();
 }
 
 async function updateTemplate(type: string, template_text: string, is_active = true): Promise<SMSTemplate> {
-  const response = await fetch(`/api/notifications/templates/${type}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ template_text, is_active }),
-  });
+  const response = await apiPut(`/api/notifications/templates/${type}`, { template_text, is_active });
   if (!response.ok) throw new Error('Failed to update template');
   return response.json();
 }
 
 async function previewTemplate(template: string, data: Record<string, unknown>): Promise<string> {
-  const response = await fetch('/api/notifications/templates/preview', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ template, data }),
-  });
+  const response = await apiPost('/api/notifications/templates/preview', { template, data });
   if (!response.ok) throw new Error('Failed to preview template');
   const result = await response.json();
   return result.rendered;
@@ -257,7 +232,7 @@ async function previewTemplate(template: string, data: Record<string, unknown>):
 /**
  * Get notifications for a user
  */
-export function useNotifications(user = 'Jake Ross', options?: {
+export function useNotifications(user = '', options?: {
   is_read?: boolean;
   type?: string;
   limit?: number;
@@ -272,7 +247,7 @@ export function useNotifications(user = 'Jake Ross', options?: {
 /**
  * Get unread notification count
  */
-export function useUnreadCount(user = 'Jake Ross') {
+export function useUnreadCount(user = '') {
   return useQuery({
     queryKey: ['notifications-unread-count', user],
     queryFn: () => fetchUnreadCount(user),
@@ -283,7 +258,7 @@ export function useUnreadCount(user = 'Jake Ross') {
 /**
  * Get notification preferences
  */
-export function useNotificationPreferences(user = 'Jake Ross') {
+export function useNotificationPreferences(user = '') {
   return useQuery({
     queryKey: ['notification-preferences', user],
     queryFn: () => fetchPreferences(user),
@@ -311,7 +286,7 @@ export function useUpdatePreferences() {
 /**
  * Get notification log/history
  */
-export function useNotificationLog(user = 'Jake Ross', options?: {
+export function useNotificationLog(user = '', options?: {
   channel?: NotificationChannel;
   status?: NotificationStatus;
   limit?: number;

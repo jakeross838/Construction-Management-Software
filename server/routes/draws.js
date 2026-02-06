@@ -11,6 +11,7 @@ const { logActivity, checkSplitReconciliation, stampInvoice } = require('../serv
 const { asyncHandler, AppError, notFoundError, validateRequest } = require('../core/errors');
 const { validate, schemas } = require('../middleware/validate');
 const { getBuilderId } = require('../core/multi-tenant');
+const { requirePermission } = require('../middleware/auth');
 const { broadcastNotification, broadcastDrawUpdate } = require('../core/realtime');
 // Storage and pdf-stamper functions removed - using unified stampInvoice instead
 
@@ -1231,7 +1232,7 @@ router.get('/:id/validate', asyncHandler(async (req, res) => {
 // ============================================================
 
 // Submit draw
-router.patch('/:id/submit', asyncHandler(async (req, res) => {
+router.patch('/:id/submit', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { submitted_by = 'System' } = req.body;
 
@@ -1361,7 +1362,7 @@ router.post('/:id/unsubmit', asyncHandler(async (req, res) => {
 }));
 
 // Fund draw
-router.patch('/:id/fund', asyncHandler(async (req, res) => {
+router.patch('/:id/fund', requirePermission('canSubmitDraw'), asyncHandler(async (req, res) => {
     const drawId = req.params.id;
     const { funded_amount, partial_funding_note, funded_by = 'System' } = req.body;
 

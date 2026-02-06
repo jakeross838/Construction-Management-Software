@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 export type TaskType = 'task' | 'milestone' | 'checklist' | 'reminder';
 export type TaskStatus = 'todo' | 'in_progress' | 'on_hold' | 'completed' | 'cancelled';
@@ -141,57 +142,49 @@ async function fetchTasks(filters: TaskFilters = {}): Promise<Task[]> {
     params.append('parent_task_id', filters.parent_task_id);
   }
 
-  const response = await fetch(`/api/tasks?${params}`);
+  const response = await apiGet(`/api/tasks?${params}`);
   if (!response.ok) throw new Error('Failed to fetch tasks');
   return response.json();
 }
 
 async function fetchTaskStats(jobId?: string): Promise<TaskStats> {
   const params = jobId ? `?job_id=${jobId}` : '';
-  const response = await fetch(`/api/tasks/stats${params}`);
+  const response = await apiGet(`/api/tasks/stats${params}`);
   if (!response.ok) throw new Error('Failed to fetch task stats');
   return response.json();
 }
 
 async function fetchTask(id: string): Promise<Task> {
-  const response = await fetch(`/api/tasks/${id}`);
+  const response = await apiGet(`/api/tasks/${id}`);
   if (!response.ok) throw new Error('Failed to fetch task');
   return response.json();
 }
 
 async function createTask(task: Partial<Task>): Promise<Task> {
-  const response = await fetch('/api/tasks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(task),
-  });
+  const response = await apiPost('/api/tasks', task);
   if (!response.ok) throw new Error('Failed to create task');
   return response.json();
 }
 
 async function updateTask(id: string, updates: Partial<Task>): Promise<Task> {
-  const response = await fetch(`/api/tasks/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/tasks/${id}`, updates);
   if (!response.ok) throw new Error('Failed to update task');
   return response.json();
 }
 
 async function deleteTask(id: string): Promise<void> {
-  const response = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/tasks/${id}`);
   if (!response.ok) throw new Error('Failed to delete task');
 }
 
 async function completeTask(id: string): Promise<Task> {
-  const response = await fetch(`/api/tasks/${id}/complete`, { method: 'POST' });
+  const response = await apiPost(`/api/tasks/${id}/complete`);
   if (!response.ok) throw new Error('Failed to complete task');
   return response.json();
 }
 
 async function reopenTask(id: string): Promise<Task> {
-  const response = await fetch(`/api/tasks/${id}/reopen`, { method: 'POST' });
+  const response = await apiPost(`/api/tasks/${id}/reopen`);
   if (!response.ok) throw new Error('Failed to reopen task');
   return response.json();
 }
@@ -302,27 +295,19 @@ export function useReopenTask() {
 // ============================================================
 
 async function addChecklistItem(taskId: string, description: string): Promise<TaskChecklist> {
-  const response = await fetch(`/api/tasks/${taskId}/checklists`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description }),
-  });
+  const response = await apiPost(`/api/tasks/${taskId}/checklists`, { description });
   if (!response.ok) throw new Error('Failed to add checklist item');
   return response.json();
 }
 
 async function toggleChecklistItem(taskId: string, checklistId: string, isCompleted: boolean): Promise<TaskChecklist> {
-  const response = await fetch(`/api/tasks/${taskId}/checklists/${checklistId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ is_completed: isCompleted }),
-  });
+  const response = await apiPatch(`/api/tasks/${taskId}/checklists/${checklistId}`, { is_completed: isCompleted });
   if (!response.ok) throw new Error('Failed to toggle checklist item');
   return response.json();
 }
 
 async function deleteChecklistItem(taskId: string, checklistId: string): Promise<void> {
-  const response = await fetch(`/api/tasks/${taskId}/checklists/${checklistId}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/tasks/${taskId}/checklists/${checklistId}`);
   if (!response.ok) throw new Error('Failed to delete checklist item');
 }
 
@@ -373,17 +358,13 @@ export function useDeleteChecklistItem() {
 // ============================================================
 
 async function addComment(taskId: string, content: string): Promise<TaskComment> {
-  const response = await fetch(`/api/tasks/${taskId}/comments`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  });
+  const response = await apiPost(`/api/tasks/${taskId}/comments`, { content });
   if (!response.ok) throw new Error('Failed to add comment');
   return response.json();
 }
 
 async function deleteComment(taskId: string, commentId: string): Promise<void> {
-  const response = await fetch(`/api/tasks/${taskId}/comments/${commentId}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/tasks/${taskId}/comments/${commentId}`);
   if (!response.ok) throw new Error('Failed to delete comment');
 }
 

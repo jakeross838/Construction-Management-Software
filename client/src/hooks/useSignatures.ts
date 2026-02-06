@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // ============================================================
 // TYPES
@@ -122,7 +123,7 @@ async function fetchSignatureStats(params?: { document_type?: string; document_i
   if (params?.document_type) searchParams.append('document_type', params.document_type);
   if (params?.document_id) searchParams.append('document_id', params.document_id);
 
-  const response = await fetch(`/api/signatures/stats?${searchParams}`);
+  const response = await apiGet(`/api/signatures/stats?${searchParams}`);
   if (!response.ok) throw new Error('Failed to fetch signature stats');
   return response.json();
 }
@@ -137,25 +138,21 @@ async function fetchSignatureRequests(filters: SignatureRequestFilters = {}): Pr
   if (filters.limit) params.append('limit', filters.limit.toString());
   if (filters.offset) params.append('offset', filters.offset.toString());
 
-  const response = await fetch(`/api/signatures/requests?${params}`);
+  const response = await apiGet(`/api/signatures/requests?${params}`);
   if (!response.ok) throw new Error('Failed to fetch signature requests');
   const data = await response.json();
   return data.requests;
 }
 
 async function fetchSignatureRequest(id: string): Promise<SignatureRequest> {
-  const response = await fetch(`/api/signatures/requests/${id}`);
+  const response = await apiGet(`/api/signatures/requests/${id}`);
   if (!response.ok) throw new Error('Failed to fetch signature request');
   const data = await response.json();
   return data.request;
 }
 
 async function createSignatureRequest(request: Partial<SignatureRequest>): Promise<SignatureRequest> {
-  const response = await fetch('/api/signatures/requests', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  });
+  const response = await apiPost('/api/signatures/requests', request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create signature request');
@@ -165,11 +162,7 @@ async function createSignatureRequest(request: Partial<SignatureRequest>): Promi
 }
 
 async function updateSignatureRequest(id: string, updates: Partial<SignatureRequest>): Promise<SignatureRequest> {
-  const response = await fetch(`/api/signatures/requests/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/signatures/requests/${id}`, updates);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to update signature request');
@@ -179,16 +172,12 @@ async function updateSignatureRequest(id: string, updates: Partial<SignatureRequ
 }
 
 async function deleteSignatureRequest(id: string): Promise<void> {
-  const response = await fetch(`/api/signatures/requests/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/signatures/requests/${id}`);
   if (!response.ok) throw new Error('Failed to delete signature request');
 }
 
 async function sendSignatureRequest(id: string, params?: { message?: string; sent_by?: string }): Promise<SignatureRequest> {
-  const response = await fetch(`/api/signatures/requests/${id}/send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params || {}),
-  });
+  const response = await apiPost(`/api/signatures/requests/${id}/send`, params || {});
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to send signature request');
@@ -206,11 +195,7 @@ export interface SignParams {
 }
 
 async function signRequest(id: string, params: SignParams): Promise<{ request: SignatureRequest; signature: Signature }> {
-  const response = await fetch(`/api/signatures/requests/${id}/sign`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost(`/api/signatures/requests/${id}/sign`, params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to submit signature');
@@ -219,11 +204,7 @@ async function signRequest(id: string, params: SignParams): Promise<{ request: S
 }
 
 async function declineRequest(id: string, params: { signer_email: string; decline_reason?: string }): Promise<SignatureRequest> {
-  const response = await fetch(`/api/signatures/requests/${id}/decline`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost(`/api/signatures/requests/${id}/decline`, params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to decline request');
@@ -233,11 +214,7 @@ async function declineRequest(id: string, params: { signer_email: string; declin
 }
 
 async function cancelRequest(id: string, params?: { reason?: string }): Promise<SignatureRequest> {
-  const response = await fetch(`/api/signatures/requests/${id}/cancel`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params || {}),
-  });
+  const response = await apiPost(`/api/signatures/requests/${id}/cancel`, params || {});
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to cancel request');
@@ -247,11 +224,7 @@ async function cancelRequest(id: string, params?: { reason?: string }): Promise<
 }
 
 async function resendRequest(id: string, params?: { signer_email?: string }): Promise<void> {
-  const response = await fetch(`/api/signatures/requests/${id}/resend`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params || {}),
-  });
+  const response = await apiPost(`/api/signatures/requests/${id}/resend`, params || {});
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to resend request');
@@ -260,18 +233,14 @@ async function resendRequest(id: string, params?: { signer_email?: string }): Pr
 
 async function fetchAuditTrail(requestId: string, limit?: number): Promise<SignatureAuditEntry[]> {
   const params = limit ? `?limit=${limit}` : '';
-  const response = await fetch(`/api/signatures/requests/${requestId}/audit${params}`);
+  const response = await apiGet(`/api/signatures/requests/${requestId}/audit${params}`);
   if (!response.ok) throw new Error('Failed to fetch audit trail');
   const data = await response.json();
   return data.audit;
 }
 
 async function recordView(requestId: string, params: { viewer_email?: string; viewer_name?: string }): Promise<void> {
-  await fetch(`/api/signatures/requests/${requestId}/view`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  await apiPost(`/api/signatures/requests/${requestId}/view`, params);
 }
 
 async function fetchSignatureTemplates(params?: { document_type?: string; is_active?: boolean }): Promise<SignatureTemplate[]> {
@@ -279,18 +248,14 @@ async function fetchSignatureTemplates(params?: { document_type?: string; is_act
   if (params?.document_type) searchParams.append('document_type', params.document_type);
   if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
 
-  const response = await fetch(`/api/signatures/templates?${searchParams}`);
+  const response = await apiGet(`/api/signatures/templates?${searchParams}`);
   if (!response.ok) throw new Error('Failed to fetch signature templates');
   const data = await response.json();
   return data.templates;
 }
 
 async function createSignatureTemplate(template: Partial<SignatureTemplate>): Promise<SignatureTemplate> {
-  const response = await fetch('/api/signatures/templates', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(template),
-  });
+  const response = await apiPost('/api/signatures/templates', template);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create template');

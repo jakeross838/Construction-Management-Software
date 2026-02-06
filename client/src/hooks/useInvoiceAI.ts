@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
 
 export interface ExtractedVendor {
   companyName: string | null;
@@ -145,7 +146,7 @@ export function useInvoiceAI() {
       setProcessingStep('Extracting data with AI...');
 
       // Call the Node.js backend API
-      const response = await fetch('/api/invoices/process', {
+      const response = await apiFetch('/api/invoices/process', {
         method: 'POST',
         body: formData,
       });

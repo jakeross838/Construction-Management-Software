@@ -1,25 +1,25 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { InvoiceStatus } from '@/types/financial';
-import { supabase } from '@/integrations/supabase/client';
+import { apiPost, apiPatch } from '@/lib/api';
 
-// Get auth headers from Supabase session
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  if (token) {
-    return { 'Authorization': `Bearer ${token}` };
-  }
-  return {};
-}
-
-// API helper with auth
+// Authenticated API helper using @/lib/api
 async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const authHeaders = await getAuthHeaders();
-  const response = await fetch(`/api${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...authHeaders, ...options?.headers },
-    ...options,
-  });
+  const method = options?.method?.toUpperCase() || 'GET';
+  let response: Response;
+
+  if (method === 'POST') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    response = await apiPost(`/api${endpoint}`, body);
+  } else if (method === 'PATCH') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    response = await apiPatch(`/api${endpoint}`, body);
+  } else {
+    // Fallback - should not happen in this file
+    const { apiGet } = await import('@/lib/api');
+    response = await apiGet(`/api${endpoint}`);
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || error.message || `HTTP ${response.status}`);
@@ -38,12 +38,7 @@ export function useStampInvoice() {
   return useMutation({
     mutationFn: async ({ invoiceId, status }: StampInvoiceParams) => {
       // Call Node.js backend for PDF stamping
-      const authHeaders = await getAuthHeaders();
-      const response = await fetch(`/api/invoices/${invoiceId}/stamp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({ status }),
-      });
+      const response = await apiPost(`/api/invoices/${invoiceId}/stamp`, { status });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

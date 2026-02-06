@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch } from '@/lib/api';
 
 // Types
 export interface QBOConnectionStatus {
@@ -74,50 +75,46 @@ export interface QBOSyncLog {
 
 // API Functions
 async function fetchConnectionStatus(): Promise<QBOConnectionStatus> {
-  const response = await fetch('/api/quickbooks/status');
+  const response = await apiGet('/api/quickbooks/status');
   if (!response.ok) throw new Error('Failed to fetch QuickBooks status');
   return response.json();
 }
 
 async function fetchSettings(): Promise<QBOSettings | null> {
-  const response = await fetch('/api/quickbooks/settings');
+  const response = await apiGet('/api/quickbooks/settings');
   if (!response.ok) throw new Error('Failed to fetch QuickBooks settings');
   const data = await response.json();
   return data.settings;
 }
 
 async function updateSettings(settings: Partial<QBOSettings>): Promise<QBOSettings> {
-  const response = await fetch('/api/quickbooks/settings', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings),
-  });
+  const response = await apiPatch('/api/quickbooks/settings', settings);
   if (!response.ok) throw new Error('Failed to update QuickBooks settings');
   const data = await response.json();
   return data.settings;
 }
 
 async function disconnectQuickBooks(): Promise<void> {
-  const response = await fetch('/api/quickbooks/disconnect', { method: 'POST' });
+  const response = await apiPost('/api/quickbooks/disconnect');
   if (!response.ok) throw new Error('Failed to disconnect QuickBooks');
 }
 
 async function fetchAccounts(): Promise<QBOAccount[]> {
-  const response = await fetch('/api/quickbooks/accounts');
+  const response = await apiGet('/api/quickbooks/accounts');
   if (!response.ok) throw new Error('Failed to fetch QuickBooks accounts');
   const data = await response.json();
   return data.accounts;
 }
 
 async function fetchClasses(): Promise<QBOClass[]> {
-  const response = await fetch('/api/quickbooks/classes');
+  const response = await apiGet('/api/quickbooks/classes');
   if (!response.ok) throw new Error('Failed to fetch QuickBooks classes');
   const data = await response.json();
   return data.classes;
 }
 
 async function fetchMappings(): Promise<QBOAccountMapping[]> {
-  const response = await fetch('/api/quickbooks/mappings');
+  const response = await apiGet('/api/quickbooks/mappings');
   if (!response.ok) throw new Error('Failed to fetch account mappings');
   const data = await response.json();
   return data.mappings;
@@ -130,30 +127,26 @@ async function createMapping(mapping: {
   qbo_class_id?: string;
   qbo_class_name?: string;
 }): Promise<QBOAccountMapping> {
-  const response = await fetch('/api/quickbooks/mappings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(mapping),
-  });
+  const response = await apiPost('/api/quickbooks/mappings', mapping);
   if (!response.ok) throw new Error('Failed to create account mapping');
   const data = await response.json();
   return data.mapping;
 }
 
 async function syncVendors(): Promise<{ success: boolean; created: number; updated: number; failed: number }> {
-  const response = await fetch('/api/quickbooks/sync/vendors', { method: 'POST' });
+  const response = await apiPost('/api/quickbooks/sync/vendors');
   if (!response.ok) throw new Error('Failed to sync vendors');
   return response.json();
 }
 
 async function syncInvoice(invoiceId: string): Promise<{ success: boolean; qbo_bill_id: string }> {
-  const response = await fetch(`/api/quickbooks/sync/invoice/${invoiceId}`, { method: 'POST' });
+  const response = await apiPost(`/api/quickbooks/sync/invoice/${invoiceId}`);
   if (!response.ok) throw new Error('Failed to sync invoice');
   return response.json();
 }
 
 async function fetchSyncLog(limit = 50): Promise<QBOSyncLog[]> {
-  const response = await fetch(`/api/quickbooks/sync/log?limit=${limit}`);
+  const response = await apiGet(`/api/quickbooks/sync/log?limit=${limit}`);
   if (!response.ok) throw new Error('Failed to fetch sync log');
   const data = await response.json();
   return data.logs;

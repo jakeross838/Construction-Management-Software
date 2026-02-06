@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // ============================================================
 // TYPES
@@ -161,7 +162,7 @@ export function useInventory(params?: UseInventoryParams) {
       if (params?.search) searchParams.append('search', params.search);
 
       const url = `/api/inventory${searchParams.size > 0 ? `?${searchParams.toString()}` : ''}`;
-      const response = await fetch(url);
+      const response = await apiGet(url);
       if (!response.ok) throw new Error('Failed to fetch inventory');
       return response.json();
     },
@@ -172,7 +173,7 @@ export function useInventoryItem(id: string | undefined) {
   return useQuery({
     queryKey: ['inventory', id],
     queryFn: async (): Promise<InventoryItem> => {
-      const response = await fetch(`/api/inventory/${id}`);
+      const response = await apiGet(`/api/inventory/${id}`);
       if (!response.ok) throw new Error('Failed to fetch inventory item');
       return response.json();
     },
@@ -185,11 +186,7 @@ export function useCreateInventoryItem() {
 
   return useMutation({
     mutationFn: async (item: InventoryItemInsert) => {
-      const response = await fetch('/api/inventory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item),
-      });
+      const response = await apiPost('/api/inventory', item);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to create inventory item');
@@ -211,11 +208,7 @@ export function useUpdateInventoryItem() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: InventoryItemUpdate) => {
-      const response = await fetch(`/api/inventory/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
+      const response = await apiPatch(`/api/inventory/${id}`, updates);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to update inventory item');
@@ -237,7 +230,7 @@ export function useDeleteInventoryItem() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
+      const response = await apiDelete(`/api/inventory/${id}`);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to delete inventory item');
@@ -274,11 +267,7 @@ export function useAdjustInventory() {
 
   return useMutation({
     mutationFn: async ({ item_id, ...params }: AdjustInventoryParams) => {
-      const response = await fetch(`/api/inventory/${item_id}/adjust`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
+      const response = await apiPost(`/api/inventory/${item_id}/adjust`, params);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to adjust inventory');
@@ -300,7 +289,7 @@ export function useInventoryTransactions(itemId: string | undefined, limit = 50)
   return useQuery({
     queryKey: ['inventory-transactions', itemId, limit],
     queryFn: async () => {
-      const response = await fetch(`/api/inventory/${itemId}/transactions?limit=${limit}`);
+      const response = await apiGet(`/api/inventory/${itemId}/transactions?limit=${limit}`);
       if (!response.ok) throw new Error('Failed to fetch transactions');
       return response.json() as Promise<{
         data: InventoryTransaction[];
@@ -322,7 +311,7 @@ export function useLowStockItems(vendorId?: string) {
     queryKey: ['inventory', 'low-stock', vendorId],
     queryFn: async () => {
       const params = vendorId ? `?vendor_id=${vendorId}` : '';
-      const response = await fetch(`/api/inventory/low-stock${params}`);
+      const response = await apiGet(`/api/inventory/low-stock${params}`);
       if (!response.ok) throw new Error('Failed to fetch low stock items');
       return response.json() as Promise<{
         items: LowStockItem[];
@@ -344,11 +333,7 @@ export function useGenerateAutoPO() {
 
   return useMutation({
     mutationFn: async (params: AutoPOParams = {}) => {
-      const response = await fetch('/api/inventory/auto-po', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
+      const response = await apiPost('/api/inventory/auto-po', params);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to generate auto-PO');
@@ -391,7 +376,7 @@ export function useItemPrices(itemId: string | undefined, quantity = 1) {
   return useQuery({
     queryKey: ['inventory-prices', itemId, quantity],
     queryFn: async (): Promise<PriceComparison> => {
-      const response = await fetch(`/api/inventory/${itemId}/prices?quantity=${quantity}`);
+      const response = await apiGet(`/api/inventory/${itemId}/prices?quantity=${quantity}`);
       if (!response.ok) throw new Error('Failed to fetch prices');
       return response.json();
     },
@@ -416,11 +401,7 @@ export function useAddVendorPrice() {
 
   return useMutation({
     mutationFn: async ({ item_id, ...params }: AddVendorPriceParams) => {
-      const response = await fetch(`/api/inventory/${item_id}/prices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
+      const response = await apiPost(`/api/inventory/${item_id}/prices`, params);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to add vendor price');
@@ -442,9 +423,7 @@ export function useDeleteVendorPrice() {
 
   return useMutation({
     mutationFn: async ({ item_id, price_id }: { item_id: string; price_id: string }) => {
-      const response = await fetch(`/api/inventory/${item_id}/prices/${price_id}`, {
-        method: 'DELETE',
-      });
+      const response = await apiDelete(`/api/inventory/${item_id}/prices/${price_id}`);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to delete vendor price');
@@ -468,7 +447,7 @@ export function useInventoryStats() {
   return useQuery({
     queryKey: ['inventory', 'stats'],
     queryFn: async (): Promise<InventoryStats> => {
-      const response = await fetch('/api/inventory/stats');
+      const response = await apiGet('/api/inventory/stats');
       if (!response.ok) throw new Error('Failed to fetch inventory stats');
       return response.json();
     },
@@ -488,11 +467,7 @@ export function useBulkImportInventory() {
 
   return useMutation({
     mutationFn: async ({ items }: BulkImportParams) => {
-      const response = await fetch('/api/inventory/bulk-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
-      });
+      const response = await apiPost('/api/inventory/bulk-import', { items });
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to import inventory');
@@ -533,11 +508,7 @@ export function useInventoryCount() {
 
   return useMutation({
     mutationFn: async (params: InventoryCountParams) => {
-      const response = await fetch('/api/inventory/count', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
+      const response = await apiPost('/api/inventory/count', params);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to submit count');

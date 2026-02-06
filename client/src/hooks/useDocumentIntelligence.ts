@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch } from '@/lib/api';
 
 // ============================================================
 // TYPES
@@ -105,17 +106,13 @@ export interface DocumentIntelligenceStats {
 // ============================================================
 
 async function extractDocument(documentId: string, force = false): Promise<{ success: boolean; result?: object }> {
-  const response = await fetch(`/api/document-intelligence/${documentId}/extract`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force }),
-  });
+  const response = await apiPost(`/api/document-intelligence/${documentId}/extract`, { force });
   if (!response.ok) throw new Error('Failed to extract document');
   return response.json();
 }
 
 async function fetchDocumentMetadata(documentId: string): Promise<{ metadata: DocumentMetadata | null }> {
-  const response = await fetch(`/api/document-intelligence/${documentId}/metadata`);
+  const response = await apiGet(`/api/document-intelligence/${documentId}/metadata`);
   if (!response.ok) throw new Error('Failed to fetch metadata');
   return response.json();
 }
@@ -124,11 +121,7 @@ async function updateDocumentMetadata(
   documentId: string,
   updates: Partial<Pick<DocumentMetadata, 'expiration_date' | 'expiration_type' | 'expiration_notes' | 'alert_days_before' | 'ai_suggested_tags'>>
 ): Promise<{ success: boolean; metadata: DocumentMetadata }> {
-  const response = await fetch(`/api/document-intelligence/${documentId}/metadata`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/document-intelligence/${documentId}/metadata`, updates);
   if (!response.ok) throw new Error('Failed to update metadata');
   return response.json();
 }
@@ -143,7 +136,7 @@ async function searchDocuments(
   if (filters.expirationType) params.append('expiration_type', filters.expirationType);
   if (filters.limit) params.append('limit', String(filters.limit));
 
-  const response = await fetch(`/api/document-intelligence/search?${params}`);
+  const response = await apiGet(`/api/document-intelligence/search?${params}`);
   if (!response.ok) throw new Error('Search failed');
   return response.json();
 }
@@ -156,13 +149,13 @@ async function fetchExpiringDocuments(
   if (filters.jobId) params.append('job_id', filters.jobId);
   if (filters.expirationType) params.append('expiration_type', filters.expirationType);
 
-  const response = await fetch(`/api/document-intelligence/expiring?${params}`);
+  const response = await apiGet(`/api/document-intelligence/expiring?${params}`);
   if (!response.ok) throw new Error('Failed to fetch expiring documents');
   return response.json();
 }
 
 async function fetchExpiringSummary(days = 90): Promise<{ byType: Record<string, { expired: number; expiringSoon: number; total: number }>; byStatus: { expired: number; expiring_soon: number }; total: number }> {
-  const response = await fetch(`/api/document-intelligence/expiring/summary?days=${days}`);
+  const response = await apiGet(`/api/document-intelligence/expiring/summary?days=${days}`);
   if (!response.ok) throw new Error('Failed to fetch expiring summary');
   return response.json();
 }
@@ -175,65 +168,49 @@ async function fetchAlerts(
   if (filters.alertType) params.append('alert_type', filters.alertType);
   if (filters.limit) params.append('limit', String(filters.limit));
 
-  const response = await fetch(`/api/document-intelligence/alerts?${params}`);
+  const response = await apiGet(`/api/document-intelligence/alerts?${params}`);
   if (!response.ok) throw new Error('Failed to fetch alerts');
   return response.json();
 }
 
 async function fetchAlertCounts(): Promise<AlertCounts> {
-  const response = await fetch('/api/document-intelligence/alerts/count');
+  const response = await apiGet('/api/document-intelligence/alerts/count');
   if (!response.ok) throw new Error('Failed to fetch alert counts');
   return response.json();
 }
 
 async function acknowledgeAlert(alertId: string, acknowledgedBy?: string): Promise<{ success: boolean; alert: DocumentAlert }> {
-  const response = await fetch(`/api/document-intelligence/alerts/${alertId}/acknowledge`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ acknowledged_by: acknowledgedBy }),
-  });
+  const response = await apiPatch(`/api/document-intelligence/alerts/${alertId}/acknowledge`, { acknowledged_by: acknowledgedBy });
   if (!response.ok) throw new Error('Failed to acknowledge alert');
   return response.json();
 }
 
 async function dismissAlert(alertId: string): Promise<{ success: boolean; alert: DocumentAlert }> {
-  const response = await fetch(`/api/document-intelligence/alerts/${alertId}/dismiss`, {
-    method: 'PATCH',
-  });
+  const response = await apiPatch(`/api/document-intelligence/alerts/${alertId}/dismiss`);
   if (!response.ok) throw new Error('Failed to dismiss alert');
   return response.json();
 }
 
 async function acknowledgeAlertsBulk(alertIds: string[], acknowledgedBy?: string): Promise<{ success: boolean; acknowledged: number }> {
-  const response = await fetch('/api/document-intelligence/alerts/acknowledge-bulk', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ alert_ids: alertIds, acknowledged_by: acknowledgedBy }),
-  });
+  const response = await apiPost('/api/document-intelligence/alerts/acknowledge-bulk', { alert_ids: alertIds, acknowledged_by: acknowledgedBy });
   if (!response.ok) throw new Error('Failed to acknowledge alerts');
   return response.json();
 }
 
 async function processDocumentBatch(options: { documentIds?: string[]; jobId?: string }): Promise<{ success: boolean; processed: number; failed: number; skipped: number; errors: Array<{ documentId: string; error: string }> }> {
-  const response = await fetch('/api/document-intelligence/process-batch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ document_ids: options.documentIds, job_id: options.jobId }),
-  });
+  const response = await apiPost('/api/document-intelligence/process-batch', { document_ids: options.documentIds, job_id: options.jobId });
   if (!response.ok) throw new Error('Failed to process batch');
   return response.json();
 }
 
 async function generateAlerts(): Promise<{ success: boolean; alertsGenerated: number }> {
-  const response = await fetch('/api/document-intelligence/generate-alerts', {
-    method: 'POST',
-  });
+  const response = await apiPost('/api/document-intelligence/generate-alerts');
   if (!response.ok) throw new Error('Failed to generate alerts');
   return response.json();
 }
 
 async function fetchStats(): Promise<{ stats: DocumentIntelligenceStats }> {
-  const response = await fetch('/api/document-intelligence/stats');
+  const response = await apiGet('/api/document-intelligence/stats');
   if (!response.ok) throw new Error('Failed to fetch stats');
   return response.json();
 }

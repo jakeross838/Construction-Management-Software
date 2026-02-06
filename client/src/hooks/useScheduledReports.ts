@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // ============================================================
 // TYPES
@@ -131,7 +132,7 @@ async function fetchScheduledReports(options?: {
   }
 
   const url = `/api/scheduled-reports${params.toString() ? `?${params}` : ''}`;
-  const response = await fetch(url);
+  const response = await apiGet(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to fetch scheduled reports' }));
     throw new Error(error.message);
@@ -140,7 +141,7 @@ async function fetchScheduledReports(options?: {
 }
 
 async function fetchScheduledReport(id: string): Promise<ScheduledReport> {
-  const response = await fetch(`/api/scheduled-reports/${id}`);
+  const response = await apiGet(`/api/scheduled-reports/${id}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to fetch scheduled report' }));
     throw new Error(error.message);
@@ -151,11 +152,7 @@ async function fetchScheduledReport(id: string): Promise<ScheduledReport> {
 async function createScheduledReport(
   input: CreateScheduledReportInput
 ): Promise<{ message: string; scheduled_report: ScheduledReport }> {
-  const response = await fetch('/api/scheduled-reports', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  const response = await apiPost('/api/scheduled-reports', input);
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to create scheduled report' }));
     throw new Error(error.message);
@@ -167,11 +164,7 @@ async function updateScheduledReport(
   id: string,
   input: UpdateScheduledReportInput
 ): Promise<{ message: string; scheduled_report: ScheduledReport }> {
-  const response = await fetch(`/api/scheduled-reports/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  const response = await apiPatch(`/api/scheduled-reports/${id}`, input);
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to update scheduled report' }));
     throw new Error(error.message);
@@ -180,9 +173,7 @@ async function updateScheduledReport(
 }
 
 async function deleteScheduledReport(id: string): Promise<{ message: string; deleted_id: string }> {
-  const response = await fetch(`/api/scheduled-reports/${id}`, {
-    method: 'DELETE',
-  });
+  const response = await apiDelete(`/api/scheduled-reports/${id}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to delete scheduled report' }));
     throw new Error(error.message);
@@ -194,11 +185,7 @@ async function runScheduledReportNow(
   id: string,
   triggeredBy?: string
 ): Promise<{ message: string; run: ScheduledReportRun; note: string }> {
-  const response = await fetch(`/api/scheduled-reports/${id}/run-now`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ triggered_by: triggeredBy || 'Manual' }),
-  });
+  const response = await apiPost(`/api/scheduled-reports/${id}/run-now`, { triggered_by: triggeredBy || 'Manual' });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to run scheduled report' }));
     throw new Error(error.message);
@@ -215,7 +202,7 @@ async function fetchRunHistory(
   if (options?.offset) params.append('offset', String(options.offset));
   if (options?.status) params.append('status', options.status);
 
-  const response = await fetch(`/api/scheduled-reports/${id}/history?${params}`);
+  const response = await apiGet(`/api/scheduled-reports/${id}/history?${params}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to fetch run history' }));
     throw new Error(error.message);
@@ -224,7 +211,7 @@ async function fetchRunHistory(
 }
 
 async function fetchBuiltinReports(): Promise<{ builtin_reports: BuiltinReportInfo[] }> {
-  const response = await fetch('/api/scheduled-reports/builtin/list');
+  const response = await apiGet('/api/scheduled-reports/builtin/list');
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to fetch builtin reports' }));
     throw new Error(error.message);

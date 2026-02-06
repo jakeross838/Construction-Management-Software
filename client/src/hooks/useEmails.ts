@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 
 // ============================================================
 // TYPES
@@ -150,23 +151,19 @@ async function fetchTemplates(filters: TemplateFilters = {}): Promise<EmailTempl
   if (filters.is_default !== undefined) params.append('is_default', String(filters.is_default));
   if (filters.builder_id) params.append('builder_id', filters.builder_id);
 
-  const response = await fetch(`/api/emails/templates?${params}`);
+  const response = await apiGet(`/api/emails/templates?${params}`);
   if (!response.ok) throw new Error('Failed to fetch email templates');
   return response.json();
 }
 
 async function fetchTemplate(id: string): Promise<EmailTemplate> {
-  const response = await fetch(`/api/emails/templates/${id}`);
+  const response = await apiGet(`/api/emails/templates/${id}`);
   if (!response.ok) throw new Error('Failed to fetch email template');
   return response.json();
 }
 
 async function createTemplate(template: Partial<EmailTemplate>): Promise<EmailTemplate> {
-  const response = await fetch('/api/emails/templates', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(template),
-  });
+  const response = await apiPost('/api/emails/templates', template);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create template');
@@ -175,11 +172,7 @@ async function createTemplate(template: Partial<EmailTemplate>): Promise<EmailTe
 }
 
 async function updateTemplate(id: string, updates: Partial<EmailTemplate>): Promise<EmailTemplate> {
-  const response = await fetch(`/api/emails/templates/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/emails/templates/${id}`, updates);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to update template');
@@ -188,27 +181,19 @@ async function updateTemplate(id: string, updates: Partial<EmailTemplate>): Prom
 }
 
 async function deleteTemplate(id: string): Promise<void> {
-  const response = await fetch(`/api/emails/templates/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/emails/templates/${id}`);
   if (!response.ok) throw new Error('Failed to delete template');
 }
 
 async function previewTemplate(id: string, variables: Record<string, string>): Promise<{ subject: string; body: string }> {
-  const response = await fetch(`/api/emails/templates/${id}/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ variables }),
-  });
+  const response = await apiPost(`/api/emails/templates/${id}/preview`, { variables });
   if (!response.ok) throw new Error('Failed to preview template');
   return response.json();
 }
 
 // Sending
 async function sendEmail(params: SendEmailParams): Promise<{ success: boolean; emailId: string; provider: string }> {
-  const response = await fetch('/api/emails/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost('/api/emails/send', params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to send email');
@@ -217,11 +202,7 @@ async function sendEmail(params: SendEmailParams): Promise<{ success: boolean; e
 }
 
 async function sendBulkEmail(params: BulkEmailParams): Promise<{ total: number; sent: number; failed: number }> {
-  const response = await fetch('/api/emails/send-bulk', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost('/api/emails/send-bulk', params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to send bulk email');
@@ -242,19 +223,19 @@ async function fetchSentEmails(filters: SentEmailFilters = {}): Promise<SentEmai
   if (filters.start_date) params.append('start_date', filters.start_date);
   if (filters.end_date) params.append('end_date', filters.end_date);
 
-  const response = await fetch(`/api/emails/sent?${params}`);
+  const response = await apiGet(`/api/emails/sent?${params}`);
   if (!response.ok) throw new Error('Failed to fetch sent emails');
   return response.json();
 }
 
 async function fetchSentEmail(id: string): Promise<SentEmail> {
-  const response = await fetch(`/api/emails/sent/${id}`);
+  const response = await apiGet(`/api/emails/sent/${id}`);
   if (!response.ok) throw new Error('Failed to fetch sent email');
   return response.json();
 }
 
 async function resendEmail(id: string): Promise<{ success: boolean; emailId: string }> {
-  const response = await fetch(`/api/emails/sent/${id}/resend`, { method: 'POST' });
+  const response = await apiPost(`/api/emails/sent/${id}/resend`);
   if (!response.ok) throw new Error('Failed to resend email');
   return response.json();
 }
@@ -265,30 +246,26 @@ async function fetchEmailStats(builderId?: string, days?: number): Promise<Email
   if (builderId) params.append('builder_id', builderId);
   if (days) params.append('days', String(days));
 
-  const response = await fetch(`/api/emails/stats?${params}`);
+  const response = await apiGet(`/api/emails/stats?${params}`);
   if (!response.ok) throw new Error('Failed to fetch email stats');
   return response.json();
 }
 
 async function fetchEmailSettings(builderId?: string): Promise<EmailSettings> {
   const params = builderId ? `?builder_id=${builderId}` : '';
-  const response = await fetch(`/api/emails/settings${params}`);
+  const response = await apiGet(`/api/emails/settings${params}`);
   if (!response.ok) throw new Error('Failed to fetch email settings');
   return response.json();
 }
 
 async function updateEmailSettings(settings: EmailSettings & { builder_id?: string }): Promise<EmailSettings> {
-  const response = await fetch('/api/emails/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings),
-  });
+  const response = await apiPut('/api/emails/settings', settings);
   if (!response.ok) throw new Error('Failed to update email settings');
   return response.json();
 }
 
 async function fetchTemplateTypes(): Promise<EmailTemplateTypeInfo[]> {
-  const response = await fetch('/api/emails/template-types');
+  const response = await apiGet('/api/emails/template-types');
   if (!response.ok) throw new Error('Failed to fetch template types');
   return response.json();
 }

@@ -16,6 +16,8 @@ const coSync = require('../services/co-sync');
 const standards = require('../services/standards');
 const { getBuilderId } = require('../core/multi-tenant');
 const { triggerWebhooks } = require('./webhooks');
+const { getUserName } = require('../utils/shared');
+const { requirePermission } = require('../middleware/auth');
 
 // Multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -465,7 +467,7 @@ router.get('/:id', validate(schemas.idParam), async (req, res) => {
 });
 
 // Create purchase order
-router.post('/', validate(schemas.poCreate), async (req, res) => {
+router.post('/', requirePermission('canCreatePO'), validate(schemas.poCreate), async (req, res) => {
   try {
     const { line_items, ...poData } = req.body;
 
@@ -805,7 +807,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
 }));
 
 // Approve PO
-router.post('/:id/approve', asyncHandler(async (req, res) => {
+router.post('/:id/approve', requirePermission('canCreatePO'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { approved_by } = req.body;
 
@@ -1528,7 +1530,7 @@ router.post('/:poId/change-orders/:coId/approve', asyncHandler(async (req, res) 
     .update({
       status: 'approved',
       approved_at: new Date().toISOString(),
-      approved_by: approved_by || 'Jake Ross'
+      approved_by: getUserName(req)
     })
     .eq('id', coId);
 
@@ -1576,7 +1578,7 @@ router.post('/:poId/change-orders/:coId/approve', asyncHandler(async (req, res) 
   }
 
   // Log activity
-  await logPOActivity(poId, 'change_order_approved', approved_by || 'Jake Ross', {
+  await logPOActivity(poId, 'change_order_approved', getUserName(req), {
     change_order_id: coId,
     amount: co.amount_change,
     new_total: newTotal
@@ -1613,7 +1615,7 @@ router.post('/:poId/change-orders/:coId/reject', asyncHandler(async (req, res) =
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logPOActivity(poId, 'change_order_rejected', rejected_by || 'Jake Ross', {
+  await logPOActivity(poId, 'change_order_rejected', getUserName(req), {
     change_order_id: coId,
     reason
   });

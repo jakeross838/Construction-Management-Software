@@ -157,6 +157,16 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
   throw lastError;
 }
 
+/**
+ * Get the display name from the authenticated user on the request.
+ * @param {object} req - Express request object (must have req.user from auth middleware)
+ * @returns {string} User's full name or 'System' if not available
+ */
+function getUserName(req) {
+  if (req.user?.firstName) return `${req.user.firstName} ${req.user.lastName || ''}`.trim();
+  return 'System';
+}
+
 module.exports = {
   formatMoney,
   escapeHtml,
@@ -169,5 +179,6 @@ module.exports = {
   deepClone,
   isNonEmptyString,
   sleep,
-  retryWithBackoff
+  retryWithBackoff,
+  getUserName
 };

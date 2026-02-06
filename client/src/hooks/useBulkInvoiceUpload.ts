@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { AIExtractionResult } from './useInvoiceAI';
+import { apiFetch } from '@/lib/api';
 
 export interface QueuedFile {
   id: string;
@@ -73,7 +74,7 @@ export function useBulkInvoiceUpload() {
       setQueue(prev => prev.map(f => f.id === id ? { ...f, status: 'processing', progress: 40 } : f));
 
       // Call the Node.js backend API for processing
-      const response = await fetch('/api/invoices/process', {
+      const response = await apiFetch('/api/invoices/process', {
         method: 'POST',
         body: formData,
       });

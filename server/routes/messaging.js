@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { getUserName } = require('../utils/shared');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -139,7 +140,7 @@ router.post('/conversations', asyncHandler(async (req, res) => {
       related_submittal_id,
       related_task_id,
       related_po_id,
-      created_by: created_by || 'Jake Ross'
+      created_by: getUserName(req)
     })
     .select(`
       *,
@@ -220,9 +221,9 @@ router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
     .insert({
       conversation_id: id,
       content,
-      sender: sender || 'Jake Ross',
+      sender: getUserName(req),
       message_type: message_type || 'text',
-      read_by: [sender || 'Jake Ross']
+      read_by: [getUserName(req)]
     })
     .select()
     .single();
@@ -285,7 +286,7 @@ router.delete('/:messageId', asyncHandler(async (req, res) => {
 router.post('/:messageId/read', asyncHandler(async (req, res) => {
   const { messageId } = req.params;
   const { user } = req.body;
-  const userName = user || 'Jake Ross';
+  const userName = getUserName(req);
 
   // Get current read_by
   const { data: message } = await supabase
@@ -338,7 +339,7 @@ router.post('/:messageId/attachments', asyncHandler(async (req, res) => {
       file_url,
       file_type,
       file_size,
-      uploaded_by: uploaded_by || 'Jake Ross'
+      uploaded_by: getUserName(req)
     })
     .select()
     .single();
@@ -368,7 +369,7 @@ router.post('/:messageId/reactions', asyncHandler(async (req, res) => {
     .insert({
       message_id: messageId,
       reaction,
-      user_name: user_name || 'Jake Ross'
+      user_name: getUserName(req)
     })
     .select()
     .single();
@@ -403,7 +404,7 @@ router.delete('/:messageId/reactions/:reactionId', asyncHandler(async (req, res)
  */
 router.get('/stats', asyncHandler(async (req, res) => {
   const { user } = req.query;
-  const userName = user || 'Jake Ross';
+  const userName = getUserName(req);
 
   // Total conversations
   const { count: totalConversations } = await supabase

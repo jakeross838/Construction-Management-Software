@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch } from '@/lib/api';
 
 // Types
 export interface XeroConnectionStatus {
@@ -77,50 +78,46 @@ export interface XeroSyncLog {
 
 // API Functions
 async function fetchConnectionStatus(): Promise<XeroConnectionStatus> {
-  const response = await fetch('/api/xero/status');
+  const response = await apiGet('/api/xero/status');
   if (!response.ok) throw new Error('Failed to fetch Xero status');
   return response.json();
 }
 
 async function fetchSettings(): Promise<XeroSettings | null> {
-  const response = await fetch('/api/xero/settings');
+  const response = await apiGet('/api/xero/settings');
   if (!response.ok) throw new Error('Failed to fetch Xero settings');
   const data = await response.json();
   return data.settings;
 }
 
 async function updateSettings(settings: Partial<XeroSettings>): Promise<XeroSettings> {
-  const response = await fetch('/api/xero/settings', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings),
-  });
+  const response = await apiPatch('/api/xero/settings', settings);
   if (!response.ok) throw new Error('Failed to update Xero settings');
   const data = await response.json();
   return data.settings;
 }
 
 async function disconnectXero(): Promise<void> {
-  const response = await fetch('/api/xero/disconnect', { method: 'POST' });
+  const response = await apiPost('/api/xero/disconnect');
   if (!response.ok) throw new Error('Failed to disconnect Xero');
 }
 
 async function fetchAccounts(): Promise<XeroAccount[]> {
-  const response = await fetch('/api/xero/accounts');
+  const response = await apiGet('/api/xero/accounts');
   if (!response.ok) throw new Error('Failed to fetch Xero accounts');
   const data = await response.json();
   return data.accounts;
 }
 
 async function fetchTrackingCategories(): Promise<XeroTrackingCategory[]> {
-  const response = await fetch('/api/xero/tracking-categories');
+  const response = await apiGet('/api/xero/tracking-categories');
   if (!response.ok) throw new Error('Failed to fetch tracking categories');
   const data = await response.json();
   return data.categories;
 }
 
 async function fetchMappings(): Promise<XeroAccountMapping[]> {
-  const response = await fetch('/api/xero/mappings');
+  const response = await apiGet('/api/xero/mappings');
   if (!response.ok) throw new Error('Failed to fetch account mappings');
   const data = await response.json();
   return data.mappings;
@@ -134,30 +131,26 @@ async function createMapping(mapping: {
   xero_tracking_category_id?: string;
   xero_tracking_option_id?: string;
 }): Promise<XeroAccountMapping> {
-  const response = await fetch('/api/xero/mappings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(mapping),
-  });
+  const response = await apiPost('/api/xero/mappings', mapping);
   if (!response.ok) throw new Error('Failed to create account mapping');
   const data = await response.json();
   return data.mapping;
 }
 
 async function syncContacts(): Promise<{ success: boolean; created: number; updated: number; failed: number }> {
-  const response = await fetch('/api/xero/sync/contacts', { method: 'POST' });
+  const response = await apiPost('/api/xero/sync/contacts');
   if (!response.ok) throw new Error('Failed to sync contacts');
   return response.json();
 }
 
 async function syncInvoice(invoiceId: string): Promise<{ success: boolean; xero_bill_id: string }> {
-  const response = await fetch(`/api/xero/sync/invoice/${invoiceId}`, { method: 'POST' });
+  const response = await apiPost(`/api/xero/sync/invoice/${invoiceId}`);
   if (!response.ok) throw new Error('Failed to sync invoice');
   return response.json();
 }
 
 async function fetchSyncLog(limit = 50): Promise<XeroSyncLog[]> {
-  const response = await fetch(`/api/xero/sync/log?limit=${limit}`);
+  const response = await apiGet(`/api/xero/sync/log?limit=${limit}`);
   if (!response.ok) throw new Error('Failed to fetch sync log');
   const data = await response.json();
   return data.logs;

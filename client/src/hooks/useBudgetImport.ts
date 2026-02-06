@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiFetch } from '@/lib/api';
 
 export interface BudgetImportResult {
   success: boolean;
@@ -18,7 +19,7 @@ export interface BudgetImportResult {
  */
 export async function downloadBudgetTemplate(): Promise<void> {
   try {
-    const response = await fetch('/api/budget/template');
+    const response = await apiGet('/api/budget/template');
     if (!response.ok) {
       throw new Error('Failed to download template');
     }
@@ -45,7 +46,7 @@ export async function downloadBudgetTemplate(): Promise<void> {
  */
 export async function exportBudgetToExcel(jobId: string, jobName?: string): Promise<void> {
   try {
-    const response = await fetch(`/api/jobs/${jobId}/budget/export-excel`);
+    const response = await apiGet(`/api/jobs/${jobId}/budget/export-excel`);
     if (!response.ok) {
       throw new Error('Failed to export budget');
     }
@@ -79,7 +80,7 @@ export function useImportBudget() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`/api/jobs/${jobId}/budget/import-excel`, {
+      const response = await apiFetch(`/api/jobs/${jobId}/budget/import-excel`, {
         method: 'POST',
         body: formData,
       });

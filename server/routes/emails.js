@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const emailService = require('../services/email');
+const { getUserName } = require('../utils/shared');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -258,9 +259,11 @@ router.post('/send', asyncHandler(async (req, res) => {
     variables,
     related_entity_type,
     related_entity_id,
-    created_by = 'Jake Ross',
+    created_by,
     builder_id
   } = req.body;
+
+  const resolvedCreatedBy = created_by || getUserName(req);
 
   if (!to) {
     return res.status(400).json({ error: 'Recipient email (to) is required' });
@@ -280,7 +283,7 @@ router.post('/send', asyncHandler(async (req, res) => {
       attachments,
       relatedEntityType: related_entity_type,
       relatedEntityId: related_entity_id,
-      createdBy: created_by,
+      createdBy: resolvedCreatedBy,
       builderId: builder_id
     });
   } else {
@@ -301,7 +304,7 @@ router.post('/send', asyncHandler(async (req, res) => {
       attachments,
       relatedEntityType: related_entity_type,
       relatedEntityId: related_entity_id,
-      createdBy: created_by,
+      createdBy: resolvedCreatedBy,
       builderId: builder_id
     });
   }
@@ -321,9 +324,11 @@ router.post('/send-bulk', asyncHandler(async (req, res) => {
     base_variables = {},
     related_entity_type,
     related_entity_id,
-    created_by = 'Jake Ross',
+    created_by,
     builder_id
   } = req.body;
+
+  const resolvedCreatedBy = created_by || getUserName(req);
 
   if (!recipients || !recipients.length) {
     return res.status(400).json({ error: 'Recipients array is required' });
@@ -350,7 +355,7 @@ router.post('/send-bulk', asyncHandler(async (req, res) => {
         to: recipient.email,
         relatedEntityType: related_entity_type,
         relatedEntityId: related_entity_id,
-        createdBy: created_by,
+        createdBy: resolvedCreatedBy,
         builderId: builder_id
       });
 
@@ -475,7 +480,8 @@ router.get('/sent/:id', asyncHandler(async (req, res) => {
  */
 router.post('/sent/:id/resend', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { created_by = 'Jake Ross' } = req.body;
+  const { created_by } = req.body;
+  const resolvedCreatedBy = created_by || getUserName(req);
 
   // Get the original email
   const { data: original, error } = await supabase
@@ -501,7 +507,7 @@ router.post('/sent/:id/resend', asyncHandler(async (req, res) => {
     templateId: original.template_id,
     relatedEntityType: original.related_entity_type,
     relatedEntityId: original.related_entity_id,
-    createdBy: created_by,
+    createdBy: resolvedCreatedBy,
     builderId: original.builder_id
   });
 

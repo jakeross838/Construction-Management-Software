@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // Types
 export interface ApiKey {
@@ -32,7 +33,7 @@ export interface ApiKeyUsage {
 
 // API Functions
 async function fetchApiKeys(): Promise<ApiKey[]> {
-  const response = await fetch('/api/api-keys');
+  const response = await apiGet('/api/api-keys');
   if (!response.ok) throw new Error('Failed to fetch API keys');
   const data = await response.json();
   return data.keys;
@@ -43,11 +44,7 @@ async function createApiKey(params: {
   scopes?: string[];
   expires_in_days?: number;
 }): Promise<{ key: ApiKey; api_key: string }> {
-  const response = await fetch('/api/api-keys', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost('/api/api-keys', params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create API key');
@@ -56,23 +53,19 @@ async function createApiKey(params: {
 }
 
 async function updateApiKey(id: string, updates: Partial<ApiKey>): Promise<ApiKey> {
-  const response = await fetch(`/api/api-keys/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/api-keys/${id}`, updates);
   if (!response.ok) throw new Error('Failed to update API key');
   const data = await response.json();
   return data.key;
 }
 
 async function revokeApiKey(id: string): Promise<void> {
-  const response = await fetch(`/api/api-keys/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/api-keys/${id}`);
   if (!response.ok) throw new Error('Failed to revoke API key');
 }
 
 async function fetchApiKeyUsage(id: string, days = 7): Promise<ApiKeyUsage> {
-  const response = await fetch(`/api/api-keys/${id}/usage?days=${days}`);
+  const response = await apiGet(`/api/api-keys/${id}/usage?days=${days}`);
   if (!response.ok) throw new Error('Failed to fetch API key usage');
   const data = await response.json();
   return data.usage;

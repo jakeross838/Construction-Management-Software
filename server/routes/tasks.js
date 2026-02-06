@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { getBuilderId } = require('../core/multi-tenant');
+const { getUserName } = require('../utils/shared');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -106,7 +107,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
  * Get current user's tasks
  */
 router.get('/my-tasks', asyncHandler(async (req, res) => {
-  const { assigned_to = 'Jake Ross' } = req.query;
+  const assigned_to = req.query.assigned_to || getUserName(req);
   const builderId = getBuilderId(req);
 
   let query = supabase
@@ -231,7 +232,7 @@ router.post('/', asyncHandler(async (req, res) => {
     priority: priority || 'normal',
     assigned_to,
     assignee_id: assignee_id || null,
-    created_by: created_by || 'Jake Ross',
+    created_by: getUserName(req),
     due_date,
     start_date,
     parent_task_id: parent_task_id || null,
@@ -443,7 +444,7 @@ router.patch('/:taskId/checklists/:checklistId', asyncHandler(async (req, res) =
   const updates = {
     is_completed,
     completed_at: is_completed ? new Date().toISOString() : null,
-    completed_by: is_completed ? (completed_by || 'Jake Ross') : null
+    completed_by: is_completed ? getUserName(req) : null
   };
 
   const { data, error } = await supabase
@@ -494,7 +495,7 @@ router.post('/:id/comments', asyncHandler(async (req, res) => {
     .insert({
       task_id: id,
       content,
-      author: author || 'Jake Ross'
+      author: getUserName(req)
     })
     .select()
     .single();
@@ -543,7 +544,7 @@ router.post('/:id/attachments', asyncHandler(async (req, res) => {
       file_url,
       file_type,
       file_size,
-      uploaded_by: uploaded_by || 'Jake Ross'
+      uploaded_by: getUserName(req)
     })
     .select()
     .single();

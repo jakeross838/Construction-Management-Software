@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { TopNavigation } from './TopNavigation';
 import { JobSidebar } from './JobSidebar';
 import { AIUploadButton } from '@/components/ai/AIUploadButton';
-import { mockUser } from '@/types/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { Building2, Bell, Search, Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,12 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, hideJobSidebar = false }: AppLayoutProps) {
   const { selectedJobId, setSelectedJob } = useJob();
+  const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
+  const userInitials = user ? `${(user.first_name || 'U')[0]}${(user.last_name || '')[0] || ''}` : 'U';
+  const userRole = user?.role ?? 'field_crew';
 
   return (
     <div className="min-h-screen bg-background">
@@ -77,7 +82,7 @@ export function AppLayout({ children, hideJobSidebar = false }: AppLayoutProps) 
 
           {/* Navigation - Hidden on small screens */}
           <div className="hidden md:flex flex-1 justify-center px-4">
-            <TopNavigation userRole={mockUser.role} />
+            <TopNavigation userRole={userRole} />
           </div>
 
           {/* Right Side Actions */}
@@ -107,21 +112,21 @@ export function AppLayout({ children, hideJobSidebar = false }: AppLayoutProps) 
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 pl-2 h-9">
                   <Avatar className="h-7 w-7">
-                    <AvatarImage src={mockUser.avatar} />
+                    <AvatarImage src={user?.avatar_url || undefined} />
                     <AvatarFallback>
-                      {mockUser.name.split(' ').map(n => n[0]).join('')}
+                      {userInitials}
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden lg:block text-sm font-medium">
-                    {mockUser.name.split(' ')[0]}
+                    {user?.first_name || 'User'}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div>
-                    <p className="font-medium">{mockUser.name}</p>
-                    <p className="text-xs text-muted-foreground">{mockUser.email}</p>
+                    <p className="font-medium">{userName}</p>
+                    <p className="text-xs text-muted-foreground">{user?.email || ''}</p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -137,7 +142,7 @@ export function AppLayout({ children, hideJobSidebar = false }: AppLayoutProps) 
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-area-inset-bottom">
-        <TopNavigation userRole={mockUser.role} mobile />
+        <TopNavigation userRole={userRole} mobile />
       </nav>
 
       {/* Job Sidebar - Desktop Only */}

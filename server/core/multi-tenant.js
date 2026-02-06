@@ -8,10 +8,12 @@ const { AppError } = require('./errors');
 
 /**
  * Get the builder_id from the request
- * Returns null if not authenticated (for backwards compatibility during transition)
+ * Throws if no builder context is available (all API routes require auth)
  */
 function getBuilderId(req) {
-  return req.user?.builderId || null;
+  const id = req.user?.builderId;
+  if (!id) throw new AppError(401, 'UNAUTHORIZED', 'Builder context required');
+  return id;
 }
 
 /**
@@ -21,15 +23,11 @@ function getBuilderId(req) {
  * @param {boolean} required - If true, throws error when builderId is null
  * @returns {Object} The query with filter applied
  */
-function withBuilderFilter(query, builderId, required = false) {
-  if (builderId) {
-    return query.eq('builder_id', builderId);
+function withBuilderFilter(query, builderId) {
+  if (!builderId) {
+    throw new AppError(401, 'UNAUTHORIZED', 'Builder context required');
   }
-  if (required) {
-    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required for this operation');
-  }
-  // During transition: return unfiltered query if no builder
-  return query;
+  return query.eq('builder_id', builderId);
 }
 
 /**
@@ -44,12 +42,8 @@ function createBuilderQuery(tableName) {
      */
     select(req, columns = '*', options = {}) {
       const builderId = getBuilderId(req);
-      let query = supabase.from(tableName).select(columns);
-
-      // Add builder filter
-      if (builderId) {
-        query = query.eq('builder_id', builderId);
-      }
+      let query = supabase.from(tableName).select(columns)
+        .eq('builder_id', builderId);
 
       // Add soft-delete filter by default
       if (options.includeSoftDeleted !== true) {
@@ -64,8 +58,7 @@ function createBuilderQuery(tableName) {
      */
     insert(req, data) {
       const builderId = getBuilderId(req);
-      const record = builderId ? { ...data, builder_id: builderId } : data;
-      return supabase.from(tableName).insert(record);
+      return supabase.from(tableName).insert({ ...data, builder_id: builderId });
     },
 
     /**
@@ -73,11 +66,8 @@ function createBuilderQuery(tableName) {
      */
     update(req, id, data) {
       const builderId = getBuilderId(req);
-      let query = supabase.from(tableName).update(data).eq('id', id);
-      if (builderId) {
-        query = query.eq('builder_id', builderId);
-      }
-      return query;
+      return supabase.from(tableName).update(data).eq('id', id)
+        .eq('builder_id', builderId);
     },
 
     /**
@@ -92,17 +82,14 @@ function createBuilderQuery(tableName) {
      */
     async getById(req, id, columns = '*') {
       const builderId = getBuilderId(req);
-      let query = supabase
+      const { data, error } = await supabase
         .from(tableName)
         .select(columns)
         .eq('id', id)
-        .is('deleted_at', null);
+        .eq('builder_id', builderId)
+        .is('deleted_at', null)
+        .single();
 
-      if (builderId) {
-        query = query.eq('builder_id', builderId);
-      }
-
-      const { data, error } = await query.single();
       return { data, error };
     },
 

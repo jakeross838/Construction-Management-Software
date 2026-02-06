@@ -16,6 +16,7 @@ const {
   formatAmount
 } = require('../matching/validation-errors');
 const { tables, getBuilderId } = require('../core/multi-tenant');
+const { hasPermission } = require('../middleware/auth');
 const { triggerWebhooks } = require('./webhooks');
 const { cacheResponse } = require('../middleware/cache');
 const cache = require('../services/cache');
@@ -193,9 +194,22 @@ router.get('/', cacheResponse(JOBS_LIST_CACHE_TTL), asyncHandler(async (req, res
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
-  // Filter by builder if authenticated
-  if (builderId) {
-    query = query.eq('builder_id', builderId);
+  // Filter by builder (mandatory)
+  query = query.eq('builder_id', builderId);
+
+  // PM scoping: if user can't view all jobs, filter to assigned jobs only
+  if (req.user && !hasPermission(req.user.role, 'canViewAllJobs')) {
+    const { data: assignedJobs } = await supabase
+      .from('v2_job_users')
+      .select('job_id')
+      .eq('user_id', req.user.id);
+    const jobIds = (assignedJobs || []).map(j => j.job_id);
+    if (jobIds.length > 0) {
+      query = query.in('id', jobIds);
+    } else {
+      // No assignments = no jobs visible
+      return res.json(usePagination ? { data: [], meta: { page: 1, limit: 50, total: 0, totalPages: 0, hasMore: false } } : []);
+    }
   }
 
   // Filter by status if provided
@@ -2596,6 +2610,81 @@ router.delete('/:jobId/locations/:locationId', asyncHandler(async (req, res) => 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   res.json({ success: true, message: 'Location deleted' });
+}));
+
+// ============================================================
+// Job Team Management
+// ============================================================
+
+// Get job team members
+router.get('/:id/team', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('v2_job_users')
+    .select(`
+      id,
+      role,
+      created_at,
+      user:v2_users (
+        id, email, first_name, last_name, role, avatar_url
+      )
+    `)
+    .eq('job_id', id);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  res.json(data || []);
+}));
+
+// Assign a user to a job
+router.post('/:id/team', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { user_id, role = 'member' } = req.body;
+  const builderId = getBuilderId(req);
+
+  if (!user_id) {
+    throw new AppError('VALIDATION_ERROR', 'user_id is required');
+  }
+
+  const { data, error } = await supabase
+    .from('v2_job_users')
+    .upsert({
+      job_id: id,
+      user_id,
+      role,
+      builder_id: builderId
+    }, { onConflict: 'job_id,user_id' })
+    .select(`
+      id,
+      role,
+      created_at,
+      user:v2_users (
+        id, email, first_name, last_name, role
+      )
+    `)
+    .single();
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await invalidateJobsCache();
+  res.json(data);
+}));
+
+// Remove a user from a job
+router.delete('/:id/team/:userId', asyncHandler(async (req, res) => {
+  const { id, userId } = req.params;
+
+  const { error } = await supabase
+    .from('v2_job_users')
+    .delete()
+    .eq('job_id', id)
+    .eq('user_id', userId);
+
+  if (error) throw new AppError('DATABASE_ERROR', error.message);
+
+  await invalidateJobsCache();
+  res.json({ success: true, message: 'User removed from job' });
 }));
 
 module.exports = router;

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost } from '@/lib/api';
 
 // Types
 export interface PricingPlan {
@@ -76,32 +77,28 @@ export interface Payment {
 
 // API Functions
 async function fetchPlans(): Promise<PricingPlan[]> {
-  const response = await fetch('/api/billing/plans');
+  const response = await apiGet('/api/billing/plans');
   if (!response.ok) throw new Error('Failed to fetch pricing plans');
   const data = await response.json();
   return data.plans;
 }
 
 async function fetchPlan(slug: string): Promise<PricingPlan> {
-  const response = await fetch(`/api/billing/plans/${slug}`);
+  const response = await apiGet(`/api/billing/plans/${slug}`);
   if (!response.ok) throw new Error('Failed to fetch plan');
   const data = await response.json();
   return data.plan;
 }
 
 async function fetchSubscription(): Promise<Subscription | null> {
-  const response = await fetch('/api/billing/subscription');
+  const response = await apiGet('/api/billing/subscription');
   if (!response.ok) throw new Error('Failed to fetch subscription');
   const data = await response.json();
   return data.subscription;
 }
 
 async function createCheckout(params: { plan_slug: string; billing_interval?: 'month' | 'year' }): Promise<{ checkout_url: string; session_id: string }> {
-  const response = await fetch('/api/billing/create-checkout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost('/api/billing/create-checkout', params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create checkout');
@@ -110,35 +107,35 @@ async function createCheckout(params: { plan_slug: string; billing_interval?: 'm
 }
 
 async function createPortalSession(): Promise<{ portal_url: string }> {
-  const response = await fetch('/api/billing/create-portal', { method: 'POST' });
+  const response = await apiPost('/api/billing/create-portal');
   if (!response.ok) throw new Error('Failed to create portal session');
   return response.json();
 }
 
 async function cancelSubscription(): Promise<void> {
-  const response = await fetch('/api/billing/cancel', { method: 'POST' });
+  const response = await apiPost('/api/billing/cancel');
   if (!response.ok) throw new Error('Failed to cancel subscription');
 }
 
 async function reactivateSubscription(): Promise<void> {
-  const response = await fetch('/api/billing/reactivate', { method: 'POST' });
+  const response = await apiPost('/api/billing/reactivate');
   if (!response.ok) throw new Error('Failed to reactivate subscription');
 }
 
 async function fetchUsage(): Promise<{ usage: UsageData | null; plan: { name: string; slug: string } | null }> {
-  const response = await fetch('/api/billing/usage');
+  const response = await apiGet('/api/billing/usage');
   if (!response.ok) throw new Error('Failed to fetch usage');
   return response.json();
 }
 
 async function fetchFeatures(): Promise<{ features: Features; plan: { name: string; slug: string } | null }> {
-  const response = await fetch('/api/billing/features');
+  const response = await apiGet('/api/billing/features');
   if (!response.ok) throw new Error('Failed to fetch features');
   return response.json();
 }
 
 async function fetchPayments(limit = 20): Promise<Payment[]> {
-  const response = await fetch(`/api/billing/payments?limit=${limit}`);
+  const response = await apiGet(`/api/billing/payments?limit=${limit}`);
   if (!response.ok) throw new Error('Failed to fetch payments');
   const data = await response.json();
   return data.payments;

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // Types
 export interface WebhookEvent {
@@ -52,21 +53,21 @@ export interface TestResult {
 
 // API Functions
 async function fetchWebhookEvents(): Promise<WebhookEvent[]> {
-  const response = await fetch('/api/webhooks/events');
+  const response = await apiGet('/api/webhooks/events');
   if (!response.ok) throw new Error('Failed to fetch webhook events');
   const data = await response.json();
   return data.events;
 }
 
 async function fetchWebhooks(): Promise<Webhook[]> {
-  const response = await fetch('/api/webhooks');
+  const response = await apiGet('/api/webhooks');
   if (!response.ok) throw new Error('Failed to fetch webhooks');
   const data = await response.json();
   return data.webhooks;
 }
 
 async function fetchWebhook(id: string): Promise<Webhook> {
-  const response = await fetch(`/api/webhooks/${id}`);
+  const response = await apiGet(`/api/webhooks/${id}`);
   if (!response.ok) throw new Error('Failed to fetch webhook');
   const data = await response.json();
   return data.webhook;
@@ -77,11 +78,7 @@ async function createWebhook(params: {
   url: string;
   events: string[];
 }): Promise<{ webhook: Webhook }> {
-  const response = await fetch('/api/webhooks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const response = await apiPost('/api/webhooks', params);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create webhook');
@@ -90,43 +87,39 @@ async function createWebhook(params: {
 }
 
 async function updateWebhook(id: string, updates: Partial<Webhook>): Promise<Webhook> {
-  const response = await fetch(`/api/webhooks/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/webhooks/${id}`, updates);
   if (!response.ok) throw new Error('Failed to update webhook');
   const data = await response.json();
   return data.webhook;
 }
 
 async function deleteWebhook(id: string): Promise<void> {
-  const response = await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/webhooks/${id}`);
   if (!response.ok) throw new Error('Failed to delete webhook');
 }
 
 async function rotateWebhookSecret(id: string): Promise<Webhook> {
-  const response = await fetch(`/api/webhooks/${id}/rotate-secret`, { method: 'POST' });
+  const response = await apiPost(`/api/webhooks/${id}/rotate-secret`);
   if (!response.ok) throw new Error('Failed to rotate webhook secret');
   const data = await response.json();
   return data.webhook;
 }
 
 async function testWebhook(id: string): Promise<TestResult> {
-  const response = await fetch(`/api/webhooks/${id}/test`, { method: 'POST' });
+  const response = await apiPost(`/api/webhooks/${id}/test`);
   if (!response.ok) throw new Error('Failed to test webhook');
   return response.json();
 }
 
 async function fetchWebhookDeliveries(id: string, limit = 50): Promise<WebhookDelivery[]> {
-  const response = await fetch(`/api/webhooks/${id}/deliveries?limit=${limit}`);
+  const response = await apiGet(`/api/webhooks/${id}/deliveries?limit=${limit}`);
   if (!response.ok) throw new Error('Failed to fetch deliveries');
   const data = await response.json();
   return data.deliveries;
 }
 
 async function retryDelivery(deliveryId: string): Promise<TestResult> {
-  const response = await fetch(`/api/webhooks/deliveries/${deliveryId}/retry`, { method: 'POST' });
+  const response = await apiPost(`/api/webhooks/deliveries/${deliveryId}/retry`);
   if (!response.ok) throw new Error('Failed to retry delivery');
   return response.json();
 }

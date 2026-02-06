@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 export interface Warranty {
   id: string;
@@ -86,46 +87,38 @@ async function fetchWarranties(filters: WarrantyFilters = {}): Promise<Warranty[
   if (filters.category) params.append('category', filters.category);
   if (filters.expiring_soon) params.append('expiring_soon', 'true');
 
-  const response = await fetch(`/api/warranties?${params}`);
+  const response = await apiGet(`/api/warranties?${params}`);
   if (!response.ok) throw new Error('Failed to fetch warranties');
   return response.json();
 }
 
 async function fetchWarrantyStats(jobId?: string): Promise<WarrantyStats> {
   const params = jobId ? `?job_id=${jobId}` : '';
-  const response = await fetch(`/api/warranties/stats${params}`);
+  const response = await apiGet(`/api/warranties/stats${params}`);
   if (!response.ok) throw new Error('Failed to fetch warranty stats');
   return response.json();
 }
 
 async function fetchWarranty(id: string): Promise<Warranty> {
-  const response = await fetch(`/api/warranties/${id}`);
+  const response = await apiGet(`/api/warranties/${id}`);
   if (!response.ok) throw new Error('Failed to fetch warranty');
   return response.json();
 }
 
 async function createWarranty(warranty: Partial<Warranty>): Promise<Warranty> {
-  const response = await fetch('/api/warranties', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(warranty),
-  });
+  const response = await apiPost('/api/warranties', warranty);
   if (!response.ok) throw new Error('Failed to create warranty');
   return response.json();
 }
 
 async function updateWarranty(id: string, updates: Partial<Warranty>): Promise<Warranty> {
-  const response = await fetch(`/api/warranties/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/warranties/${id}`, updates);
   if (!response.ok) throw new Error('Failed to update warranty');
   return response.json();
 }
 
 async function deleteWarranty(id: string): Promise<void> {
-  const response = await fetch(`/api/warranties/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/warranties/${id}`);
   if (!response.ok) throw new Error('Failed to delete warranty');
 }
 
@@ -188,21 +181,13 @@ export function useDeleteWarranty() {
 
 // Claim mutations
 async function createClaim(warrantyId: string, claim: Partial<WarrantyClaim>): Promise<WarrantyClaim> {
-  const response = await fetch(`/api/warranties/${warrantyId}/claims`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(claim),
-  });
+  const response = await apiPost(`/api/warranties/${warrantyId}/claims`, claim);
   if (!response.ok) throw new Error('Failed to create claim');
   return response.json();
 }
 
 async function updateClaim(warrantyId: string, claimId: string, updates: Partial<WarrantyClaim>): Promise<WarrantyClaim> {
-  const response = await fetch(`/api/warranties/${warrantyId}/claims/${claimId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/warranties/${warrantyId}/claims/${claimId}`, updates);
   if (!response.ok) throw new Error('Failed to update claim');
   return response.json();
 }
@@ -212,11 +197,7 @@ async function resolveClaim(warrantyId: string, claimId: string, resolution: {
   approved_amount?: number;
   resolved_by?: string;
 }): Promise<WarrantyClaim> {
-  const response = await fetch(`/api/warranties/${warrantyId}/claims/${claimId}/resolve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(resolution),
-  });
+  const response = await apiPost(`/api/warranties/${warrantyId}/claims/${claimId}/resolve`, resolution);
   if (!response.ok) throw new Error('Failed to resolve claim');
   return response.json();
 }

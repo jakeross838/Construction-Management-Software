@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const notificationService = require('../services/notifications');
+const { getUserName } = require('../utils/shared');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -21,7 +22,8 @@ const asyncHandler = fn => (req, res, next) =>
  * List notifications for a user
  */
 router.get('/', asyncHandler(async (req, res) => {
-  const { user = 'Jake Ross', is_read, type, limit = 50, offset = 0 } = req.query;
+  const { is_read, type, limit = 50, offset = 0 } = req.query;
+  const user = req.query.user || getUserName(req);
 
   let query = supabase
     .from('v2_notifications')
@@ -47,7 +49,7 @@ router.get('/', asyncHandler(async (req, res) => {
  * Get count of unread notifications
  */
 router.get('/unread-count', asyncHandler(async (req, res) => {
-  const { user = 'Jake Ross' } = req.query;
+  const user = req.query.user || getUserName(req);
 
   const { count, error } = await supabase
     .from('v2_notifications')
@@ -163,7 +165,7 @@ router.patch('/:id/read', asyncHandler(async (req, res) => {
  * Mark all notifications as read for a user
  */
 router.post('/mark-all-read', asyncHandler(async (req, res) => {
-  const { user = 'Jake Ross' } = req.body;
+  const user = req.body.user || getUserName(req);
 
   const { error } = await supabase
     .from('v2_notifications')
@@ -219,7 +221,7 @@ router.delete('/clear-all/:user', asyncHandler(async (req, res) => {
  * Get notification preferences for a user
  */
 router.get('/preferences', asyncHandler(async (req, res) => {
-  const { user = 'Jake Ross' } = req.query;
+  const user = req.query.user || getUserName(req);
 
   let { data, error } = await supabase
     .from('v2_notification_preferences')
@@ -266,7 +268,6 @@ router.get('/preferences', asyncHandler(async (req, res) => {
  */
 router.put('/preferences', asyncHandler(async (req, res) => {
   const {
-    user_name = 'Jake Ross',
     email_enabled,
     email_frequency,
     in_app_enabled,
@@ -277,6 +278,7 @@ router.put('/preferences', asyncHandler(async (req, res) => {
     quiet_hours_start,
     quiet_hours_end
   } = req.body;
+  const user_name = req.body.user_name || getUserName(req);
 
   // Upsert preferences
   const { data, error } = await supabase
@@ -307,7 +309,8 @@ router.put('/preferences', asyncHandler(async (req, res) => {
  * Partial update notification preferences
  */
 router.patch('/preferences', asyncHandler(async (req, res) => {
-  const { user_name = 'Jake Ross', ...updates } = req.body;
+  const { user_name: bodyUserName, ...updates } = req.body;
+  const user_name = bodyUserName || getUserName(req);
 
   // First check if user has preferences
   const { data: existing } = await supabase
@@ -349,7 +352,8 @@ router.patch('/preferences', asyncHandler(async (req, res) => {
  * Get notification history/log
  */
 router.get('/log', asyncHandler(async (req, res) => {
-  const { user = 'Jake Ross', channel, status, limit = 50, offset = 0 } = req.query;
+  const { channel, status, limit = 50, offset = 0 } = req.query;
+  const user = req.query.user || getUserName(req);
 
   const log = await notificationService.getNotificationLog(user, {
     channel,

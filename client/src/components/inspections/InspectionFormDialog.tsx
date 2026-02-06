@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,8 @@ export function InspectionFormDialog({
   defaultJobId,
 }: InspectionFormDialogProps) {
   const isEditing = !!inspection;
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
   const { data: jobs } = useJobs();
   const { data: inspectionTypes } = useInspectionTypes();
   const createInspection = useCreateInspection();
@@ -120,12 +123,12 @@ export function InspectionFormDialog({
         await updateInspection.mutateAsync({
           id: inspection.id,
           ...cleanData,
-          updated_by: 'Jake Ross',
+          updated_by: userName,
         });
       } else {
         await createInspection.mutateAsync({
           ...cleanData,
-          created_by: 'Jake Ross',
+          created_by: userName,
         });
       }
       onOpenChange(false);

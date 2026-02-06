@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { apiPost, apiFetch } from '@/lib/api';
 import {
   getUnsyncedDailyLogs,
   getUnsyncedPhotos,
@@ -285,10 +286,7 @@ export function usePWA(): UsePWAReturn {
       const unsyncedLogs = await getUnsyncedDailyLogs();
       for (const log of unsyncedLogs) {
         try {
-          const response = await fetch('/api/daily-logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+          const response = await apiPost('/api/daily-logs', {
               job_id: log.job_id,
               log_date: log.log_date,
               weather_conditions: log.weather_conditions,
@@ -304,8 +302,7 @@ export function usePWA(): UsePWAReturn {
               crew: log.crew,
               deliveries: log.deliveries,
               inspections: log.inspections,
-            }),
-          });
+            });
 
           if (response.ok) {
             await markDailyLogSynced(log.id);
@@ -330,7 +327,7 @@ export function usePWA(): UsePWAReturn {
           if (photo.category) formData.append('category', photo.category);
           if (photo.taken_at) formData.append('taken_at', photo.taken_at);
 
-          const response = await fetch('/api/photos', {
+          const response = await apiFetch('/api/photos', {
             method: 'POST',
             body: formData,
           });

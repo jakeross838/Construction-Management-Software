@@ -1,12 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from '@/lib/api';
 
-// API helper
+// Authenticated API helper using @/lib/api
 async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
+  const method = options?.method?.toUpperCase() || 'GET';
+  let response: Response;
+
+  if (method === 'GET') {
+    response = await apiGet(`/api${endpoint}`);
+  } else if (method === 'POST') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    response = await apiPost(`/api${endpoint}`, body);
+  } else if (method === 'PATCH') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    response = await apiPatch(`/api${endpoint}`, body);
+  } else if (method === 'DELETE') {
+    const body = options?.body ? JSON.parse(options.body as string) : undefined;
+    if (body) {
+      // apiDelete doesn't support body, use apiFetch
+      response = await apiFetch(`/api${endpoint}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } else {
+      response = await apiDelete(`/api${endpoint}`);
+    }
+  } else {
+    response = await apiFetch(`/api${endpoint}`, options);
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || error.message || `HTTP ${response.status}`);
@@ -456,7 +480,7 @@ export function useUploadDailyLogPhoto() {
       if (caption) formData.append('caption', caption);
       formData.append('uploaded_by', 'User');
 
-      const response = await fetch(`/api/daily-logs/${logId}/photos`, {
+      const response = await apiFetch(`/api/daily-logs/${logId}/photos`, {
         method: 'POST',
         body: formData,
       });

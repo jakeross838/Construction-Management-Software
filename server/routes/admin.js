@@ -7,6 +7,10 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError } = require('../core/errors');
+const { requireAdmin } = require('../middleware/auth');
+
+// Protect all admin routes - admin only
+router.use(requireAdmin);
 
 // =====================================================
 // RECONCILIATION & BALANCE INTEGRITY

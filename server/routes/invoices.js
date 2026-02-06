@@ -23,6 +23,7 @@ const {
   noPaginationResponse
 } = require('../middleware/pagination');
 const { validate, schemas } = require('../middleware/validate');
+const { requirePermission } = require('../middleware/auth');
 const { broadcastInvoiceUpdate, broadcast, broadcastNotification } = require('../core/realtime');
 const {
   logActivity,
@@ -699,7 +700,7 @@ router.post('/upload', upload.single('pdf'), async (req, res) => {
 });
 
 // AI-powered invoice processing
-router.post('/process', upload.single('file'), async (req, res) => {
+router.post('/process', requirePermission('canApproveInvoices'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -2254,7 +2255,7 @@ router.patch('/:id/unpay', async (req, res) => {
 // BULK OPERATIONS
 // ============================================================
 
-router.post('/bulk/approve', asyncHandler(async (req, res) => {
+router.post('/bulk/approve', requirePermission('canApproveInvoices'), asyncHandler(async (req, res) => {
   const { invoice_ids, performed_by: performedBy } = req.body;
 
   if (!invoice_ids || !Array.isArray(invoice_ids) || invoice_ids.length === 0) {

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 export interface Contract {
   id: string;
@@ -71,7 +72,7 @@ async function fetchContracts(filters: ContractFilters = {}): Promise<Contract[]
   if (filters.search) params.append('search', filters.search);
   if (filters.expiring_soon) params.append('expiring_soon', 'true');
 
-  const response = await fetch(`/api/contracts?${params}`);
+  const response = await apiGet(`/api/contracts?${params}`);
   if (!response.ok) throw new Error('Failed to fetch contracts');
   const data = await response.json();
   return data.contracts;
@@ -79,42 +80,34 @@ async function fetchContracts(filters: ContractFilters = {}): Promise<Contract[]
 
 async function fetchContractStats(jobId?: string): Promise<ContractStats> {
   const params = jobId ? `?job_id=${jobId}` : '';
-  const response = await fetch(`/api/contracts/stats${params}`);
+  const response = await apiGet(`/api/contracts/stats${params}`);
   if (!response.ok) throw new Error('Failed to fetch contract stats');
   return response.json();
 }
 
 async function fetchContract(id: string): Promise<Contract> {
-  const response = await fetch(`/api/contracts/${id}`);
+  const response = await apiGet(`/api/contracts/${id}`);
   if (!response.ok) throw new Error('Failed to fetch contract');
   const data = await response.json();
   return data.contract;
 }
 
 async function createContract(contract: Partial<Contract>): Promise<Contract> {
-  const response = await fetch('/api/contracts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(contract),
-  });
+  const response = await apiPost('/api/contracts', contract);
   if (!response.ok) throw new Error('Failed to create contract');
   const data = await response.json();
   return data.contract;
 }
 
 async function updateContract(id: string, updates: Partial<Contract>): Promise<Contract> {
-  const response = await fetch(`/api/contracts/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
+  const response = await apiPatch(`/api/contracts/${id}`, updates);
   if (!response.ok) throw new Error('Failed to update contract');
   const data = await response.json();
   return data.contract;
 }
 
 async function deleteContract(id: string): Promise<void> {
-  const response = await fetch(`/api/contracts/${id}`, { method: 'DELETE' });
+  const response = await apiDelete(`/api/contracts/${id}`);
   if (!response.ok) throw new Error('Failed to delete contract');
 }
 

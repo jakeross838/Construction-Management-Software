@@ -1,17 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-
-// API helper
-async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
-    ...options,
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || error.message || `HTTP ${response.status}`);
-  }
-  return response.json();
-}
+import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from '@/lib/api';
 
 export type PhotoCategory = 'progress' | 'exterior' | 'interior' | 'detail' | 'issue' | 'completion';
 
@@ -89,8 +78,13 @@ export function usePhotos(filters?: PhotoFilters) {
       if (filters?.limit) params.set('limit', filters.limit.toString());
       if (filters?.offset) params.set('offset', filters.offset.toString());
       const queryString = params.toString();
-      const endpoint = queryString ? `/photos?${queryString}` : '/photos';
-      return api<PhotosResponse>(endpoint);
+      const endpoint = queryString ? `/api/photos?${queryString}` : '/api/photos';
+      const response = await apiGet(endpoint);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json() as Promise<PhotosResponse>;
     },
   });
 }
@@ -100,7 +94,12 @@ export function usePhoto(id: string | null) {
     queryKey: ['photo', id],
     queryFn: async () => {
       if (!id) return null;
-      return api<Photo>(`/photos/${id}`);
+      const response = await apiGet(`/api/photos/${id}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json() as Promise<Photo>;
     },
     enabled: !!id,
   });
@@ -110,8 +109,13 @@ export function usePhotoStats(jobId?: string) {
   return useQuery({
     queryKey: ['photo-stats', jobId],
     queryFn: async () => {
-      const endpoint = jobId ? `/photos/stats?job_id=${jobId}` : '/photos/stats';
-      return api<PhotoStats>(endpoint);
+      const endpoint = jobId ? `/api/photos/stats?job_id=${jobId}` : '/api/photos/stats';
+      const response = await apiGet(endpoint);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json() as Promise<PhotoStats>;
     },
   });
 }
@@ -120,7 +124,12 @@ export function usePhotosByEntity(entityType: string, entityId: string) {
   return useQuery({
     queryKey: ['photos-by-entity', entityType, entityId],
     queryFn: async () => {
-      return api<Photo[]>(`/photos/by-entity/${entityType}/${entityId}`);
+      const response = await apiGet(`/api/photos/by-entity/${entityType}/${entityId}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json() as Promise<Photo[]>;
     },
     enabled: !!entityType && !!entityId,
   });
@@ -152,7 +161,7 @@ export function useUploadPhoto() {
       if (data.taken_at) formData.append('taken_at', data.taken_at);
       if (data.uploaded_by) formData.append('uploaded_by', data.uploaded_by);
 
-      const response = await fetch('/api/photos', {
+      const response = await apiFetch('/api/photos', {
         method: 'POST',
         body: formData,
       });
@@ -179,19 +188,21 @@ export function useUpdatePhoto() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: {
+    mutationFn: async ({ id, ...data }: {
       id: string;
       caption?: string;
       location?: string;
       category?: PhotoCategory;
       taken_at?: string;
       updated_by?: string;
-    }) =>
-      api<Photo>(`/photos/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      }),
+    }) => {
+      const response = await apiPatch(`/api/photos/${id}`, data);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json() as Promise<Photo>;
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['photos'] });
       queryClient.invalidateQueries({ queryKey: ['photo', data.id] });
@@ -207,10 +218,13 @@ export function useDeletePhoto() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => api(`/photos/${id}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-    }),
+    mutationFn: async (id: string) => {
+      const response = await apiDelete(`/api/photos/${id}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['photos'] });
       queryClient.invalidateQueries({ queryKey: ['photo-stats'] });
@@ -226,17 +240,19 @@ export function useLinkPhoto() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ photoId, entity_type, entity_id, created_by }: {
+    mutationFn: async ({ photoId, entity_type, entity_id, created_by }: {
       photoId: string;
       entity_type: 'inspection' | 'punch_item' | 'daily_log';
       entity_id: string;
       created_by?: string;
-    }) =>
-      api<PhotoLink>(`/photos/${photoId}/links`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity_type, entity_id, created_by }),
-      }),
+    }) => {
+      const response = await apiPost(`/api/photos/${photoId}/links`, { entity_type, entity_id, created_by });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+      return response.json() as Promise<PhotoLink>;
+    },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['photo', variables.photoId] });
       queryClient.invalidateQueries({ queryKey: ['photos-by-entity'] });
@@ -252,11 +268,13 @@ export function useUnlinkPhoto() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ photoId, linkId }: { photoId: string; linkId: string }) =>
-      api(`/photos/${photoId}/links/${linkId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    mutationFn: async ({ photoId, linkId }: { photoId: string; linkId: string }) => {
+      const response = await apiDelete(`/api/photos/${photoId}/links/${linkId}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+    },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['photo', variables.photoId] });
       queryClient.invalidateQueries({ queryKey: ['photos-by-entity'] });

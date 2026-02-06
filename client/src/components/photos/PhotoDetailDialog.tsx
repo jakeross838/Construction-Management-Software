@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -60,6 +61,8 @@ export function PhotoDetailDialog({
   onOpenChange,
   photoId,
 }: PhotoDetailDialogProps) {
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
   const { data: photo, isLoading } = usePhoto(photoId);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -85,7 +88,7 @@ export function PhotoDetailDialog({
       caption: editCaption || undefined,
       location: editLocation || undefined,
       category: editCategory,
-      updated_by: 'Jake Ross',
+      updated_by: userName,
     });
     setIsEditing(false);
   };

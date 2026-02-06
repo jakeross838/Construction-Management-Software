@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { getUserName } = require('../utils/shared');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -165,7 +166,7 @@ router.post('/', asyncHandler(async (req, res) => {
       spec_section,
       cost_code_id,
       description,
-      submitted_by: submitted_by || 'Jake Ross',
+      submitted_by: getUserName(req),
       submitted_to,
       subcontractor,
       manufacturer,
@@ -188,7 +189,7 @@ router.post('/', asyncHandler(async (req, res) => {
     submittal_id: data.id,
     action: 'created',
     new_status: 'draft',
-    performed_by: submitted_by || req.headers['x-user-name'] || 'System'
+    performed_by: getUserName(req)
   });
 
   res.status(201).json(data);
@@ -263,7 +264,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
     action: 'submitted',
     old_status: current?.status,
     new_status: 'pending_review',
-    performed_by: submitted_by || req.headers['x-user-name'] || 'System'
+    performed_by: getUserName(req)
   });
 
   res.json(data);
@@ -296,7 +297,7 @@ router.post('/:id/review', asyncHandler(async (req, res) => {
     .update({
       status,
       review_comments,
-      reviewed_by: reviewed_by || 'Jake Ross',
+      reviewed_by: getUserName(req),
       reviewed_at: new Date().toISOString(),
       date_returned: new Date().toISOString().split('T')[0]
     })
@@ -317,7 +318,7 @@ router.post('/:id/review', asyncHandler(async (req, res) => {
     old_status: current?.status,
     new_status: status,
     comments: review_comments,
-    performed_by: reviewed_by || 'Jake Ross'
+    performed_by: getUserName(req)
   });
 
   res.json(data);
@@ -382,7 +383,7 @@ router.post('/:id/revise', asyncHandler(async (req, res) => {
     action: 'revised',
     new_status: 'draft',
     comments: `Revision ${nextRev} created from ${currentRev}`,
-    performed_by: original.submitted_by || 'Jake Ross'
+    performed_by: getUserName(req)
   });
 
   res.status(201).json(data);
@@ -497,7 +498,7 @@ router.post('/:id/attachments', asyncHandler(async (req, res) => {
       file_type,
       file_size,
       attachment_type: attachment_type || 'submission',
-      uploaded_by: uploaded_by || 'Jake Ross'
+      uploaded_by: getUserName(req)
     })
     .select()
     .single();

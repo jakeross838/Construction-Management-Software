@@ -74,6 +74,7 @@ import {
   DBLineItem,
 } from '@/hooks/useEstimateHierarchy';
 import { useCostCodes } from '@/hooks/useFinancialData';
+import { useAuth } from '@/contexts/AuthContext';
 import { useSubmitDBEstimate, useApproveDBEstimate } from '@/hooks/useDBEstimates';
 
 interface DBEstimateBuilderProps {
@@ -82,6 +83,10 @@ interface DBEstimateBuilderProps {
 }
 
 export function DBEstimateBuilder({ estimateId, onBack }: DBEstimateBuilderProps) {
+  // Auth
+  const { user } = useAuth();
+  const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User' : 'User';
+
   // Data fetching
   const { data: estimate, isLoading, error } = useEstimateWithHierarchy(estimateId);
   const { data: costCodes = [] } = useCostCodes();
@@ -383,11 +388,11 @@ export function DBEstimateBuilder({ estimateId, onBack }: DBEstimateBuilderProps
   };
 
   const handleSubmit = () => {
-    submitEstimate.mutate({ id: estimateId, submitted_by: 'Jake Ross' });
+    submitEstimate.mutate({ id: estimateId, submitted_by: userName });
   };
 
   const handleApprove = () => {
-    approveEstimate.mutate({ id: estimateId, approved_by: 'Jake Ross' });
+    approveEstimate.mutate({ id: estimateId, approved_by: userName });
   };
 
   // ============================================================
