@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Estimate, EstimateSection, EstimateMarkupSettings, defaultMarkupSettings, generateId } from '@/types/estimate';
+import { apiFetch } from '@/lib/api';
 
 // API helper
 async function api<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
+  const response = await apiFetch(`/api${endpoint}`, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
   });
