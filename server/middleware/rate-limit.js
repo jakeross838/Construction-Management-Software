@@ -2,11 +2,58 @@
  * Rate Limiting Middleware
  *
  * Per-user and per-IP rate limiting for API protection.
- * Uses in-memory storage with automatic cleanup.
+ * Uses Redis when REDIS_URL is set, falls back to in-memory storage.
  */
 
+const Redis = require('ioredis');
+
+// ---------------------------------------------------------------------------
+// Storage backend
+// ---------------------------------------------------------------------------
+
+let redisClient = null;
+let useRedis = false;
+
+if (process.env.REDIS_URL) {
+  try {
+    redisClient = new Redis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: true,
+      lazyConnect: true
+    });
+
+    redisClient.on('error', (err) => {
+      console.error('[RateLimit] Redis error:', err.message);
+      // On persistent failure the middleware falls through to in-memory
+    });
+
+    // Attempt to connect synchronously-ish so we can log the outcome at
+    // startup.  The connect() promise is intentionally consumed here and
+    // a failure simply disables Redis.
+    redisClient.connect()
+      .then(() => {
+        useRedis = true;
+        console.log('[RateLimit] Using Redis store');
+      })
+      .catch((err) => {
+        console.warn('[RateLimit] Redis connect failed, falling back to in-memory:', err.message);
+        redisClient = null;
+        useRedis = false;
+      });
+  } catch (err) {
+    console.warn('[RateLimit] Could not create Redis client, falling back to in-memory:', err.message);
+    redisClient = null;
+  }
+} else {
+  console.log('[RateLimit] REDIS_URL not set, using in-memory store');
+}
+
+// ---------------------------------------------------------------------------
+// In-memory fallback
+// ---------------------------------------------------------------------------
+
 /**
- * Rate limit storage
+ * Rate limit storage (in-memory fallback)
  * Structure: Map<key, { count: number, resetTime: number }>
  */
 const rateLimitStore = new Map();
@@ -17,8 +64,37 @@ const rateLimitStore = new Map();
 const CLEANUP_INTERVAL = 60 * 1000;
 
 /**
- * Rate limit configurations
+ * Clean up expired entries from the in-memory rate limit store
  */
+function cleanupExpiredEntries() {
+  const now = Date.now();
+  let cleaned = 0;
+
+  for (const [key, value] of rateLimitStore.entries()) {
+    if (value.resetTime <= now) {
+      rateLimitStore.delete(key);
+      cleaned++;
+    }
+  }
+
+  if (cleaned > 0) {
+    console.log(`[RateLimit] Cleaned up ${cleaned} expired entries. Store size: ${rateLimitStore.size}`);
+  }
+}
+
+// Start cleanup interval (only matters for in-memory mode but is harmless
+// when Redis is active)
+const cleanupTimer = setInterval(cleanupExpiredEntries, CLEANUP_INTERVAL);
+
+// Prevent the timer from keeping Node.js running
+if (cleanupTimer.unref) {
+  cleanupTimer.unref();
+}
+
+// ---------------------------------------------------------------------------
+// Rate limit configurations
+// ---------------------------------------------------------------------------
+
 const RATE_LIMITS = {
   standard: {
     windowMs: 60 * 1000, // 1 minute
@@ -42,32 +118,9 @@ const RATE_LIMITS = {
   }
 };
 
-/**
- * Clean up expired entries from the rate limit store
- */
-function cleanupExpiredEntries() {
-  const now = Date.now();
-  let cleaned = 0;
-
-  for (const [key, value] of rateLimitStore.entries()) {
-    if (value.resetTime <= now) {
-      rateLimitStore.delete(key);
-      cleaned++;
-    }
-  }
-
-  if (cleaned > 0) {
-    console.log(`[RateLimit] Cleaned up ${cleaned} expired entries. Store size: ${rateLimitStore.size}`);
-  }
-}
-
-// Start cleanup interval
-const cleanupTimer = setInterval(cleanupExpiredEntries, CLEANUP_INTERVAL);
-
-// Prevent the timer from keeping Node.js running
-if (cleanupTimer.unref) {
-  cleanupTimer.unref();
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /**
  * Extract user identifier from request
@@ -147,6 +200,42 @@ function hashString(str) {
   return hash.toString(36);
 }
 
+// ---------------------------------------------------------------------------
+// Redis-backed rate limit check
+// ---------------------------------------------------------------------------
+
+const REDIS_KEY_PREFIX = 'rl:';
+
+/**
+ * Check and increment rate limit via Redis using INCR + EXPIRE.
+ * Returns { count, ttl } where ttl is seconds until the key expires.
+ *
+ * @param {string} key - Rate limit key
+ * @param {number} windowMs - Window in milliseconds
+ * @returns {Promise<{ count: number, ttl: number }>}
+ */
+async function redisIncrement(key, windowMs) {
+  const redisKey = `${REDIS_KEY_PREFIX}${key}`;
+  const windowSec = Math.ceil(windowMs / 1000);
+
+  // INCR is atomic; if the key does not exist it is set to 0 first.
+  const count = await redisClient.incr(redisKey);
+
+  if (count === 1) {
+    // First request in this window -- set expiry
+    await redisClient.expire(redisKey, windowSec);
+  }
+
+  // Fetch TTL so we can compute reset time accurately
+  const ttl = await redisClient.ttl(redisKey);
+
+  return { count, ttl: ttl > 0 ? ttl : windowSec };
+}
+
+// ---------------------------------------------------------------------------
+// Core middleware factory
+// ---------------------------------------------------------------------------
+
 /**
  * Create rate limiting middleware
  *
@@ -169,7 +258,7 @@ function createRateLimiter(options) {
     keyGenerator = null
   } = options;
 
-  return (req, res, next) => {
+  return async (req, res, next) => {
     // Check if rate limiting should be skipped
     if (skip && skip(req)) {
       return next();
@@ -179,31 +268,56 @@ function createRateLimiter(options) {
     const identifier = keyGenerator ? keyGenerator(req) : getUserIdentifier(req);
     const key = `${type}:${identifier}`;
 
+    try {
+      if (useRedis && redisClient) {
+        // ---- Redis path ----
+        const { count, ttl } = await redisIncrement(key, windowMs);
+        const remaining = Math.max(0, max - count);
+        const resetTimestamp = Math.ceil(Date.now() / 1000) + ttl;
+
+        res.setHeader('X-RateLimit-Limit', max);
+        res.setHeader('X-RateLimit-Remaining', remaining);
+        res.setHeader('X-RateLimit-Reset', resetTimestamp);
+
+        if (count > max) {
+          res.setHeader('Retry-After', ttl);
+
+          return res.status(429).json({
+            error: message,
+            retryAfter: ttl,
+            limit: max,
+            windowMs,
+            resetAt: new Date(resetTimestamp * 1000).toISOString()
+          });
+        }
+
+        return next();
+      }
+    } catch (err) {
+      // Redis failed at runtime -- fall through to in-memory
+      console.error('[RateLimit] Redis check failed, falling back to in-memory:', err.message);
+    }
+
+    // ---- In-memory path ----
     const now = Date.now();
     const resetTime = now + windowMs;
 
-    // Get or create rate limit entry
     let entry = rateLimitStore.get(key);
 
     if (!entry || entry.resetTime <= now) {
-      // Create new entry or reset expired one
       entry = { count: 1, resetTime };
       rateLimitStore.set(key, entry);
     } else {
-      // Increment existing entry
       entry.count++;
     }
 
-    // Calculate remaining requests
     const remaining = Math.max(0, max - entry.count);
     const resetTimestamp = Math.ceil(entry.resetTime / 1000);
 
-    // Set rate limit headers
     res.setHeader('X-RateLimit-Limit', max);
     res.setHeader('X-RateLimit-Remaining', remaining);
     res.setHeader('X-RateLimit-Reset', resetTimestamp);
 
-    // Check if limit exceeded
     if (entry.count > max) {
       const retryAfter = Math.ceil((entry.resetTime - now) / 1000);
 
@@ -221,6 +335,10 @@ function createRateLimiter(options) {
     next();
   };
 }
+
+// ---------------------------------------------------------------------------
+// Pre-built limiters
+// ---------------------------------------------------------------------------
 
 /**
  * Standard API rate limiter
@@ -259,23 +377,83 @@ const aiLimiter = createRateLimiter({
   type: 'ai'
 });
 
+// ---------------------------------------------------------------------------
+// Utility / admin helpers
+// ---------------------------------------------------------------------------
+
 /**
  * Get current rate limit stats (for monitoring/debugging)
  *
- * @returns {Object} Rate limit statistics
+ * @returns {Promise<Object>|Object} Rate limit statistics
  */
-function getRateLimitStats() {
+async function getRateLimitStats() {
+  if (useRedis && redisClient) {
+    try {
+      const keys = await redisClient.keys(`${REDIS_KEY_PREFIX}*`);
+
+      const stats = {
+        totalEntries: keys.length,
+        entriesByType: {},
+        topUsers: [],
+        backend: 'redis'
+      };
+
+      const typeCounts = {};
+      const userCounts = [];
+
+      // Fetch counts in a pipeline for efficiency
+      if (keys.length > 0) {
+        const pipeline = redisClient.pipeline();
+        for (const key of keys) {
+          pipeline.get(key);
+          pipeline.ttl(key);
+        }
+        const results = await pipeline.exec();
+
+        for (let i = 0; i < keys.length; i++) {
+          const rawKey = keys[i].slice(REDIS_KEY_PREFIX.length);
+          const type = rawKey.split(':')[0];
+          typeCounts[type] = (typeCounts[type] || 0) + 1;
+
+          const count = parseInt(results[i * 2][1], 10) || 0;
+          const ttl = parseInt(results[i * 2 + 1][1], 10) || 0;
+
+          userCounts.push({
+            key: rawKey,
+            count,
+            resetTime: Date.now() + ttl * 1000
+          });
+        }
+      }
+
+      stats.entriesByType = typeCounts;
+      stats.topUsers = userCounts
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10)
+        .map(u => ({
+          identifier: u.key.replace(/^[^:]+:/, ''),
+          count: u.count,
+          resetAt: new Date(u.resetTime).toISOString()
+        }));
+
+      return stats;
+    } catch (err) {
+      console.error('[RateLimit] Redis stats failed, falling back to in-memory:', err.message);
+    }
+  }
+
+  // In-memory stats
   const stats = {
     totalEntries: rateLimitStore.size,
     entriesByType: {},
-    topUsers: []
+    topUsers: [],
+    backend: 'memory'
   };
 
   const typeCounts = {};
   const userCounts = [];
 
   for (const [key, value] of rateLimitStore.entries()) {
-    // Extract type from key
     const type = key.split(':')[0];
     typeCounts[type] = (typeCounts[type] || 0) + 1;
 
@@ -287,7 +465,7 @@ function getRateLimitStats() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 10)
     .map(u => ({
-      identifier: u.key.replace(/^[^:]+:/, ''), // Remove type prefix
+      identifier: u.key.replace(/^[^:]+:/, ''),
       count: u.count,
       resetAt: new Date(u.resetTime).toISOString()
     }));
@@ -299,11 +477,24 @@ function getRateLimitStats() {
  * Clear rate limits for a specific user (for admin use)
  *
  * @param {string} identifier - User identifier to clear
- * @returns {number} Number of entries cleared
+ * @returns {Promise<number>|number} Number of entries cleared
  */
-function clearRateLimitsForUser(identifier) {
+async function clearRateLimitsForUser(identifier) {
   let cleared = 0;
 
+  if (useRedis && redisClient) {
+    try {
+      const keys = await redisClient.keys(`${REDIS_KEY_PREFIX}*${identifier}*`);
+      if (keys.length > 0) {
+        cleared = await redisClient.del(...keys);
+      }
+      return cleared;
+    } catch (err) {
+      console.error('[RateLimit] Redis clearRateLimitsForUser failed:', err.message);
+    }
+  }
+
+  // In-memory fallback
   for (const key of rateLimitStore.keys()) {
     if (key.includes(identifier)) {
       rateLimitStore.delete(key);
@@ -316,12 +507,31 @@ function clearRateLimitsForUser(identifier) {
 
 /**
  * Clear all rate limits (for testing/admin use)
+ *
+ * @returns {Promise<number>|number} Number of entries cleared
  */
-function clearAllRateLimits() {
+async function clearAllRateLimits() {
+  if (useRedis && redisClient) {
+    try {
+      const keys = await redisClient.keys(`${REDIS_KEY_PREFIX}*`);
+      if (keys.length > 0) {
+        await redisClient.del(...keys);
+      }
+      return keys.length;
+    } catch (err) {
+      console.error('[RateLimit] Redis clearAllRateLimits failed:', err.message);
+    }
+  }
+
+  // In-memory fallback
   const count = rateLimitStore.size;
   rateLimitStore.clear();
   return count;
 }
+
+// ---------------------------------------------------------------------------
+// Exports (same shape as original)
+// ---------------------------------------------------------------------------
 
 module.exports = {
   // Middleware

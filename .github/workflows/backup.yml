@@ -1,0 +1,86 @@
+# =============================================================================
+# Ross Built Construction Management Software - Daily Database Backup
+# Runs daily at 2 AM UTC and on manual trigger
+# =============================================================================
+
+name: Backup
+
+on:
+  schedule:
+    # Run every day at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Database Backup - Export all tables and upload as artifact
+  # ---------------------------------------------------------------------------
+  backup:
+    name: Database Backup
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database backup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/backup-database.js --upload --retain 30
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.run_id }}
+          path: backups/backup-*.json
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # Notify on Failure - Create a GitHub issue if the backup job fails
+  # ---------------------------------------------------------------------------
+  notify-on-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: backup
+    if: failure()
+    permissions:
+      issues: write
+
+    steps:
+      - name: Create failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Backup failed: ${new Date().toISOString().split('T')[0]}`;
+            const body = [
+              '## Daily Database Backup Failed',
+              '',
+              `**Workflow run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `**Trigger:** ${context.eventName}`,
+              `**Date:** ${new Date().toISOString()}`,
+              '',
+              'Please investigate and re-run the backup manually if needed.',
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['backup', 'automated']
+            });

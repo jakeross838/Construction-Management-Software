@@ -5,6 +5,17 @@
  * Routes are mounted separately in index.js.
  */
 
+// Sentry must be initialized before any other imports
+const Sentry = require('@sentry/node');
+if (process.env.SENTRY_DSN) {
+  const pkg = require('../package.json');
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    release: pkg.version,
+  });
+}
+
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -25,6 +36,11 @@ const {
  */
 function createApp() {
   const app = express();
+
+  // Sentry request handler must be the first middleware
+  if (process.env.SENTRY_DSN) {
+    app.use(Sentry.Handlers.requestHandler());
+  }
 
   // Security headers (CSP, XSS protection, etc.) - apply first
   app.use(securityHeaders());
@@ -85,4 +101,4 @@ function createApp() {
   return app;
 }
 
-module.exports = { createApp };
+module.exports = { createApp, Sentry };

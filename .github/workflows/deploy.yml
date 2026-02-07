@@ -82,56 +82,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------------------------------------------------------
-      # Option 1: Railway Deployment
-      # Uncomment and configure for Railway
-      # -------------------------------------------------------------------------
-      # - name: Deploy to Railway
-      #   uses: bervProject/railway-deploy@v1
-      #   with:
-      #     railway_token: ${{ secrets.RAILWAY_TOKEN }}
-      #     service: ross-built-cms
+      - name: Set up Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
 
-      # -------------------------------------------------------------------------
-      # Option 2: Fly.io Deployment
-      # Uncomment and configure for Fly.io
-      # -------------------------------------------------------------------------
-      # - name: Deploy to Fly.io
-      #   uses: superfly/flyctl-actions/setup-flyctl@master
-      # - run: flyctl deploy --remote-only
-      #   env:
-      #     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      # -------------------------------------------------------------------------
-      # Option 3: DigitalOcean App Platform
-      # Uncomment and configure for DigitalOcean
-      # -------------------------------------------------------------------------
-      # - name: Deploy to DigitalOcean
-      #   uses: digitalocean/app_action@v1.1.5
-      #   with:
-      #     app_name: ross-built-cms
-      #     token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      # -------------------------------------------------------------------------
-      # Placeholder - Configure one of the above options
-      # -------------------------------------------------------------------------
-      - name: Deployment Placeholder
-        run: |
-          echo "=================================================="
-          echo "  DEPLOYMENT CONFIGURATION REQUIRED"
-          echo "=================================================="
-          echo ""
-          echo "Docker image built and pushed to:"
-          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          echo ""
-          echo "To enable automated deployment, configure one of:"
-          echo "  1. Railway - Add RAILWAY_TOKEN secret"
-          echo "  2. Fly.io - Add FLY_API_TOKEN secret and fly.toml"
-          echo "  3. DigitalOcean - Add DIGITALOCEAN_ACCESS_TOKEN secret"
-          echo "  4. AWS ECS - Configure aws-actions"
-          echo ""
-          echo "See .github/workflows/deploy.yml for examples"
-          echo "=================================================="
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   # ---------------------------------------------------------------------------
   # Post-Deploy Health Check
@@ -140,7 +97,7 @@ jobs:
     name: Health Check
     runs-on: ubuntu-latest
     needs: deploy
-    if: false  # Enable when deployment is configured
+    if: success()
 
     steps:
       - name: Wait for deployment

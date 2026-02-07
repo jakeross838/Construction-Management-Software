@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const logger = require('./utils/logger');
-const { createApp } = require('./app');
+const { createApp, Sentry } = require('./app');
 
 // PID file for safe server restarts (won't kill other node processes)
 const PID_FILE = path.join(__dirname, '..', 'server.pid');
@@ -91,13 +91,18 @@ const {
 const { setupSwagger } = require('./swagger');
 const { getUserName } = require('./utils/shared');
 const { getBuilderId, withBuilderFilter, tables } = require('./core/multi-tenant');
+const monitor = require('./core/monitor');
 
 // Create Express app with middleware from app.js
 const app = createApp();
 
+// Install self-monitoring middleware early so it captures all requests
+app.use(monitor.middleware());
+
 // ============================================================
 // ROUTE MODULES (Refactored from monolithic index.js)
 // ============================================================
+const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const onboardingRoutes = require('./routes/onboarding');
 const clientPortalRoutes = require('./routes/client-portal');
@@ -244,49 +249,9 @@ app.use('/api', (req, res, next) => {
 });
 
 // ============================================================
-// HEALTH CHECK ENDPOINT
+// HEALTH CHECK ENDPOINTS (liveness, readiness, detailed)
 // ============================================================
-app.get('/api/health', async (req, res) => {
-  const health = {
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    checks: {}
-  };
-
-  // Check database connectivity
-  try {
-    const start = Date.now();
-    const { data, error } = await supabase.from('v2_jobs').select('id').limit(1);
-    health.checks.database = {
-      status: error ? 'error' : 'ok',
-      responseTime: Date.now() - start,
-      error: error?.message
-    };
-  } catch (err) {
-    health.checks.database = { status: 'error', error: err.message };
-  }
-
-  // Check storage connectivity
-  try {
-    const start = Date.now();
-    const { data, error } = await supabase.storage.listBuckets();
-    health.checks.storage = {
-      status: error ? 'error' : 'ok',
-      responseTime: Date.now() - start,
-      error: error?.message
-    };
-  } catch (err) {
-    health.checks.storage = { status: 'error', error: err.message };
-  }
-
-  // Overall status
-  const hasErrors = Object.values(health.checks).some(c => c.status === 'error');
-  health.status = hasErrors ? 'degraded' : 'ok';
-
-  res.status(hasErrors ? 503 : 200).json(health);
-});
+app.use('/api/health', healthRoutes);
 
 // ============================================================
 // PDF PROXY - Fetch PDFs from Supabase storage to bypass CORS
@@ -12091,6 +12056,11 @@ app.get('/api/realtime/stats', (req, res) => {
 // ============================================================
 // ERROR HANDLING MIDDLEWARE (must be last)
 // ============================================================
+
+// Sentry error handler must be before custom error middleware
+if (process.env.SENTRY_DSN) {
+  app.use(Sentry.Handlers.errorHandler());
+}
 
 app.use(errorMiddleware);
 

@@ -3,6 +3,16 @@
  * Structured error codes with retry information and consistent API responses
  */
 
+// Conditionally import Sentry for error capture
+let Sentry = null;
+try {
+  if (process.env.SENTRY_DSN) {
+    Sentry = require('@sentry/node');
+  }
+} catch (e) {
+  // @sentry/node not installed, skip
+}
+
 // ============================================================
 // CUSTOM ERROR CLASS
 // ============================================================
@@ -349,6 +359,12 @@ function errorMiddleware(err, req, res, next) {
 
   // Handle AppError
   if (err instanceof AppError) {
+    // Capture 500-level AppErrors to Sentry
+    if (Sentry && err.status >= 500) {
+      Sentry.captureException(err, {
+        extra: { requestId, code: err.code }
+      });
+    }
     const response = err.toJSON();
     const sanitized = sanitizeError(response, requestId);
     return res.status(err.status).json(sanitized);
@@ -366,6 +382,13 @@ function errorMiddleware(err, req, res, next) {
     };
     const sanitized = sanitizeError(response, requestId);
     return res.status(400).json(sanitized);
+  }
+
+  // Capture unhandled errors (500) to Sentry
+  if (Sentry) {
+    Sentry.captureException(err, {
+      extra: { requestId }
+    });
   }
 
   // Handle generic errors

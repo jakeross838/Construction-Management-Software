@@ -1,13 +1,21 @@
 # Dependencies
 node_modules/
 
-# Environment
+# Environment (NEVER commit secrets)
 .env
 .env.local
+.env.production
+.env.staging
+*.pem
+*.key
 
 # Logs
 *.log
 npm-debug.log*
+logs/
+
+# Backups
+backups/
 
 # OS files
 .DS_Store
