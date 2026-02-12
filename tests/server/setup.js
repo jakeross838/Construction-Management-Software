@@ -123,12 +123,25 @@ jest.mock('../../config', () => ({
 }));
 
 // Mock the logger to suppress output
-jest.mock('../../server/utils/logger', () => ({
+const mockLogger = {
   info: jest.fn(),
   error: jest.fn(),
   warn: jest.fn(),
-  debug: jest.fn()
-}));
+  debug: jest.fn(),
+  child: jest.fn().mockReturnValue({
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    child: jest.fn().mockReturnValue({
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn()
+    })
+  })
+};
+jest.mock('../../server/utils/logger', () => mockLogger);
 
 // ============================================================
 // TEST FIXTURES

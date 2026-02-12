@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // COST POOLS
@@ -14,6 +15,7 @@ const { AppError, asyncHandler } = require('../core/errors');
 
 // List cost pools
 router.get('/cost-pools', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_cost_pools')
     .select(`
@@ -23,6 +25,7 @@ router.get('/cost-pools', asyncHandler(async (req, res) => {
         expense_category:v2_expense_categories(id, name, category_type)
       )
     `)
+    .eq('builder_id', builderId)
     .order('name');
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -31,6 +34,7 @@ router.get('/cost-pools', asyncHandler(async (req, res) => {
 
 // Get single cost pool
 router.get('/cost-pools/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_cost_pools')
     .select(`
@@ -41,6 +45,7 @@ router.get('/cost-pools/:id', asyncHandler(async (req, res) => {
       )
     `)
     .eq('id', req.params.id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) {
@@ -55,6 +60,7 @@ router.get('/cost-pools/:id', asyncHandler(async (req, res) => {
 
 // Create cost pool
 router.post('/cost-pools', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { name, description, allocation_method, category_ids } = req.body;
 
   if (!name) {
@@ -65,6 +71,7 @@ router.post('/cost-pools', asyncHandler(async (req, res) => {
   const { data: pool, error } = await supabase
     .from('v2_cost_pools')
     .insert({
+      builder_id: builderId,
       name,
       description,
       allocation_method: allocation_method || 'labor_hours'
@@ -77,6 +84,7 @@ router.post('/cost-pools', asyncHandler(async (req, res) => {
   // Add category links if provided
   if (category_ids && category_ids.length > 0) {
     const links = category_ids.map(catId => ({
+      builder_id: builderId,
       cost_pool_id: pool.id,
       expense_category_id: catId
     }));
@@ -89,6 +97,7 @@ router.post('/cost-pools', asyncHandler(async (req, res) => {
 
 // Update cost pool
 router.patch('/cost-pools/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { name, description, allocation_method, is_active, category_ids } = req.body;
 
@@ -102,6 +111,7 @@ router.patch('/cost-pools/:id', asyncHandler(async (req, res) => {
     .from('v2_cost_pools')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -113,11 +123,13 @@ router.patch('/cost-pools/:id', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_cost_pool_categories')
       .delete()
-      .eq('cost_pool_id', id);
+      .eq('cost_pool_id', id)
+      .eq('builder_id', builderId);
 
     // Add new links
     if (category_ids.length > 0) {
       const links = category_ids.map(catId => ({
+        builder_id: builderId,
         cost_pool_id: id,
         expense_category_id: catId
       }));
@@ -130,10 +142,12 @@ router.patch('/cost-pools/:id', asyncHandler(async (req, res) => {
 
 // Delete cost pool
 router.delete('/cost-pools/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { error } = await supabase
     .from('v2_cost_pools')
     .delete()
-    .eq('id', req.params.id);
+    .eq('id', req.params.id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true });
@@ -145,9 +159,11 @@ router.delete('/cost-pools/:id', asyncHandler(async (req, res) => {
 
 // Get current overhead rate
 router.get('/current-rate', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_current_overhead_rate')
     .select('*')
+    .eq('builder_id', builderId)
     .single();
 
   if (error && error.code !== 'PGRST116') {
@@ -169,6 +185,7 @@ router.get('/current-rate', asyncHandler(async (req, res) => {
 
 // Get overhead rate history
 router.get('/rate-history', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { limit } = req.query;
 
   let query = supabase
@@ -177,6 +194,7 @@ router.get('/rate-history', asyncHandler(async (req, res) => {
       *,
       period:v2_financial_periods(id, name, start_date, end_date)
     `)
+    .eq('builder_id', builderId)
     .is('cost_pool_id', null)
     .eq('is_final', true)
     .order('calculated_at', { ascending: false });
@@ -190,6 +208,7 @@ router.get('/rate-history', asyncHandler(async (req, res) => {
 
 // Calculate overhead rate for a period (preview, not saved)
 router.post('/calculate', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { period_id } = req.body;
 
   if (!period_id) {
@@ -197,7 +216,7 @@ router.post('/calculate', asyncHandler(async (req, res) => {
   }
 
   const { data, error } = await supabase
-    .rpc('calculate_period_overhead_rate', { p_period_id: period_id });
+    .rpc('calculate_period_overhead_rate', { p_period_id: period_id, p_builder_id: builderId });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data[0] || {
@@ -211,10 +230,11 @@ router.post('/calculate', asyncHandler(async (req, res) => {
 
 // Get rolling average rate
 router.get('/rolling-average', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const months = parseInt(req.query.months) || 12;
 
   const { data, error } = await supabase
-    .rpc('calculate_rolling_overhead_rate', { p_months: months });
+    .rpc('calculate_rolling_overhead_rate', { p_months: months, p_builder_id: builderId });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data[0] || {
@@ -230,12 +250,14 @@ router.get('/rolling-average', asyncHandler(async (req, res) => {
 
 // Get allocations by job
 router.get('/allocations/by-job/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_job_overhead_allocations')
     .select(`
       *,
       period:v2_financial_periods(id, name, start_date, end_date)
     `)
+    .eq('builder_id', builderId)
     .eq('job_id', req.params.jobId)
     .eq('is_final', true)
     .is('cost_pool_id', null)
@@ -259,12 +281,14 @@ router.get('/allocations/by-job/:jobId', asyncHandler(async (req, res) => {
 
 // Get allocations by period
 router.get('/allocations/by-period/:periodId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_job_overhead_allocations')
     .select(`
       *,
       job:v2_jobs(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('period_id', req.params.periodId)
     .eq('is_final', true)
     .is('cost_pool_id', null)
@@ -276,9 +300,11 @@ router.get('/allocations/by-period/:periodId', asyncHandler(async (req, res) => 
 
 // Get job overhead summary
 router.get('/job-summary', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_job_overhead_summary')
     .select('*')
+    .eq('builder_id', builderId)
     .order('total_allocated_overhead', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -287,6 +313,7 @@ router.get('/job-summary', asyncHandler(async (req, res) => {
 
 // Preview job allocation for a period
 router.post('/preview-allocation', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, period_id } = req.body;
 
   if (!job_id || !period_id) {
@@ -294,7 +321,7 @@ router.post('/preview-allocation', asyncHandler(async (req, res) => {
   }
 
   const { data, error } = await supabase
-    .rpc('allocate_job_overhead', { p_job_id: job_id, p_period_id: period_id });
+    .rpc('allocate_job_overhead', { p_job_id: job_id, p_period_id: period_id, p_builder_id: builderId });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json(data[0] || {
@@ -307,6 +334,7 @@ router.post('/preview-allocation', asyncHandler(async (req, res) => {
 
 // Run allocation for a closed period
 router.post('/run-allocation', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { period_id } = req.body;
 
   if (!period_id) {
@@ -318,6 +346,7 @@ router.post('/run-allocation', asyncHandler(async (req, res) => {
     .from('v2_financial_periods')
     .select('status')
     .eq('id', period_id)
+    .eq('builder_id', builderId)
     .single();
 
   if (!period || period.status !== 'closed') {
@@ -325,7 +354,7 @@ router.post('/run-allocation', asyncHandler(async (req, res) => {
   }
 
   const { data, error } = await supabase
-    .rpc('run_period_allocation', { p_period_id: period_id });
+    .rpc('run_period_allocation', { p_period_id: period_id, p_builder_id: builderId });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -341,10 +370,12 @@ router.post('/run-allocation', asyncHandler(async (req, res) => {
 
 // Get overhead dashboard data
 router.get('/dashboard', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   // Current rate
   const { data: currentRate } = await supabase
     .from('v2_current_overhead_rate')
     .select('*')
+    .eq('builder_id', builderId)
     .single();
 
   // Rate history (last 12 periods)
@@ -358,6 +389,7 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       overhead_rate_percent,
       period:v2_financial_periods(name, end_date)
     `)
+    .eq('builder_id', builderId)
     .is('cost_pool_id', null)
     .eq('is_final', true)
     .order('calculated_at', { ascending: false })
@@ -367,12 +399,14 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
   const { data: poolTotals } = await supabase
     .from('v2_cost_pools')
     .select('id, name')
+    .eq('builder_id', builderId)
     .eq('is_active', true);
 
   // Top jobs by overhead
   const { data: topJobs } = await supabase
     .from('v2_job_overhead_summary')
     .select('*')
+    .eq('builder_id', builderId)
     .order('total_allocated_overhead', { ascending: false })
     .limit(10);
 
@@ -390,9 +424,11 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
 
 // Get overhead settings
 router.get('/settings', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_company_settings')
     .select('*')
+    .eq('builder_id', builderId)
     .like('key', 'overhead_%');
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -410,6 +446,7 @@ router.get('/settings', asyncHandler(async (req, res) => {
 
 // Update overhead setting
 router.patch('/settings/:key', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { key } = req.params;
   const { value } = req.body;
 
@@ -424,6 +461,7 @@ router.patch('/settings/:key', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('key', key)
+    .eq('builder_id', builderId)
     .select()
     .single();
 

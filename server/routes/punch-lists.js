@@ -9,6 +9,7 @@ const multer = require('multer');
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
 const { broadcastInvoiceUpdate } = require('../core/realtime');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -17,8 +18,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 // ACTIVITY LOGGING HELPER
 // ============================================================
 
-async function logPunchListActivity(punchListId, itemId, action, performedBy, details = {}) {
+async function logPunchListActivity(builderId, punchListId, itemId, action, performedBy, details = {}) {
   await supabase.from('v2_punch_list_activity').insert({
+    builder_id: builderId,
     punch_list_id: punchListId,
     item_id: itemId,
     action,
@@ -33,6 +35,7 @@ async function logPunchListActivity(punchListId, itemId, action, performedBy, de
 
 // Scan QR code to get location info (placed before parameterized routes)
 router.get('/locations/scan/:qrCode', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { qrCode } = req.params;
 
   const { data: location, error } = await supabase
@@ -41,6 +44,7 @@ router.get('/locations/scan/:qrCode', asyncHandler(async (req, res) => {
       *,
       job:v2_jobs(id, name, address)
     `)
+    .eq('builder_id', builderId)
     .eq('qr_code', qrCode)
     .single();
 
@@ -55,6 +59,7 @@ router.get('/locations/scan/:qrCode', asyncHandler(async (req, res) => {
       *,
       punch_list:v2_punch_lists(id, title, status)
     `)
+    .eq('builder_id', builderId)
     .or(`location_qr_code.eq.${qrCode},location_id.eq.${location.id}`)
     .in('status', ['open', 'in_progress']);
 
@@ -71,6 +76,7 @@ router.get('/locations/scan/:qrCode', asyncHandler(async (req, res) => {
 
 // Get punch list statistics (must be before /:id route)
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   let query = supabase
@@ -79,6 +85,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
       id, status, job_id,
       items:v2_punch_list_items(id, status)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) {
@@ -124,6 +131,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 
 // Get all punch lists
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, po_id, status, vendor_id } = req.query;
 
   let query = supabase
@@ -135,6 +143,7 @@ router.get('/', asyncHandler(async (req, res) => {
       vendor:v2_vendors(id, name),
       items:v2_punch_list_items(id, status, priority)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -164,6 +173,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Get single punch list with full details
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: list, error } = await supabase
@@ -180,6 +190,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       )
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -189,6 +200,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: attachments } = await supabase
     .from('v2_punch_list_attachments')
     .select('*')
+    .eq('builder_id', builderId)
     .or(`punch_list_id.eq.${id},item_id.in.(${(list.items || []).map(i => i.id).join(',')})`)
     .order('uploaded_at', { ascending: false });
 
@@ -196,6 +208,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: activity } = await supabase
     .from('v2_punch_list_activity')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('punch_list_id', id)
     .order('created_at', { ascending: false });
 
@@ -211,6 +224,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Create punch list
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, po_id, title, description, assigned_vendor_id, due_date, created_by, items } = req.body;
 
   if (!job_id) throw new AppError('VALIDATION_ERROR', 'Job is required');
@@ -221,6 +235,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const { data: list, error } = await supabase
     .from('v2_punch_lists')
     .insert({
+      builder_id: builderId,
       job_id,
       po_id: po_id || null,
       title,
@@ -238,6 +253,7 @@ router.post('/', asyncHandler(async (req, res) => {
   // Create initial items if provided
   if (items && items.length > 0) {
     const itemsToInsert = items.map((item, index) => ({
+      builder_id: builderId,
       punch_list_id: list.id,
       item_number: index + 1,
       description: item.description,
@@ -252,7 +268,7 @@ router.post('/', asyncHandler(async (req, res) => {
   }
 
   // Log activity
-  await logPunchListActivity(list.id, null, 'created', created_by, { title, item_count: items?.length || 0 });
+  await logPunchListActivity(builderId, list.id, null, 'created', created_by, { title, item_count: items?.length || 0 });
 
   // Broadcast update
   broadcastInvoiceUpdate(list.id, 'punch_list_created', { punch_list: list });
@@ -262,6 +278,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // Update punch list
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { title, description, status, assigned_vendor_id, due_date, updated_by } = req.body;
 
@@ -270,6 +287,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_punch_lists')
     .select('*')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -289,13 +307,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_punch_lists')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(id, null, 'updated', updated_by || 'system', { changes: updates });
+  await logPunchListActivity(builderId, id, null, 'updated', updated_by || 'system', { changes: updates });
 
   // Broadcast update
   broadcastInvoiceUpdate(id, 'punch_list_updated', { punch_list: updated });
@@ -305,6 +324,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
 // Soft delete punch list
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { deleted_by } = req.body;
 
@@ -312,13 +332,14 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     .from('v2_punch_lists')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(id, null, 'deleted', deleted_by || 'system', {});
+  await logPunchListActivity(builderId, id, null, 'deleted', deleted_by || 'system', {});
 
   res.json({ success: true, message: 'Punch list deleted' });
 }));
@@ -329,6 +350,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Add item to punch list
 router.post('/:id/items', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { description, location, category, priority, assigned_vendor_id, schedule_task_id, created_by } = req.body;
 
@@ -338,6 +360,7 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
   const { data: existingItems } = await supabase
     .from('v2_punch_list_items')
     .select('item_number')
+    .eq('builder_id', builderId)
     .eq('punch_list_id', id)
     .order('item_number', { ascending: false })
     .limit(1);
@@ -347,6 +370,7 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
   const { data: item, error } = await supabase
     .from('v2_punch_list_items')
     .insert({
+      builder_id: builderId,
       punch_list_id: id,
       item_number: nextNumber,
       description,
@@ -367,16 +391,18 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
     .from('v2_punch_lists')
     .update({ status: 'in_progress', updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .eq('status', 'open');
 
   // Log activity
-  await logPunchListActivity(id, item.id, 'item_added', created_by || 'system', { description, item_number: nextNumber });
+  await logPunchListActivity(builderId, id, item.id, 'item_added', created_by || 'system', { description, item_number: nextNumber });
 
   res.json(item);
 }));
 
 // Update item
 router.patch('/items/:itemId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
   const { description, location, category, priority, assigned_vendor_id, schedule_task_id, updated_by } = req.body;
 
@@ -384,6 +410,7 @@ router.patch('/items/:itemId', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .select('*')
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !existing) {
@@ -403,19 +430,21 @@ router.patch('/items/:itemId', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .update(updates)
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(existing.punch_list_id, itemId, 'item_updated', updated_by || 'system', { changes: updates });
+  await logPunchListActivity(builderId, existing.punch_list_id, itemId, 'item_updated', updated_by || 'system', { changes: updates });
 
   res.json(updated);
 }));
 
 // Delete item
 router.delete('/items/:itemId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
   const { deleted_by } = req.body;
 
@@ -423,6 +452,7 @@ router.delete('/items/:itemId', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .select('*')
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !item) {
@@ -433,18 +463,20 @@ router.delete('/items/:itemId', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_punch_list_attachments')
     .delete()
-    .eq('item_id', itemId);
+    .eq('item_id', itemId)
+    .eq('builder_id', builderId);
 
   // Delete item
   const { error } = await supabase
     .from('v2_punch_list_items')
     .delete()
-    .eq('id', itemId);
+    .eq('id', itemId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(item.punch_list_id, null, 'item_deleted', deleted_by || 'system', {
+  await logPunchListActivity(builderId, item.punch_list_id, null, 'item_deleted', deleted_by || 'system', {
     description: item.description,
     item_number: item.item_number
   });
@@ -458,6 +490,7 @@ router.delete('/items/:itemId', asyncHandler(async (req, res) => {
 
 // Mark item as in progress
 router.post('/items/:itemId/start', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
   const { started_by } = req.body;
 
@@ -465,6 +498,7 @@ router.post('/items/:itemId/start', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .select('*')
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !item) {
@@ -479,19 +513,21 @@ router.post('/items/:itemId/start', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .update({ status: 'in_progress', updated_at: new Date().toISOString() })
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(item.punch_list_id, itemId, 'item_started', started_by || 'system', {});
+  await logPunchListActivity(builderId, item.punch_list_id, itemId, 'item_started', started_by || 'system', {});
 
   res.json(updated);
 }));
 
 // Mark item as resolved (vendor claims done)
 router.post('/items/:itemId/resolve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
   const { resolved_by, resolution_notes } = req.body;
 
@@ -499,6 +535,7 @@ router.post('/items/:itemId/resolve', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .select('*')
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !item) {
@@ -519,13 +556,14 @@ router.post('/items/:itemId/resolve', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(item.punch_list_id, itemId, 'item_resolved', resolved_by || 'system', {
+  await logPunchListActivity(builderId, item.punch_list_id, itemId, 'item_resolved', resolved_by || 'system', {
     resolution_notes
   });
 
@@ -534,6 +572,7 @@ router.post('/items/:itemId/resolve', asyncHandler(async (req, res) => {
 
 // PM verifies item as complete
 router.post('/items/:itemId/verify', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
   const { verified_by } = req.body;
 
@@ -541,6 +580,7 @@ router.post('/items/:itemId/verify', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .select('*, punch_list:v2_punch_lists(id, po_id)')
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !item) {
@@ -560,18 +600,20 @@ router.post('/items/:itemId/verify', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(item.punch_list_id, itemId, 'item_verified', verified_by || 'system', {});
+  await logPunchListActivity(builderId, item.punch_list_id, itemId, 'item_verified', verified_by || 'system', {});
 
   // Check if all items are verified - update list status
   const { data: allItems } = await supabase
     .from('v2_punch_list_items')
     .select('status')
+    .eq('builder_id', builderId)
     .eq('punch_list_id', item.punch_list_id);
 
   const allVerified = allItems && allItems.length > 0 && allItems.every(i => i.status === 'verified');
@@ -580,9 +622,10 @@ router.post('/items/:itemId/verify', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_punch_lists')
       .update({ status: 'resolved', updated_at: new Date().toISOString() })
-      .eq('id', item.punch_list_id);
+      .eq('id', item.punch_list_id)
+      .eq('builder_id', builderId);
 
-    await logPunchListActivity(item.punch_list_id, null, 'list_resolved', verified_by || 'system', {
+    await logPunchListActivity(builderId, item.punch_list_id, null, 'list_resolved', verified_by || 'system', {
       reason: 'All items verified'
     });
   }
@@ -592,6 +635,7 @@ router.post('/items/:itemId/verify', asyncHandler(async (req, res) => {
 
 // Reject resolved item (send back to open)
 router.post('/items/:itemId/reject', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
   const { rejected_by, reason } = req.body;
 
@@ -599,6 +643,7 @@ router.post('/items/:itemId/reject', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .select('*')
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !item) {
@@ -619,13 +664,14 @@ router.post('/items/:itemId/reject', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(item.punch_list_id, itemId, 'item_rejected', rejected_by || 'system', { reason });
+  await logPunchListActivity(builderId, item.punch_list_id, itemId, 'item_rejected', rejected_by || 'system', { reason });
 
   res.json(updated);
 }));
@@ -636,6 +682,7 @@ router.post('/items/:itemId/reject', asyncHandler(async (req, res) => {
 
 // Upload photo
 router.post('/:id/photos', upload.single('file'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { item_id, category, caption, uploaded_by } = req.body;
 
@@ -675,6 +722,7 @@ router.post('/:id/photos', upload.single('file'), asyncHandler(async (req, res) 
   const { data: attachment, error: dbError } = await supabase
     .from('v2_punch_list_attachments')
     .insert({
+      builder_id: builderId,
       punch_list_id: id,
       item_id: item_id || null,
       file_url: urlData.publicUrl,
@@ -689,7 +737,7 @@ router.post('/:id/photos', upload.single('file'), asyncHandler(async (req, res) 
   if (dbError) throw new AppError('DATABASE_ERROR', dbError.message);
 
   // Log activity
-  await logPunchListActivity(id, item_id || null, 'photo_uploaded', uploaded_by || 'system', {
+  await logPunchListActivity(builderId, id, item_id || null, 'photo_uploaded', uploaded_by || 'system', {
     file_name: file.originalname,
     category
   });
@@ -699,6 +747,7 @@ router.post('/:id/photos', upload.single('file'), asyncHandler(async (req, res) 
 
 // Delete photo
 router.delete('/photos/:photoId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { photoId } = req.params;
   const { deleted_by } = req.body;
 
@@ -706,6 +755,7 @@ router.delete('/photos/:photoId', asyncHandler(async (req, res) => {
     .from('v2_punch_list_attachments')
     .select('*')
     .eq('id', photoId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !photo) {
@@ -724,12 +774,13 @@ router.delete('/photos/:photoId', asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('v2_punch_list_attachments')
     .delete()
-    .eq('id', photoId);
+    .eq('id', photoId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(photo.punch_list_id, photo.item_id, 'photo_deleted', deleted_by || 'system', {
+  await logPunchListActivity(builderId, photo.punch_list_id, photo.item_id, 'photo_deleted', deleted_by || 'system', {
     file_name: photo.file_name
   });
 
@@ -741,6 +792,7 @@ router.delete('/photos/:photoId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/close', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { closed_by } = req.body;
 
@@ -748,6 +800,7 @@ router.post('/:id/close', asyncHandler(async (req, res) => {
   const { data: items } = await supabase
     .from('v2_punch_list_items')
     .select('id, status')
+    .eq('builder_id', builderId)
     .eq('punch_list_id', id);
 
   const unverified = (items || []).filter(i => i.status !== 'verified');
@@ -759,13 +812,14 @@ router.post('/:id/close', asyncHandler(async (req, res) => {
     .from('v2_punch_lists')
     .update({ status: 'closed', updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logPunchListActivity(id, null, 'list_closed', closed_by || 'system', {});
+  await logPunchListActivity(builderId, id, null, 'list_closed', closed_by || 'system', {});
 
   res.json(updated);
 }));
@@ -776,6 +830,7 @@ router.post('/:id/close', asyncHandler(async (req, res) => {
 
 // Quick complete item with photo (swipe-to-complete support)
 router.patch('/items/:itemId/complete', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
   const { completed_by, completed_photo_url, completion_method = 'button', resolution_notes } = req.body;
 
@@ -783,6 +838,7 @@ router.patch('/items/:itemId/complete', asyncHandler(async (req, res) => {
     .from('v2_punch_list_items')
     .select('*, punch_list:v2_punch_lists(id, job_id)')
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !item) {
@@ -808,13 +864,14 @@ router.patch('/items/:itemId/complete', asyncHandler(async (req, res) => {
       updated_at: now
     })
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity with completion method for analytics
-  await logPunchListActivity(item.punch_list_id, itemId, 'item_completed', completed_by || 'system', {
+  await logPunchListActivity(builderId, item.punch_list_id, itemId, 'item_completed', completed_by || 'system', {
     completion_method,
     has_photo: !!completed_photo_url,
     resolution_notes
@@ -828,6 +885,7 @@ router.patch('/items/:itemId/complete', asyncHandler(async (req, res) => {
 
 // Save annotated photo
 router.post('/items/:itemId/annotate', upload.single('file'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
   const { attachment_id, annotations, annotated_by } = req.body;
 
@@ -836,6 +894,7 @@ router.post('/items/:itemId/annotate', upload.single('file'), asyncHandler(async
     .from('v2_punch_list_items')
     .select('punch_list_id')
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .single();
 
   if (itemError || !item) {
@@ -874,6 +933,7 @@ router.post('/items/:itemId/annotate', upload.single('file'), asyncHandler(async
       .from('v2_punch_list_attachments')
       .select('file_url')
       .eq('id', attachment_id)
+      .eq('builder_id', builderId)
       .single();
 
     if (attachmentError || !attachment) {
@@ -889,7 +949,8 @@ router.post('/items/:itemId/annotate', upload.single('file'), asyncHandler(async
         has_annotation: true,
         annotated_url: annotatedUrl
       })
-      .eq('id', attachment_id);
+      .eq('id', attachment_id)
+      .eq('builder_id', builderId);
   }
 
   // Parse annotations if string
@@ -899,6 +960,7 @@ router.post('/items/:itemId/annotate', upload.single('file'), asyncHandler(async
   const { data: annotationRecord, error: annotationError } = await supabase
     .from('v2_punch_list_photo_annotations')
     .insert({
+      builder_id: builderId,
       attachment_id: attachment_id || null,
       punch_list_id: item.punch_list_id,
       item_id: itemId,
@@ -913,7 +975,7 @@ router.post('/items/:itemId/annotate', upload.single('file'), asyncHandler(async
   if (annotationError) throw new AppError('DATABASE_ERROR', annotationError.message);
 
   // Log activity
-  await logPunchListActivity(item.punch_list_id, itemId, 'photo_annotated', annotated_by || 'system', {
+  await logPunchListActivity(builderId, item.punch_list_id, itemId, 'photo_annotated', annotated_by || 'system', {
     annotation_count: parsedAnnotations.length
   });
 
@@ -922,11 +984,13 @@ router.post('/items/:itemId/annotate', upload.single('file'), asyncHandler(async
 
 // Get annotations for an item
 router.get('/items/:itemId/annotations', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
 
   const { data: annotations, error } = await supabase
     .from('v2_punch_list_photo_annotations')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('item_id', itemId)
     .order('annotated_at', { ascending: false });
 

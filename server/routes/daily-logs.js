@@ -9,6 +9,7 @@ const multer = require('multer');
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
 const { asyncHandler, AppError, notFoundError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 const { processDailyLogIntelligence } = require('../services/daily-log-intelligence');
 const scheduleSync = require('../services/schedule-sync');
 
@@ -121,14 +122,16 @@ async function fetchWeatherForCoords(lat, lon) {
 }
 
 // Helper: Log daily log activity
-async function logDailyLogActivity(dailyLogId, action, performedBy, details = {}) {
+async function logDailyLogActivity(dailyLogId, action, performedBy, details = {}, builderId = null) {
   try {
-    await supabase.from('v2_daily_log_activity').insert({
+    const record = {
       daily_log_id: dailyLogId,
       action,
       performed_by: performedBy,
       details
-    });
+    };
+    if (builderId) record.builder_id = builderId;
+    await supabase.from('v2_daily_log_activity').insert(record);
   } catch (err) {
     logger.error('Failed to log daily log activity', { component: 'DailyLog', dailyLogId, error: err.message });
   }
@@ -178,6 +181,7 @@ async function updateScheduleTaskProgress(crewEntries, dailyLogId = null) {
 
 // List all daily logs with filters
 router.get('/', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { job_id, status, date_from, date_to, search } = req.query;
 
     let query = supabase
@@ -195,6 +199,7 @@ router.get('/', asyncHandler(async (req, res) => {
         ),
         attachments:v2_daily_log_attachments(id, file_url, category, caption)
       `)
+      .eq('builder_id', builderId)
       .is('deleted_at', null)
       .order('log_date', { ascending: false });
 
@@ -233,12 +238,14 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Get current weather for a job's location
 router.get('/weather/:jobId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { jobId } = req.params;
 
     // Get job address
     const { data: job, error: jobError } = await supabase
       .from('v2_jobs')
       .select('id, name, address')
+      .eq('builder_id', builderId)
       .eq('id', jobId)
       .single();
 
@@ -276,11 +283,13 @@ router.get('/weather/:jobId', asyncHandler(async (req, res) => {
 
 // Get daily log statistics
 router.get('/stats/summary', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { job_id } = req.query;
 
     let query = supabase
       .from('v2_daily_logs')
       .select('id, status, log_date, job_id')
+      .eq('builder_id', builderId)
       .is('deleted_at', null);
 
     if (job_id) {
@@ -313,6 +322,7 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
 
 // Get weekly summary report for a job
 router.get('/report/weekly', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { job_id, week_start } = req.query;
 
     if (!job_id) {
@@ -353,6 +363,7 @@ router.get('/report/weekly', asyncHandler(async (req, res) => {
         ),
         attachments:v2_daily_log_attachments(id, file_url, caption, category)
       `)
+      .eq('builder_id', builderId)
       .eq('job_id', job_id)
       .gte('log_date', startStr)
       .lte('log_date', endStr)
@@ -365,6 +376,7 @@ router.get('/report/weekly', asyncHandler(async (req, res) => {
     const { data: job } = await supabase
       .from('v2_jobs')
       .select('id, name, address, client_name')
+      .eq('builder_id', builderId)
       .eq('id', job_id)
       .single();
 
@@ -449,6 +461,7 @@ router.get('/report/weekly', asyncHandler(async (req, res) => {
 
 // Get single daily log with all details
 router.get('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data: log, error: logError } = await supabase
@@ -473,6 +486,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
           id, file_url, file_name, file_type, caption, category, uploaded_by, uploaded_at
         )
       `)
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -488,6 +502,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     const { data: activity } = await supabase
       .from('v2_daily_log_activity')
       .select('*')
+      .eq('builder_id', builderId)
       .eq('daily_log_id', id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -505,6 +520,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Create new daily log
 router.post('/', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const {
       job_id,
       log_date,
@@ -537,6 +553,7 @@ router.post('/', asyncHandler(async (req, res) => {
     const { data: existing } = await supabase
       .from('v2_daily_logs')
       .select('id')
+      .eq('builder_id', builderId)
       .eq('job_id', job_id)
       .eq('log_date', log_date)
       .is('deleted_at', null)
@@ -553,6 +570,7 @@ router.post('/', asyncHandler(async (req, res) => {
     const { data: newLog, error: createError } = await supabase
       .from('v2_daily_logs')
       .insert({
+        builder_id: builderId,
         job_id,
         log_date,
         construction_phase,
@@ -580,6 +598,7 @@ router.post('/', asyncHandler(async (req, res) => {
     // Add crew entries if provided
     if (crew && crew.length > 0) {
       const crewEntries = crew.map(c => ({
+        builder_id: builderId,
         daily_log_id: newLog.id,
         vendor_id: c.vendor_id || null,
         worker_count: c.worker_count || 1,
@@ -601,6 +620,7 @@ router.post('/', asyncHandler(async (req, res) => {
     // Add deliveries if provided
     if (deliveries && deliveries.length > 0) {
       const deliveryEntries = deliveries.map(d => ({
+        builder_id: builderId,
         daily_log_id: newLog.id,
         vendor_id: d.vendor_id || null,
         po_id: d.po_id || null,
@@ -617,6 +637,7 @@ router.post('/', asyncHandler(async (req, res) => {
     // Add inspections if provided
     if (inspections && inspections.length > 0) {
       const inspectionEntries = inspections.map(i => ({
+        builder_id: builderId,
         daily_log_id: newLog.id,
         inspection_type: i.inspection_type,
         result: i.result || 'scheduled',
@@ -634,7 +655,7 @@ router.post('/', asyncHandler(async (req, res) => {
       absent_count: absent_crews?.length || 0,
       dumpster_exchange: dumpster_exchange || false,
       inspection_count: inspections?.length || 0
-    });
+    }, builderId);
 
     // Return the complete log
     const { data: fullLog } = await supabase
@@ -654,6 +675,7 @@ router.post('/', asyncHandler(async (req, res) => {
           id, inspection_type, result, inspector, notes
         )
       `)
+      .eq('builder_id', builderId)
       .eq('id', newLog.id)
       .single();
 
@@ -662,6 +684,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // Update daily log
 router.patch('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const {
       weather_conditions,
@@ -688,6 +711,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -723,6 +747,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     const { error: updateError } = await supabase
       .from('v2_daily_logs')
       .update(updateData)
+      .eq('builder_id', builderId)
       .eq('id', id);
 
     if (updateError) throw updateError;
@@ -735,6 +760,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       // Add new crew entries
       if (crew.length > 0) {
         const crewEntries = crew.map(c => ({
+          builder_id: builderId,
           daily_log_id: id,
           vendor_id: c.vendor_id || null,
           worker_count: c.worker_count || 1,
@@ -762,6 +788,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       // Add new deliveries
       if (deliveries.length > 0) {
         const deliveryEntries = deliveries.map(d => ({
+          builder_id: builderId,
           daily_log_id: id,
           vendor_id: d.vendor_id || null,
           po_id: d.po_id || null,
@@ -784,6 +811,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       // Add new inspection entries
       if (inspections.length > 0) {
         const inspectionEntries = inspections.map(i => ({
+          builder_id: builderId,
           daily_log_id: id,
           inspection_type: i.inspection_type,
           result: i.result || 'scheduled',
@@ -798,7 +826,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     // Log activity
     await logDailyLogActivity(id, 'updated', updated_by || 'System', {
       fields_updated: Object.keys(updateData).filter(k => k !== 'updated_at')
-    });
+    }, builderId);
 
     // Return updated log
     const { data: fullLog } = await supabase
@@ -818,6 +846,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
           id, inspection_type, result, inspector, notes
         )
       `)
+      .eq('builder_id', builderId)
       .eq('id', id)
       .single();
 
@@ -830,6 +859,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
 // Mark daily log as completed
 router.post('/:id/complete', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { completed_by } = req.body;
 
@@ -837,6 +867,7 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -857,12 +888,13 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
+      .eq('builder_id', builderId)
       .eq('id', id);
 
     if (updateError) throw updateError;
 
     // Log activity
-    await logDailyLogActivity(id, 'completed', completed_by || 'System', {});
+    await logDailyLogActivity(id, 'completed', completed_by || 'System', {}, builderId);
 
     // Process intelligence feedback
     let intelligenceResult = null;
@@ -881,6 +913,7 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
         *,
         job:v2_jobs(id, name, address)
       `)
+      .eq('builder_id', builderId)
       .eq('id', id)
       .single();
 
@@ -892,6 +925,7 @@ router.post('/:id/complete', asyncHandler(async (req, res) => {
 
 // Reopen a completed daily log (set back to draft)
 router.post('/:id/reopen', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { reopened_by } = req.body;
 
@@ -899,6 +933,7 @@ router.post('/:id/reopen', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -919,12 +954,13 @@ router.post('/:id/reopen', asyncHandler(async (req, res) => {
         completed_at: null,
         updated_at: new Date().toISOString()
       })
+      .eq('builder_id', builderId)
       .eq('id', id);
 
     if (updateError) throw updateError;
 
     // Log activity
-    await logDailyLogActivity(id, 'reopened', reopened_by || 'System', {});
+    await logDailyLogActivity(id, 'reopened', reopened_by || 'System', {}, builderId);
 
     // Return updated log
     const { data: fullLog } = await supabase
@@ -933,6 +969,7 @@ router.post('/:id/reopen', asyncHandler(async (req, res) => {
         *,
         job:v2_jobs(id, name, address)
       `)
+      .eq('builder_id', builderId)
       .eq('id', id)
       .single();
 
@@ -945,6 +982,7 @@ router.post('/:id/reopen', asyncHandler(async (req, res) => {
 
 // Soft delete daily log
 router.delete('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { deleted_by } = req.body;
 
@@ -952,6 +990,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -964,12 +1003,13 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     const { error: deleteError } = await supabase
       .from('v2_daily_logs')
       .update({ deleted_at: new Date().toISOString() })
+      .eq('builder_id', builderId)
       .eq('id', id);
 
     if (deleteError) throw deleteError;
 
     // Log activity
-    await logDailyLogActivity(id, 'deleted', deleted_by || 'System', {});
+    await logDailyLogActivity(id, 'deleted', deleted_by || 'System', {}, builderId);
 
     res.json({ success: true, message: 'Daily log deleted' });
 }));
@@ -980,6 +1020,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Add crew entry to daily log
 router.post('/:id/crew', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { vendor_id, worker_count, hours_worked, trade, po_id, notes, added_by } = req.body;
 
@@ -987,6 +1028,7 @@ router.post('/:id/crew', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1003,6 +1045,7 @@ router.post('/:id/crew', asyncHandler(async (req, res) => {
     const { data: newCrew, error: createError } = await supabase
       .from('v2_daily_log_crew')
       .insert({
+        builder_id: builderId,
         daily_log_id: id,
         vendor_id: vendor_id || null,
         worker_count: worker_count || 1,
@@ -1023,13 +1066,14 @@ router.post('/:id/crew', asyncHandler(async (req, res) => {
     await logDailyLogActivity(id, 'crew_added', added_by || 'System', {
       crew_id: newCrew.id,
       vendor_id
-    });
+    }, builderId);
 
     res.status(201).json(newCrew);
 }));
 
 // Delete crew entry
 router.delete('/:id/crew/:crewId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id, crewId } = req.params;
     const { deleted_by } = req.body;
 
@@ -1037,6 +1081,7 @@ router.delete('/:id/crew/:crewId', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1061,7 +1106,7 @@ router.delete('/:id/crew/:crewId', asyncHandler(async (req, res) => {
     // Log activity
     await logDailyLogActivity(id, 'crew_removed', deleted_by || 'System', {
       crew_id: crewId
-    });
+    }, builderId);
 
     res.json({ success: true });
 }));
@@ -1072,6 +1117,7 @@ router.delete('/:id/crew/:crewId', asyncHandler(async (req, res) => {
 
 // Add delivery to daily log
 router.post('/:id/deliveries', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { vendor_id, po_id, description, quantity, unit, received_by, notes, added_by } = req.body;
 
@@ -1083,6 +1129,7 @@ router.post('/:id/deliveries', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1099,6 +1146,7 @@ router.post('/:id/deliveries', asyncHandler(async (req, res) => {
     const { data: newDelivery, error: createError } = await supabase
       .from('v2_daily_log_deliveries')
       .insert({
+        builder_id: builderId,
         daily_log_id: id,
         vendor_id: vendor_id || null,
         po_id: po_id || null,
@@ -1120,13 +1168,14 @@ router.post('/:id/deliveries', asyncHandler(async (req, res) => {
     await logDailyLogActivity(id, 'delivery_added', added_by || 'System', {
       delivery_id: newDelivery.id,
       description
-    });
+    }, builderId);
 
     res.status(201).json(newDelivery);
 }));
 
 // Delete delivery
 router.delete('/:id/deliveries/:deliveryId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id, deliveryId } = req.params;
     const { deleted_by } = req.body;
 
@@ -1134,6 +1183,7 @@ router.delete('/:id/deliveries/:deliveryId', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1158,7 +1208,7 @@ router.delete('/:id/deliveries/:deliveryId', asyncHandler(async (req, res) => {
     // Log activity
     await logDailyLogActivity(id, 'delivery_removed', deleted_by || 'System', {
       delivery_id: deliveryId
-    });
+    }, builderId);
 
     res.json({ success: true });
 }));
@@ -1169,6 +1219,7 @@ router.delete('/:id/deliveries/:deliveryId', asyncHandler(async (req, res) => {
 
 // Upload photo to daily log
 router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { caption, category, uploaded_by } = req.body;
 
@@ -1180,6 +1231,7 @@ router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req,
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status, job_id')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1218,6 +1270,7 @@ router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req,
     const { data: attachment, error: dbError } = await supabase
       .from('v2_daily_log_attachments')
       .insert({
+        builder_id: builderId,
         daily_log_id: id,
         file_url: urlData.publicUrl,
         file_name: req.file.originalname,
@@ -1236,18 +1289,20 @@ router.post('/:id/photos', photoUpload.single('photo'), asyncHandler(async (req,
       attachment_id: attachment.id,
       file_name: req.file.originalname,
       category
-    });
+    }, builderId);
 
     res.status(201).json(attachment);
 }));
 
 // Get all photos for a daily log
 router.get('/:id/photos', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data: photos, error } = await supabase
       .from('v2_daily_log_attachments')
       .select('*')
+      .eq('builder_id', builderId)
       .eq('daily_log_id', id)
       .order('uploaded_at', { ascending: false });
 
@@ -1258,6 +1313,7 @@ router.get('/:id/photos', asyncHandler(async (req, res) => {
 
 // Update photo caption/category
 router.patch('/:id/photos/:photoId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id, photoId } = req.params;
     const { caption, category } = req.body;
 
@@ -1265,6 +1321,7 @@ router.patch('/:id/photos/:photoId', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1296,6 +1353,7 @@ router.patch('/:id/photos/:photoId', asyncHandler(async (req, res) => {
 
 // Delete photo from daily log
 router.delete('/:id/photos/:photoId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id, photoId } = req.params;
     const { deleted_by } = req.body;
 
@@ -1303,6 +1361,7 @@ router.delete('/:id/photos/:photoId', asyncHandler(async (req, res) => {
     const { data: existingLog, error: checkError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1351,7 +1410,7 @@ router.delete('/:id/photos/:photoId', asyncHandler(async (req, res) => {
     await logDailyLogActivity(id, 'photo_deleted', deleted_by || 'System', {
       attachment_id: photoId,
       file_name: photo.file_name
-    });
+    }, builderId);
 
     res.json({ success: true });
 }));
@@ -1365,6 +1424,7 @@ const weatherService = require('../services/weather');
 
 // Fetch and save weather for a daily log
 router.post('/:id/weather', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { lat, lng, address } = req.body;
 
@@ -1375,6 +1435,7 @@ router.post('/:id/weather', asyncHandler(async (req, res) => {
         id, job_id, log_date, status,
         job:v2_jobs(id, name, address)
       `)
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1425,6 +1486,7 @@ router.post('/:id/weather', asyncHandler(async (req, res) => {
         temperature_low: weatherData.temp_low,
         updated_at: new Date().toISOString()
       })
+      .eq('builder_id', builderId)
       .eq('id', id);
 
     if (updateError) throw updateError;
@@ -1434,7 +1496,7 @@ router.post('/:id/weather', asyncHandler(async (req, res) => {
       source: weatherData.source,
       conditions: weatherData.conditions,
       temp: weatherData.temp_current
-    });
+    }, builderId);
 
     res.json({
       daily_log_id: id,
@@ -1473,6 +1535,7 @@ function mapWeatherToCondition(apiCondition) {
 
 // Save GPS location for a daily log
 router.patch('/:id/location', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { lat, lng, accuracy, updated_by } = req.body;
 
@@ -1489,6 +1552,7 @@ router.patch('/:id/location', asyncHandler(async (req, res) => {
     const { data: log, error: logError } = await supabase
       .from('v2_daily_logs')
       .select('id, status')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1512,6 +1576,7 @@ router.patch('/:id/location', asyncHandler(async (req, res) => {
         gps_location: gpsLocation,
         updated_at: new Date().toISOString()
       })
+      .eq('builder_id', builderId)
       .eq('id', id);
 
     if (updateError) throw updateError;
@@ -1521,7 +1586,7 @@ router.patch('/:id/location', asyncHandler(async (req, res) => {
       lat,
       lng,
       accuracy
-    });
+    }, builderId);
 
     res.json({
       daily_log_id: id,
@@ -1554,6 +1619,7 @@ const VOICE_PREFIX = 'daily-log-voice';
 
 // Upload voice note
 router.post('/:id/voice-note', voiceUpload.single('audio'), asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { uploaded_by, auto_transcribe } = req.body;
 
@@ -1565,6 +1631,7 @@ router.post('/:id/voice-note', voiceUpload.single('audio'), asyncHandler(async (
     const { data: log, error: logError } = await supabase
       .from('v2_daily_logs')
       .select('id, status, job_id')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1606,6 +1673,7 @@ router.post('/:id/voice-note', voiceUpload.single('audio'), asyncHandler(async (
         voice_notes_url: urlData.publicUrl,
         updated_at: new Date().toISOString()
       })
+      .eq('builder_id', builderId)
       .eq('id', id);
 
     if (updateError) throw updateError;
@@ -1614,7 +1682,7 @@ router.post('/:id/voice-note', voiceUpload.single('audio'), asyncHandler(async (
     await logDailyLogActivity(id, 'voice_note_uploaded', uploaded_by || 'System', {
       file_name: req.file.originalname,
       file_size: req.file.size
-    });
+    }, builderId);
 
     res.status(201).json({
       daily_log_id: id,
@@ -1625,6 +1693,7 @@ router.post('/:id/voice-note', voiceUpload.single('audio'), asyncHandler(async (
 
 // Transcribe voice note (placeholder - requires speech-to-text service)
 router.post('/:id/transcribe', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { transcribed_by, manual_text } = req.body;
 
@@ -1632,6 +1701,7 @@ router.post('/:id/transcribe', asyncHandler(async (req, res) => {
     const { data: log, error: logError } = await supabase
       .from('v2_daily_logs')
       .select('id, status, voice_notes_url, transcribed_notes')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();
@@ -1648,6 +1718,7 @@ router.post('/:id/transcribe', asyncHandler(async (req, res) => {
           transcribed_notes: manual_text,
           updated_at: new Date().toISOString()
         })
+        .eq('builder_id', builderId)
         .eq('id', id);
 
       if (updateError) throw updateError;
@@ -1655,7 +1726,7 @@ router.post('/:id/transcribe', asyncHandler(async (req, res) => {
       await logDailyLogActivity(id, 'notes_transcribed', transcribed_by || 'User', {
         method: 'manual',
         length: manual_text.length
-      });
+      }, builderId);
 
       return res.json({
         daily_log_id: id,
@@ -1694,11 +1765,13 @@ router.post('/:id/transcribe', asyncHandler(async (req, res) => {
 
 // Get transcription status
 router.get('/:id/transcription', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data: log, error: logError } = await supabase
       .from('v2_daily_logs')
       .select('id, voice_notes_url, transcribed_notes')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .is('deleted_at', null)
       .single();

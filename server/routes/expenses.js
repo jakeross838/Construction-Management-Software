@@ -7,15 +7,18 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // GET EXPENSE CATEGORIES
 // ============================================================
 
 router.get('/categories', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_expense_categories')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('sort_order');
 
@@ -28,6 +31,7 @@ router.get('/categories', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/stats/summary', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { period_id, start_date, end_date } = req.query;
 
   let query = supabase
@@ -36,6 +40,7 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
       amount,
       category:v2_expense_categories(overhead_type)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (period_id) query = query.eq('period_id', period_id);
@@ -66,6 +71,7 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { period_id, category_id, vendor_id, overhead_type, start_date, end_date } = req.query;
 
   let query = supabase
@@ -76,6 +82,7 @@ router.get('/', asyncHandler(async (req, res) => {
       vendor:v2_vendors(id, name),
       period:v2_financial_periods(id, name, status)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('expense_date', { ascending: false });
 
@@ -102,6 +109,7 @@ router.get('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_expenses')
     .select(`
@@ -112,6 +120,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       activity:v2_expense_activity(*)
     `)
     .eq('id', req.params.id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) {
@@ -129,6 +138,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     amount, description, expense_date, category_id, vendor_id,
     period_id, job_id, receipt_url, notes, created_by
@@ -149,6 +159,7 @@ router.post('/', asyncHandler(async (req, res) => {
       .from('v2_financial_periods')
       .select('is_locked, name')
       .eq('id', period_id)
+      .eq('builder_id', builderId)
       .single();
 
     if (period?.is_locked) {
@@ -159,6 +170,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_expenses')
     .insert({
+      builder_id: builderId,
       amount,
       description,
       expense_date,
@@ -182,6 +194,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   // Log activity
   await supabase.from('v2_expense_activity').insert({
+    builder_id: builderId,
     expense_id: data.id,
     action: 'created',
     performed_by: created_by || 'system',
@@ -196,6 +209,7 @@ router.post('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     amount, description, expense_date, category_id, vendor_id,
@@ -207,6 +221,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_expenses')
     .select('period_id, period:v2_financial_periods(is_locked, name)')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (!existing) {
@@ -232,6 +247,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_expenses')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       category:v2_expense_categories(id, name, overhead_type),
@@ -243,6 +259,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   await supabase.from('v2_expense_activity').insert({
+    builder_id: builderId,
     expense_id: id,
     action: 'updated',
     performed_by: updated_by || 'system',
@@ -257,6 +274,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { deleted_by } = req.body;
 
@@ -265,6 +283,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     .from('v2_expenses')
     .select('period:v2_financial_periods(is_locked, name)')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (existing?.period?.is_locked) {
@@ -275,11 +294,13 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('v2_expenses')
     .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   await supabase.from('v2_expense_activity').insert({
+    builder_id: builderId,
     expense_id: id,
     action: 'deleted',
     performed_by: deleted_by || 'system',
@@ -295,6 +316,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // List recurring expenses
 router.get('/recurring/list', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_recurring_expenses')
     .select(`
@@ -302,6 +324,7 @@ router.get('/recurring/list', asyncHandler(async (req, res) => {
       category:v2_expense_categories(id, name, overhead_type),
       vendor:v2_vendors(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -311,6 +334,7 @@ router.get('/recurring/list', asyncHandler(async (req, res) => {
 
 // Create recurring expense
 router.post('/recurring', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     amount, description, category_id, vendor_id,
     frequency, day_of_month, created_by
@@ -330,6 +354,7 @@ router.post('/recurring', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_recurring_expenses')
     .insert({
+      builder_id: builderId,
       amount,
       description,
       category_id,
@@ -352,6 +377,7 @@ router.post('/recurring', asyncHandler(async (req, res) => {
 
 // Update recurring expense
 router.patch('/recurring/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     amount, description, category_id, vendor_id,
@@ -371,6 +397,7 @@ router.patch('/recurring/:id', asyncHandler(async (req, res) => {
     .from('v2_recurring_expenses')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       category:v2_expense_categories(id, name, overhead_type),
@@ -384,12 +411,14 @@ router.patch('/recurring/:id', asyncHandler(async (req, res) => {
 
 // Delete recurring expense
 router.delete('/recurring/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { error } = await supabase
     .from('v2_recurring_expenses')
     .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true });
@@ -397,8 +426,9 @@ router.delete('/recurring/:id', asyncHandler(async (req, res) => {
 
 // Process recurring expenses (create due expenses)
 router.post('/recurring/process', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   // Call the database function to process recurring expenses
-  const { data, error } = await supabase.rpc('process_recurring_expenses');
+  const { data, error } = await supabase.rpc('process_recurring_expenses', { p_builder_id: builderId });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ created_count: data });
@@ -410,6 +440,7 @@ router.post('/recurring/process', asyncHandler(async (req, res) => {
 
 // Add receipt to expense
 router.post('/:id/receipts', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { file_name, file_url, file_type, file_size, uploaded_by } = req.body;
 
@@ -420,6 +451,7 @@ router.post('/:id/receipts', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_expense_receipts')
     .insert({
+      builder_id: builderId,
       expense_id: id,
       file_name: file_name || 'receipt',
       file_url,
@@ -436,19 +468,22 @@ router.post('/:id/receipts', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_expenses')
     .update({ receipt_url: file_url })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   res.json(data);
 }));
 
 // List receipts for expense
 router.get('/:id/receipts', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_expense_receipts')
     .select('*')
     .eq('expense_id', id)
+    .eq('builder_id', builderId)
     .order('uploaded_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -457,12 +492,14 @@ router.get('/:id/receipts', asyncHandler(async (req, res) => {
 
 // Delete receipt
 router.delete('/receipts/:receiptId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { receiptId } = req.params;
 
   const { error } = await supabase
     .from('v2_expense_receipts')
     .delete()
-    .eq('id', receiptId);
+    .eq('id', receiptId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true });

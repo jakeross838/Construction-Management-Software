@@ -7,17 +7,20 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // LIST PERIODS
 // ============================================================
 
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { status, year } = req.query;
 
   let query = supabase
     .from('v2_financial_periods')
     .select('*')
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('start_date', { ascending: false });
 
@@ -39,6 +42,7 @@ router.get('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_financial_periods')
     .select(`
@@ -46,6 +50,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       activity:v2_financial_period_activity(*)
     `)
     .eq('id', req.params.id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) {
@@ -63,6 +68,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { name, period_type, start_date, end_date, created_by } = req.body;
 
   if (!name || !start_date || !end_date) {
@@ -77,6 +83,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const { data: existing } = await supabase
     .from('v2_financial_periods')
     .select('id, name')
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .or(`and(start_date.lte.${end_date},end_date.gte.${start_date})`);
 
@@ -88,6 +95,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_financial_periods')
     .insert({
+      builder_id: builderId,
       name,
       period_type: period_type || 'monthly',
       start_date,
@@ -101,6 +109,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   // Log activity
   await supabase.from('v2_financial_period_activity').insert({
+    builder_id: builderId,
     period_id: data.id,
     action: 'created',
     performed_by: created_by || 'system',
@@ -115,6 +124,7 @@ router.post('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { name, updated_by } = req.body;
 
@@ -123,6 +133,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_financial_periods')
     .select('is_locked, status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (!existing) {
@@ -140,12 +151,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_financial_periods')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   await supabase.from('v2_financial_period_activity').insert({
+    builder_id: builderId,
     period_id: id,
     action: 'updated',
     performed_by: updated_by || 'system',
@@ -160,6 +173,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/:id/close', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { closed_by } = req.body;
 
@@ -167,6 +181,7 @@ router.patch('/:id/close', asyncHandler(async (req, res) => {
     .from('v2_financial_periods')
     .select('status, is_locked')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (!existing) {
@@ -182,6 +197,7 @@ router.patch('/:id/close', asyncHandler(async (req, res) => {
     .from('v2_expenses')
     .select('amount')
     .eq('period_id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   const total_expenses = expenses?.reduce((sum, e) => sum + parseFloat(e.amount), 0) || 0;
@@ -200,12 +216,14 @@ router.patch('/:id/close', asyncHandler(async (req, res) => {
       locked_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   await supabase.from('v2_financial_period_activity').insert({
+    builder_id: builderId,
     period_id: id,
     action: 'closed',
     performed_by: closed_by || 'system',
@@ -220,6 +238,7 @@ router.patch('/:id/close', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/:id/reopen', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { reopened_by } = req.body;
 
@@ -227,6 +246,7 @@ router.patch('/:id/reopen', asyncHandler(async (req, res) => {
     .from('v2_financial_periods')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (!existing) {
@@ -248,12 +268,14 @@ router.patch('/:id/reopen', asyncHandler(async (req, res) => {
       locked_at: null
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   await supabase.from('v2_financial_period_activity').insert({
+    builder_id: builderId,
     period_id: id,
     action: 'reopened',
     performed_by: reopened_by || 'system',
@@ -268,6 +290,7 @@ router.patch('/:id/reopen', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Check for linked expenses
@@ -275,6 +298,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     .from('v2_expenses')
     .select('id', { count: 'exact', head: true })
     .eq('period_id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (count > 0) {
@@ -285,7 +309,8 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('v2_financial_periods')
     .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 

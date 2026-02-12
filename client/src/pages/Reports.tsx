@@ -97,10 +97,7 @@ const Reports = () => {
     const jobInfo = selectedJob ? selectedJob.name : 'All Jobs';
     
     try {
-      // Small delay to show loading state
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      generateReport(selectedReport.id, selectedReport.name, format, selectedJobId);
+      await generateReport(selectedReport.id, selectedReport.name, format, selectedJobId);
       
       toast.success(`${selectedReport.name} downloaded!`, {
         description: `${format.toUpperCase()} report for ${jobInfo}`,

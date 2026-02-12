@@ -8,6 +8,7 @@ const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
 const priceMatcher = require('../matching/price-matcher');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // WASTE FACTORS
@@ -19,10 +20,12 @@ const priceMatcher = require('../matching/price-matcher');
  */
 router.get('/waste-factors', asyncHandler(async (req, res) => {
   const { category } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_waste_factors')
     .select('*')
+    .eq('builder_id', builderId)
     .order('category')
     .order('subcategory');
 
@@ -41,6 +44,7 @@ router.get('/waste-factors', asyncHandler(async (req, res) => {
  * Update or create a waste factor
  */
 router.post('/waste-factors', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category, subcategory, default_waste_percent, min_waste_percent, max_waste_percent, notes } = req.body;
 
   if (!category || default_waste_percent === undefined) {
@@ -56,7 +60,8 @@ router.post('/waste-factors', asyncHandler(async (req, res) => {
       min_waste_percent,
       max_waste_percent,
       notes,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      builder_id: builderId
     }, {
       onConflict: 'category,subcategory'
     })
@@ -86,6 +91,7 @@ router.post('/waste-factors', asyncHandler(async (req, res) => {
  * }
  */
 router.post('/optimize', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     items,
     job_id,
@@ -102,7 +108,8 @@ router.post('/optimize', asyncHandler(async (req, res) => {
   // Get vendor delivery info
   const { data: vendors } = await supabase
     .from('v2_vendors')
-    .select('id, name, delivery_fee, free_delivery_minimum, typical_lead_days, min_order_amount');
+    .select('id, name, delivery_fee, free_delivery_minimum, typical_lead_days, min_order_amount')
+    .eq('builder_id', builderId);
 
   const vendorMap = new Map(vendors.map(v => [v.id, v]));
 
@@ -369,10 +376,12 @@ router.post('/parse-list', asyncHandler(async (req, res) => {
  */
 router.get('/orders', asyncHandler(async (req, res) => {
   const { job_id, status } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_optimized_orders')
     .select('*, job:v2_jobs(name)')
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (job_id) {
@@ -395,11 +404,13 @@ router.get('/orders', asyncHandler(async (req, res) => {
  */
 router.get('/orders/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: order, error } = await supabase
     .from('v2_optimized_orders')
     .select('*, job:v2_jobs(name)')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) throw new AppError('Order not found', 404);
@@ -420,6 +431,7 @@ router.get('/orders/:id', asyncHandler(async (req, res) => {
  * Save an optimized order
  */
 router.post('/orders', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     name,
@@ -453,7 +465,8 @@ router.post('/orders', asyncHandler(async (req, res) => {
       include_waste,
       max_lead_days,
       budget_limit,
-      notes
+      notes,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -476,7 +489,8 @@ router.post('/orders', asyncHandler(async (req, res) => {
     quantity_with_waste: item.quantity_with_waste,
     extended_price: item.extended_price,
     baseline_price: item.baseline_price,
-    savings: item.savings
+    savings: item.savings,
+    builder_id: builderId
   }));
 
   const { error: lineError } = await supabase
@@ -494,6 +508,7 @@ router.post('/orders', asyncHandler(async (req, res) => {
  */
 router.patch('/orders/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const { status, notes } = req.body;
 
   const updates = { updated_at: new Date().toISOString() };
@@ -504,6 +519,7 @@ router.patch('/orders/:id', asyncHandler(async (req, res) => {
     .from('v2_optimized_orders')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -518,12 +534,14 @@ router.patch('/orders/:id', asyncHandler(async (req, res) => {
  */
 router.post('/orders/:id/create-pos', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   // Get the optimized order
   const { data: order } = await supabase
     .from('v2_optimized_orders')
     .select('*, job:v2_jobs(*)')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (!order) throw new AppError('Order not found', 404);
@@ -555,7 +573,8 @@ router.post('/orders/:id/create-pos', asyncHandler(async (req, res) => {
     const { count } = await supabase
       .from('v2_purchase_orders')
       .select('*', { count: 'exact', head: true })
-      .eq('job_id', order.job_id);
+      .eq('job_id', order.job_id)
+      .eq('builder_id', builderId);
 
     const poNumber = `PO-${jobIdentifier}-${String((count || 0) + 1).padStart(4, '0')}`;
 
@@ -572,7 +591,8 @@ router.post('/orders/:id/create-pos', asyncHandler(async (req, res) => {
         status: 'open',
         status_detail: 'pending',
         approval_status: 'pending',
-        notes: `Created from optimized order ${order.id}`
+        notes: `Created from optimized order ${order.id}`,
+        builder_id: builderId
       })
       .select()
       .single();
@@ -586,7 +606,8 @@ router.post('/orders/:id/create-pos', asyncHandler(async (req, res) => {
     const poLineItems = items.map(item => ({
       po_id: po.id,
       description: item.input_description,
-      amount: item.extended_price || 0
+      amount: item.extended_price || 0,
+      builder_id: builderId
     }));
 
     await supabase.from('v2_po_line_items').insert(poLineItems);
@@ -598,7 +619,8 @@ router.post('/orders/:id/create-pos', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_optimized_orders')
     .update({ status: 'ordered', updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   res.json({
     message: `Created ${createdPOs.length} purchase orders`,
@@ -612,17 +634,20 @@ router.post('/orders/:id/create-pos', asyncHandler(async (req, res) => {
  */
 router.delete('/orders/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   // Delete line items first (cascade should handle this but be explicit)
   await supabase
     .from('v2_order_line_items')
     .delete()
-    .eq('optimized_order_id', id);
+    .eq('optimized_order_id', id)
+    .eq('builder_id', builderId);
 
   const { error } = await supabase
     .from('v2_optimized_orders')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError(error.message, 500);
 

@@ -7,17 +7,19 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // ACTIVITY LOGGING HELPER
 // ============================================================
 
-async function logEstimateActivity(estimateId, action, performedBy, details = {}) {
+async function logEstimateActivity(estimateId, action, performedBy, details = {}, builderId) {
   await supabase.from('v2_estimate_activity').insert({
     estimate_id: estimateId,
     action,
     performed_by: performedBy,
-    details
+    details,
+    builder_id: builderId
   });
 }
 
@@ -25,12 +27,13 @@ async function logEstimateActivity(estimateId, action, performedBy, details = {}
 // CALCULATE & UPDATE ESTIMATE TOTAL
 // ============================================================
 
-async function updateEstimateTotal(estimateId) {
+async function updateEstimateTotal(estimateId, builderId) {
   // Sum all line item amounts
   const { data: lines, error } = await supabase
     .from('v2_estimate_lines')
     .select('amount')
-    .eq('estimate_id', estimateId);
+    .eq('estimate_id', estimateId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -39,7 +42,8 @@ async function updateEstimateTotal(estimateId) {
   await supabase
     .from('v2_estimates')
     .update({ total_amount: total, updated_at: new Date().toISOString() })
-    .eq('id', estimateId);
+    .eq('id', estimateId)
+    .eq('builder_id', builderId);
 
   return total;
 }
@@ -49,11 +53,13 @@ async function updateEstimateTotal(estimateId) {
 // ============================================================
 
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   let query = supabase
     .from('v2_estimates')
     .select('id, status, total_amount')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) {
@@ -91,6 +97,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/historical-pricing/:costCodeId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { costCodeId } = req.params;
   const { job_id } = req.query;
 
@@ -108,6 +115,7 @@ router.get('/historical-pricing/:costCodeId', asyncHandler(async (req, res) => {
       )
     `)
     .eq('cost_code_id', costCodeId)
+    .eq('builder_id', builderId)
     .order('created_at', { foreignTable: 'v2_purchase_orders', ascending: false })
     .limit(10);
 
@@ -132,6 +140,7 @@ router.get('/historical-pricing/:costCodeId', asyncHandler(async (req, res) => {
       )
     `)
     .eq('cost_code_id', costCodeId)
+    .eq('builder_id', builderId)
     .in('estimate.status', ['approved', 'converted'])
     .order('created_at', { foreignTable: 'v2_estimates', ascending: false })
     .limit(10);
@@ -178,6 +187,7 @@ router.get('/historical-pricing/:costCodeId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   // Return predefined estimate templates based on common construction phases
   // These templates group typical cost codes together for quick estimate creation
 
@@ -315,7 +325,8 @@ router.get('/templates', asyncHandler(async (req, res) => {
   // Enrich templates with actual cost code IDs from database
   const { data: costCodes } = await supabase
     .from('v2_cost_codes')
-    .select('id, code, name, category');
+    .select('id, code, name, category')
+    .eq('builder_id', builderId);
 
   const codeMap = {};
   (costCodes || []).forEach(cc => {
@@ -343,6 +354,7 @@ router.get('/templates', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/analyze-scope', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scope_text, job_id } = req.body;
 
   if (!scope_text || scope_text.trim().length < 10) {
@@ -353,6 +365,7 @@ router.post('/analyze-scope', asyncHandler(async (req, res) => {
   const { data: costCodes } = await supabase
     .from('v2_cost_codes')
     .select('id, code, name, category')
+    .eq('builder_id', builderId)
     .order('code');
 
   // Build cost code reference for AI
@@ -444,6 +457,7 @@ Return ONLY valid JSON in this format:
 // ============================================================
 
 router.post('/:id/expand-assembly', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { template_id, section_id, quantity_multiplier = 1 } = req.body;
 
@@ -474,6 +488,7 @@ router.post('/:id/expand-assembly', asyncHandler(async (req, res) => {
       *,
       cost_code:v2_cost_codes(id, code, name, category)
     `)
+    .eq('builder_id', builderId)
     .or(`id.eq.${headerLineId},parent_line_id.eq.${headerLineId}`)
     .order('sort_order');
 
@@ -482,6 +497,7 @@ router.post('/:id/expand-assembly', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('subtotal, total_amount, overhead_amount, profit_amount, contingency_amount')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   res.status(201).json({
@@ -496,6 +512,7 @@ router.post('/:id/expand-assembly', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/duplicate', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { target_job_id, new_title, created_by } = req.body;
 
@@ -504,6 +521,7 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('*')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -515,12 +533,14 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
     .from('v2_estimate_sections')
     .select('*')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order');
 
   const { data: sourceLines } = await supabase
     .from('v2_estimate_lines')
     .select('*')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order');
 
   // Determine target job
@@ -536,6 +556,7 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
         .from('v2_estimates')
         .select('title')
         .eq('job_id', jobId)
+        .eq('builder_id', builderId)
         .ilike('title', `${source.title}%`)
         .order('created_at', { ascending: false });
 
@@ -561,7 +582,8 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
       contingency_percent: source.contingency_percent,
       markup_percent: source.markup_percent,
       created_by: created_by || 'User',
-      version: 1
+      version: 1,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -582,7 +604,8 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
           estimate_id: newEstimate.id,
           name: section.name,
           description: section.description,
-          sort_order: section.sort_order
+          sort_order: section.sort_order,
+          builder_id: builderId
         })
         .select()
         .single();
@@ -617,7 +640,8 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
           is_allowance: line.is_allowance,
           allowance_notes: line.allowance_notes,
           source: line.source,
-          sort_order: line.sort_order
+          sort_order: line.sort_order,
+          builder_id: builderId
         })
         .select()
         .single();
@@ -646,7 +670,8 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
           is_allowance: line.is_allowance,
           allowance_notes: line.allowance_notes,
           source: line.source,
-          sort_order: line.sort_order
+          sort_order: line.sort_order,
+          builder_id: builderId
         });
     }
   }
@@ -659,6 +684,7 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name)
     `)
     .eq('id', newEstimate.id)
+    .eq('builder_id', builderId)
     .single();
 
   await logEstimateActivity(newEstimate.id, 'created', created_by || 'User', {
@@ -666,7 +692,7 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
     original_title: source.title,
     sections_copied: Object.keys(sectionIdMap).length,
     lines_copied: sourceLines?.length || 0
-  });
+  }, builderId);
 
   res.status(201).json({
     estimate: finalEstimate,
@@ -680,6 +706,7 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/import-from-bid/:bidId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { bidId } = req.params;
   const { created_by, split_by_cost_code } = req.body;
 
@@ -692,6 +719,7 @@ router.post('/import-from-bid/:bidId', asyncHandler(async (req, res) => {
       vendor:v2_vendors(id, name)
     `)
     .eq('id', bidId)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -711,7 +739,8 @@ router.post('/import-from-bid/:bidId', asyncHandler(async (req, res) => {
       total_amount: bid.bid_amount || 0,
       notes: `Imported from bid: ${bid.title}\nVendor: ${bid.vendor?.name || 'N/A'}`,
       source_bid_id: bidId,
-      created_by: created_by || 'System'
+      created_by: created_by || 'System',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -726,14 +755,15 @@ router.post('/import-from-bid/:bidId', asyncHandler(async (req, res) => {
     unit: 'LS',
     unit_cost: bid.bid_amount || 0,
     amount: bid.bid_amount || 0,
-    sort_order: 1
+    sort_order: 1,
+    builder_id: builderId
   });
 
   await logEstimateActivity(estimate.id, 'imported_from_bid', created_by || 'System', {
     bid_id: bidId,
     bid_title: bid.title,
     bid_amount: bid.bid_amount
-  });
+  }, builderId);
 
   res.status(201).json({
     success: true,
@@ -747,6 +777,7 @@ router.post('/import-from-bid/:bidId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, status, search } = req.query;
 
   let query = supabase
@@ -756,6 +787,7 @@ router.get('/', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       source_bid:v2_bids(id, title, vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name))
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -776,6 +808,7 @@ router.get('/', asyncHandler(async (req, res) => {
     const { data: lines } = await supabase
       .from('v2_estimate_lines')
       .select('estimate_id')
+      .eq('builder_id', builderId)
       .in('estimate_id', estimateIds);
 
     for (const line of (lines || [])) {
@@ -796,6 +829,7 @@ router.get('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/job/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
 
   // Get the most recent estimate for this job
@@ -807,6 +841,7 @@ router.get('/job/:jobId', asyncHandler(async (req, res) => {
       source_bid:v2_bids(id, title, bid_amount, vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name))
     `)
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -823,6 +858,7 @@ router.get('/job/:jobId', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name, category)
     `)
     .eq('estimate_id', estimate.id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   // Get sections
@@ -830,6 +866,7 @@ router.get('/job/:jobId', asyncHandler(async (req, res) => {
     .from('v2_estimate_sections')
     .select('*')
     .eq('estimate_id', estimate.id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   res.json({
@@ -844,6 +881,7 @@ router.get('/job/:jobId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: estimate, error } = await supabase
@@ -854,6 +892,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       source_bid:v2_bids(id, title, bid_amount, vendor:v2_vendors!v2_bids_vendor_id_fkey(id, name))
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -877,6 +916,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       )
     `)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true })
     .order('sort_order', { ascending: true, foreignTable: 'v2_estimate_groups' })
     .order('sort_order', { ascending: true, foreignTable: 'v2_estimate_groups.v2_estimate_subgroups' })
@@ -890,6 +930,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name, category)
     `)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   // Get sections (legacy for backward compatibility)
@@ -897,6 +938,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .from('v2_estimate_sections')
     .select('*')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   // Get activity
@@ -904,6 +946,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .from('v2_estimate_activity')
     .select('*')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   // Get version history (parent chain)
@@ -913,6 +956,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     const { data: versionData } = await supabase
       .from('v2_estimates')
       .select('id, title, version, status, total_amount, created_at')
+      .eq('builder_id', builderId)
       .or(`id.eq.${estimate.parent_estimate_id},parent_estimate_id.eq.${estimate.parent_estimate_id}`)
       .is('deleted_at', null)
       .order('version', { ascending: true });
@@ -924,6 +968,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .from('v2_budget_lines')
     .select('id')
     .eq('source_estimate_id', id)
+    .eq('builder_id', builderId)
     .limit(1);
 
   estimate.phases = phases || [];
@@ -941,6 +986,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     title,
@@ -959,7 +1005,8 @@ router.post('/', asyncHandler(async (req, res) => {
       notes: notes || null,
       status: 'draft',
       total_amount: 0,
-      created_by: created_by || 'System'
+      created_by: created_by || 'System',
+      builder_id: builderId
     })
     .select(`
       *,
@@ -969,7 +1016,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logEstimateActivity(estimate.id, 'created', created_by || 'System', { title });
+  await logEstimateActivity(estimate.id, 'created', created_by || 'System', { title }, builderId);
 
   res.status(201).json(estimate);
 }));
@@ -979,6 +1026,7 @@ router.post('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { title, notes, updated_by } = req.body;
 
@@ -987,6 +1035,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1004,6 +1053,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name)
@@ -1012,7 +1062,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logEstimateActivity(id, 'updated', updated_by || 'System', { updates });
+  await logEstimateActivity(id, 'updated', updated_by || 'System', { updates }, builderId);
 
   res.json(estimate);
 }));
@@ -1022,6 +1072,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { deleted_by } = req.body;
 
@@ -1029,6 +1080,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select()
     .single();
@@ -1036,7 +1088,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   if (!estimate) throw new AppError('NOT_FOUND', 'Estimate not found');
 
-  await logEstimateActivity(id, 'deleted', deleted_by || 'System', {});
+  await logEstimateActivity(id, 'deleted', deleted_by || 'System', {}, builderId);
 
   res.json({ success: true, message: 'Estimate deleted' });
 }));
@@ -1048,6 +1100,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Create section
 router.post('/:id/sections', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { name, sort_order, created_by } = req.body;
 
@@ -1060,6 +1113,7 @@ router.post('/:id/sections', asyncHandler(async (req, res) => {
       .from('v2_estimate_sections')
       .select('sort_order')
       .eq('estimate_id', id)
+      .eq('builder_id', builderId)
       .order('sort_order', { ascending: false })
       .limit(1)
       .single();
@@ -1071,20 +1125,22 @@ router.post('/:id/sections', asyncHandler(async (req, res) => {
     .insert({
       estimate_id: id,
       name,
-      sort_order: finalSortOrder
+      sort_order: finalSortOrder,
+      builder_id: builderId
     })
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logEstimateActivity(id, 'section_created', created_by || 'System', { section_name: name });
+  await logEstimateActivity(id, 'section_created', created_by || 'System', { section_name: name }, builderId);
 
   res.status(201).json(section);
 }));
 
 // Update section
 router.patch('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, sectionId } = req.params;
   const { name, sort_order, updated_by } = req.body;
 
@@ -1097,19 +1153,21 @@ router.patch('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', sectionId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   if (!section) throw new AppError('NOT_FOUND', 'Section not found');
 
-  await logEstimateActivity(id, 'section_updated', updated_by || 'System', { section_id: sectionId, changes: updates });
+  await logEstimateActivity(id, 'section_updated', updated_by || 'System', { section_id: sectionId, changes: updates }, builderId);
 
   res.json(section);
 }));
 
 // Delete section (preserves line items by setting their section_id to null)
 router.delete('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, sectionId } = req.params;
   const { deleted_by } = req.body;
 
@@ -1119,6 +1177,7 @@ router.delete('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
     .select('name')
     .eq('id', sectionId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (!section) throw new AppError('NOT_FOUND', 'Section not found');
@@ -1127,24 +1186,27 @@ router.delete('/:id/sections/:sectionId', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_estimate_lines')
     .update({ section_id: null })
-    .eq('section_id', sectionId);
+    .eq('section_id', sectionId)
+    .eq('builder_id', builderId);
 
   // Delete section
   const { error } = await supabase
     .from('v2_estimate_sections')
     .delete()
     .eq('id', sectionId)
-    .eq('estimate_id', id);
+    .eq('estimate_id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logEstimateActivity(id, 'section_deleted', deleted_by || 'System', { section_name: section.name });
+  await logEstimateActivity(id, 'section_deleted', deleted_by || 'System', { section_name: section.name }, builderId);
 
   res.json({ success: true, message: 'Section deleted' });
 }));
 
 // Reorder sections
 router.post('/:id/sections/reorder', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { section_ids, updated_by } = req.body;
 
@@ -1158,10 +1220,11 @@ router.post('/:id/sections/reorder', asyncHandler(async (req, res) => {
       .from('v2_estimate_sections')
       .update({ sort_order: i + 1 })
       .eq('id', section_ids[i])
-      .eq('estimate_id', id);
+      .eq('estimate_id', id)
+      .eq('builder_id', builderId);
   }
 
-  await logEstimateActivity(id, 'sections_reordered', updated_by || 'System', { section_ids });
+  await logEstimateActivity(id, 'sections_reordered', updated_by || 'System', { section_ids }, builderId);
 
   res.json({ success: true, message: 'Sections reordered' });
 }));
@@ -1171,6 +1234,7 @@ router.post('/:id/sections/reorder', asyncHandler(async (req, res) => {
 
 // Get all line items for an estimate
 router.get('/:id/lines', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: lines, error } = await supabase
@@ -1180,6 +1244,7 @@ router.get('/:id/lines', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name, category)
     `)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -1189,6 +1254,7 @@ router.get('/:id/lines', asyncHandler(async (req, res) => {
 
 // Add line item
 router.post('/:id/lines', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     cost_code_id,
@@ -1206,6 +1272,7 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1220,6 +1287,7 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
     .from('v2_estimate_lines')
     .select('sort_order')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: false })
     .limit(1);
 
@@ -1241,7 +1309,8 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
       unit_cost: cost,
       amount: lineAmount,
       notes: notes || null,
-      sort_order: sortOrder
+      sort_order: sortOrder,
+      builder_id: builderId
     })
     .select(`
       *,
@@ -1252,19 +1321,20 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Update estimate total
-  const newTotal = await updateEstimateTotal(id);
+  const newTotal = await updateEstimateTotal(id, builderId);
 
   await logEstimateActivity(id, 'line_added', created_by || 'System', {
     line_id: line.id,
     description: line.description,
     amount: line.amount
-  });
+  }, builderId);
 
   res.status(201).json({ line, estimate_total: newTotal });
 }));
 
 // Update line item
 router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, lineId } = req.params;
   const {
     cost_code_id,
@@ -1283,6 +1353,7 @@ router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1312,6 +1383,7 @@ router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
         .from('v2_estimate_lines')
         .select('quantity, unit_cost')
         .eq('id', lineId)
+        .eq('builder_id', builderId)
         .single();
       if (currentLine) {
         updates.amount = (qty ?? currentLine.quantity) * (cost ?? currentLine.unit_cost);
@@ -1328,6 +1400,7 @@ router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', lineId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       cost_code:v2_cost_codes(id, code, name, category)
@@ -1338,18 +1411,19 @@ router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
   if (!line) throw new AppError('NOT_FOUND', 'Line item not found');
 
   // Update estimate total
-  const newTotal = await updateEstimateTotal(id);
+  const newTotal = await updateEstimateTotal(id, builderId);
 
   await logEstimateActivity(id, 'line_updated', updated_by || 'System', {
     line_id: lineId,
     updates
-  });
+  }, builderId);
 
   res.json({ line, estimate_total: newTotal });
 }));
 
 // Delete line item
 router.delete('/:id/lines/:lineId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, lineId } = req.params;
   const { deleted_by } = req.body;
 
@@ -1358,6 +1432,7 @@ router.delete('/:id/lines/:lineId', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1372,6 +1447,7 @@ router.delete('/:id/lines/:lineId', asyncHandler(async (req, res) => {
     .delete()
     .eq('id', lineId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1379,19 +1455,20 @@ router.delete('/:id/lines/:lineId', asyncHandler(async (req, res) => {
   if (!line) throw new AppError('NOT_FOUND', 'Line item not found');
 
   // Update estimate total
-  const newTotal = await updateEstimateTotal(id);
+  const newTotal = await updateEstimateTotal(id, builderId);
 
   await logEstimateActivity(id, 'line_deleted', deleted_by || 'System', {
     line_id: lineId,
     description: line.description,
     amount: line.amount
-  });
+  }, builderId);
 
   res.json({ success: true, estimate_total: newTotal });
 }));
 
 // Reorder lines
 router.post('/:id/lines/reorder', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { line_ids, updated_by } = req.body;
 
@@ -1405,10 +1482,11 @@ router.post('/:id/lines/reorder', asyncHandler(async (req, res) => {
       .from('v2_estimate_lines')
       .update({ sort_order: i + 1 })
       .eq('id', line_ids[i])
-      .eq('estimate_id', id);
+      .eq('estimate_id', id)
+      .eq('builder_id', builderId);
   }
 
-  await logEstimateActivity(id, 'lines_reordered', updated_by || 'System', {});
+  await logEstimateActivity(id, 'lines_reordered', updated_by || 'System', {}, builderId);
 
   res.json({ success: true });
 }));
@@ -1419,6 +1497,7 @@ router.post('/:id/lines/reorder', asyncHandler(async (req, res) => {
 
 // Create assembly from selected lines
 router.post('/:id/assemblies', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { line_ids, name, hide_components_from_client, created_by } = req.body;
 
@@ -1435,6 +1514,7 @@ router.post('/:id/assemblies', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1450,6 +1530,7 @@ router.post('/:id/assemblies', asyncHandler(async (req, res) => {
     .select('*')
     .in('id', line_ids)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   if (fetchError) throw new AppError('DATABASE_ERROR', fetchError.message);
@@ -1482,7 +1563,8 @@ router.post('/:id/assemblies', asyncHandler(async (req, res) => {
       unit: 'LS',
       unit_cost: assemblyTotal,
       amount: assemblyTotal,
-      sort_order: minSortOrder
+      sort_order: minSortOrder,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -1497,7 +1579,8 @@ router.post('/:id/assemblies', asyncHandler(async (req, res) => {
         parent_line_id: assemblyLine.id,
         sort_order: minSortOrder + i + 1
       })
-      .eq('id', selectedLines[i].id);
+      .eq('id', selectedLines[i].id)
+      .eq('builder_id', builderId);
   }
 
   // Shift sort_order of other lines
@@ -1514,7 +1597,7 @@ router.post('/:id/assemblies', asyncHandler(async (req, res) => {
     name: name.trim(),
     line_count: selectedLines.length,
     total: assemblyTotal
-  });
+  }, builderId);
 
   res.status(201).json({
     success: true,
@@ -1526,6 +1609,7 @@ router.post('/:id/assemblies', asyncHandler(async (req, res) => {
 
 // Toggle assembly collapsed state
 router.patch('/:id/assemblies/:assemblyId/toggle', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, assemblyId } = req.params;
 
   const { data: assembly, error } = await supabase
@@ -1533,6 +1617,7 @@ router.patch('/:id/assemblies/:assemblyId/toggle', asyncHandler(async (req, res)
     .select('collapsed')
     .eq('id', assemblyId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .eq('is_assembly', true)
     .single();
 
@@ -1542,6 +1627,7 @@ router.patch('/:id/assemblies/:assemblyId/toggle', asyncHandler(async (req, res)
     .from('v2_estimate_lines')
     .update({ collapsed: !assembly.collapsed })
     .eq('id', assemblyId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1552,6 +1638,7 @@ router.patch('/:id/assemblies/:assemblyId/toggle', asyncHandler(async (req, res)
 
 // Ungroup assembly (convert back to regular lines)
 router.delete('/:id/assemblies/:assemblyId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, assemblyId } = req.params;
   const { deleted_by } = req.body;
 
@@ -1560,6 +1647,7 @@ router.delete('/:id/assemblies/:assemblyId', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1575,6 +1663,7 @@ router.delete('/:id/assemblies/:assemblyId', asyncHandler(async (req, res) => {
     .select('*')
     .eq('id', assemblyId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .eq('is_assembly', true)
     .single();
 
@@ -1584,35 +1673,39 @@ router.delete('/:id/assemblies/:assemblyId', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_estimate_lines')
     .update({ parent_line_id: null })
-    .eq('parent_line_id', assemblyId);
+    .eq('parent_line_id', assemblyId)
+    .eq('builder_id', builderId);
 
   // Delete the assembly header
   await supabase
     .from('v2_estimate_lines')
     .delete()
-    .eq('id', assemblyId);
+    .eq('id', assemblyId)
+    .eq('builder_id', builderId);
 
   await logEstimateActivity(id, 'assembly_deleted', deleted_by || 'System', {
     assembly_id: assemblyId,
     name: assembly.description
-  });
+  }, builderId);
 
   res.json({ success: true, message: 'Assembly ungrouped' });
 }));
 
 // Update assembly total (recalculate from children)
-async function updateAssemblyTotal(assemblyId) {
+async function updateAssemblyTotal(assemblyId, builderId) {
   const { data: children } = await supabase
     .from('v2_estimate_lines')
     .select('amount')
-    .eq('parent_line_id', assemblyId);
+    .eq('parent_line_id', assemblyId)
+    .eq('builder_id', builderId);
 
   const total = (children || []).reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
 
   await supabase
     .from('v2_estimate_lines')
     .update({ amount: total, unit_cost: total })
-    .eq('id', assemblyId);
+    .eq('id', assemblyId)
+    .eq('builder_id', builderId);
 
   return total;
 }
@@ -1623,6 +1716,7 @@ async function updateAssemblyTotal(assemblyId) {
 
 // Submit for approval
 router.post('/:id/submit', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { submitted_by } = req.body;
 
@@ -1630,6 +1724,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status, total_amount')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1648,6 +1743,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name)
@@ -1658,13 +1754,14 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
 
   await logEstimateActivity(id, 'submitted', submitted_by || 'System', {
     total_amount: estimate.total_amount
-  });
+  }, builderId);
 
   res.json(updated);
 }));
 
 // Approve estimate
 router.post('/:id/approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { approved_by } = req.body;
 
@@ -1672,6 +1769,7 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1690,6 +1788,7 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name)
@@ -1698,13 +1797,14 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logEstimateActivity(id, 'approved', approved_by || 'System', {});
+  await logEstimateActivity(id, 'approved', approved_by || 'System', {}, builderId);
 
   res.json(updated);
 }));
 
 // Reject estimate
 router.post('/:id/reject', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { rejected_by, reason } = req.body;
 
@@ -1712,6 +1812,7 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1728,6 +1829,7 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name)
@@ -1736,7 +1838,7 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logEstimateActivity(id, 'rejected', rejected_by || 'System', { reason });
+  await logEstimateActivity(id, 'rejected', rejected_by || 'System', { reason }, builderId);
 
   res.json(updated);
 }));
@@ -1746,6 +1848,7 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/new-version', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { created_by } = req.body;
 
@@ -1754,6 +1857,7 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('*')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1764,6 +1868,7 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
     .from('v2_estimate_lines')
     .select('*')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   // Determine parent_estimate_id (root of version chain)
@@ -1773,6 +1878,7 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
   const { data: versions } = await supabase
     .from('v2_estimates')
     .select('version')
+    .eq('builder_id', builderId)
     .or(`id.eq.${parentId},parent_estimate_id.eq.${parentId}`)
     .is('deleted_at', null)
     .order('version', { ascending: false })
@@ -1792,7 +1898,8 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
       total_amount: original.total_amount,
       notes: original.notes,
       source_bid_id: original.source_bid_id,
-      created_by: created_by || 'System'
+      created_by: created_by || 'System',
+      builder_id: builderId
     })
     .select(`
       *,
@@ -1813,7 +1920,8 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
       unit_cost: line.unit_cost,
       amount: line.amount,
       notes: line.notes,
-      sort_order: line.sort_order
+      sort_order: line.sort_order,
+      builder_id: builderId
     }));
 
     await supabase.from('v2_estimate_lines').insert(newLines);
@@ -1823,7 +1931,7 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
     from_estimate_id: id,
     from_version: original.version,
     new_version: newVersion
-  });
+  }, builderId);
 
   res.status(201).json({
     success: true,
@@ -1837,6 +1945,7 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { converted_by } = req.body;
 
@@ -1845,6 +1954,7 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('*, job:v2_jobs(id, name)')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1859,6 +1969,7 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
     .from('v2_budget_lines')
     .select('id')
     .eq('source_estimate_id', id)
+    .eq('builder_id', builderId)
     .limit(1);
 
   if (existingBudget?.length > 0) {
@@ -1870,6 +1981,7 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
     .from('v2_estimate_lines')
     .select('*, cost_code:v2_cost_codes(id, code, name)')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   if (!lines?.length) {
@@ -1887,6 +1999,7 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
       .select('id, budgeted_amount')
       .eq('job_id', estimate.job_id)
       .eq('cost_code_id', line.cost_code_id)
+      .eq('builder_id', builderId)
       .single();
 
     if (existing) {
@@ -1898,6 +2011,7 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
           source_estimate_id: id
         })
         .eq('id', existing.id)
+        .eq('builder_id', builderId)
         .select()
         .single();
 
@@ -1913,7 +2027,8 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
           committed_amount: 0,
           billed_amount: 0,
           paid_amount: 0,
-          source_estimate_id: id
+          source_estimate_id: id,
+          builder_id: builderId
         })
         .select()
         .single();
@@ -1932,6 +2047,7 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1940,7 +2056,7 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
   await logEstimateActivity(id, 'converted_to_budget', converted_by || 'System', {
     budget_lines_created: budgetResults.filter(r => r.action === 'created').length,
     budget_lines_updated: budgetResults.filter(r => r.action === 'updated').length
-  });
+  }, builderId);
 
   res.json({
     success: true,
@@ -1960,12 +2076,14 @@ router.post('/:id/convert-to-budget', asyncHandler(async (req, res) => {
 
 // Get project details for a job
 router.get('/project-details/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
 
   const { data: details, error } = await supabase
     .from('v2_project_details')
     .select('*')
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .single();
 
   if (error && error.code !== 'PGRST116') { // PGRST116 = not found
@@ -1977,6 +2095,7 @@ router.get('/project-details/:jobId', asyncHandler(async (req, res) => {
 
 // Create/update project details
 router.post('/project-details/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
   const {
     total_sqft, conditioned_sqft, garage_sqft, porch_sqft,
@@ -1990,6 +2109,7 @@ router.post('/project-details/:jobId', asyncHandler(async (req, res) => {
     .from('v2_project_details')
     .select('id')
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .single();
 
   const detailsData = {
@@ -1999,7 +2119,8 @@ router.post('/project-details/:jobId', asyncHandler(async (req, res) => {
     exterior_linear_ft, interior_wall_linear_ft, roof_sqft,
     room_details: room_details || [],
     style_tier: style_tier || 'standard',
-    source
+    source,
+    builder_id: builderId
   };
 
   let result;
@@ -2008,6 +2129,7 @@ router.post('/project-details/:jobId', asyncHandler(async (req, res) => {
       .from('v2_project_details')
       .update(detailsData)
       .eq('id', existing.id)
+      .eq('builder_id', builderId)
       .select()
       .single();
     if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -2030,6 +2152,7 @@ router.post('/project-details/:jobId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/from-selections', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     title,
@@ -2045,10 +2168,11 @@ router.post('/from-selections', asyncHandler(async (req, res) => {
   const { data: selectionCount } = await supabase
     .from('v2_selections')
     .select('id', { count: 'exact' })
+    .eq('builder_id', builderId)
     .eq('status', 'approved')
     .is('deleted_at', null)
     .in('allowance_id',
-      supabase.from('v2_allowances').select('id').eq('job_id', job_id)
+      supabase.from('v2_allowances').select('id').eq('job_id', job_id).eq('builder_id', builderId)
     );
 
   // Call the database function to create estimate from selections
@@ -2071,18 +2195,20 @@ router.post('/from-selections', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name)
     `)
     .eq('id', result)
+    .eq('builder_id', builderId)
     .single();
 
   // Get line count
   const { data: lines } = await supabase
     .from('v2_estimate_lines')
     .select('id')
-    .eq('estimate_id', result);
+    .eq('estimate_id', result)
+    .eq('builder_id', builderId);
 
   await logEstimateActivity(result, 'created_from_selections', created_by || 'System', {
     job_id,
     line_count: lines?.length || 0
-  });
+  }, builderId);
 
   res.status(201).json({
     success: true,
@@ -2099,6 +2225,7 @@ router.post('/from-selections', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/recalculate', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { markup_percent, contingency_percent, updated_by } = req.body;
 
@@ -2111,7 +2238,8 @@ router.post('/:id/recalculate', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_estimates')
       .update(updates)
-      .eq('id', id);
+      .eq('id', id)
+      .eq('builder_id', builderId);
   }
 
   // Call the recalculate function
@@ -2128,13 +2256,14 @@ router.post('/:id/recalculate', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   await logEstimateActivity(id, 'recalculated', updated_by || 'System', {
     markup_percent: estimate.markup_percent,
     contingency_percent: estimate.contingency_percent,
     total_amount: estimate.total_amount
-  });
+  }, builderId);
 
   res.json(estimate);
 }));
@@ -2145,6 +2274,7 @@ router.post('/:id/recalculate', asyncHandler(async (req, res) => {
 
 // List scopes
 router.get('/scopes', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, estimate_id, status } = req.query;
 
   let query = supabase
@@ -2156,6 +2286,7 @@ router.get('/scopes', asyncHandler(async (req, res) => {
       trade:v2_labor_categories(id, name),
       awarded_vendor:v2_vendors(id, name)
     `)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (job_id) query = query.eq('job_id', job_id);
@@ -2170,6 +2301,7 @@ router.get('/scopes', asyncHandler(async (req, res) => {
 
 // Get single scope
 router.get('/scopes/:scopeId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scopeId } = req.params;
 
   const { data: scope, error } = await supabase
@@ -2182,6 +2314,7 @@ router.get('/scopes/:scopeId', asyncHandler(async (req, res) => {
       awarded_vendor:v2_vendors(id, name, email, phone)
     `)
     .eq('id', scopeId)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) throw new AppError('NOT_FOUND', 'Scope not found');
@@ -2191,6 +2324,7 @@ router.get('/scopes/:scopeId', asyncHandler(async (req, res) => {
 
 // Create scope from estimate
 router.post('/:id/generate-scope', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { trade_id, created_by } = req.body;
 
@@ -2213,12 +2347,13 @@ router.post('/:id/generate-scope', asyncHandler(async (req, res) => {
       trade:v2_labor_categories(id, name)
     `)
     .eq('id', scopeId)
+    .eq('builder_id', builderId)
     .single();
 
   await logEstimateActivity(id, 'scope_generated', created_by || 'System', {
     scope_id: scopeId,
     trade_id
-  });
+  }, builderId);
 
   res.status(201).json({
     success: true,
@@ -2229,6 +2364,7 @@ router.post('/:id/generate-scope', asyncHandler(async (req, res) => {
 
 // Update scope
 router.patch('/scopes/:scopeId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scopeId } = req.params;
   const {
     name, description, scope_text, inclusions, exclusions,
@@ -2248,6 +2384,7 @@ router.patch('/scopes/:scopeId', asyncHandler(async (req, res) => {
     .from('v2_scopes_of_work')
     .update(updates)
     .eq('id', scopeId)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name),
@@ -2262,6 +2399,7 @@ router.patch('/scopes/:scopeId', asyncHandler(async (req, res) => {
 
 // Award scope to vendor
 router.post('/scopes/:scopeId/award', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scopeId } = req.params;
   const { vendor_id, awarded_amount, awarded_by } = req.body;
 
@@ -2277,6 +2415,7 @@ router.post('/scopes/:scopeId/award', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', scopeId)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name),
@@ -2295,12 +2434,14 @@ router.post('/scopes/:scopeId/award', asyncHandler(async (req, res) => {
 
 // Delete scope
 router.delete('/scopes/:scopeId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scopeId } = req.params;
 
   const { error } = await supabase
     .from('v2_scopes_of_work')
     .delete()
-    .eq('id', scopeId);
+    .eq('id', scopeId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -2313,12 +2454,14 @@ router.delete('/scopes/:scopeId', asyncHandler(async (req, res) => {
 
 // Get conversions for an estimate
 router.get('/:id/conversions', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: conversions, error } = await supabase
     .from('v2_estimate_conversions')
     .select('*')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('converted_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -2328,6 +2471,7 @@ router.get('/:id/conversions', asyncHandler(async (req, res) => {
 
 // Track a conversion
 router.post('/:id/conversions', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { conversion_type, target_id, converted_by, notes } = req.body;
 
@@ -2341,7 +2485,8 @@ router.post('/:id/conversions', asyncHandler(async (req, res) => {
       conversion_type,
       target_id,
       converted_by: converted_by || 'System',
-      notes
+      notes,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -2351,7 +2496,7 @@ router.post('/:id/conversions', asyncHandler(async (req, res) => {
   await logEstimateActivity(id, 'converted', converted_by || 'System', {
     conversion_type,
     target_id
-  });
+  }, builderId);
 
   res.status(201).json(conversion);
 }));
@@ -2361,6 +2506,7 @@ router.post('/:id/conversions', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { converted_by } = req.body;
 
@@ -2369,6 +2515,7 @@ router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('*, job:v2_jobs(id, name)')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -2385,6 +2532,7 @@ router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
       )
     `)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .not('catalog_item_id', 'is', null);
 
   if (!lines?.length) {
@@ -2418,7 +2566,8 @@ router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
         name: `${catName} Allowance`,
         budgeted_amount: total,
         status: 'active',
-        source_estimate_id: id
+        source_estimate_id: id,
+        builder_id: builderId
       })
       .select()
       .single();
@@ -2439,7 +2588,8 @@ router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
           quoted_price: line.unit_cost,
           status: 'approved',
           room: line.room,
-          notes: `From estimate: ${estimate.title}`
+          notes: `From estimate: ${estimate.title}`,
+          builder_id: builderId
         });
     }
 
@@ -2452,13 +2602,14 @@ router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
       estimate_id: id,
       conversion_type: 'allowance',
       target_id: allowance.id,
-      converted_by: converted_by || 'System'
+      converted_by: converted_by || 'System',
+      builder_id: builderId
     });
   }
 
   await logEstimateActivity(id, 'converted_to_allowances', converted_by || 'System', {
     allowance_count: allowances.length
-  });
+  }, builderId);
 
   res.json({
     success: true,
@@ -2473,6 +2624,7 @@ router.post('/:id/convert-to-allowances', asyncHandler(async (req, res) => {
 
 // Create phase
 router.post('/:id/phases', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { name, phase_code, description } = req.body;
 
@@ -2481,6 +2633,7 @@ router.post('/:id/phases', asyncHandler(async (req, res) => {
     .from('v2_estimate_phases')
     .select('sort_order')
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: false })
     .limit(1)
     .single();
@@ -2494,7 +2647,8 @@ router.post('/:id/phases', asyncHandler(async (req, res) => {
       name,
       phase_code,
       description,
-      sort_order: sortOrder
+      sort_order: sortOrder,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -2505,6 +2659,7 @@ router.post('/:id/phases', asyncHandler(async (req, res) => {
 
 // Update phase
 router.patch('/:id/phases/:phaseId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, phaseId } = req.params;
   const { name, description, sort_order } = req.body;
 
@@ -2518,6 +2673,7 @@ router.patch('/:id/phases/:phaseId', asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', phaseId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -2528,13 +2684,15 @@ router.patch('/:id/phases/:phaseId', asyncHandler(async (req, res) => {
 
 // Delete phase
 router.delete('/:id/phases/:phaseId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, phaseId } = req.params;
 
   const { error } = await supabase
     .from('v2_estimate_phases')
     .delete()
     .eq('id', phaseId)
-    .eq('estimate_id', id);
+    .eq('estimate_id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true, message: 'Phase deleted' });
@@ -2542,6 +2700,7 @@ router.delete('/:id/phases/:phaseId', asyncHandler(async (req, res) => {
 
 // Create group
 router.post('/:id/phases/:phaseId/groups', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, phaseId } = req.params;
   const { name, description } = req.body;
 
@@ -2550,6 +2709,7 @@ router.post('/:id/phases/:phaseId/groups', asyncHandler(async (req, res) => {
     .from('v2_estimate_groups')
     .select('sort_order')
     .eq('phase_id', phaseId)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: false })
     .limit(1)
     .single();
@@ -2563,7 +2723,8 @@ router.post('/:id/phases/:phaseId/groups', asyncHandler(async (req, res) => {
       phase_id: phaseId,
       name,
       description,
-      sort_order: sortOrder
+      sort_order: sortOrder,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -2574,6 +2735,7 @@ router.post('/:id/phases/:phaseId/groups', asyncHandler(async (req, res) => {
 
 // Update group
 router.patch('/:id/groups/:groupId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, groupId } = req.params;
   const { name, description, sort_order } = req.body;
 
@@ -2587,6 +2749,7 @@ router.patch('/:id/groups/:groupId', asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', groupId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -2597,13 +2760,15 @@ router.patch('/:id/groups/:groupId', asyncHandler(async (req, res) => {
 
 // Delete group
 router.delete('/:id/groups/:groupId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, groupId } = req.params;
 
   const { error } = await supabase
     .from('v2_estimate_groups')
     .delete()
     .eq('id', groupId)
-    .eq('estimate_id', id);
+    .eq('estimate_id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true, message: 'Group deleted' });
@@ -2611,6 +2776,7 @@ router.delete('/:id/groups/:groupId', asyncHandler(async (req, res) => {
 
 // Create subgroup
 router.post('/:id/groups/:groupId/subgroups', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, groupId } = req.params;
   const { name, description } = req.body;
 
@@ -2619,6 +2785,7 @@ router.post('/:id/groups/:groupId/subgroups', asyncHandler(async (req, res) => {
     .from('v2_estimate_subgroups')
     .select('sort_order')
     .eq('group_id', groupId)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: false })
     .limit(1)
     .single();
@@ -2632,7 +2799,8 @@ router.post('/:id/groups/:groupId/subgroups', asyncHandler(async (req, res) => {
       group_id: groupId,
       name,
       description,
-      sort_order: sortOrder
+      sort_order: sortOrder,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -2643,6 +2811,7 @@ router.post('/:id/groups/:groupId/subgroups', asyncHandler(async (req, res) => {
 
 // Update subgroup
 router.patch('/:id/subgroups/:subgroupId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, subgroupId } = req.params;
   const { name, description, sort_order } = req.body;
 
@@ -2656,6 +2825,7 @@ router.patch('/:id/subgroups/:subgroupId', asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', subgroupId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -2666,13 +2836,15 @@ router.patch('/:id/subgroups/:subgroupId', asyncHandler(async (req, res) => {
 
 // Delete subgroup
 router.delete('/:id/subgroups/:subgroupId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, subgroupId } = req.params;
 
   const { error } = await supabase
     .from('v2_estimate_subgroups')
     .delete()
     .eq('id', subgroupId)
-    .eq('estimate_id', id);
+    .eq('estimate_id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true, message: 'Subgroup deleted' });
@@ -2684,6 +2856,7 @@ router.delete('/:id/subgroups/:subgroupId', asyncHandler(async (req, res) => {
 
 // Create line item in subgroup
 router.post('/:id/items', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { subgroup_id, cost_code_id, description, quantity, unit, unit_cost, markup_percent, notes } = req.body;
 
@@ -2695,6 +2868,7 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
     .from('v2_estimate_line_items')
     .select('sort_order')
     .eq('subgroup_id', subgroup_id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: false })
     .limit(1)
     .single();
@@ -2717,7 +2891,8 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
       amount,
       markup_percent: markup_percent || 0,
       notes: notes || null,
-      sort_order: sortOrder
+      sort_order: sortOrder,
+      builder_id: builderId
     })
     .select(`
       *,
@@ -2731,6 +2906,7 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
 
 // Update line item
 router.patch('/:id/items/:itemId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, itemId } = req.params;
   const { subgroup_id, cost_code_id, description, quantity, unit, unit_cost, markup_percent, notes, sort_order } = req.body;
 
@@ -2752,6 +2928,7 @@ router.patch('/:id/items/:itemId', asyncHandler(async (req, res) => {
       .from('v2_estimate_line_items')
       .select('quantity, unit_cost')
       .eq('id', itemId)
+      .eq('builder_id', builderId)
       .single();
 
     if (current) {
@@ -2766,6 +2943,7 @@ router.patch('/:id/items/:itemId', asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', itemId)
     .eq('estimate_id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       cost_code:v2_cost_codes(id, code, name, category)
@@ -2779,13 +2957,15 @@ router.patch('/:id/items/:itemId', asyncHandler(async (req, res) => {
 
 // Delete line item
 router.delete('/:id/items/:itemId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, itemId } = req.params;
 
   const { error } = await supabase
     .from('v2_estimate_line_items')
     .delete()
     .eq('id', itemId)
-    .eq('estimate_id', id);
+    .eq('estimate_id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true, message: 'Line item deleted' });
@@ -2793,6 +2973,7 @@ router.delete('/:id/items/:itemId', asyncHandler(async (req, res) => {
 
 // Bulk delete line items
 router.post('/:id/items/bulk-delete', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { item_ids } = req.body;
 
@@ -2804,7 +2985,8 @@ router.post('/:id/items/bulk-delete', asyncHandler(async (req, res) => {
     .from('v2_estimate_line_items')
     .delete()
     .in('id', item_ids)
-    .eq('estimate_id', id);
+    .eq('estimate_id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true, message: `Deleted ${item_ids.length} items` });
@@ -2812,6 +2994,7 @@ router.post('/:id/items/bulk-delete', asyncHandler(async (req, res) => {
 
 // Bulk move line items to a subgroup
 router.post('/:id/items/bulk-move', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { item_ids, target_subgroup_id } = req.body;
 
@@ -2826,7 +3009,8 @@ router.post('/:id/items/bulk-move', asyncHandler(async (req, res) => {
     .from('v2_estimate_line_items')
     .update({ subgroup_id: target_subgroup_id })
     .in('id', item_ids)
-    .eq('estimate_id', id);
+    .eq('estimate_id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true, message: `Moved ${item_ids.length} items` });
@@ -2834,6 +3018,7 @@ router.post('/:id/items/bulk-move', asyncHandler(async (req, res) => {
 
 // Reorder hierarchy items (phases, groups, subgroups, or line items)
 router.post('/:id/reorder', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { type, items } = req.body;
 
@@ -2870,7 +3055,8 @@ router.post('/:id/reorder', asyncHandler(async (req, res) => {
       .from(tableName)
       .update(updates)
       .eq('id', item.id)
-      .eq('estimate_id', id);
+      .eq('estimate_id', id)
+      .eq('builder_id', builderId);
   }
 
   res.json({ success: true });

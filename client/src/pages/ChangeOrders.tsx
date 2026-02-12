@@ -119,8 +119,8 @@ const ChangeOrders = () => {
 
         {/* Filters & Compact Stats */}
         <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 max-w-sm">
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-4">
+            <div className="relative w-full sm:flex-1 sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search change orders..."
@@ -130,7 +130,7 @@ const ChangeOrders = () => {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-36">
+              <SelectTrigger className="w-full sm:w-36">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>

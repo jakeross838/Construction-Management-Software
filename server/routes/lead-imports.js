@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { asyncHandler, AppError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Parse CSV string
 function parseCSV(csvString) {
@@ -72,13 +74,15 @@ function mapRowToLead(row, mappings, defaults) {
 }
 
 // Get import history
-router.get('/', async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const limit = parseInt(req.query.limit) || 20;
 
     const { data, error } = await supabase
       .from('v2_lead_imports')
       .select('*')
+      .eq('builder_id', builderId)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -88,10 +92,11 @@ router.get('/', async (req, res) => {
     console.error('Error fetching imports:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get single import details
-router.get('/:id', async (req, res) => {
+router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
 
@@ -99,6 +104,7 @@ router.get('/:id', async (req, res) => {
       .from('v2_lead_imports')
       .select('*')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (error) throw error;
@@ -107,10 +113,11 @@ router.get('/:id', async (req, res) => {
     console.error('Error fetching import:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Preview CSV (parse and show sample)
-router.post('/preview', async (req, res) => {
+router.post('/preview', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { csv_content, sample_size = 5 } = req.body;
 
@@ -130,10 +137,11 @@ router.post('/preview', async (req, res) => {
     console.error('Error previewing CSV:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Import leads from CSV
-router.post('/', async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { csv_content, file_name, mappings, defaults = {} } = req.body;
 
@@ -152,6 +160,7 @@ router.post('/', async (req, res) => {
     const { data: importRecord, error: importError } = await supabase
       .from('v2_lead_imports')
       .insert({
+        builder_id: builderId,
         file_name: file_name || 'import.csv',
         file_size: csv_content.length,
         total_rows: rows.length,
@@ -188,6 +197,7 @@ router.post('/', async (req, res) => {
       const row = rows[i];
       try {
         const leadData = mapRowToLead(row, finalMappings, {
+          builder_id: builderId,
           stage: 'new_inquiry',
           ...defaults,
         });
@@ -230,7 +240,8 @@ router.post('/', async (req, res) => {
         created_lead_ids: results.created_ids,
         completed_at: new Date().toISOString(),
       })
-      .eq('id', importRecord.id);
+      .eq('id', importRecord.id)
+      .eq('builder_id', builderId);
 
     if (updateError) console.error('Failed to update import record:', updateError);
 
@@ -245,14 +256,16 @@ router.post('/', async (req, res) => {
     console.error('Error importing leads:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get mapping templates
-router.get('/mappings/templates', async (req, res) => {
+router.get('/mappings/templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { data, error } = await supabase
       .from('v2_lead_import_mappings')
       .select('*')
+      .eq('builder_id', builderId)
       .order('is_default', { ascending: false });
 
     if (error) throw error;
@@ -261,16 +274,18 @@ router.get('/mappings/templates', async (req, res) => {
     console.error('Error fetching mapping templates:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Save mapping template
-router.post('/mappings/templates', async (req, res) => {
+router.post('/mappings/templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { name, description, mappings, defaults } = req.body;
 
     const { data, error } = await supabase
       .from('v2_lead_import_mappings')
       .insert({
+        builder_id: builderId,
         name,
         description,
         mappings,
@@ -285,10 +300,11 @@ router.post('/mappings/templates', async (req, res) => {
     console.error('Error saving mapping template:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Export leads to CSV
-router.get('/export', async (req, res) => {
+router.get('/export', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { stage, source_id, created_after, created_before } = req.query;
 
@@ -311,6 +327,7 @@ router.get('/export', async (req, res) => {
         created_at,
         source:v2_lead_sources(name)
       `)
+      .eq('builder_id', builderId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
@@ -371,10 +388,11 @@ router.get('/export', async (req, res) => {
     console.error('Error exporting leads:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get available lead fields for mapping
-router.get('/fields', async (req, res) => {
+router.get('/fields', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const fields = [
     { name: 'first_name', label: 'First Name', required: false },
     { name: 'last_name', label: 'Last Name', required: false },
@@ -391,6 +409,6 @@ router.get('/fields', async (req, res) => {
   ];
 
   res.json(fields);
-});
+}));
 
 module.exports = router;

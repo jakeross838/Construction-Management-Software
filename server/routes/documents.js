@@ -9,6 +9,7 @@ const multer = require('multer');
 const { supabase } = require('../../config');
 const { categorizeDocument } = require('../ai/document-processor');
 const { asyncHandler, AppError, notFoundError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Configure multer for document uploads
 const upload = multer({
@@ -57,9 +58,10 @@ const CATEGORIES = [
 ];
 
 // Helper: Log document activity
-async function logDocumentActivity(documentId, action, performedBy, details = {}) {
+async function logDocumentActivity(builderId, documentId, action, performedBy, details = {}) {
   try {
     await supabase.from('v2_document_activity').insert({
+      builder_id: builderId,
       document_id: documentId,
       action,
       performed_by: performedBy,
@@ -70,12 +72,41 @@ async function logDocumentActivity(documentId, action, performedBy, details = {}
   }
 }
 
+// Helper: Find root document in version chain
+async function findRootDocumentId(builderId, documentId) {
+  let currentId = documentId;
+  let iterations = 0;
+  const maxIterations = 100; // Prevent infinite loops
+
+  while (iterations < maxIterations) {
+    const { data, error } = await supabase
+      .from('v2_documents')
+      .select('id, parent_document_id')
+      .eq('id', currentId)
+      .eq('builder_id', builderId)
+      .single();
+
+    if (error || !data) break;
+
+    if (!data.parent_document_id) {
+      // This is the root
+      return data.id;
+    }
+
+    currentId = data.parent_document_id;
+    iterations++;
+  }
+
+  return currentId;
+}
+
 // ============================================================
 // LIST & GET ENDPOINTS
 // ============================================================
 
 // List documents with filters
 router.get('/', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { job_id, category, vendor_id, folder_id, search, include_deleted } = req.query;
 
     let query = supabase
@@ -86,6 +117,7 @@ router.get('/', asyncHandler(async (req, res) => {
         vendor:v2_vendors(id, name),
         folder:v2_document_folders(id, name)
       `)
+      .eq('builder_id', builderId)
       .order('created_at', { ascending: false });
 
     // Filter by job (required for most use cases)
@@ -136,6 +168,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Get single document
 router.get('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data, error } = await supabase
@@ -148,6 +181,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
         invoice:v2_invoices(id, invoice_number)
       `)
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (error) throw error;
@@ -158,11 +192,13 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Get document stats for a job
 router.get('/stats/:jobId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { jobId } = req.params;
 
     const { data, error } = await supabase
       .from('v2_documents')
       .select('category')
+      .eq('builder_id', builderId)
       .eq('job_id', jobId)
       .is('deleted_at', null);
 
@@ -187,6 +223,7 @@ router.get('/stats/:jobId', asyncHandler(async (req, res) => {
     const { data: expiring } = await supabase
       .from('v2_documents')
       .select('id, name, expiration_date')
+      .eq('builder_id', builderId)
       .eq('job_id', jobId)
       .is('deleted_at', null)
       .not('expiration_date', 'is', null)
@@ -251,6 +288,8 @@ router.post('/categorize', upload.single('file'), asyncHandler(async (req, res) 
 
 // Upload document with optional AI categorization
 router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
     }
@@ -325,6 +364,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
     const { data: doc, error: insertError } = await supabase
       .from('v2_documents')
       .insert({
+        builder_id: builderId,
         job_id,
         name: name || req.file.originalname,
         description: description || null,
@@ -348,7 +388,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
     if (insertError) throw insertError;
 
     // Log activity
-    await logDocumentActivity(doc.id, 'uploaded', uploaded_by, {
+    await logDocumentActivity(builderId, doc.id, 'uploaded', uploaded_by, {
       file_name: req.file.originalname,
       file_size: req.file.size,
       category,
@@ -373,6 +413,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
 
 // Update document metadata
 router.patch('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const {
       name,
@@ -410,19 +451,21 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       .from('v2_documents')
       .update(updateData)
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
 
     // Log activity
-    await logDocumentActivity(id, 'updated', updated_by, updateData);
+    await logDocumentActivity(builderId, id, 'updated', updated_by, updateData);
 
     res.json(data);
 }));
 
 // Soft delete document
 router.delete('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { deleted_by } = req.body;
 
@@ -430,19 +473,21 @@ router.delete('/:id', asyncHandler(async (req, res) => {
       .from('v2_documents')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
 
     // Log activity
-    await logDocumentActivity(id, 'deleted', deleted_by);
+    await logDocumentActivity(builderId, id, 'deleted', deleted_by);
 
     res.json({ success: true, document: data });
 }));
 
 // Restore deleted document
 router.post('/:id/restore', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { restored_by } = req.body;
 
@@ -450,13 +495,14 @@ router.post('/:id/restore', asyncHandler(async (req, res) => {
       .from('v2_documents')
       .update({ deleted_at: null, updated_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
 
     // Log activity
-    await logDocumentActivity(id, 'restored', restored_by);
+    await logDocumentActivity(builderId, id, 'restored', restored_by);
 
     res.json(data);
 }));
@@ -465,35 +511,9 @@ router.post('/:id/restore', asyncHandler(async (req, res) => {
 // VERSION MANAGEMENT
 // ============================================================
 
-// Helper: Find root document in version chain
-async function findRootDocumentId(documentId) {
-  let currentId = documentId;
-  let iterations = 0;
-  const maxIterations = 100; // Prevent infinite loops
-
-  while (iterations < maxIterations) {
-    const { data, error } = await supabase
-      .from('v2_documents')
-      .select('id, parent_document_id')
-      .eq('id', currentId)
-      .single();
-
-    if (error || !data) break;
-
-    if (!data.parent_document_id) {
-      // This is the root
-      return data.id;
-    }
-
-    currentId = data.parent_document_id;
-    iterations++;
-  }
-
-  return currentId;
-}
-
 // Get version history for a document
 router.get('/:id/versions', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     // First get the document to check it exists
@@ -501,6 +521,7 @@ router.get('/:id/versions', asyncHandler(async (req, res) => {
       .from('v2_documents')
       .select('id, parent_document_id')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (docError || !doc) {
@@ -508,12 +529,13 @@ router.get('/:id/versions', asyncHandler(async (req, res) => {
     }
 
     // Find the root document
-    const rootId = await findRootDocumentId(id);
+    const rootId = await findRootDocumentId(builderId, id);
 
     // Get all versions in this chain
     const { data: versions, error } = await supabase
       .from('v2_documents')
       .select('id, version_number, file_url, file_name, file_size, mime_type, uploaded_by, created_at, is_current')
+      .eq('builder_id', builderId)
       .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`)
       .is('deleted_at', null)
       .order('version_number', { ascending: false });
@@ -525,6 +547,7 @@ router.get('/:id/versions', asyncHandler(async (req, res) => {
 
 // Upload new version of existing document
 router.post('/:id/versions', upload.single('file'), asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     if (!req.file) {
@@ -538,6 +561,7 @@ router.post('/:id/versions', upload.single('file'), asyncHandler(async (req, res
       .from('v2_documents')
       .select('*')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (docError || !currentDoc) {
@@ -549,12 +573,13 @@ router.post('/:id/versions', upload.single('file'), asyncHandler(async (req, res
     }
 
     // Find the root document ID (for the parent_document_id)
-    const rootId = await findRootDocumentId(id);
+    const rootId = await findRootDocumentId(builderId, id);
 
     // Get the highest version number in this chain
     const { data: versionData } = await supabase
       .from('v2_documents')
       .select('version_number')
+      .eq('builder_id', builderId)
       .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`)
       .order('version_number', { ascending: false })
       .limit(1);
@@ -566,6 +591,7 @@ router.post('/:id/versions', upload.single('file'), asyncHandler(async (req, res
     await supabase
       .from('v2_documents')
       .update({ is_current: false })
+      .eq('builder_id', builderId)
       .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`)
       .eq('is_current', true);
 
@@ -591,6 +617,7 @@ router.post('/:id/versions', upload.single('file'), asyncHandler(async (req, res
     const { data: newDoc, error: insertError } = await supabase
       .from('v2_documents')
       .insert({
+        builder_id: builderId,
         job_id: currentDoc.job_id,
         name: currentDoc.name,
         description: currentDoc.description,
@@ -616,7 +643,7 @@ router.post('/:id/versions', upload.single('file'), asyncHandler(async (req, res
     if (insertError) throw insertError;
 
     // Log activity
-    await logDocumentActivity(newDoc.id, 'new_version', uploaded_by, {
+    await logDocumentActivity(builderId, newDoc.id, 'new_version', uploaded_by, {
       version_number: newVersionNumber,
       previous_version: highestVersion,
       original_document_id: rootId,
@@ -629,6 +656,7 @@ router.post('/:id/versions', upload.single('file'), asyncHandler(async (req, res
 
 // Rollback to a previous version
 router.post('/:id/rollback', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { performed_by } = req.body;
 
@@ -637,6 +665,7 @@ router.post('/:id/rollback', asyncHandler(async (req, res) => {
       .from('v2_documents')
       .select('*')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (targetError || !targetDoc) {
@@ -652,12 +681,13 @@ router.post('/:id/rollback', asyncHandler(async (req, res) => {
     }
 
     // Find the root document ID
-    const rootId = await findRootDocumentId(id);
+    const rootId = await findRootDocumentId(builderId, id);
 
     // Find the current version
     const { data: currentVersionData } = await supabase
       .from('v2_documents')
       .select('id, version_number')
+      .eq('builder_id', builderId)
       .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`)
       .eq('is_current', true)
       .single();
@@ -668,6 +698,7 @@ router.post('/:id/rollback', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_documents')
       .update({ is_current: false })
+      .eq('builder_id', builderId)
       .or(`id.eq.${rootId},parent_document_id.eq.${rootId}`);
 
     // Mark target as current
@@ -675,13 +706,14 @@ router.post('/:id/rollback', asyncHandler(async (req, res) => {
       .from('v2_documents')
       .update({ is_current: true, updated_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (updateError) throw updateError;
 
     // Log activity
-    await logDocumentActivity(id, 'rollback', performed_by, {
+    await logDocumentActivity(builderId, id, 'rollback', performed_by, {
       from_version: fromVersion,
       to_version: targetDoc.version_number,
       root_document_id: rootId
@@ -696,11 +728,13 @@ router.post('/:id/rollback', asyncHandler(async (req, res) => {
 
 // Get document types
 router.get('/types/all', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category } = req.query;
 
   let query = supabase
     .from('v2_document_types')
     .select('*')
+    .eq('builder_id', builderId)
     .order('category')
     .order('name');
 
@@ -715,6 +749,7 @@ router.get('/types/all', asyncHandler(async (req, res) => {
 
 // Full-text search documents
 router.get('/intelligence/search', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { q, job_id, category, limit = 50 } = req.query;
 
   if (!q || q.trim().length < 2) {
@@ -726,7 +761,8 @@ router.get('/intelligence/search', asyncHandler(async (req, res) => {
       p_query: q,
       p_job_id: job_id || null,
       p_type_category: category || null,
-      p_limit: parseInt(limit)
+      p_limit: parseInt(limit),
+      p_builder_id: builderId
     });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -735,11 +771,13 @@ router.get('/intelligence/search', asyncHandler(async (req, res) => {
 
 // Get document extractions
 router.get('/:id/extractions', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_document_extractions')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('document_id', id)
     .order('field_name');
 
@@ -749,6 +787,7 @@ router.get('/:id/extractions', asyncHandler(async (req, res) => {
 
 // Add/update extractions
 router.post('/:id/extractions', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { extractions } = req.body;
 
@@ -757,6 +796,7 @@ router.post('/:id/extractions', asyncHandler(async (req, res) => {
   }
 
   const extractionData = extractions.map(e => ({
+    builder_id: builderId,
     document_id: id,
     ...e
   }));
@@ -772,6 +812,7 @@ router.post('/:id/extractions', asyncHandler(async (req, res) => {
 
 // Verify extraction (with optional correction)
 router.patch('/extractions/:extractionId/verify', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { extractionId } = req.params;
   const { verified_by, corrected_value } = req.body;
 
@@ -786,6 +827,7 @@ router.patch('/extractions/:extractionId/verify', asyncHandler(async (req, res) 
       .from('v2_document_extractions')
       .select('field_value')
       .eq('id', extractionId)
+      .eq('builder_id', builderId)
       .single();
 
     if (existing) {
@@ -798,6 +840,7 @@ router.patch('/extractions/:extractionId/verify', asyncHandler(async (req, res) 
     .from('v2_document_extractions')
     .update(updateData)
     .eq('id', extractionId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -807,11 +850,13 @@ router.patch('/extractions/:extractionId/verify', asyncHandler(async (req, res) 
 
 // Get contract analysis
 router.get('/:id/contract-analysis', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_contract_analysis')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('document_id', id)
     .single();
 
@@ -824,9 +869,11 @@ router.get('/:id/contract-analysis', asyncHandler(async (req, res) => {
 
 // Save contract analysis
 router.post('/:id/contract-analysis', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const analysisData = {
+    builder_id: builderId,
     document_id: id,
     ...req.body,
     analyzed_at: new Date().toISOString()
@@ -844,11 +891,12 @@ router.post('/:id/contract-analysis', asyncHandler(async (req, res) => {
 
 // Get document compliance for job
 router.get('/compliance/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
 
   // Get compliance summary
   const { data: summary, error: summaryError } = await supabase
-    .rpc('get_job_document_compliance', { p_job_id: jobId });
+    .rpc('get_job_document_compliance', { p_job_id: jobId, p_builder_id: builderId });
 
   if (summaryError) throw new AppError('DATABASE_ERROR', summaryError.message);
 
@@ -863,6 +911,7 @@ router.get('/compliance/:jobId', asyncHandler(async (req, res) => {
       ),
       document:v2_documents(id, name, file_url, status)
     `)
+    .eq('builder_id', builderId)
     .eq('job_id', jobId)
     .order('status')
     .order('due_date');
@@ -884,12 +933,14 @@ router.get('/compliance/:jobId', asyncHandler(async (req, res) => {
 
 // Initialize job checklist from requirements
 router.post('/compliance/:jobId/initialize', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
   const { phase, trigger_date } = req.body;
 
   const { data: requirements, error: reqError } = await supabase
     .from('v2_document_requirements')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('phase', phase);
 
   if (reqError) throw new AppError('DATABASE_ERROR', reqError.message);
@@ -901,6 +952,7 @@ router.post('/compliance/:jobId/initialize', asyncHandler(async (req, res) => {
   const baseDate = trigger_date ? new Date(trigger_date) : new Date();
 
   const checklistItems = requirements.map(req => ({
+    builder_id: builderId,
     job_id: jobId,
     requirement_id: req.id,
     status: 'pending',
@@ -920,6 +972,7 @@ router.post('/compliance/:jobId/initialize', asyncHandler(async (req, res) => {
 
 // Update checklist item
 router.patch('/compliance/items/:itemId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
 
   const updateData = {
@@ -935,6 +988,7 @@ router.patch('/compliance/items/:itemId', asyncHandler(async (req, res) => {
     .from('v2_job_document_checklist')
     .update(updateData)
     .eq('id', itemId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -944,6 +998,7 @@ router.patch('/compliance/items/:itemId', asyncHandler(async (req, res) => {
 
 // Get document requirements
 router.get('/requirements/all', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { phase } = req.query;
 
   let query = supabase
@@ -952,6 +1007,7 @@ router.get('/requirements/all', asyncHandler(async (req, res) => {
       *,
       document_type:v2_document_types(*)
     `)
+    .eq('builder_id', builderId)
     .order('phase')
     .order('trigger_event');
 
@@ -966,9 +1022,11 @@ router.get('/requirements/all', asyncHandler(async (req, res) => {
 
 // Create requirement
 router.post('/requirements', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
   const { data, error } = await supabase
     .from('v2_document_requirements')
-    .insert(req.body)
+    .insert({ builder_id: builderId, ...req.body })
     .select()
     .single();
 
@@ -978,12 +1036,14 @@ router.post('/requirements', asyncHandler(async (req, res) => {
 
 // Update requirement
 router.patch('/requirements/:reqId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { reqId } = req.params;
 
   const { data, error } = await supabase
     .from('v2_document_requirements')
     .update(req.body)
     .eq('id', reqId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -993,12 +1053,14 @@ router.patch('/requirements/:reqId', asyncHandler(async (req, res) => {
 
 // Delete requirement
 router.delete('/requirements/:reqId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { reqId } = req.params;
 
   const { error } = await supabase
     .from('v2_document_requirements')
     .delete()
-    .eq('id', reqId);
+    .eq('id', reqId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true });
@@ -1010,6 +1072,7 @@ router.delete('/requirements/:reqId', asyncHandler(async (req, res) => {
 
 // List folders for a job (optionally within a parent folder)
 router.get('/folders', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, parent_folder_id, include_deleted } = req.query;
 
   if (!job_id) {
@@ -1019,6 +1082,7 @@ router.get('/folders', asyncHandler(async (req, res) => {
   let query = supabase
     .from('v2_document_folders')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('job_id', job_id)
     .order('sort_order')
     .order('name');
@@ -1045,11 +1109,13 @@ router.get('/folders', asyncHandler(async (req, res) => {
         supabase
           .from('v2_documents')
           .select('id', { count: 'exact', head: true })
+          .eq('builder_id', builderId)
           .eq('folder_id', folder.id)
           .is('deleted_at', null),
         supabase
           .from('v2_document_folders')
           .select('id', { count: 'exact', head: true })
+          .eq('builder_id', builderId)
           .eq('parent_folder_id', folder.id)
           .is('deleted_at', null)
       ]);
@@ -1067,6 +1133,7 @@ router.get('/folders', asyncHandler(async (req, res) => {
 
 // Get single folder with path
 router.get('/folders/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: folder, error } = await supabase
@@ -1077,6 +1144,7 @@ router.get('/folders/:id', asyncHandler(async (req, res) => {
       parent:v2_document_folders!parent_folder_id(id, name)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -1094,6 +1162,7 @@ router.get('/folders/:id', asyncHandler(async (req, res) => {
 
 // Create folder
 router.post('/folders', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     name,
@@ -1119,6 +1188,7 @@ router.post('/folders', asyncHandler(async (req, res) => {
       .from('v2_document_folders')
       .select('id, job_id')
       .eq('id', parent_folder_id)
+      .eq('builder_id', builderId)
       .single();
 
     if (parentError || !parentFolder) {
@@ -1133,6 +1203,7 @@ router.post('/folders', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_document_folders')
     .insert({
+      builder_id: builderId,
       job_id,
       name: name.trim(),
       description: description || null,
@@ -1157,6 +1228,7 @@ router.post('/folders', asyncHandler(async (req, res) => {
 
 // Update folder
 router.patch('/folders/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     name,
@@ -1172,6 +1244,7 @@ router.patch('/folders/:id', asyncHandler(async (req, res) => {
     .from('v2_document_folders')
     .select('*')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !currentFolder) {
@@ -1205,6 +1278,7 @@ router.patch('/folders/:id', asyncHandler(async (req, res) => {
         .from('v2_document_folders')
         .select('id, job_id')
         .eq('id', parent_folder_id)
+        .eq('builder_id', builderId)
         .single();
 
       if (parentError || !parentFolder) {
@@ -1231,6 +1305,7 @@ router.patch('/folders/:id', asyncHandler(async (req, res) => {
     .from('v2_document_folders')
     .update(updateData)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1246,6 +1321,7 @@ router.patch('/folders/:id', asyncHandler(async (req, res) => {
 
 // Delete folder (soft delete)
 router.delete('/folders/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { recursive, deleted_by } = req.body;
 
@@ -1254,6 +1330,7 @@ router.delete('/folders/:id', asyncHandler(async (req, res) => {
     .from('v2_document_folders')
     .select('id, job_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !folder) {
@@ -1265,11 +1342,13 @@ router.delete('/folders/:id', asyncHandler(async (req, res) => {
     supabase
       .from('v2_document_folders')
       .select('id', { count: 'exact', head: true })
+      .eq('builder_id', builderId)
       .eq('parent_folder_id', id)
       .is('deleted_at', null),
     supabase
       .from('v2_documents')
       .select('id', { count: 'exact', head: true })
+      .eq('builder_id', builderId)
       .eq('folder_id', id)
       .is('deleted_at', null)
   ]);
@@ -1292,6 +1371,7 @@ router.delete('/folders/:id', asyncHandler(async (req, res) => {
       .from('v2_document_folders')
       .select('parent_folder_id')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     const newParentId = currentFolder?.parent_folder_id || null;
@@ -1300,6 +1380,7 @@ router.delete('/folders/:id', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_document_folders')
       .update({ parent_folder_id: newParentId, updated_at: new Date().toISOString() })
+      .eq('builder_id', builderId)
       .eq('parent_folder_id', id)
       .is('deleted_at', null);
 
@@ -1307,6 +1388,7 @@ router.delete('/folders/:id', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_documents')
       .update({ folder_id: newParentId, updated_at: new Date().toISOString() })
+      .eq('builder_id', builderId)
       .eq('folder_id', id)
       .is('deleted_at', null);
   }
@@ -1316,6 +1398,7 @@ router.delete('/folders/:id', asyncHandler(async (req, res) => {
     .from('v2_document_folders')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1326,12 +1409,14 @@ router.delete('/folders/:id', asyncHandler(async (req, res) => {
 
 // Restore deleted folder
 router.post('/folders/:id/restore', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_document_folders')
     .update({ deleted_at: null, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1341,6 +1426,7 @@ router.post('/folders/:id/restore', asyncHandler(async (req, res) => {
 
 // Move document to folder
 router.patch('/:id/move', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { folder_id } = req.body;
 
@@ -1349,6 +1435,7 @@ router.patch('/:id/move', asyncHandler(async (req, res) => {
     .from('v2_documents')
     .select('id, job_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (docError || !doc) {
@@ -1361,6 +1448,7 @@ router.patch('/:id/move', asyncHandler(async (req, res) => {
       .from('v2_document_folders')
       .select('id, job_id')
       .eq('id', folder_id)
+      .eq('builder_id', builderId)
       .single();
 
     if (folderError || !folder) {
@@ -1376,6 +1464,7 @@ router.patch('/:id/move', asyncHandler(async (req, res) => {
     .from('v2_documents')
     .update({ folder_id: folder_id || null, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1385,6 +1474,7 @@ router.patch('/:id/move', asyncHandler(async (req, res) => {
 
 // Bulk move documents to folder
 router.post('/move-bulk', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { document_ids, folder_id } = req.body;
 
   if (!document_ids || !Array.isArray(document_ids) || document_ids.length === 0) {
@@ -1395,6 +1485,7 @@ router.post('/move-bulk', asyncHandler(async (req, res) => {
   const { data: docs, error: docsError } = await supabase
     .from('v2_documents')
     .select('id, job_id')
+    .eq('builder_id', builderId)
     .in('id', document_ids);
 
   if (docsError) throw new AppError('DATABASE_ERROR', docsError.message);
@@ -1417,6 +1508,7 @@ router.post('/move-bulk', asyncHandler(async (req, res) => {
       .from('v2_document_folders')
       .select('id, job_id')
       .eq('id', folder_id)
+      .eq('builder_id', builderId)
       .single();
 
     if (folderError || !folder) {
@@ -1431,6 +1523,7 @@ router.post('/move-bulk', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_documents')
     .update({ folder_id: folder_id || null, updated_at: new Date().toISOString() })
+    .eq('builder_id', builderId)
     .in('id', document_ids)
     .select();
 

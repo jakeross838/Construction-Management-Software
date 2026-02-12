@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Multer for photo uploads
 const upload = multer({
@@ -30,12 +31,13 @@ const PHOTO_PREFIX = 'photos';
 // ACTIVITY LOGGING HELPER
 // ============================================================
 
-async function logPhotoActivity(photoId, action, performedBy, details = {}) {
+async function logPhotoActivity(photoId, action, performedBy, details = {}, builderId = null) {
   await supabase.from('v2_photo_activity').insert({
     photo_id: photoId,
     action,
     performed_by: performedBy,
-    details
+    details,
+    builder_id: builderId
   });
 }
 
@@ -44,11 +46,13 @@ async function logPhotoActivity(photoId, action, performedBy, details = {}) {
 // ============================================================
 
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   let query = supabase
     .from('v2_photos')
     .select('id, category, taken_at')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) {
@@ -84,6 +88,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, category, search, start_date, end_date, entity_type, entity_id, limit = 50, offset = 0 } = req.query;
 
   let query = supabase
@@ -93,6 +98,7 @@ router.get('/', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       links:v2_photo_links(id, entity_type, entity_id)
     `, { count: 'exact' })
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('taken_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false });
@@ -128,6 +134,7 @@ router.get('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/by-entity/:entityType/:entityId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { entityType, entityId } = req.params;
 
   // Validate entity type
@@ -140,6 +147,7 @@ router.get('/by-entity/:entityType/:entityId', asyncHandler(async (req, res) => 
   const { data: links, error: linkError } = await supabase
     .from('v2_photo_links')
     .select('photo_id')
+    .eq('builder_id', builderId)
     .eq('entity_type', entityType)
     .eq('entity_id', entityId);
 
@@ -159,6 +167,7 @@ router.get('/by-entity/:entityType/:entityId', asyncHandler(async (req, res) => 
       job:v2_jobs(id, name),
       links:v2_photo_links(id, entity_type, entity_id)
     `)
+    .eq('builder_id', builderId)
     .in('id', photoIds)
     .is('deleted_at', null)
     .order('taken_at', { ascending: false, nullsFirst: false });
@@ -173,6 +182,7 @@ router.get('/by-entity/:entityType/:entityId', asyncHandler(async (req, res) => 
 // ============================================================
 
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: photo, error } = await supabase
@@ -181,6 +191,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       *,
       job:v2_jobs(id, name, address)
     `)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -191,12 +202,14 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: links } = await supabase
     .from('v2_photo_links')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('photo_id', id);
 
   // Get activity
   const { data: activity } = await supabase
     .from('v2_photo_activity')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('photo_id', id)
     .order('created_at', { ascending: false });
 
@@ -211,6 +224,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/', upload.single('file'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, caption, location, category, taken_at, latitude, longitude, uploaded_by } = req.body;
 
   if (!req.file) {
@@ -225,6 +239,7 @@ router.post('/', upload.single('file'), asyncHandler(async (req, res) => {
   const { data: job, error: jobError } = await supabase
     .from('v2_jobs')
     .select('id, name')
+    .eq('builder_id', builderId)
     .eq('id', job_id)
     .single();
 
@@ -267,7 +282,8 @@ router.post('/', upload.single('file'), asyncHandler(async (req, res) => {
       taken_at: taken_at || null,
       latitude: latitude ? parseFloat(latitude) : null,
       longitude: longitude ? parseFloat(longitude) : null,
-      uploaded_by: uploaded_by || 'system'
+      uploaded_by: uploaded_by || 'system',
+      builder_id: builderId
     })
     .select(`
       *,
@@ -281,7 +297,7 @@ router.post('/', upload.single('file'), asyncHandler(async (req, res) => {
   await logPhotoActivity(photo.id, 'photo_uploaded', uploaded_by || 'system', {
     file_name: file.originalname,
     category: category || 'progress'
-  });
+  }, builderId);
 
   res.status(201).json(photo);
 }));
@@ -291,6 +307,7 @@ router.post('/', upload.single('file'), asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { caption, location, category, taken_at, updated_by } = req.body;
 
@@ -308,6 +325,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const { data: photo, error } = await supabase
     .from('v2_photos')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .select(`
@@ -319,7 +337,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   if (!photo) throw new AppError('NOT_FOUND', 'Photo not found');
 
-  await logPhotoActivity(id, 'photo_updated', updated_by || 'system', { updates });
+  await logPhotoActivity(id, 'photo_updated', updated_by || 'system', { updates }, builderId);
 
   res.json(photo);
 }));
@@ -329,12 +347,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { deleted_by } = req.body;
 
   const { data: photo, error } = await supabase
     .from('v2_photos')
     .update({ deleted_at: new Date().toISOString() })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .select()
@@ -345,7 +365,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
   await logPhotoActivity(id, 'photo_deleted', deleted_by || 'system', {
     file_name: photo.file_name
-  });
+  }, builderId);
 
   res.json({ success: true, message: 'Photo deleted' });
 }));
@@ -355,6 +375,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/links', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { entity_type, entity_id, created_by } = req.body;
 
@@ -372,6 +393,7 @@ router.post('/:id/links', asyncHandler(async (req, res) => {
   const { data: photo, error: photoError } = await supabase
     .from('v2_photos')
     .select('id')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -386,7 +408,8 @@ router.post('/:id/links', asyncHandler(async (req, res) => {
     .insert({
       photo_id: id,
       entity_type,
-      entity_id
+      entity_id,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -401,7 +424,7 @@ router.post('/:id/links', asyncHandler(async (req, res) => {
   await logPhotoActivity(id, 'photo_linked', created_by || 'system', {
     entity_type,
     entity_id
-  });
+  }, builderId);
 
   res.status(201).json(link);
 }));
@@ -411,6 +434,7 @@ router.post('/:id/links', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.delete('/:id/links/:linkId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, linkId } = req.params;
   const { deleted_by } = req.body;
 
@@ -418,6 +442,7 @@ router.delete('/:id/links/:linkId', asyncHandler(async (req, res) => {
   const { data: link, error: fetchError } = await supabase
     .from('v2_photo_links')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', linkId)
     .eq('photo_id', id)
     .single();
@@ -430,6 +455,7 @@ router.delete('/:id/links/:linkId', asyncHandler(async (req, res) => {
   const { error: deleteError } = await supabase
     .from('v2_photo_links')
     .delete()
+    .eq('builder_id', builderId)
     .eq('id', linkId);
 
   if (deleteError) throw new AppError('DATABASE_ERROR', deleteError.message);
@@ -437,7 +463,7 @@ router.delete('/:id/links/:linkId', asyncHandler(async (req, res) => {
   await logPhotoActivity(id, 'photo_unlinked', deleted_by || 'system', {
     entity_type: link.entity_type,
     entity_id: link.entity_id
-  });
+  }, builderId);
 
   res.json({ success: true, message: 'Link removed' });
 }));

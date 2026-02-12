@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // TIMESHEET ENTRIES
@@ -14,6 +15,7 @@ const { AppError, asyncHandler } = require('../core/errors');
 
 // List timesheets with filters
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { employee_id, job_id, status, start_date, end_date, period_id } = req.query;
 
   let query = supabase
@@ -24,6 +26,7 @@ router.get('/', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       cost_code:v2_cost_codes(id, code, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('work_date', { ascending: false });
 
@@ -41,6 +44,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Get single timesheet
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_timesheets')
     .select(`
@@ -50,6 +54,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name),
       period:v2_financial_periods(id, name, status)
     `)
+    .eq('builder_id', builderId)
     .eq('id', req.params.id)
     .single();
 
@@ -65,6 +70,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Create timesheet entry
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     employee_id, job_id, work_date, hours, overtime_hours,
     work_type, cost_code_id, description, notes
@@ -93,7 +99,8 @@ router.post('/', asyncHandler(async (req, res) => {
       overtime_hours: overtime_hours || 0,
       work_type: work_type || 'regular',
       cost_code_id, description, notes,
-      status: 'draft'
+      status: 'draft',
+      builder_id: builderId
     })
     .select(`
       *,
@@ -108,7 +115,8 @@ router.post('/', asyncHandler(async (req, res) => {
   await supabase.from('v2_timesheet_activity').insert({
     timesheet_id: data.id,
     action: 'created',
-    details: { hours, job_id }
+    details: { hours, job_id },
+    builder_id: builderId
   });
 
   res.json(data);
@@ -116,6 +124,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // Update timesheet entry
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     job_id, work_date, hours, overtime_hours,
@@ -126,6 +135,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const { data: existing } = await supabase
     .from('v2_timesheets')
     .select('status, submitted_at')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -137,6 +147,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const { data: settings } = await supabase
     .from('v2_company_settings')
     .select('value')
+    .eq('builder_id', builderId)
     .eq('key', 'timesheet_edit_window')
     .single();
 
@@ -169,6 +180,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_timesheets')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select(`
       *,
@@ -183,7 +195,8 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   await supabase.from('v2_timesheet_activity').insert({
     timesheet_id: id,
     action: 'updated',
-    details: updates
+    details: updates,
+    builder_id: builderId
   });
 
   res.json(data);
@@ -191,12 +204,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
 // Delete timesheet (soft delete)
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Check if timesheet can be deleted
   const { data: existing } = await supabase
     .from('v2_timesheets')
     .select('status')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -207,6 +222,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('v2_timesheets')
     .update({ deleted_at: new Date().toISOString() })
+    .eq('builder_id', builderId)
     .eq('id', id);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -219,11 +235,13 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Submit timesheet for approval
 router.post('/:id/submit', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: existing } = await supabase
     .from('v2_timesheets')
     .select('status')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -241,6 +259,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
       status: 'submitted',
       submitted_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -250,7 +269,8 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
   // Log activity
   await supabase.from('v2_timesheet_activity').insert({
     timesheet_id: id,
-    action: 'submitted'
+    action: 'submitted',
+    builder_id: builderId
   });
 
   res.json(data);
@@ -258,12 +278,14 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
 
 // Approve timesheet
 router.post('/:id/approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { approved_by } = req.body;
 
   const { data: existing } = await supabase
     .from('v2_timesheets')
     .select('status')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -282,6 +304,7 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
       approved_at: new Date().toISOString(),
       approved_by: approved_by || 'admin'
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -292,7 +315,8 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
   await supabase.from('v2_timesheet_activity').insert({
     timesheet_id: id,
     action: 'approved',
-    actor: approved_by
+    actor: approved_by,
+    builder_id: builderId
   });
 
   res.json(data);
@@ -300,12 +324,14 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
 
 // Reject timesheet
 router.post('/:id/reject', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { rejected_by, reason } = req.body;
 
   const { data: existing } = await supabase
     .from('v2_timesheets')
     .select('status')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -323,6 +349,7 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
       status: 'rejected',
       rejection_reason: reason
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -334,7 +361,8 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
     timesheet_id: id,
     action: 'rejected',
     actor: rejected_by,
-    details: { reason }
+    details: { reason },
+    builder_id: builderId
   });
 
   res.json(data);
@@ -342,6 +370,7 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
 
 // Bulk submit timesheets
 router.post('/bulk-submit', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { timesheet_ids } = req.body;
 
   if (!timesheet_ids || !Array.isArray(timesheet_ids)) {
@@ -354,6 +383,7 @@ router.post('/bulk-submit', asyncHandler(async (req, res) => {
       status: 'submitted',
       submitted_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .in('id', timesheet_ids)
     .in('status', ['draft', 'rejected'])
     .select();
@@ -363,7 +393,8 @@ router.post('/bulk-submit', asyncHandler(async (req, res) => {
   // Log activity for each
   const activities = data.map(t => ({
     timesheet_id: t.id,
-    action: 'submitted'
+    action: 'submitted',
+    builder_id: builderId
   }));
   await supabase.from('v2_timesheet_activity').insert(activities);
 
@@ -372,6 +403,7 @@ router.post('/bulk-submit', asyncHandler(async (req, res) => {
 
 // Bulk approve timesheets
 router.post('/bulk-approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { timesheet_ids, approved_by } = req.body;
 
   if (!timesheet_ids || !Array.isArray(timesheet_ids)) {
@@ -385,6 +417,7 @@ router.post('/bulk-approve', asyncHandler(async (req, res) => {
       approved_at: new Date().toISOString(),
       approved_by: approved_by || 'admin'
     })
+    .eq('builder_id', builderId)
     .in('id', timesheet_ids)
     .eq('status', 'submitted')
     .select();
@@ -395,7 +428,8 @@ router.post('/bulk-approve', asyncHandler(async (req, res) => {
   const activities = data.map(t => ({
     timesheet_id: t.id,
     action: 'approved',
-    actor: approved_by
+    actor: approved_by,
+    builder_id: builderId
   }));
   await supabase.from('v2_timesheet_activity').insert(activities);
 
@@ -408,6 +442,7 @@ router.post('/bulk-approve', asyncHandler(async (req, res) => {
 
 // Get batches for employee
 router.get('/batches/list', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { employee_id, status } = req.query;
 
   let query = supabase
@@ -416,6 +451,7 @@ router.get('/batches/list', asyncHandler(async (req, res) => {
       *,
       employee:v2_employees(id, first_name, last_name)
     `)
+    .eq('builder_id', builderId)
     .order('week_start', { ascending: false });
 
   if (employee_id) query = query.eq('employee_id', employee_id);
@@ -428,6 +464,7 @@ router.get('/batches/list', asyncHandler(async (req, res) => {
 
 // Create or get batch for week
 router.post('/batches', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { employee_id, week_start } = req.body;
 
   if (!employee_id || !week_start) {
@@ -444,6 +481,7 @@ router.post('/batches', asyncHandler(async (req, res) => {
   const { data: existing } = await supabase
     .from('v2_timesheet_batches')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('employee_id', employee_id)
     .eq('week_start', week_start)
     .single();
@@ -458,7 +496,8 @@ router.post('/batches', asyncHandler(async (req, res) => {
     .insert({
       employee_id,
       week_start,
-      week_end: weekEnd
+      week_end: weekEnd,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -469,12 +508,14 @@ router.post('/batches', asyncHandler(async (req, res) => {
 
 // Submit batch
 router.post('/batches/:id/submit', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get batch details
   const { data: batch } = await supabase
     .from('v2_timesheet_batches')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -489,6 +530,7 @@ router.post('/batches/:id/submit', asyncHandler(async (req, res) => {
       status: 'submitted',
       submitted_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('employee_id', batch.employee_id)
     .gte('work_date', batch.week_start)
     .lte('work_date', batch.week_end)
@@ -501,6 +543,7 @@ router.post('/batches/:id/submit', asyncHandler(async (req, res) => {
       status: 'submitted',
       submitted_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -510,7 +553,8 @@ router.post('/batches/:id/submit', asyncHandler(async (req, res) => {
   // Log activity
   await supabase.from('v2_timesheet_activity').insert({
     batch_id: id,
-    action: 'submitted'
+    action: 'submitted',
+    builder_id: builderId
   });
 
   res.json(data);
@@ -522,6 +566,7 @@ router.post('/batches/:id/submit', asyncHandler(async (req, res) => {
 
 // Labor hours by job
 router.get('/reports/by-job', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { start_date, end_date, status } = req.query;
 
   let query = supabase
@@ -535,6 +580,7 @@ router.get('/reports/by-job', asyncHandler(async (req, res) => {
       burden_amount,
       total_cost
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (status) query = query.eq('status', status);
@@ -570,6 +616,7 @@ router.get('/reports/by-job', asyncHandler(async (req, res) => {
 
 // Labor hours by employee
 router.get('/reports/by-employee', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { start_date, end_date, status } = req.query;
 
   let query = supabase
@@ -583,6 +630,7 @@ router.get('/reports/by-employee', asyncHandler(async (req, res) => {
       burden_amount,
       total_cost
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (status) query = query.eq('status', status);
@@ -618,6 +666,7 @@ router.get('/reports/by-employee', asyncHandler(async (req, res) => {
 
 // Labor hours by period
 router.get('/reports/by-period', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { status } = req.query;
 
   let query = supabase
@@ -631,6 +680,7 @@ router.get('/reports/by-period', asyncHandler(async (req, res) => {
       burden_amount,
       total_cost
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .not('period_id', 'is', null);
 
@@ -667,9 +717,11 @@ router.get('/reports/by-period', asyncHandler(async (req, res) => {
 
 // Pending approval count
 router.get('/pending-count', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_timesheets')
     .select('id', { count: 'exact', head: true })
+    .eq('builder_id', builderId)
     .eq('status', 'submitted')
     .is('deleted_at', null);
 

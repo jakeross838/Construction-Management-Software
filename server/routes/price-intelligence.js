@@ -9,6 +9,7 @@ const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
 const priceMatcher = require('../matching/price-matcher');
 const priceCapture = require('../matching/price-capture');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // STATS & OVERVIEW
@@ -19,6 +20,8 @@ const priceCapture = require('../matching/price-capture');
  * Get overview statistics for price intelligence
  */
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
   const [
     { count: itemCount },
     { count: vendorCount },
@@ -26,20 +29,22 @@ router.get('/stats', asyncHandler(async (req, res) => {
     { data: savings },
     { count: pendingReviewCount }
   ] = await Promise.all([
-    supabase.from('v2_master_items').select('*', { count: 'exact', head: true }).eq('is_active', true),
-    supabase.from('v2_vendors').select('*', { count: 'exact', head: true }),
-    supabase.from('v2_price_history').select('*', { count: 'exact', head: true }),
+    supabase.from('v2_master_items').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).eq('is_active', true),
+    supabase.from('v2_vendors').select('*', { count: 'exact', head: true }).eq('builder_id', builderId),
+    supabase.from('v2_price_history').select('*', { count: 'exact', head: true }).eq('builder_id', builderId),
     supabase.from('v2_savings_log')
       .select('savings_amount')
+      .eq('builder_id', builderId)
       .gte('order_date', new Date(new Date().getFullYear(), 0, 1).toISOString()),
     supabase.from('v2_master_items').select('*', { count: 'exact', head: true })
-      .eq('created_by_ai', true).eq('review_status', 'pending')
+      .eq('builder_id', builderId).eq('created_by_ai', true).eq('review_status', 'pending')
   ]);
 
   // Calculate average confidence
   const { data: confidence } = await supabase
     .from('v2_price_confidence')
     .select('confidence_score')
+    .eq('builder_id', builderId)
     .not('confidence_score', 'is', null);
 
   const avgConfidence = confidence?.length > 0
@@ -68,10 +73,12 @@ router.get('/stats', asyncHandler(async (req, res) => {
  */
 router.get('/master-items', asyncHandler(async (req, res) => {
   const { category, subcategory, search, active_only = 'true' } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_master_items')
     .select('*')
+    .eq('builder_id', builderId)
     .order('category')
     .order('standard_name');
 
@@ -103,12 +110,14 @@ router.get('/master-items', asyncHandler(async (req, res) => {
  */
 router.get('/master-items/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   // Get master item
   const { data: item, error } = await supabase
     .from('v2_master_items')
     .select('*')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) throw new AppError('Master item not found', 404);
@@ -118,6 +127,7 @@ router.get('/master-items/:id', asyncHandler(async (req, res) => {
     .from('v2_current_prices')
     .select('*')
     .eq('master_item_id', id)
+    .eq('builder_id', builderId)
     .order('unit_price');
 
   // Get price history
@@ -125,6 +135,7 @@ router.get('/master-items/:id', asyncHandler(async (req, res) => {
     .from('v2_price_history')
     .select('*, vendor:v2_vendors(name)')
     .eq('master_item_id', id)
+    .eq('builder_id', builderId)
     .order('price_date', { ascending: false })
     .limit(50);
 
@@ -132,13 +143,15 @@ router.get('/master-items/:id', asyncHandler(async (req, res) => {
   const { data: aliases } = await supabase
     .from('v2_vendor_item_aliases')
     .select('*, vendor:v2_vendors(name)')
-    .eq('master_item_id', id);
+    .eq('master_item_id', id)
+    .eq('builder_id', builderId);
 
   // Get confidence scores
   const { data: confidence } = await supabase
     .from('v2_price_confidence')
     .select('*, vendor:v2_vendors(name)')
-    .eq('master_item_id', id);
+    .eq('master_item_id', id)
+    .eq('builder_id', builderId);
 
   res.json({
     ...item,
@@ -158,6 +171,7 @@ router.get('/master-items/:id', asyncHandler(async (req, res) => {
  * Accepts both frontend naming (name, default_unit) and backend naming (standard_name, standard_unit)
  */
 router.post('/master-items', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     category,
     subcategory,
@@ -188,7 +202,8 @@ router.post('/master-items', asyncHandler(async (req, res) => {
       standard_name: itemName,
       standard_unit: itemUnit,
       dimensions: dimensions || null,
-      keywords: keywords || priceMatcher.extractKeywords(itemName)
+      keywords: keywords || priceMatcher.extractKeywords(itemName),
+      builder_id: builderId
     })
     .select()
     .single();
@@ -204,6 +219,7 @@ router.post('/master-items', asyncHandler(async (req, res) => {
  */
 router.patch('/master-items/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const updates = req.body;
 
   // Add updated_at
@@ -213,6 +229,7 @@ router.patch('/master-items/:id', asyncHandler(async (req, res) => {
     .from('v2_master_items')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -227,11 +244,13 @@ router.patch('/master-items/:id', asyncHandler(async (req, res) => {
  */
 router.delete('/master-items/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data, error } = await supabase
     .from('v2_master_items')
     .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -249,10 +268,13 @@ router.delete('/master-items/:id', asyncHandler(async (req, res) => {
  * Get list of unique categories and subcategories with summary stats
  */
 router.get('/categories', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
   // Get all active items with their categories
   const { data: items, error } = await supabase
     .from('v2_master_items')
     .select('id, category, subcategory')
+    .eq('builder_id', builderId)
     .eq('is_active', true);
 
   if (error) throw new AppError(error.message, 500);
@@ -323,10 +345,12 @@ router.get('/categories', asyncHandler(async (req, res) => {
  */
 router.get('/current-prices', asyncHandler(async (req, res) => {
   const { master_item_id, vendor_id, category } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_current_prices')
     .select('*')
+    .eq('builder_id', builderId)
     .order('standard_name');
 
   if (master_item_id) {
@@ -373,10 +397,12 @@ router.post('/refresh-view', asyncHandler(async (req, res) => {
  */
 router.get('/price-history', asyncHandler(async (req, res) => {
   const { master_item_id, vendor_id, source_type, limit = 100 } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_price_history')
     .select('*, master_item:v2_master_items(standard_name, category), vendor:v2_vendors(name)')
+    .eq('builder_id', builderId)
     .order('price_date', { ascending: false })
     .limit(parseInt(limit));
 
@@ -415,6 +441,7 @@ router.get('/price-history/:id/source', asyncHandler(async (req, res) => {
  * Add a manual price point
  */
 router.post('/price-history', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     master_item_id,
     vendor_id,
@@ -436,6 +463,7 @@ router.post('/price-history', asyncHandler(async (req, res) => {
     .from('v2_master_items')
     .select('dimensions')
     .eq('id', master_item_id)
+    .eq('builder_id', builderId)
     .single();
 
   const data = await priceMatcher.addPriceHistory({
@@ -466,10 +494,12 @@ router.post('/price-history', asyncHandler(async (req, res) => {
  */
 router.get('/aliases', asyncHandler(async (req, res) => {
   const { master_item_id, vendor_id } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_vendor_item_aliases')
     .select('*, master_item:v2_master_items(standard_name, category), vendor:v2_vendors(name)')
+    .eq('builder_id', builderId)
     .order('times_matched', { ascending: false });
 
   if (master_item_id) {
@@ -530,11 +560,13 @@ router.get('/aliases/match', asyncHandler(async (req, res) => {
  */
 router.delete('/aliases/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   const { error } = await supabase
     .from('v2_vendor_item_aliases')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError(error.message, 500);
 
@@ -610,10 +642,12 @@ router.post('/compare-bulk', asyncHandler(async (req, res) => {
  */
 router.get('/quotes', asyncHandler(async (req, res) => {
   const { vendor_id, status } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_vendor_quotes')
     .select('*, vendor:v2_vendors(name)')
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (vendor_id) {
@@ -635,6 +669,7 @@ router.get('/quotes', asyncHandler(async (req, res) => {
  * Record a vendor quote
  */
 router.post('/quotes', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { vendor_id, file_name, file_path, quote_date, expiration_date, total_amount, notes } = req.body;
 
   if (!vendor_id || !file_name) {
@@ -651,7 +686,8 @@ router.post('/quotes', asyncHandler(async (req, res) => {
       expiration_date,
       total_amount,
       notes,
-      status: 'pending'
+      status: 'pending',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -671,10 +707,12 @@ router.post('/quotes', asyncHandler(async (req, res) => {
  */
 router.get('/naming-conventions', asyncHandler(async (req, res) => {
   const { category, active_only = 'true' } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_naming_conventions')
     .select('*')
+    .eq('builder_id', builderId)
     .order('category')
     .order('priority', { ascending: false });
 
@@ -697,6 +735,7 @@ router.get('/naming-conventions', asyncHandler(async (req, res) => {
  * Create a new naming convention
  */
 router.post('/naming-conventions', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category, subcategory, name_pattern, example, trigger_keywords, default_unit, priority } = req.body;
 
   if (!category || !name_pattern) {
@@ -713,7 +752,8 @@ router.post('/naming-conventions', asyncHandler(async (req, res) => {
       trigger_keywords: trigger_keywords || [],
       default_unit: default_unit || 'ea',
       priority: priority || 0,
-      is_active: true
+      is_active: true,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -732,6 +772,7 @@ router.post('/naming-conventions', asyncHandler(async (req, res) => {
  */
 router.patch('/naming-conventions/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const updates = req.body;
 
   updates.updated_at = new Date().toISOString();
@@ -740,6 +781,7 @@ router.patch('/naming-conventions/:id', asyncHandler(async (req, res) => {
     .from('v2_naming_conventions')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -754,11 +796,13 @@ router.patch('/naming-conventions/:id', asyncHandler(async (req, res) => {
  */
 router.delete('/naming-conventions/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data, error } = await supabase
     .from('v2_naming_conventions')
     .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -808,6 +852,7 @@ router.post('/naming-conventions/preview', asyncHandler(async (req, res) => {
  */
 router.get('/review-queue', asyncHandler(async (req, res) => {
   const { status = 'pending', limit = 50, offset = 0 } = req.query;
+  const builderId = getBuilderId(req);
   const limitInt = Math.min(parseInt(limit) || 50, 200);
   const offsetInt = parseInt(offset) || 0;
 
@@ -815,6 +860,7 @@ router.get('/review-queue', asyncHandler(async (req, res) => {
   let query = supabase
     .from('v2_master_items')
     .select('*, source_vendor:v2_vendors!source_vendor_id(name), source_invoice:v2_invoices!source_invoice_id(invoice_number)')
+    .eq('builder_id', builderId)
     .eq('created_by_ai', true)
     .order('created_at', { ascending: false })
     .range(offsetInt, offsetInt + limitInt - 1);
@@ -823,6 +869,7 @@ router.get('/review-queue', asyncHandler(async (req, res) => {
   let countQuery = supabase
     .from('v2_master_items')
     .select('*', { count: 'exact', head: true })
+    .eq('builder_id', builderId)
     .eq('created_by_ai', true);
 
   if (status !== 'all') {
@@ -849,13 +896,15 @@ router.get('/review-queue', asyncHandler(async (req, res) => {
  * Get review queue statistics
  */
 router.get('/review-queue/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
   const [pending, approved, rejected] = await Promise.all([
     supabase.from('v2_master_items').select('*', { count: 'exact', head: true })
-      .eq('created_by_ai', true).eq('review_status', 'pending'),
+      .eq('builder_id', builderId).eq('created_by_ai', true).eq('review_status', 'pending'),
     supabase.from('v2_master_items').select('*', { count: 'exact', head: true })
-      .eq('created_by_ai', true).eq('review_status', 'approved'),
+      .eq('builder_id', builderId).eq('created_by_ai', true).eq('review_status', 'approved'),
     supabase.from('v2_master_items').select('*', { count: 'exact', head: true })
-      .eq('created_by_ai', true).eq('review_status', 'rejected')
+      .eq('builder_id', builderId).eq('created_by_ai', true).eq('review_status', 'rejected')
   ]);
 
   res.json({
@@ -872,6 +921,7 @@ router.get('/review-queue/stats', asyncHandler(async (req, res) => {
  */
 router.post('/review-queue/:id/approve', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const { standard_name, category, subcategory, standard_unit } = req.body;
 
   // Build update object with any corrections
@@ -889,6 +939,7 @@ router.post('/review-queue/:id/approve', asyncHandler(async (req, res) => {
     .from('v2_master_items')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -903,6 +954,7 @@ router.post('/review-queue/:id/approve', asyncHandler(async (req, res) => {
  */
 router.post('/review-queue/:id/reject', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const { merge_into_id } = req.body;
 
   // If merging into another item, update aliases to point there
@@ -910,13 +962,15 @@ router.post('/review-queue/:id/reject', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_vendor_item_aliases')
       .update({ master_item_id: merge_into_id })
-      .eq('master_item_id', id);
+      .eq('master_item_id', id)
+      .eq('builder_id', builderId);
 
     // Also update any price history
     await supabase
       .from('v2_price_history')
       .update({ master_item_id: merge_into_id })
-      .eq('master_item_id', id);
+      .eq('master_item_id', id)
+      .eq('builder_id', builderId);
   }
 
   const { data, error } = await supabase
@@ -927,6 +981,7 @@ router.post('/review-queue/:id/reject', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -944,6 +999,7 @@ router.post('/review-queue/:id/reject', asyncHandler(async (req, res) => {
  * Approve multiple items at once
  */
 router.post('/review-queue/bulk-approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { item_ids } = req.body;
 
   if (!item_ids || !Array.isArray(item_ids) || item_ids.length === 0) {
@@ -957,6 +1013,7 @@ router.post('/review-queue/bulk-approve', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .in('id', item_ids)
+    .eq('builder_id', builderId)
     .select();
 
   if (error) throw new AppError(error.message, 500);
@@ -977,11 +1034,13 @@ router.post('/review-queue/bulk-approve', asyncHandler(async (req, res) => {
  */
 router.get('/matrix', asyncHandler(async (req, res) => {
   const { category, limit = 50 } = req.query;
+  const builderId = getBuilderId(req);
 
   // Get items
   let itemQuery = supabase
     .from('v2_master_items')
     .select('id, standard_name, category, subcategory, standard_unit')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('category')
     .order('standard_name')
@@ -1003,6 +1062,7 @@ router.get('/matrix', asyncHandler(async (req, res) => {
   const { data: allPrices, error: priceError } = await supabase
     .from('v2_price_history')
     .select('*')
+    .eq('builder_id', builderId)
     .in('master_item_id', items.map(i => i.id))
     .order('price_date', { ascending: false });
 

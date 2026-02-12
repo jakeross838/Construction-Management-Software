@@ -50,6 +50,18 @@ class AppError extends Error {
 // ============================================================
 
 const ERROR_CODES = {
+  // Auth Errors (401/403)
+  UNAUTHORIZED: {
+    status: 401,
+    retry: false,
+    description: 'Authentication required'
+  },
+  FORBIDDEN: {
+    status: 403,
+    retry: false,
+    description: 'Insufficient permissions'
+  },
+
   // Validation Errors (400)
   VALIDATION_FAILED: {
     status: 400,

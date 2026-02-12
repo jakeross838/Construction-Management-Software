@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // BURDEN CLASSES
@@ -14,9 +15,11 @@ const { AppError, asyncHandler } = require('../core/errors');
 
 // List burden classes
 router.get('/burden-classes', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_burden_classes')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('name');
 
@@ -26,9 +29,11 @@ router.get('/burden-classes', asyncHandler(async (req, res) => {
 
 // Get single burden class
 router.get('/burden-classes/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_burden_classes')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', req.params.id)
     .single();
 
@@ -44,6 +49,7 @@ router.get('/burden-classes/:id', asyncHandler(async (req, res) => {
 
 // Create burden class
 router.post('/burden-classes', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     name, description, fica_rate, futa_rate, suta_rate,
     workers_comp_rate, health_insurance_rate, retirement_rate,
@@ -57,6 +63,7 @@ router.post('/burden-classes', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_burden_classes')
     .insert({
+      builder_id: builderId,
       name, description, fica_rate, futa_rate, suta_rate,
       workers_comp_rate, health_insurance_rate, retirement_rate,
       pto_rate, other_rate, is_default
@@ -70,6 +77,7 @@ router.post('/burden-classes', asyncHandler(async (req, res) => {
 
 // Update burden class
 router.patch('/burden-classes/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     name, description, fica_rate, futa_rate, suta_rate,
@@ -81,6 +89,7 @@ router.patch('/burden-classes/:id', asyncHandler(async (req, res) => {
   const { data: oldClass } = await supabase
     .from('v2_burden_classes')
     .select('total_burden_rate')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -101,6 +110,7 @@ router.patch('/burden-classes/:id', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_burden_classes')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -110,6 +120,7 @@ router.patch('/burden-classes/:id', asyncHandler(async (req, res) => {
   // Record history if rate changed
   if (oldClass && data.total_burden_rate !== oldClass.total_burden_rate) {
     await supabase.from('v2_burden_rate_history').insert({
+      builder_id: builderId,
       burden_class_id: id,
       previous_rate: oldClass.total_burden_rate,
       new_rate: data.total_burden_rate,
@@ -128,6 +139,7 @@ router.patch('/burden-classes/:id', asyncHandler(async (req, res) => {
 
 // List employees
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { status, burden_class_id, department, active_only } = req.query;
 
   let query = supabase
@@ -136,6 +148,7 @@ router.get('/', asyncHandler(async (req, res) => {
       *,
       burden_class:v2_burden_classes(id, name, total_burden_rate)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('last_name');
 
@@ -162,12 +175,14 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Get single employee
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_employees')
     .select(`
       *,
       burden_class:v2_burden_classes(*)
     `)
+    .eq('builder_id', builderId)
     .eq('id', req.params.id)
     .single();
 
@@ -190,6 +205,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Create employee
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     first_name, last_name, email, phone, employee_number,
     hire_date, role, burden_class_id, department,
@@ -210,6 +226,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_employees')
     .insert({
+      builder_id: builderId,
       first_name, last_name, email, phone, employee_number,
       hire_date, role, burden_class_id, department,
       pay_type: pay_type || 'hourly', pay_rate, custom_burden_rate,
@@ -232,6 +249,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // Update employee
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     first_name, last_name, email, phone, employee_number,
@@ -264,6 +282,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_employees')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .select(`
@@ -285,11 +304,13 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
 // Delete employee (soft delete)
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { error } = await supabase
     .from('v2_employees')
     .update({ deleted_at: new Date().toISOString(), status: 'terminated' })
+    .eq('builder_id', builderId)
     .eq('id', id);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -302,9 +323,11 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Get company settings
 router.get('/settings/all', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_company_settings')
     .select('*')
+    .eq('builder_id', builderId)
     .order('key');
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -324,6 +347,7 @@ router.get('/settings/all', asyncHandler(async (req, res) => {
 
 // Update company setting
 router.patch('/settings/:key', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { key } = req.params;
   const { value, updated_by } = req.body;
 
@@ -334,6 +358,7 @@ router.patch('/settings/:key', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString(),
       updated_by: updated_by || 'system'
     })
+    .eq('builder_id', builderId)
     .eq('key', key)
     .select()
     .single();
@@ -348,6 +373,7 @@ router.patch('/settings/:key', asyncHandler(async (req, res) => {
 
 // Calculate burdened cost for employee
 router.post('/calculate-burden', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { employee_id, base_wage, hours } = req.body;
 
   if (!base_wage) {
@@ -382,11 +408,13 @@ router.post('/calculate-burden', asyncHandler(async (req, res) => {
 
 // Get pending reviews
 router.get('/burden-reviews', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { status } = req.query;
 
   let query = supabase
     .from('v2_burden_review_reminders')
     .select('*')
+    .eq('builder_id', builderId)
     .order('due_date');
 
   if (status) query = query.eq('status', status);
@@ -398,6 +426,7 @@ router.get('/burden-reviews', asyncHandler(async (req, res) => {
 
 // Complete a review
 router.patch('/burden-reviews/:id/complete', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { completed_by, notes } = req.body;
 
@@ -409,6 +438,7 @@ router.patch('/burden-reviews/:id/complete', asyncHandler(async (req, res) => {
       completed_by: completed_by || 'system',
       notes
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -425,6 +455,7 @@ router.patch('/burden-reviews/:id/complete', asyncHandler(async (req, res) => {
       value: new Date().toISOString().split('T')[0],
       updated_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('key', 'last_burden_review');
 
   res.json(data);
@@ -432,11 +463,13 @@ router.patch('/burden-reviews/:id/complete', asyncHandler(async (req, res) => {
 
 // Create review reminder manually
 router.post('/burden-reviews', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { review_type, due_date } = req.body;
 
   const { data, error } = await supabase
     .from('v2_burden_review_reminders')
     .insert({
+      builder_id: builderId,
       review_type: review_type || 'manual',
       due_date: due_date || new Date().toISOString().split('T')[0]
     })

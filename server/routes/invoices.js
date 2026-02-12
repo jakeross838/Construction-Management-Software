@@ -9,7 +9,8 @@ const multer = require('multer');
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
 const { paginated } = require('../utils/api-response');
-const { AppError, asyncHandler, notFoundError, validationError, transitionError } = require('../core/errors');
+const { AppError, asyncHandler, notFoundError, validationError, transitionError, lockedError, versionConflictError } = require('../core/errors');
+const { checkLock } = require('../core/locking');
 const {
   decodeCursor,
   buildCursorFromItem,
@@ -610,47 +611,47 @@ router.get('/jobs/:jobId/validate-linkages', asyncHandler(async (req, res) => {
 }));
 
 // Get invoice family (parent + children for split invoices)
-router.get('/:id/family', async (req, res) => {
-  try {
-    const { id } = req.params;
+router.get('/:id/family', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const builderId = getBuilderId(req);
 
-    const { data: invoice, error: invError } = await supabase
-      .from('v2_invoices')
-      .select('id, parent_invoice_id, is_split_parent')
-      .eq('id', id)
-      .single();
+  const { data: invoice, error: invError } = await supabase
+    .from('v2_invoices')
+    .select('id, parent_invoice_id, is_split_parent')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
 
-    if (invError || !invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
-    }
-
-    const rootId = invoice.is_split_parent ? id : (invoice.parent_invoice_id || id);
-
-    if (!invoice.parent_invoice_id && !invoice.is_split_parent) {
-      return res.json({ is_split: false, parent: null, children: [] });
-    }
-
-    const { data: parent } = await supabase
-      .from('v2_invoices')
-      .select(`*, vendor:v2_vendors(id, name), job:v2_jobs(id, name)`)
-      .eq('id', rootId)
-      .single();
-
-    const { data: children } = await supabase
-      .from('v2_invoices')
-      .select(`
-        *, vendor:v2_vendors(id, name), job:v2_jobs(id, name),
-        po:v2_purchase_orders(id, po_number, job_change_order_id)
-      `)
-      .eq('parent_invoice_id', rootId)
-      .is('deleted_at', null)
-      .order('split_index');
-
-    res.json({ is_split: true, parent, children: children || [] });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
+  if (invError || !invoice) {
+    return res.status(404).json({ error: 'Invoice not found' });
   }
-});
+
+  const rootId = invoice.is_split_parent ? id : (invoice.parent_invoice_id || id);
+
+  if (!invoice.parent_invoice_id && !invoice.is_split_parent) {
+    return res.json({ is_split: false, parent: null, children: [] });
+  }
+
+  const { data: parent } = await supabase
+    .from('v2_invoices')
+    .select(`*, vendor:v2_vendors(id, name), job:v2_jobs(id, name)`)
+    .eq('id', rootId)
+    .eq('builder_id', builderId)
+    .single();
+
+  const { data: children } = await supabase
+    .from('v2_invoices')
+    .select(`
+      *, vendor:v2_vendors(id, name), job:v2_jobs(id, name),
+      po:v2_purchase_orders(id, po_number, job_change_order_id)
+    `)
+    .eq('parent_invoice_id', rootId)
+    .eq('builder_id', builderId)
+    .is('deleted_at', null)
+    .order('split_index');
+
+  res.json({ is_split: true, parent, children: children || [] });
+}));
 
 // ============================================================
 // UPLOAD & PROCESSING ENDPOINTS
@@ -2720,6 +2721,1405 @@ router.post('/test-create', asyncHandler(async (req, res) => {
   await logActivity(invoice.id, 'created', 'Test System', { test: true });
 
   res.json(invoice);
+}));
+
+// ============================================================
+// APPROVAL CONTEXT (budget/PO info for approval workflow)
+// ============================================================
+
+router.get('/:id/approval-context', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+    // Get the invoice with allocations, job, and PO
+    const { data: invoice, error: invoiceError } = await supabase
+      .from('v2_invoices')
+      .select(`
+        id, job_id, po_id, amount, status,
+        allocations:v2_invoice_allocations(
+          id, amount, cost_code_id, po_line_item_id,
+          cost_code:v2_cost_codes(id, code, name)
+        ),
+        po:v2_purchase_orders(
+          id, po_number, total_amount, status, job_change_order_id,
+          line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount)
+        )
+      `)
+      .eq('builder_id', builderId)
+      .eq('id', req.params.id)
+      .single();
+
+    if (invoiceError) throw invoiceError;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+    const result = {
+      budget: [],
+      po: null
+    };
+
+    // Get budget context for each cost code in allocations
+    if (invoice.allocations?.length > 0 && invoice.job_id) {
+      const costCodeIds = invoice.allocations.map(a => a.cost_code_id).filter(Boolean);
+
+      // Get budget lines for these cost codes
+      const { data: budgetLines } = await supabase
+        .from('v2_budget_lines')
+        .select('cost_code_id, budgeted_amount')
+        .eq('job_id', invoice.job_id)
+        .in('cost_code_id', costCodeIds);
+
+      // Get all approved/in_draw/paid invoice allocations for these cost codes (excluding current invoice)
+      const { data: existingAllocations } = await supabase
+        .from('v2_invoice_allocations')
+        .select(`
+          amount, cost_code_id,
+          invoice:v2_invoices!inner(id, job_id, status)
+        `)
+        .eq('invoice.job_id', invoice.job_id)
+        .in('invoice.status', ['approved', 'in_draw', 'paid'])
+        .neq('invoice.id', invoice.id)
+        .in('cost_code_id', costCodeIds);
+
+      // Calculate billed amounts per cost code
+      const billedByCostCode = {};
+      existingAllocations?.forEach(a => {
+        if (!billedByCostCode[a.cost_code_id]) billedByCostCode[a.cost_code_id] = 0;
+        billedByCostCode[a.cost_code_id] += parseFloat(a.amount) || 0;
+      });
+
+      // Build budget context for each allocation
+      result.budget = invoice.allocations.map(alloc => {
+        const budgetLine = budgetLines?.find(bl => bl.cost_code_id === alloc.cost_code_id);
+        const budgeted = parseFloat(budgetLine?.budgeted_amount) || 0;
+        const previouslyBilled = billedByCostCode[alloc.cost_code_id] || 0;
+        const thisInvoice = parseFloat(alloc.amount) || 0;
+        const afterApproval = previouslyBilled + thisInvoice;
+
+        return {
+          cost_code: alloc.cost_code,
+          this_invoice: thisInvoice,
+          budgeted: budgeted,
+          previously_billed: previouslyBilled,
+          after_approval: afterApproval,
+          remaining: budgeted - afterApproval,
+          over_budget: afterApproval > budgeted && budgeted > 0
+        };
+      });
+    }
+
+    // Get PO context - either from invoice.po_id OR from allocation po_line_item links
+    let linkedPO = invoice.po;
+    let linkedPOId = invoice.po_id;
+
+    // If no direct PO link, check allocation line item links
+    if (!linkedPO && invoice.allocations?.length > 0) {
+      const poLineItemIds = invoice.allocations
+        .map(a => a.po_line_item_id)
+        .filter(Boolean);
+
+      if (poLineItemIds.length > 0) {
+        // Get the PO from the first linked line item
+        const { data: poLineItem } = await supabase
+          .from('v2_po_line_items')
+          .select(`
+            po_id,
+            po:v2_purchase_orders(
+              id, po_number, total_amount, status, job_change_order_id,
+              line_items:v2_po_line_items(id, cost_code_id, amount, invoiced_amount)
+            )
+          `)
+          .eq('id', poLineItemIds[0])
+          .single();
+
+        if (poLineItem?.po) {
+          linkedPO = poLineItem.po;
+          linkedPOId = poLineItem.po_id;
+        }
+      }
+    }
+
+    if (linkedPO) {
+      const poTotal = parseFloat(linkedPO.total_amount) || 0;
+
+      // Get all invoices already billed against this PO (excluding current invoice)
+      // Check both invoice.po_id and allocations linked to PO line items
+      const { data: poInvoices } = await supabase
+        .from('v2_invoices')
+        .select('id, amount, status')
+        .eq('po_id', linkedPOId)
+        .neq('id', invoice.id)
+        .in('status', ['approved', 'in_draw', 'paid']);
+
+      // Also get invoices linked via po_line_item_id
+      const { data: lineItemAllocations } = await supabase
+        .from('v2_invoice_allocations')
+        .select(`
+          amount,
+          po_line_item:v2_po_line_items!inner(po_id),
+          invoice:v2_invoices!inner(id, status)
+        `)
+        .eq('po_line_item.po_id', linkedPOId)
+        .neq('invoice.id', invoice.id)
+        .in('invoice.status', ['approved', 'in_draw', 'paid']);
+
+      const previouslyBilledDirect = poInvoices?.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0) || 0;
+      const previouslyBilledLineItems = lineItemAllocations?.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || 0;
+
+      // Get this invoice's allocated amount (for partial approvals, use allocated not full amount)
+      const totalAllocated = invoice.allocations?.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || 0;
+
+      // Get amount linked specifically to this PO (could be partial if split across POs)
+      const thisInvoiceLinkedAmount = invoice.allocations
+        ?.filter(a => {
+          if (!a.po_line_item_id) return false;
+          // Check if this line item belongs to our PO
+          const lineItem = linkedPO.line_items?.find(li => li.id === a.po_line_item_id);
+          return !!lineItem;
+        })
+        .reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0) || 0;
+
+      const previouslyBilled = Math.max(previouslyBilledDirect, previouslyBilledLineItems);
+      // Use allocated amount if available (for partial approvals), otherwise full invoice amount
+      const thisInvoice = invoice.po_id === linkedPOId
+        ? (totalAllocated > 0 ? totalAllocated : (parseFloat(invoice.amount) || 0))
+        : (thisInvoiceLinkedAmount > 0 ? thisInvoiceLinkedAmount : (parseFloat(invoice.amount) || 0));
+      const afterApproval = previouslyBilled + thisInvoice;
+
+      result.po = {
+        id: linkedPO.id,
+        po_number: linkedPO.po_number,
+        po_status: linkedPO.status,
+        total_amount: poTotal,
+        previously_billed: previouslyBilled,
+        this_invoice: thisInvoice,
+        after_approval: afterApproval,
+        remaining: poTotal - afterApproval,
+        percent_used: poTotal > 0 ? Math.round((afterApproval / poTotal) * 100) : 0,
+        over_po: afterApproval > poTotal,
+        job_change_order_id: linkedPO.job_change_order_id
+      };
+
+      // Get CO context if PO is linked to a Change Order
+      if (linkedPO.job_change_order_id) {
+        const { data: co } = await supabase
+          .from('v2_job_change_orders')
+          .select('id, change_order_number, title, amount, invoiced_amount, status')
+          .eq('id', linkedPO.job_change_order_id)
+          .single();
+
+        if (co) {
+          const coTotal = parseFloat(co.amount) || 0;
+          const coPreviouslyBilled = parseFloat(co.invoiced_amount) || 0;
+          const coThisInvoice = thisInvoice;
+          const coAfterApproval = coPreviouslyBilled + coThisInvoice;
+
+          result.change_order = {
+            id: co.id,
+            change_order_number: co.change_order_number,
+            title: co.title,
+            status: co.status,
+            total_amount: coTotal,
+            previously_billed: coPreviouslyBilled,
+            this_invoice: coThisInvoice,
+            after_approval: coAfterApproval,
+            remaining: coTotal - coAfterApproval,
+            percent_used: coTotal > 0 ? Math.round((coAfterApproval / coTotal) * 100) : 0,
+            over_co: coAfterApproval > coTotal
+          };
+        }
+      }
+    }
+
+    res.json(result);
+}));
+
+// ============================================================
+// UPDATE COST CODE (coding workflow)
+// ============================================================
+
+router.patch('/:id/code', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+    const invoiceId = req.params.id;
+    const { job_id, vendor_id, po_id, cost_codes, allocations, coded_by } = req.body;
+    // Support both cost_codes (from frontend) and allocations (legacy)
+    const allocs = cost_codes || allocations || [];
+
+    // Update invoice
+    const { data: invoice, error: invError } = await supabase
+      .from('v2_invoices')
+      .update({
+        job_id,
+        vendor_id,
+        po_id: po_id || null,
+        status: 'ready_for_approval',
+        coded_at: new Date().toISOString(),
+        coded_by
+      })
+      .eq('id', invoiceId)
+      .eq('builder_id', builderId)
+      .select()
+      .single();
+
+    if (invError) throw invError;
+
+    // Update allocations
+    await supabase
+      .from('v2_invoice_allocations')
+      .delete()
+      .eq('invoice_id', invoiceId);
+
+    if (allocs && allocs.length > 0) {
+      await supabase
+        .from('v2_invoice_allocations')
+        .insert(allocs.map(a => ({
+          invoice_id: invoiceId,
+          cost_code_id: a.cost_code_id,
+          amount: a.amount,
+          notes: a.notes,
+          job_id: a.job_id || null,
+          po_id: a.po_id || null,
+          po_line_item_id: a.po_line_item_id || null,
+          change_order_id: a.change_order_id || null,
+          pending_co: a.pending_co || false
+        })));
+    }
+
+    // Log activity
+    await logActivity(invoiceId, 'ready_for_approval', coded_by, {
+      job_id,
+      vendor_id,
+      po_id,
+      allocations: allocs
+    });
+
+    // Re-stamp PDF with "Ready for Approval" (run in background)
+    restampInvoice(invoiceId).catch(err => {
+      logger.error('Background re-stamp failed', { component: 'restamp', error: err.message });
+    });
+
+    res.json(invoice);
+}));
+
+// ============================================================
+// APPROVE INVOICE (with PDF stamping)
+// ============================================================
+
+router.patch('/:id/approve', requirePermission('canApproveInvoices'), asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+    const invoiceId = req.params.id;
+    const { approved_by } = req.body;
+
+    // Get invoice with details
+    const { data: invoice, error: getError } = await supabase
+      .from('v2_invoices')
+      .select(`
+        *,
+        vendor:v2_vendors(id, name),
+        job:v2_jobs(id, name),
+        po:v2_purchase_orders(id, po_number, description, total_amount),
+        allocations:v2_invoice_allocations(
+          amount,
+          cost_code_id,
+          pending_co,
+          change_order_id,
+          cost_code:v2_cost_codes(code, name)
+        )
+      `)
+      .eq('builder_id', builderId)
+      .eq('id', invoiceId)
+      .single();
+
+    if (getError) throw getError;
+
+    // ==========================================
+    // VALIDATION: Prevent re-approval (preserve audit trail)
+    // ==========================================
+    const alreadyApprovedStatuses = ['approved', 'pm_approved', 'in_draw', 'paid'];
+    if (alreadyApprovedStatuses.includes(invoice.status)) {
+      return res.status(400).json({
+        error: `Invoice is already ${invoice.status}. Cannot re-approve.`,
+        current_status: invoice.status,
+        approved_by: invoice.approved_by,
+        approved_at: invoice.approved_at
+      });
+    }
+
+    // ==========================================
+    // VALIDATION: Require allocations before approval
+    // ==========================================
+    const allocations = invoice.allocations || [];
+    if (allocations.length === 0) {
+      return res.status(400).json({
+        error: 'Cannot approve invoice without cost code allocations. Please assign at least one cost code.'
+      });
+    }
+
+    // ==========================================
+    // VALIDATION: Allocation total must match invoice amount
+    // Allow partial billing (already billed amount + new allocations should cover invoice)
+    // OR allow explicit partial approval via allow_partial flag
+    // ==========================================
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const allocationTotal = allocations.reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const previouslyBilled = parseFloat(invoice.billed_amount || 0);
+    const totalCoded = previouslyBilled + allocationTotal;
+    const allowPartial = req.body.allow_partial === true;
+
+    // For credits, check if allocation is negative enough; for regular invoices, check if fully coded
+    const isCredit = invoiceAmount < 0;
+    const tolerance = 0.01; // Allow penny rounding differences
+    let isPartialApproval = false;
+
+    if (isCredit) {
+      // Credit: allocation should be negative and match invoice
+      if (allocationTotal > invoiceAmount + tolerance) {
+        return res.status(400).json({
+          error: `Allocation total ($${allocationTotal.toFixed(2)}) does not match credit amount ($${invoiceAmount.toFixed(2)}). Please adjust allocations.`
+        });
+      }
+    } else {
+      // Regular invoice: allocations should fully cover the invoice (allowing for partial billing)
+      if (totalCoded < invoiceAmount - tolerance) {
+        const remaining = invoiceAmount - totalCoded;
+
+        // If allow_partial flag is set, proceed with partial approval
+        if (allowPartial) {
+          isPartialApproval = true;
+          logger.info('Partial approval', { component: 'approval', allocationTotal, invoiceAmount, remaining });
+        } else {
+          return res.status(400).json({
+            error: `Allocations ($${allocationTotal.toFixed(2)}) do not fully cover invoice amount ($${invoiceAmount.toFixed(2)}). $${remaining.toFixed(2)} remains unallocated.`,
+            invoice_amount: invoiceAmount,
+            allocation_total: allocationTotal,
+            previously_billed: previouslyBilled,
+            remaining: remaining,
+            allow_partial_option: true
+          });
+        }
+      }
+    }
+
+    // Check for pending CO allocations - block approval
+    const pendingCOAllocations = (invoice.allocations || []).filter(a => a.pending_co);
+    if (pendingCOAllocations.length > 0) {
+      return res.status(400).json({
+        error: 'Cannot approve invoice with pending CO allocations. Please link all CO cost codes to Change Orders first.'
+      });
+    }
+
+    // Check for CO cost codes without CO link - block approval
+    const unlinkedCOAllocations = (invoice.allocations || []).filter(a => {
+      const costCode = a.cost_code?.code || '';
+      const isCOCostCode = costCode.endsWith('C') && /\d+C$/.test(costCode);
+      return isCOCostCode && !a.change_order_id && !a.pending_co;
+    });
+    if (unlinkedCOAllocations.length > 0) {
+      const codes = unlinkedCOAllocations.map(a => a.cost_code?.code).join(', ');
+      return res.status(400).json({
+        error: `Cannot approve invoice with unlinked CO cost codes: ${codes}. Please link to a Change Order or mark as Pending CO.`
+      });
+    }
+
+    // ==========================================
+    // CO AUTO-INHERITANCE FROM PO
+    // If invoice is linked to a PO that's linked to a CO, inherit the CO
+    // ==========================================
+    let linkedChangeOrder = null;
+    if (invoice.po_id) {
+      const { data: po } = await supabase
+        .from('v2_purchase_orders')
+        .select('id, job_change_order_id, job_change_order:v2_job_change_orders(id, change_order_number, title)')
+        .eq('id', invoice.po_id)
+        .single();
+
+      if (po?.job_change_order_id) {
+        linkedChangeOrder = po.job_change_order;
+        // Update all allocations to link to this CO
+        const { error: allocUpdateError } = await supabase
+          .from('v2_invoice_allocations')
+          .update({ change_order_id: po.job_change_order_id })
+          .eq('invoice_id', invoiceId)
+          .is('change_order_id', null); // Only update allocations not already linked
+
+        if (!allocUpdateError) {
+          // Log the auto-linking
+          await logActivity(invoiceId, 'co_auto_linked', 'System', {
+            change_order_id: po.job_change_order_id,
+            change_order_number: linkedChangeOrder?.change_order_number,
+            from_po: po.id
+          });
+        }
+      }
+    }
+
+    // ==========================================
+    // GET/CREATE DRAFT DRAW FIRST (before stamping)
+    // ==========================================
+
+    let draftDraw = null;
+    let addedToDraw = false;
+
+    if (invoice.job?.id && invoice.allocations && invoice.allocations.length > 0) {
+      try {
+        draftDraw = await getOrCreateDraftDraw(invoice.job.id, approved_by);
+      } catch (drawErr) {
+        logger.error('Error getting/creating draft draw', { component: 'approval', error: drawErr.message });
+        // Continue without draw assignment
+      }
+    }
+
+    let pdf_stamped_url = null;
+
+    // Stamp PDF if exists - use existing stamped PDF if available (progressive stamping)
+    const pdfSourceUrl = invoice.pdf_stamped_url || invoice.pdf_url;
+    if (pdfSourceUrl) {
+      try {
+        // Extract storage path from URL - handle both storage URL formats
+        let storagePath = null;
+        if (pdfSourceUrl.includes('/storage/v1/object/public/invoices/')) {
+          const urlParts = pdfSourceUrl.split('/storage/v1/object/public/invoices/');
+          storagePath = urlParts[1] ? decodeURIComponent(urlParts[1].split('?')[0]) : null;
+        } else if (pdfSourceUrl.includes('/invoices/')) {
+          const urlParts = pdfSourceUrl.split('/invoices/');
+          storagePath = urlParts[1] ? decodeURIComponent(urlParts[1].split('?')[0]) : null;
+        }
+
+        if (storagePath) {
+          logger.debug('Approval stamp source', { component: 'stamp', source: invoice.pdf_stamped_url ? 'pdf_stamped_url' : 'pdf_url' });
+          const pdfBuffer = await downloadPDF(storagePath);
+
+          // Get PO billing info if PO is linked
+          let poTotal = null;
+          let poBilledToDate = 0;
+
+          if (invoice.po?.id) {
+            poTotal = invoice.po.total_amount;
+
+            // Get sum of all previously approved invoices for this PO (excluding current)
+            const { data: priorInvoices } = await supabase
+              .from('v2_invoices')
+              .select('amount')
+              .eq('po_id', invoice.po.id)
+              .neq('id', invoiceId)
+              .in('status', ['approved', 'in_draw', 'paid']);
+
+            if (priorInvoices) {
+              poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+            }
+          }
+
+          // Calculate partial billing info
+          const invoiceTotal = parseFloat(invoice.amount || 0);
+          const alreadyBilled = Math.max(
+            parseFloat(invoice.billed_amount || 0),
+            parseFloat(invoice.paid_amount || 0)
+          );
+          const isPartialInvoice = alreadyBilled > 0;
+
+          // Build status text with draw number if available
+          let stampStatus = isPartialInvoice ? 'APPROVED (PARTIAL)' : 'APPROVED';
+          if (draftDraw) {
+            stampStatus += ` - Draw #${draftDraw.draw_number}`;
+          }
+
+          // Get split info if this is a split child
+          let splitInfo = null;
+          if (invoice.parent_invoice_id && invoice.split_index) {
+            // Count total siblings
+            const { count } = await supabase
+              .from('v2_invoices')
+              .select('*', { count: 'exact', head: true })
+              .eq('parent_invoice_id', invoice.parent_invoice_id);
+
+            splitInfo = {
+              isSplit: true,
+              index: invoice.split_index,
+              total: count || 1
+            };
+          }
+
+          // Build CO info from linked change order (if any)
+          const coInfo = linkedChangeOrder ? {
+            number: linkedChangeOrder.change_order_number,
+            title: linkedChangeOrder.title
+          } : null;
+
+          const stampedBuffer = await stampApproval(pdfBuffer, {
+            status: stampStatus,
+            date: new Date().toLocaleDateString(),
+            approvedBy: approved_by,
+            vendorName: invoice.vendor?.name,
+            invoiceNumber: invoice.invoice_number,
+            jobName: invoice.job?.name,
+            costCodes: invoice.allocations?.map(a => ({
+              code: a.cost_code?.code,
+              name: a.cost_code?.name,
+              amount: a.amount
+            })) || [],
+            amount: invoice.amount,
+            poNumber: invoice.po?.po_number,
+            poDescription: invoice.po?.description,
+            poTotal: poTotal,
+            poBilledToDate: poBilledToDate,
+            // Partial billing info
+            isPartial: isPartialInvoice,
+            previouslyBilled: alreadyBilled,
+            remainingAfterThis: invoiceTotal - alreadyBilled - (invoice.allocations?.reduce((s, a) => s + parseFloat(a.amount || 0), 0) || 0),
+            // Draw info
+            drawNumber: draftDraw?.draw_number,
+            // Split invoice info
+            splitInfo,
+            // Change Order info (from PO linkage)
+            coInfo
+          });
+
+          // Use fixed path: {job_id}/{invoice_id}_stamped.pdf
+          const result = await uploadStampedPDFById(stampedBuffer, invoiceId, invoice.job?.id);
+          pdf_stamped_url = result.url;
+        }
+      } catch (stampErr) {
+        logger.error('PDF stamping failed', { component: 'stamp', error: stampErr.message });
+        // Continue without stamping
+      }
+    }
+
+    // ==========================================
+    // ADD INVOICE TO DRAFT DRAW (unless non-billable)
+    // ==========================================
+
+    // Check if invoice is non-billable (billable_amount = 0)
+    const effectiveBillableAmount = invoice.billable_amount !== null
+      ? parseFloat(invoice.billable_amount)
+      : parseFloat(invoice.amount || 0);
+    const isNonBillable = effectiveBillableAmount === 0;
+
+    if (isNonBillable) {
+      logger.info('Invoice is non-billable - skipping draw', { component: 'approval', invoiceId });
+    } else if (draftDraw) {
+      try {
+        // TODO: Import addInvoiceToDraw from services/invoice-helpers.js
+        // Add invoice to draw (creates draw_allocations)
+        await addInvoiceToDraw(invoiceId, draftDraw.id, approved_by);
+        addedToDraw = true;
+
+        logger.info('Invoice auto-added to draw', { component: 'approval', invoiceId, drawNumber: draftDraw.draw_number });
+      } catch (drawErr) {
+        logger.error('Error adding invoice to draw', { component: 'approval', error: drawErr.message });
+        // Continue with approval even if draw add fails
+      }
+    }
+
+    // Update invoice status:
+    // - non-billable: 'paid' (absorbed, not in draw)
+    // - added to draw: 'in_draw'
+    // - otherwise: 'approved'
+    const newStatus = isNonBillable ? 'paid' : (addedToDraw ? 'in_draw' : 'approved');
+
+    const { data: updated, error: updateError } = await supabase
+      .from('v2_invoices')
+      .update({
+        status: newStatus,
+        approved_at: new Date().toISOString(),
+        approved_by,
+        pdf_stamped_url,
+        first_draw_id: addedToDraw ? draftDraw.id : null
+      })
+      .eq('id', invoiceId)
+      .eq('builder_id', builderId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Log activity
+    await logActivity(invoiceId, 'approved', approved_by, {
+      stamped: !!pdf_stamped_url,
+      added_to_draw: addedToDraw,
+      draw_id: draftDraw?.id,
+      draw_number: draftDraw?.draw_number
+    });
+
+    // ==========================================
+    // LIVE BUDGET UPDATES
+    // ==========================================
+
+    // Update budget lines for each cost code allocation
+    if (invoice.allocations && invoice.allocations.length > 0 && invoice.job?.id) {
+      for (const alloc of invoice.allocations) {
+        if (!alloc.cost_code_id) continue;
+
+        // Check if budget line exists for this job/cost code
+        const { data: existing } = await supabase
+          .from('v2_budget_lines')
+          .select('id, billed_amount')
+          .eq('job_id', invoice.job.id)
+          .eq('cost_code_id', alloc.cost_code_id)
+          .single();
+
+        if (existing) {
+          // Update existing budget line
+          const newBilled = (parseFloat(existing.billed_amount) || 0) + parseFloat(alloc.amount);
+          await supabase
+            .from('v2_budget_lines')
+            .update({ billed_amount: newBilled })
+            .eq('id', existing.id);
+        } else {
+          // Create new budget line
+          await supabase
+            .from('v2_budget_lines')
+            .insert({
+              job_id: invoice.job.id,
+              cost_code_id: alloc.cost_code_id,
+              budgeted_amount: 0,
+              committed_amount: 0,
+              billed_amount: parseFloat(alloc.amount) || 0,
+              paid_amount: 0
+            });
+        }
+      }
+    }
+
+    // Update PO line items if invoice is linked to a PO
+    if (invoice.po?.id && invoice.allocations && invoice.allocations.length > 0) {
+      for (const alloc of invoice.allocations) {
+        if (!alloc.cost_code_id) continue;
+
+        // Find matching PO line item by cost code
+        const { data: poLineItem } = await supabase
+          .from('v2_po_line_items')
+          .select('id, invoiced_amount')
+          .eq('po_id', invoice.po.id)
+          .eq('cost_code_id', alloc.cost_code_id)
+          .single();
+
+        if (poLineItem) {
+          const newInvoiced = (parseFloat(poLineItem.invoiced_amount) || 0) + parseFloat(alloc.amount);
+          await supabase
+            .from('v2_po_line_items')
+            .update({ invoiced_amount: newInvoiced })
+            .eq('id', poLineItem.id);
+        }
+      }
+    }
+
+    res.json(updated);
+}));
+
+// ============================================================
+// DENY INVOICE
+// ============================================================
+
+router.patch('/:id/deny', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+    const invoiceId = req.params.id;
+    const { denied_by, denial_reason } = req.body;
+
+    // Get current invoice to validate transition
+    const { data: invoice, error: getError } = await supabase
+      .from('v2_invoices')
+      .select('id, status')
+      .eq('builder_id', builderId)
+      .eq('id', invoiceId)
+      .single();
+
+    if (getError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Only allow deny from needs_review or ready_for_approval status
+    const allowedStatuses = ['needs_review', 'ready_for_approval'];
+    if (!allowedStatuses.includes(invoice.status)) {
+      return res.status(400).json({
+        error: `Cannot deny invoice in '${invoice.status}' status. Only needs_review or ready_for_approval invoices can be denied.`
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('v2_invoices')
+      .update({
+        status: 'denied',
+        denied_at: new Date().toISOString(),
+        denied_by,
+        denial_reason
+      })
+      .eq('id', invoiceId)
+      .eq('builder_id', builderId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    await logActivity(invoiceId, 'denied', denied_by, { reason: denial_reason });
+
+    res.json(data);
+}));
+
+// ============================================================
+// CLOSE OUT INVOICE
+// ============================================================
+
+router.post('/:id/close-out', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+    const invoiceId = req.params.id;
+    const { closed_out_by, reason, notes } = req.body;
+
+    // Validate required fields
+    if (!closed_out_by) {
+      return res.status(400).json({ error: 'closed_out_by is required' });
+    }
+    if (!reason) {
+      return res.status(400).json({ error: 'Reason is required for close-out' });
+    }
+
+    // Valid close-out reasons
+    const validReasons = [
+      'Work descoped / reduced scope',
+      'Vendor credit issued',
+      'Dispute resolved / settlement',
+      'Change order adjustment',
+      'Billing error corrected',
+      'Other'
+    ];
+
+    if (!validReasons.includes(reason)) {
+      return res.status(400).json({ error: 'Invalid close-out reason' });
+    }
+
+    // If reason is "Other", notes are required
+    if (reason === 'Other' && (!notes || notes.trim() === '')) {
+      return res.status(400).json({ error: 'Notes are required when reason is "Other"' });
+    }
+
+    // Get current invoice
+    const { data: invoice, error: getError } = await supabase
+      .from('v2_invoices')
+      .select('id, status, amount, paid_amount, parent_invoice_id')
+      .eq('builder_id', builderId)
+      .eq('id', invoiceId)
+      .single();
+
+    if (getError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Only allow close-out from ready_for_approval or approved status
+    const allowedStatuses = ['ready_for_approval', 'approved'];
+    if (!allowedStatuses.includes(invoice.status)) {
+      return res.status(400).json({
+        error: `Cannot close out invoice in '${invoice.status}' status. Only ready_for_approval or approved invoices can be closed out.`
+      });
+    }
+
+    const invoiceAmount = parseFloat(invoice.amount || 0);
+    const paidAmount = parseFloat(invoice.paid_amount || 0);
+    const writeOffAmount = invoiceAmount - paidAmount;
+
+    // Validate there's actually something to write off
+    if (writeOffAmount <= 0.01) {
+      return res.status(400).json({
+        error: 'Invoice is already fully paid. Nothing to close out.'
+      });
+    }
+
+    // Build close-out reason with notes
+    const fullReason = notes ? `${reason}: ${notes}` : reason;
+
+    // Update invoice
+    const { data: updated, error: updateError } = await supabase
+      .from('v2_invoices')
+      .update({
+        status: 'paid',
+        paid_amount: invoiceAmount, // Set paid_amount to full amount (write-off counts as "paid")
+        closed_out_at: new Date().toISOString(),
+        closed_out_by,
+        closed_out_reason: fullReason,
+        write_off_amount: writeOffAmount
+      })
+      .eq('id', invoiceId)
+      .eq('builder_id', builderId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Clear any remaining allocations
+    await supabase
+      .from('v2_invoice_allocations')
+      .delete()
+      .eq('invoice_id', invoiceId);
+
+    // Log activity
+    await logActivity(invoiceId, 'closed_out', closed_out_by, {
+      invoice_amount: invoiceAmount,
+      total_paid: paidAmount,
+      write_off_amount: writeOffAmount,
+      reason,
+      notes: notes || null
+    });
+
+    // Check if this completes a split (all children in terminal state)
+    if (invoice.parent_invoice_id) {
+      checkSplitReconciliation(invoice.parent_invoice_id).catch(err => {
+        logger.error('Reconcile check failed', { component: 'reconcile', error: err.message });
+      });
+    }
+
+    res.json(updated);
+}));
+
+// ============================================================
+// PAYMENT HISTORY
+// ============================================================
+
+router.get('/:id/payments', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
+    const invoiceId = req.params.id;
+
+    // Verify invoice belongs to this builder
+    const { data: invoice, error: invError } = await supabase
+      .from('v2_invoices')
+      .select('id, amount, paid_amount, payment_status')
+      .eq('builder_id', builderId)
+      .eq('id', invoiceId)
+      .single();
+
+    if (invError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const { data: payments, error } = await supabase
+      .from('v2_invoice_payments')
+      .select('*')
+      .eq('invoice_id', invoiceId)
+      .order('payment_date', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({
+      payments: payments || [],
+      summary: {
+        invoice_amount: parseFloat(invoice.amount || 0),
+        total_paid: parseFloat(invoice.paid_amount || 0),
+        remaining: parseFloat(invoice.amount || 0) - parseFloat(invoice.paid_amount || 0),
+        payment_status: invoice.payment_status
+      }
+    });
+}));
+
+// ============================================================
+// FULL INVOICE EDIT
+// ============================================================
+
+router.put('/:id/full', requirePermission('canApproveInvoices'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const invoiceId = req.params.id;
+  const { invoice: updates, allocations, performed_by: performedBy = 'System' } = req.body;
+
+  // Check if invoice exists
+  const { data: existing, error: getError } = await supabase
+    .from('v2_invoices')
+    .select('*, allocations:v2_invoice_allocations(*)')
+    .eq('builder_id', builderId)
+    .eq('id', invoiceId)
+    .is('deleted_at', null)
+    .single();
+
+  if (getError || !existing) {
+    throw notFoundError('invoice', invoiceId);
+  }
+
+  // Check lock
+  const lockStatus = await checkLock('invoice', invoiceId);
+  if (lockStatus.isLocked && lockStatus.lock.lockedBy !== performedBy) {
+    throw lockedError(lockStatus.lock.lockedBy, lockStatus.lock.expiresAt);
+  }
+
+  // Version check
+  if (updates.expected_version && updates.expected_version !== existing.version) {
+    throw versionConflictError(updates.expected_version, existing.version, existing);
+  }
+
+  // Validate full update
+  const validation = validateInvoice(updates, false);
+  if (!validation.valid) {
+    throw validationError(validation.errors);
+  }
+
+  // Validate allocations if provided
+  if (allocations && allocations.length > 0) {
+    const allocValidation = validateAllocations(allocations, updates.amount || existing.amount);
+    if (!allocValidation.valid) {
+      throw new AppError('ALLOCATIONS_UNBALANCED', allocValidation.error);
+    }
+  }
+
+  // Create undo snapshot
+  await createUndoSnapshot('invoice', invoiceId, 'full_edit', { ...existing, allocations: existing.allocations }, performedBy);
+
+  // Update invoice
+  const updateFields = {
+    invoice_number: updates.invoice_number,
+    invoice_date: updates.invoice_date,
+    due_date: updates.due_date,
+    amount: updates.amount,
+    job_id: updates.job_id,
+    vendor_id: updates.vendor_id,
+    po_id: updates.po_id,
+    notes: updates.notes
+  };
+
+  const { data: updated, error: updateError } = await supabase
+    .from('v2_invoices')
+    .update(updateFields)
+    .eq('id', invoiceId)
+    .eq('builder_id', builderId)
+    .select()
+    .single();
+
+  if (updateError) {
+    throw new AppError('DATABASE_ERROR', 'Failed to update invoice');
+  }
+
+  // Update allocations if provided
+  if (allocations) {
+    await supabase.from('v2_invoice_allocations').delete().eq('invoice_id', invoiceId);
+    if (allocations.length > 0) {
+      const allocsToInsert = allocations.map(a => ({
+        invoice_id: invoiceId,
+        cost_code_id: a.cost_code_id,
+        amount: a.amount,
+        notes: a.notes,
+        job_id: a.job_id || null,
+        po_id: a.po_id || null,
+        po_line_item_id: a.po_line_item_id || null,
+        change_order_id: a.change_order_id || null,
+        pending_co: a.pending_co || false
+      }));
+      await supabase.from('v2_invoice_allocations').insert(allocsToInsert);
+    }
+  }
+
+  // Re-stamp PDF with updated information (run in background)
+  restampInvoice(invoiceId).catch(err => {
+    logger.error('Background re-stamp failed', { component: 'restamp', error: err.message });
+  });
+
+  await logActivity(invoiceId, 'full_edit', performedBy, { updates });
+  broadcastInvoiceUpdate(updated, 'full_edit', performedBy);
+
+  res.json({ success: true, invoice: updated });
+}));
+
+// ============================================================
+// BATCH RESTAMP
+// ============================================================
+
+router.post('/batch-restamp', requirePermission('canApproveInvoices'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const { status, force = false } = req.body;
+
+  // Build query - get invoices that need stamping
+  let query = supabase
+    .from('v2_invoices')
+    .select(`
+      id, status, job_id, po_id, pdf_url, pdf_stamped_url, invoice_number, amount, review_flags,
+      approved_at, approved_by,
+      vendor:v2_vendors(id, name),
+      job:v2_jobs(id, name),
+      po:v2_purchase_orders(id, po_number, total_amount),
+      allocations:v2_invoice_allocations(amount, cost_code_id)
+    `)
+    .eq('builder_id', builderId)
+    .is('deleted_at', null);
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  if (!force) {
+    // Only get invoices without stamps
+    query = query.is('pdf_stamped_url', null);
+  }
+
+  const { data: invoices, error } = await query;
+
+  if (error) {
+    throw new AppError('DATABASE_ERROR', 'Failed to fetch invoices');
+  }
+
+  const results = { stamped: 0, failed: 0, errors: [] };
+
+  for (const invoice of invoices) {
+    if (!invoice.pdf_url) {
+      results.failed++;
+      results.errors.push({ id: invoice.id, error: 'No PDF URL' });
+      continue;
+    }
+
+    try {
+      const storagePath = extractStoragePath(invoice.pdf_url);
+      if (!storagePath) {
+        results.failed++;
+        results.errors.push({ id: invoice.id, error: 'Invalid PDF URL' });
+        continue;
+      }
+
+      const pdfBuffer = await downloadPDF(storagePath);
+      let stampedBuffer;
+
+      // Choose stamp based on status
+      if (invoice.status === 'needs_review') {
+        stampedBuffer = await stampNeedsReview(pdfBuffer, {
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          vendorName: invoice.vendor?.name,
+          invoiceNumber: invoice.invoice_number,
+          amount: invoice.amount,
+          flags: invoice.review_flags || []
+        });
+      } else if (invoice.status === 'ready_for_approval') {
+        // Get cost codes for stamp
+        let costCodesForStamp = [];
+        if (invoice.allocations?.length > 0) {
+          const costCodeIds = invoice.allocations.map(a => a.cost_code_id).filter(id => id);
+          if (costCodeIds.length > 0) {
+            const { data: costCodes } = await supabase
+              .from('v2_cost_codes')
+              .select('id, code, name')
+              .in('id', costCodeIds);
+            const codeMap = {};
+            (costCodes || []).forEach(cc => { codeMap[cc.id] = cc; });
+            costCodesForStamp = invoice.allocations.map(a => ({
+              code: codeMap[a.cost_code_id]?.code || '',
+              name: codeMap[a.cost_code_id]?.name || '',
+              amount: parseFloat(a.amount) || 0
+            }));
+          }
+        }
+        stampedBuffer = await stampReadyForApproval(pdfBuffer, {
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          codedBy: 'System',
+          jobName: invoice.job?.name,
+          vendorName: invoice.vendor?.name,
+          amount: invoice.amount,
+          costCodes: costCodesForStamp
+        });
+      } else if (invoice.status === 'approved' || invoice.status === 'in_draw') {
+        // Get cost codes for stamp
+        let costCodesForStamp = [];
+        if (invoice.allocations?.length > 0) {
+          const costCodeIds = invoice.allocations.map(a => a.cost_code_id).filter(id => id);
+          if (costCodeIds.length > 0) {
+            const { data: costCodes } = await supabase
+              .from('v2_cost_codes')
+              .select('id, code, name')
+              .in('id', costCodeIds);
+            const codeMap = {};
+            (costCodes || []).forEach(cc => { codeMap[cc.id] = cc; });
+            costCodesForStamp = invoice.allocations.map(a => ({
+              code: codeMap[a.cost_code_id]?.code || '',
+              name: codeMap[a.cost_code_id]?.name || '',
+              amount: parseFloat(a.amount) || 0
+            }));
+          }
+        }
+
+        // Get PO billing info if available
+        let poTotal = null;
+        let poBilledToDate = 0;
+        if (invoice.po_id) {
+          const { data: po } = await supabase
+            .from('v2_purchase_orders')
+            .select('total_amount')
+            .eq('id', invoice.po_id)
+            .single();
+          if (po) {
+            poTotal = po.total_amount;
+            const { data: priorInvoices } = await supabase
+              .from('v2_invoices')
+              .select('amount')
+              .eq('po_id', invoice.po_id)
+              .neq('id', invoice.id)
+              .in('status', ['approved', 'in_draw', 'paid']);
+            if (priorInvoices) {
+              poBilledToDate = priorInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+            }
+          }
+        }
+
+        const stampStatus = invoice.status === 'in_draw' ? 'IN DRAW' : 'APPROVED';
+        stampedBuffer = await stampApproval(pdfBuffer, {
+          status: stampStatus,
+          date: invoice.approved_at ? new Date(invoice.approved_at).toLocaleDateString() : new Date().toLocaleDateString(),
+          approvedBy: invoice.approved_by || 'System',
+          vendorName: invoice.vendor?.name,
+          invoiceNumber: invoice.invoice_number,
+          jobName: invoice.job?.name,
+          costCodes: costCodesForStamp,
+          amount: invoice.amount,
+          poNumber: invoice.po?.po_number,
+          poTotal: poTotal,
+          poBilledToDate: poBilledToDate,
+          isPartial: invoice.review_flags?.includes('partial_approval')
+        });
+      } else {
+        // Skip other statuses for now
+        continue;
+      }
+
+      // Upload using fixed path
+      const uploadResult = await uploadStampedPDFById(stampedBuffer, invoice.id, invoice.job_id);
+
+      // Update invoice
+      await supabase
+        .from('v2_invoices')
+        .update({ pdf_stamped_url: uploadResult.url })
+        .eq('id', invoice.id);
+
+      results.stamped++;
+      logger.debug('Batch stamp completed', { component: 'batch-stamp', invoiceId: invoice.id });
+
+    } catch (err) {
+      results.failed++;
+      results.errors.push({ id: invoice.id, error: err.message });
+      logger.error('Batch stamp failed', { component: 'batch-stamp', invoiceId: invoice.id, error: err.message });
+    }
+  }
+
+  res.json({
+    success: true,
+    total: invoices.length,
+    ...results
+  });
+}));
+
+// ============================================================
+// AI FIELD OVERRIDE
+// ============================================================
+
+router.patch('/:id/override', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const invoiceId = req.params.id;
+  const { field, value, reason, performed_by: performedBy = 'System' } = req.body;
+
+  // Validate field is overridable
+  const overridableFields = ['job_id', 'vendor_id', 'amount', 'invoice_number', 'invoice_date', 'due_date'];
+  if (!overridableFields.includes(field)) {
+    throw new AppError('VALIDATION_FAILED', `Field '${field}' cannot be overridden`);
+  }
+
+  // Get current invoice
+  const { data: invoice, error: getError } = await supabase
+    .from('v2_invoices')
+    .select('*, ai_confidence, ai_overrides, review_flags, needs_review')
+    .eq('builder_id', builderId)
+    .eq('id', invoiceId)
+    .is('deleted_at', null)
+    .single();
+
+  if (getError || !invoice) {
+    throw notFoundError('invoice', invoiceId);
+  }
+
+  // Build override record
+  const overrideRecord = {
+    ai_value: invoice[field],
+    ai_confidence: invoice.ai_confidence?.[field.replace('_id', '')] || null,
+    override_value: value,
+    override_by: performedBy,
+    override_at: new Date().toISOString(),
+    override_reason: reason || null
+  };
+
+  // Merge with existing overrides
+  const ai_overrides = { ...(invoice.ai_overrides || {}), [field]: overrideRecord };
+
+  // Clear related review flags
+  let review_flags = invoice.review_flags || [];
+  const flagsToClear = {
+    job_id: ['verify_job', 'select_job', 'no_job_match', 'missing_job_reference', 'low_job_confidence'],
+    vendor_id: ['verify_vendor', 'select_vendor'],
+    amount: ['amount_mismatch', 'verify_amount']
+  };
+  if (flagsToClear[field]) {
+    review_flags = review_flags.filter(f => !flagsToClear[field].includes(f));
+  }
+
+  // Determine if still needs review
+  const needs_review = review_flags.length > 0;
+
+  // Update invoice
+  const { data: updated, error: updateError } = await supabase
+    .from('v2_invoices')
+    .update({
+      [field]: value,
+      ai_overrides,
+      review_flags,
+      needs_review
+    })
+    .eq('id', invoiceId)
+    .eq('builder_id', builderId)
+    .select()
+    .single();
+
+  if (updateError) {
+    throw new AppError('DATABASE_ERROR', 'Failed to apply override');
+  }
+
+  // Log activity
+  await logActivity(invoiceId, 'ai_override', performedBy, {
+    field,
+    ai_value: overrideRecord.ai_value,
+    ai_confidence: overrideRecord.ai_confidence,
+    new_value: value,
+    reason
+  });
+
+  broadcastInvoiceUpdate(updated, 'ai_override', performedBy);
+
+  res.json({
+    success: true,
+    invoice: updated,
+    override: overrideRecord,
+    remainingFlags: review_flags
+  });
+}));
+
+// ============================================================
+// SYNC BILLED AMOUNTS
+// ============================================================
+
+// Sync invoice billed_amount from actual draw history
+router.post('/:id/sync-billed', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const invoiceId = req.params.id;
+
+  // Get invoice info
+  const { data: invoice, error: invError } = await supabase
+    .from('v2_invoices')
+    .select('id, invoice_number, amount, billed_amount')
+    .eq('builder_id', builderId)
+    .eq('id', invoiceId)
+    .single();
+
+  if (invError) throw invError;
+  if (!invoice) {
+    return res.status(404).json({ error: 'Invoice not found' });
+  }
+
+  // Get all draw_invoices for this invoice (these are the actual billings)
+  const { data: drawInvoices, error: diError } = await supabase
+    .from('v2_draw_invoices')
+    .select(`
+      draw_id,
+      draw:v2_draws(id, status)
+    `)
+    .eq('invoice_id', invoiceId);
+
+  if (diError) throw diError;
+
+  // Get allocations that were part of each billing
+  // For simplicity, we'll calculate from current allocations marked as billed
+  // In a more complex system, we'd track historical allocation snapshots
+  const { data: allocations, error: allocError } = await supabase
+    .from('v2_invoice_allocations')
+    .select('amount')
+    .eq('invoice_id', invoiceId);
+
+  if (allocError) throw allocError;
+
+  // Calculate billed amount
+  // If invoice is in a draw (or was), the billed amount = sum of allocations at time of draw
+  // For now, use allocation sum if invoice has been in draws
+  let calculatedBilled = 0;
+
+  if (drawInvoices && drawInvoices.length > 0) {
+    // Invoice has been in draws - calculate from allocations
+    const allocationSum = (allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    calculatedBilled = allocationSum > 0 ? allocationSum : parseFloat(invoice.amount || 0);
+  }
+
+  // Update the invoice
+  const { data: updated, error: updateError } = await supabase
+    .from('v2_invoices')
+    .update({ billed_amount: calculatedBilled })
+    .eq('id', invoiceId)
+    .eq('builder_id', builderId)
+    .select()
+    .single();
+
+  if (updateError) throw updateError;
+
+  res.json({
+    success: true,
+    invoice_id: invoiceId,
+    invoice_number: invoice.invoice_number,
+    previous_billed: parseFloat(invoice.billed_amount || 0),
+    new_billed: calculatedBilled,
+    draw_count: drawInvoices?.length || 0
+  });
+}));
+
+// Sync all invoices' billed_amount (bulk fix)
+router.post('/sync-all-billed', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+  const { job_id } = req.query;
+
+  // Get all invoices that have been in draws
+  let invoiceQuery = supabase
+    .from('v2_invoices')
+    .select(`
+      id, invoice_number, amount, billed_amount,
+      draw_invoices:v2_draw_invoices(draw_id),
+      allocations:v2_invoice_allocations(amount)
+    `)
+    .eq('builder_id', builderId)
+    .is('deleted_at', null);
+
+  if (job_id) {
+    invoiceQuery = invoiceQuery.eq('job_id', job_id);
+  }
+
+  const { data: invoices, error } = await invoiceQuery;
+  if (error) throw error;
+
+  const updates = [];
+  const results = [];
+
+  for (const inv of invoices || []) {
+    // Only process invoices that have been in draws
+    if (!inv.draw_invoices || inv.draw_invoices.length === 0) continue;
+
+    const allocationSum = (inv.allocations || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+    const calculatedBilled = allocationSum > 0 ? allocationSum : parseFloat(inv.amount || 0);
+    const previousBilled = parseFloat(inv.billed_amount || 0);
+
+    if (Math.abs(calculatedBilled - previousBilled) > 0.01) {
+      updates.push({
+        id: inv.id,
+        billed_amount: calculatedBilled
+      });
+
+      results.push({
+        invoice_id: inv.id,
+        invoice_number: inv.invoice_number,
+        previous: previousBilled,
+        calculated: calculatedBilled
+      });
+    }
+  }
+
+  // Batch update
+  for (const update of updates) {
+    await supabase
+      .from('v2_invoices')
+      .update({ billed_amount: update.billed_amount })
+      .eq('id', update.id);
+  }
+
+  res.json({
+    success: true,
+    total_invoices: invoices?.length || 0,
+    updated_count: updates.length,
+    updates: results
+  });
 }));
 
 module.exports = router;

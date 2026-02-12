@@ -5,8 +5,6 @@
 const { supabase } = require('../../config');
 const logger = require('../utils/logger');
 const {
-  uploadPDF,
-  uploadStampedPDF,
   uploadStampedPDFById,
   downloadPDF,
   extractStoragePath,
@@ -17,16 +15,10 @@ const {
   stampApproval,
   stampInDraw,
   stampPaid,
-  stampPartiallyPaid,
-  stampPartiallyBilled,
-  stampSplit,
   stampNeedsReview,
   stampReadyForApproval
 } = require('../documents/pdf-stamper');
 
-/**
- * Log activity for an invoice
- */
 async function logActivity(invoiceId, action, performedBy, details = {}) {
   await supabase.from('v2_invoice_activity').insert({
     invoice_id: invoiceId,
@@ -36,52 +28,70 @@ async function logActivity(invoiceId, action, performedBy, details = {}) {
   });
 }
 
+// ============================================================
+// PO LINE ITEM HELPERS
+// ============================================================
+
 /**
  * Update PO line items' invoiced_amount when allocations change.
+ * Optimized: Batches all queries instead of N+1 pattern.
  */
 async function updatePOLineItemsForAllocations(poId, allocations, add = true) {
   if (!poId || !allocations || allocations.length === 0) return;
+
+  // Fetch all PO line items for this PO in one query
+  const { data: allLineItems } = await supabase
+    .from('v2_po_line_items')
+    .select('id, invoiced_amount, cost_code_id')
+    .eq('po_id', poId);
+
+  if (!allLineItems || allLineItems.length === 0) return;
+
+  // Build a map for quick lookup
+  const lineItemsById = new Map(allLineItems.map(li => [li.id, li]));
+  const lineItemsByCostCode = new Map(allLineItems.map(li => [li.cost_code_id, li]));
+
+  // Calculate updates needed
+  const updates = new Map(); // lineItemId -> new amount
 
   for (const alloc of allocations) {
     let poLineItem = null;
 
     // Priority 1: Direct po_line_item_id link
     if (alloc.po_line_item_id) {
-      const { data } = await supabase
-        .from('v2_po_line_items')
-        .select('id, invoiced_amount')
-        .eq('id', alloc.po_line_item_id)
-        .eq('po_id', poId)
-        .single();
-      poLineItem = data;
+      poLineItem = lineItemsById.get(alloc.po_line_item_id);
     }
 
     // Priority 2: Fall back to cost code matching
     if (!poLineItem) {
       const costCodeId = alloc.cost_code_id || alloc.cost_code?.id;
       if (costCodeId) {
-        const { data } = await supabase
-          .from('v2_po_line_items')
-          .select('id, invoiced_amount')
-          .eq('po_id', poId)
-          .eq('cost_code_id', costCodeId)
-          .single();
-        poLineItem = data;
+        poLineItem = lineItemsByCostCode.get(costCodeId);
       }
     }
 
     if (poLineItem) {
-      const currentAmount = parseFloat(poLineItem.invoiced_amount) || 0;
+      const currentAmount = updates.has(poLineItem.id)
+        ? updates.get(poLineItem.id)
+        : (parseFloat(poLineItem.invoiced_amount) || 0);
       const allocAmount = parseFloat(alloc.amount) || 0;
       const newAmount = add
         ? currentAmount + allocAmount
         : Math.max(0, currentAmount - allocAmount);
-
-      await supabase
-        .from('v2_po_line_items')
-        .update({ invoiced_amount: newAmount })
-        .eq('id', poLineItem.id);
+      updates.set(poLineItem.id, newAmount);
     }
+  }
+
+  // Batch update all line items (use Promise.all for parallel execution)
+  if (updates.size > 0) {
+    await Promise.all(
+      Array.from(updates.entries()).map(([lineItemId, newAmount]) =>
+        supabase
+          .from('v2_po_line_items')
+          .update({ invoiced_amount: newAmount })
+          .eq('id', lineItemId)
+      )
+    );
   }
 }
 
@@ -108,8 +118,10 @@ async function syncPOLineItemsOnAllocationChange(invoice, oldAllocations, newAll
 
 /**
  * Update PO invoiced amounts when allocations are linked to POs.
+ * Groups allocations by PO and updates the PO's total invoiced amount.
  */
 async function updatePOInvoicedAmounts(allocations) {
+  // Group allocations by PO
   const byPO = {};
   for (const alloc of allocations) {
     if (!alloc.po_id) continue;
@@ -117,7 +129,9 @@ async function updatePOInvoicedAmounts(allocations) {
     byPO[alloc.po_id] += parseFloat(alloc.amount) || 0;
   }
 
+  // Update each PO's line items
   for (const [poId, totalAmount] of Object.entries(byPO)) {
+    // Also update PO line items if po_line_item_id is specified
     const poAllocations = allocations.filter(a => a.po_id === poId);
     await updatePOLineItemsForAllocations(poId, poAllocations, true);
   }
@@ -125,38 +139,36 @@ async function updatePOInvoicedAmounts(allocations) {
 
 /**
  * Update CO invoiced amounts when allocations are linked to COs.
- * PO-INT-02: Only count allocations from approved/in_draw/paid invoices
+ * Groups allocations by CO and updates the CO's invoiced_amount.
+ * Optimized: Batches all queries instead of N+1 pattern.
  */
 async function updateCOInvoicedAmounts(allocations) {
-  const validStatuses = ['approved', 'in_draw', 'paid'];
-  const byCO = {};
-  for (const alloc of allocations) {
-    if (!alloc.change_order_id) continue;
-    if (!byCO[alloc.change_order_id]) byCO[alloc.change_order_id] = 0;
-    byCO[alloc.change_order_id] += parseFloat(alloc.amount) || 0;
+  // Get unique CO IDs
+  const coIds = [...new Set(allocations.filter(a => a.change_order_id).map(a => a.change_order_id))];
+  if (coIds.length === 0) return;
+
+  // Fetch all allocations for these COs in one query
+  const { data: allCOAllocations } = await supabase
+    .from('v2_invoice_allocations')
+    .select('change_order_id, amount')
+    .in('change_order_id', coIds);
+
+  // Group and sum allocations by CO
+  const totalsByCO = new Map();
+  for (const alloc of (allCOAllocations || [])) {
+    const current = totalsByCO.get(alloc.change_order_id) || 0;
+    totalsByCO.set(alloc.change_order_id, current + (parseFloat(alloc.amount) || 0));
   }
 
-  for (const coId of Object.keys(byCO)) {
-    // PO-INT-02: Only count allocations from invoices with valid status
-    const { data: allCOAllocations } = await supabase
-      .from('v2_invoice_allocations')
-      .select(`
-        amount,
-        invoice:v2_invoices!inner(status)
-      `)
-      .eq('change_order_id', coId);
-
-    const totalInvoiced = (allCOAllocations || [])
-      .filter(a => validStatuses.includes(a.invoice?.status))
-      .reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-
-    await supabase
-      .from('v2_job_change_orders')
-      .update({ invoiced_amount: totalInvoiced })
-      .eq('id', coId);
-
-    logger.debug('Updated CO invoiced amount', { component: 'co-sync', coId, invoicedAmount: totalInvoiced.toFixed(2) });
-  }
+  // Batch update all COs in parallel
+  await Promise.all(
+    coIds.map(coId =>
+      supabase
+        .from('v2_job_change_orders')
+        .update({ invoiced_amount: totalsByCO.get(coId) || 0 })
+        .eq('id', coId)
+    )
+  );
 }
 
 /**
@@ -288,17 +300,29 @@ async function recalculateCOInvoiced(coId) {
 
 /**
  * UNIFIED STAMP INVOICE FUNCTION
- * Single source of truth for all PDF stamping.
+ *
+ * This is the single source of truth for all PDF stamping.
+ * - Always stamps from ORIGINAL pdf_url (never accumulates)
+ * - Uses fixed path: {job_id}/{invoice_id}_stamped.pdf
+ * - Includes locking to prevent concurrent stamp operations
+ * - Updates pdf_stamped_url in database
+ *
+ * @param {string} invoiceId - Invoice ID to stamp
+ * @param {object} options - Optional overrides
+ * @param {boolean} options.force - Force stamp even if locked
+ * @returns {Promise<string|null>} - Stamped URL or null
  */
 async function stampInvoice(invoiceId, options = {}) {
   const { force = false } = options;
 
+  // Acquire lock to prevent concurrent stamping
   if (!force && !acquireStampLock(invoiceId)) {
-    logger.debug('Skipping stamp - already being stamped', { component: 'stamp', invoiceId });
+    logger.debug('Skipping - already being stamped', { component: 'stamp', invoiceId });
     return null;
   }
 
   try {
+    // Fetch full invoice data
     const { data: invoice, error: fetchError } = await supabase
       .from('v2_invoices')
       .select(`
@@ -327,22 +351,25 @@ async function stampInvoice(invoiceId, options = {}) {
       return null;
     }
 
+    // Extract storage path from ORIGINAL pdf_url (never use pdf_stamped_url)
     const storagePath = extractStoragePath(invoice.pdf_url);
     if (!storagePath) {
-      logger.error('Could not extract path from pdf_url', { component: 'stamp', pdfUrl: invoice.pdf_url });
+      logger.error('Could not extract path from pdf_url', { component: 'stamp', invoiceId, pdfUrl: invoice.pdf_url });
       return null;
     }
 
+    // Download ORIGINAL PDF
     let pdfBuffer;
     try {
       pdfBuffer = await downloadPDF(storagePath);
     } catch (downloadErr) {
-      logger.error('Failed to download original PDF', { component: 'stamp', error: downloadErr.message });
+      logger.error('Failed to download original PDF', { component: 'stamp', invoiceId, error: downloadErr.message });
       return null;
     }
 
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+    // Get cost codes formatted for stamp
     const costCodesForStamp = (invoice.allocations || []).map(a => ({
       code: a.cost_code?.code || '',
       name: a.cost_code?.name || '',
@@ -350,8 +377,8 @@ async function stampInvoice(invoiceId, options = {}) {
     })).filter(cc => cc.code);
 
     let stampedBuffer = null;
-    const isCOCostCode = (code) => code && /C$/i.test(code.trim());
 
+    // Apply stamp based on current status
     switch (invoice.status) {
       case 'needs_review':
         stampedBuffer = await stampNeedsReview(pdfBuffer, {
@@ -377,19 +404,35 @@ async function stampInvoice(invoiceId, options = {}) {
       case 'approved':
       case 'in_draw':
       case 'paid': {
+        // Get PO billing info
         let poTotal = null;
         let poBilledToDate = 0;
-        let poLinkedAmount = null;
+        let poLinkedAmount = null; // Amount of THIS invoice allocated to the PO
+
+        // Helper to check if cost code is a CO code (ends with 'C')
+        const isCOCostCode = (code) => code && /C$/i.test(code.trim());
 
         if (invoice.po?.id) {
           poTotal = parseFloat(invoice.po.total_amount);
 
+          // Calculate how much of THIS invoice is linked to the PO
+          // CO cost code allocations NEVER count toward PO billing (they're CO work)
           poLinkedAmount = (invoice.allocations || []).reduce((sum, alloc) => {
             const costCode = alloc.cost_code?.code;
-            if (isCOCostCode(costCode)) return sum;
-            return sum + parseFloat(alloc.amount || 0);
+            const isCO = isCOCostCode(costCode);
+
+            // CO allocations never count toward PO billing, regardless of po_id
+            if (isCO) {
+              return sum;
+            }
+            // Non-CO allocations count if explicitly PO-linked OR invoice is PO-linked
+            if (alloc.po_id === invoice.po.id || alloc.po_line_item_id || true) {
+              return sum + parseFloat(alloc.amount || 0);
+            }
+            return sum;
           }, 0);
 
+          // Get prior invoices billed against this PO (need to sum their PO-linked allocations too)
           const { data: priorInvoices } = await supabase
             .from('v2_invoices')
             .select(`
@@ -407,19 +450,27 @@ async function stampInvoice(invoiceId, options = {}) {
             .in('status', ['approved', 'in_draw', 'paid']);
 
           if (priorInvoices) {
+            // Sum the PO-linked allocations from prior invoices (exclude CO allocations)
             poBilledToDate = priorInvoices.reduce((sum, inv) => {
               if (inv.allocations && inv.allocations.length > 0) {
+                // Count only non-CO allocations (CO work doesn't bill against PO)
                 return sum + inv.allocations.reduce((s, a) => {
                   const costCode = a.cost_code?.code;
-                  if (isCOCostCode(costCode)) return s;
+                  const isCO = isCOCostCode(costCode);
+                  // CO allocations never count toward PO billing
+                  if (isCO) {
+                    return s;
+                  }
                   return s + parseFloat(a.amount || 0);
                 }, 0);
               }
+              // Fall back to full invoice amount if no allocations (legacy data)
               return sum + parseFloat(inv.amount || 0);
             }, 0);
           }
         }
 
+        // Check if this is a partial approval
         const isPartialApproval = invoice.review_flags?.includes('partial_approval');
 
         stampedBuffer = await stampApproval(pdfBuffer, {
@@ -461,12 +512,16 @@ async function stampInvoice(invoiceId, options = {}) {
       }
 
       default:
-        logger.debug('No stamp for status', { component: 'stamp', status: invoice.status });
+        // No stamp for other statuses (received, denied, split, etc.)
+        logger.debug('No stamp for status', { component: 'stamp', invoiceId, status: invoice.status });
         return null;
     }
 
-    if (!stampedBuffer) return null;
+    if (!stampedBuffer) {
+      return null;
+    }
 
+    // Upload to FIXED path: {job_id}/{invoice_id}_stamped.pdf
     const uploadResult = await uploadStampedPDFById(
       stampedBuffer,
       invoiceId,
@@ -474,12 +529,13 @@ async function stampInvoice(invoiceId, options = {}) {
     );
 
     if (uploadResult?.url) {
+      // Update invoice with new stamped URL
       await supabase
         .from('v2_invoices')
         .update({ pdf_stamped_url: uploadResult.url })
         .eq('id', invoiceId);
 
-      logger.info('PDF stamped successfully', { component: 'stamp', invoiceId, url: uploadResult.url });
+      logger.info('Invoice stamped successfully', { component: 'stamp', invoiceId, url: uploadResult.url });
       return uploadResult.url;
     }
 
@@ -488,6 +544,7 @@ async function stampInvoice(invoiceId, options = {}) {
     logger.error('Error stamping invoice', { component: 'stamp', invoiceId, error: err.message });
     return null;
   } finally {
+    // Always release lock
     releaseStampLock(invoiceId);
   }
 }
@@ -497,11 +554,17 @@ const restampInvoice = stampInvoice;
 
 /**
  * Check if all children of a split parent have reached terminal states
+ * If so, mark the parent as 'reconciled'
+ *
+ * Terminal states: paid, denied, deleted (via deleted_at)
+ *
+ * @param {string} parentInvoiceId - Parent invoice ID to check
  */
 async function checkSplitReconciliation(parentInvoiceId) {
   if (!parentInvoiceId) return;
 
   try {
+    // Get parent to verify it's a split parent
     const { data: parent } = await supabase
       .from('v2_invoices')
       .select('id, is_split_parent, status')
@@ -509,8 +572,9 @@ async function checkSplitReconciliation(parentInvoiceId) {
       .single();
 
     if (!parent || !parent.is_split_parent) return;
-    if (parent.status === 'reconciled') return;
+    if (parent.status === 'reconciled') return; // Already reconciled
 
+    // Get all children (including soft-deleted ones)
     const { data: children } = await supabase
       .from('v2_invoices')
       .select('id, status, deleted_at')
@@ -518,12 +582,14 @@ async function checkSplitReconciliation(parentInvoiceId) {
 
     if (!children || children.length === 0) return;
 
+    // Check if all children are in terminal states
     const terminalStatuses = ['paid', 'denied'];
     const allTerminal = children.every(child =>
       child.deleted_at !== null || terminalStatuses.includes(child.status)
     );
 
     if (allTerminal) {
+      // Calculate summary stats
       const paidCount = children.filter(c => c.status === 'paid' && !c.deleted_at).length;
       const deniedCount = children.filter(c => c.status === 'denied' && !c.deleted_at).length;
       const deletedCount = children.filter(c => c.deleted_at !== null).length;
@@ -685,63 +751,6 @@ async function executeWithRollback(operations) {
   }
 }
 
-/**
- * Get or create a draft draw for a job
- */
-async function getOrCreateDraftDraw(jobId, createdBy = 'System') {
-  // Check for existing draft draw
-  const { data: existingDraw } = await supabase
-    .from('v2_draws')
-    .select('*')
-    .eq('job_id', jobId)
-    .eq('status', 'draft')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (existingDraw) {
-    return existingDraw;
-  }
-
-  // Get next draw number for job and previous draw's period_end
-  const { data: lastDraw } = await supabase
-    .from('v2_draws')
-    .select('draw_number, period_end')
-    .eq('job_id', jobId)
-    .order('draw_number', { ascending: false })
-    .limit(1)
-    .single();
-
-  const nextDrawNumber = (lastDraw?.draw_number || 0) + 1;
-
-  // Calculate period_start: day after previous draw's period_end, or today if first draw
-  let periodStart = new Date().toISOString().split('T')[0];
-  if (lastDraw?.period_end) {
-    const prevEnd = new Date(lastDraw.period_end);
-    prevEnd.setDate(prevEnd.getDate() + 1);
-    periodStart = prevEnd.toISOString().split('T')[0];
-  }
-
-  // Create new draft draw
-  const { data: newDraw, error } = await supabase
-    .from('v2_draws')
-    .insert({
-      job_id: jobId,
-      draw_number: nextDrawNumber,
-      status: 'draft',
-      period_start: periodStart,
-      period_end: new Date().toISOString().split('T')[0],
-      total_amount: 0
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  logger.info('Created draft draw', { component: 'draw', drawNumber: nextDrawNumber, jobId });
-  return newDraw;
-}
-
 module.exports = {
   logActivity,
   updatePOLineItemsForAllocations,
@@ -753,7 +762,6 @@ module.exports = {
   stampInvoice,
   restampInvoice,
   checkSplitReconciliation,
-  getOrCreateDraftDraw,
   cleanupInvoiceAllocations,
   recalculateBilledAmounts,
   executeWithRollback

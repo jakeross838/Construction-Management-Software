@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // HELPER FUNCTIONS
@@ -61,7 +62,7 @@ function calculateHours(clockIn, clockOut, breakMinutes = 0) {
 /**
  * Get weekly hours for an employee to calculate weekly overtime
  */
-async function getWeeklyHours(employeeId, date) {
+async function getWeeklyHours(employeeId, date, builderId) {
   // Get Monday of the week containing the date
   const d = new Date(date);
   const dayOfWeek = d.getDay();
@@ -76,6 +77,7 @@ async function getWeeklyHours(employeeId, date) {
   const { data, error } = await supabase
     .from('v2_time_entries')
     .select('total_hours')
+    .eq('builder_id', builderId)
     .eq('employee_id', employeeId)
     .gte('date', weekStart.toISOString().split('T')[0])
     .lte('date', weekEnd.toISOString().split('T')[0])
@@ -103,8 +105,9 @@ function calculatePay(totalHours, overtimeHours, payRate) {
 /**
  * Log time entry activity
  */
-async function logActivity(timeEntryId, action, performedBy, details = {}, gpsLocation = null) {
+async function logActivity(timeEntryId, action, performedBy, details = {}, gpsLocation = null, builderId = null) {
   await supabase.from('v2_time_entry_activity').insert({
+    builder_id: builderId,
     time_entry_id: timeEntryId,
     action,
     performed_by: performedBy,
@@ -119,6 +122,7 @@ async function logActivity(timeEntryId, action, performedBy, details = {}, gpsLo
 
 // List time entries with filters
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, user_id, employee_id, date_from, date_to, status } = req.query;
 
   let query = supabase
@@ -130,6 +134,7 @@ router.get('/', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name),
       task:v2_tasks(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('date', { ascending: false })
     .order('clock_in', { ascending: false });
@@ -148,6 +153,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Get single time entry
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_time_entries')
     .select(`
@@ -158,6 +164,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       task:v2_tasks(id, name)
     `)
     .eq('id', req.params.id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) {
@@ -172,8 +179,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Clock in with GPS
 router.post('/clock-in', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
-    job_id, employee_id, user_id, builder_id,
+    job_id, employee_id, user_id,
     gps, cost_code_id, task_id, notes
   } = req.body;
 
@@ -186,6 +194,7 @@ router.post('/clock-in', asyncHandler(async (req, res) => {
   const { data: existing } = await supabase
     .from('v2_time_entries')
     .select('id')
+    .eq('builder_id', builderId)
     .eq('employee_id', employee_id)
     .eq('date', today)
     .is('clock_out', null)
@@ -203,6 +212,7 @@ router.post('/clock-in', asyncHandler(async (req, res) => {
       .from('v2_job_geofences')
       .select('*')
       .eq('job_id', job_id)
+      .eq('builder_id', builderId)
       .eq('is_active', true);
 
     if (geofences && geofences.length > 0) {
@@ -217,13 +227,14 @@ router.post('/clock-in', asyncHandler(async (req, res) => {
     .from('v2_employees')
     .select('hourly_rate')
     .eq('id', employee_id)
+    .eq('builder_id', builderId)
     .single();
 
   const now = new Date();
   const { data, error } = await supabase
     .from('v2_time_entries')
     .insert({
-      builder_id,
+      builder_id: builderId,
       job_id,
       employee_id,
       user_id,
@@ -249,13 +260,14 @@ router.post('/clock-in', asyncHandler(async (req, res) => {
   // Log activity
   await logActivity(data.id, 'clocked_in', employee_id, {
     geofence_valid: clockInGeofenceValid
-  }, gps);
+  }, gps, builderId);
 
   res.json(data);
 }));
 
 // Clock out with GPS
 router.post('/clock-out', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { employee_id, gps, break_minutes } = req.body;
 
   if (!employee_id) {
@@ -267,6 +279,7 @@ router.post('/clock-out', asyncHandler(async (req, res) => {
   const { data: entry, error: findError } = await supabase
     .from('v2_time_entries')
     .select('*, job:v2_jobs(id, name)')
+    .eq('builder_id', builderId)
     .eq('employee_id', employee_id)
     .is('clock_out', null)
     .is('deleted_at', null)
@@ -285,6 +298,7 @@ router.post('/clock-out', asyncHandler(async (req, res) => {
       .from('v2_job_geofences')
       .select('*')
       .eq('job_id', entry.job_id)
+      .eq('builder_id', builderId)
       .eq('is_active', true);
 
     if (geofences && geofences.length > 0) {
@@ -317,6 +331,7 @@ router.post('/clock-out', asyncHandler(async (req, res) => {
       total_pay: totalPay
     })
     .eq('id', entry.id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name),
@@ -331,15 +346,16 @@ router.post('/clock-out', asyncHandler(async (req, res) => {
     total_hours: totalHours,
     overtime_hours: overtimeHours,
     geofence_valid: clockOutGeofenceValid
-  }, gps);
+  }, gps, builderId);
 
   res.json(data);
 }));
 
 // Manual time entry
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
-    job_id, employee_id, user_id, builder_id, date,
+    job_id, employee_id, user_id, date,
     clock_in, clock_out, break_minutes,
     cost_code_id, task_id, notes
   } = req.body;
@@ -353,6 +369,7 @@ router.post('/', asyncHandler(async (req, res) => {
     .from('v2_employees')
     .select('hourly_rate')
     .eq('id', employee_id)
+    .eq('builder_id', builderId)
     .single();
 
   // Calculate hours if clock_out provided
@@ -376,7 +393,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_time_entries')
     .insert({
-      builder_id,
+      builder_id: builderId,
       job_id,
       employee_id,
       user_id,
@@ -407,13 +424,14 @@ router.post('/', asyncHandler(async (req, res) => {
   // Log activity
   await logActivity(data.id, 'manual_entry', 'admin', {
     total_hours: totalHours
-  });
+  }, null, builderId);
 
   res.json(data);
 }));
 
 // Update time entry
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     clock_in, clock_out, break_minutes,
@@ -425,6 +443,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_time_entries')
     .select('*')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !existing) {
@@ -465,6 +484,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_time_entries')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name),
@@ -475,13 +495,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logActivity(id, 'edited', 'admin', updates);
+  await logActivity(id, 'edited', 'admin', updates, null, builderId);
 
   res.json(data);
 }));
 
 // Approve time entry
 router.patch('/:id/approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { approved_by } = req.body;
 
@@ -489,6 +510,7 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
     .from('v2_time_entries')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (!existing) {
@@ -507,19 +529,21 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
       approved_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logActivity(id, 'approved', approved_by || 'admin');
+  await logActivity(id, 'approved', approved_by || 'admin', {}, null, builderId);
 
   res.json(data);
 }));
 
 // Reject time entry
 router.patch('/:id/reject', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { rejected_by, reason } = req.body;
 
@@ -530,25 +554,28 @@ router.patch('/:id/reject', asyncHandler(async (req, res) => {
       rejection_reason: reason
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log activity
-  await logActivity(id, 'rejected', rejected_by || 'admin', { reason });
+  await logActivity(id, 'rejected', rejected_by || 'admin', { reason }, null, builderId);
 
   res.json(data);
 }));
 
 // Delete time entry (soft delete)
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: existing } = await supabase
     .from('v2_time_entries')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (existing?.status === 'approved') {
@@ -558,7 +585,8 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('v2_time_entries')
     .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -571,6 +599,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Get hours summary by job and/or employee
 router.get('/summary', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, employee_id, period, date_from, date_to } = req.query;
 
   // Determine date range based on period
@@ -619,6 +648,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       employee:v2_employees(id, first_name, last_name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .gte('date', startDate)
     .lte('date', endDate);
@@ -702,6 +732,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
 
 // Certified payroll report
 router.get('/certified-payroll', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, date_from, date_to } = req.query;
 
   if (!job_id || !date_from || !date_to) {
@@ -716,6 +747,7 @@ router.get('/certified-payroll', asyncHandler(async (req, res) => {
       employee:v2_employees(id, first_name, last_name, hourly_rate),
       cost_code:v2_cost_codes(id, code, name)
     `)
+    .eq('builder_id', builderId)
     .eq('job_id', job_id)
     .eq('status', 'approved')
     .gte('date', date_from)
@@ -776,9 +808,11 @@ router.get('/certified-payroll', asyncHandler(async (req, res) => {
 
 // Get job geofence(s)
 router.get('/geofence/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_job_geofences')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('job_id', req.params.jobId)
     .eq('is_active', true)
     .order('created_at');
@@ -789,6 +823,7 @@ router.get('/geofence/:jobId', asyncHandler(async (req, res) => {
 
 // Set/update job geofence
 router.post('/geofence/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
   const { center_lat, center_lng, radius_meters, name } = req.body;
 
@@ -800,6 +835,7 @@ router.post('/geofence/:jobId', asyncHandler(async (req, res) => {
   const { data: existing } = await supabase
     .from('v2_job_geofences')
     .select('id')
+    .eq('builder_id', builderId)
     .eq('job_id', jobId)
     .eq('is_active', true)
     .maybeSingle();
@@ -817,6 +853,7 @@ router.post('/geofence/:jobId', asyncHandler(async (req, res) => {
         name: name || 'Job Site'
       })
       .eq('id', existing.id)
+      .eq('builder_id', builderId)
       .select()
       .single());
   } else {
@@ -824,6 +861,7 @@ router.post('/geofence/:jobId', asyncHandler(async (req, res) => {
     ({ data, error } = await supabase
       .from('v2_job_geofences')
       .insert({
+        builder_id: builderId,
         job_id: jobId,
         center_lat,
         center_lng,
@@ -840,10 +878,12 @@ router.post('/geofence/:jobId', asyncHandler(async (req, res) => {
 
 // Delete geofence
 router.delete('/geofence/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { error } = await supabase
     .from('v2_job_geofences')
     .update({ is_active: false })
-    .eq('job_id', req.params.jobId);
+    .eq('job_id', req.params.jobId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   res.json({ success: true });
@@ -855,6 +895,7 @@ router.delete('/geofence/:jobId', asyncHandler(async (req, res) => {
 
 // Bulk approve time entries
 router.post('/bulk-approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { entry_ids, approved_by } = req.body;
 
   if (!entry_ids || !Array.isArray(entry_ids) || entry_ids.length === 0) {
@@ -869,6 +910,7 @@ router.post('/bulk-approve', asyncHandler(async (req, res) => {
       approved_at: new Date().toISOString()
     })
     .in('id', entry_ids)
+    .eq('builder_id', builderId)
     .eq('status', 'pending')
     .select();
 
@@ -876,6 +918,7 @@ router.post('/bulk-approve', asyncHandler(async (req, res) => {
 
   // Log activities
   const activities = data.map(entry => ({
+    builder_id: builderId,
     time_entry_id: entry.id,
     action: 'approved',
     performed_by: approved_by || 'admin'
@@ -887,12 +930,14 @@ router.post('/bulk-approve', asyncHandler(async (req, res) => {
 
 // Get current clock-in status for employee
 router.get('/status/:employeeId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_time_entries')
     .select(`
       *,
       job:v2_jobs(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('employee_id', req.params.employeeId)
     .is('clock_out', null)
     .is('deleted_at', null)

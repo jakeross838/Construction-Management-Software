@@ -7,16 +7,19 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError, notFoundError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Helper: Log CO activity
-async function logCOActivity(changeOrderId, action, performedBy, details = {}) {
+async function logCOActivity(changeOrderId, action, performedBy, details = {}, builderId = null) {
   try {
-    await supabase.from('v2_job_co_activity').insert({
+    const record = {
       change_order_id: changeOrderId,
       action,
       performed_by: performedBy,
       details
-    });
+    };
+    if (builderId) record.builder_id = builderId;
+    await supabase.from('v2_job_co_activity').insert(record);
   } catch (err) {
     console.error('Failed to log CO activity:', err);
   }
@@ -28,6 +31,7 @@ async function logCOActivity(changeOrderId, action, performedBy, details = {}) {
 
 // Get all change orders (with optional filters)
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, draw_id, status } = req.query;
 
   // If filtering by draw_id, we need to find COs that have billings for that draw
@@ -36,7 +40,8 @@ router.get('/', asyncHandler(async (req, res) => {
     const { data: billings, error: billingsError } = await supabase
       .from('v2_job_co_draw_billings')
       .select('change_order_id, amount')
-      .eq('draw_id', draw_id);
+      .eq('draw_id', draw_id)
+      .eq('builder_id', builderId);
 
     if (billingsError) throw billingsError;
 
@@ -53,6 +58,7 @@ router.get('/', asyncHandler(async (req, res) => {
         job:v2_jobs(id, name, client_name)
       `)
       .in('id', coIds)
+      .eq('builder_id', builderId)
       .order('change_order_number', { ascending: true });
 
     if (error) throw error;
@@ -75,6 +81,7 @@ router.get('/', asyncHandler(async (req, res) => {
       *,
       job:v2_jobs(id, name, client_name)
     `)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (job_id) query = query.eq('job_id', job_id);
@@ -115,6 +122,7 @@ function transformJobCO(co) {
 
 // Get single change order with billing history
 router.get('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data: co, error } = await supabase
@@ -128,6 +136,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
         )
       `)
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (error) throw error;
@@ -137,6 +146,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       .from('v2_job_co_activity')
       .select('*')
       .eq('change_order_id', id)
+      .eq('builder_id', builderId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
@@ -151,6 +161,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Update change order
 router.patch('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const {
       change_order_number, title, description, reason, amount,
@@ -163,6 +174,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       .from('v2_job_change_orders')
       .select('status, billed_amount')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
@@ -192,22 +204,25 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       .from('v2_job_change_orders')
       .update(updates)
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
-    await logCOActivity(id, 'updated', updated_by, updates);
+    await logCOActivity(id, 'updated', updated_by, updates, builderId);
     res.json(co);
 }));
 
 // Delete change order
 router.delete('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data: existing } = await supabase
       .from('v2_job_change_orders')
       .select('status, invoiced_amount, billed_amount')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
@@ -222,7 +237,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
       });
     }
 
-    const { error } = await supabase.from('v2_job_change_orders').delete().eq('id', id);
+    const { error } = await supabase.from('v2_job_change_orders').delete().eq('id', id).eq('builder_id', builderId);
     if (error) throw error;
 
     res.json({ success: true });
@@ -234,10 +249,11 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Submit for approval
 router.post('/:id/submit', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { submitted_by } = req.body;
 
-    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).eq('builder_id', builderId).single();
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
     if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only submit draft change orders' });
 
@@ -245,20 +261,22 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
       .from('v2_job_change_orders')
       .update({ status: 'pending_approval', updated_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
-    await logCOActivity(id, 'submitted', submitted_by);
+    await logCOActivity(id, 'submitted', submitted_by, {}, builderId);
     res.json(co);
 }));
 
 // Internal approve
 router.post('/:id/approve', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { approved_by } = req.body;
 
-    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).eq('builder_id', builderId).single();
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
     if (existing.status !== 'pending_approval') return res.status(400).json({ error: 'Can only approve pending change orders' });
 
@@ -271,20 +289,22 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
-    await logCOActivity(id, 'approved', approved_by);
+    await logCOActivity(id, 'approved', approved_by, {}, builderId);
     res.json(co);
 }));
 
 // Client approve
 router.post('/:id/client-approve', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { client_approved_by, recorded_by } = req.body;
 
-    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).eq('builder_id', builderId).single();
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
     if (existing.status !== 'approved') return res.status(400).json({ error: 'Must be internally approved first' });
 
@@ -296,22 +316,24 @@ router.post('/:id/client-approve', asyncHandler(async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
-    await logCOActivity(id, 'client_approved', recorded_by || 'System', { client_approved_by });
+    await logCOActivity(id, 'client_approved', recorded_by || 'System', { client_approved_by }, builderId);
     res.json(co);
 }));
 
 // Bypass client approval
 router.post('/:id/bypass-client', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { bypass_reason, bypassed_by } = req.body;
 
     if (!bypass_reason) return res.status(400).json({ error: 'Bypass reason is required' });
 
-    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).eq('builder_id', builderId).single();
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
     if (existing.status !== 'approved') return res.status(400).json({ error: 'Must be internally approved first' });
 
@@ -323,20 +345,22 @@ router.post('/:id/bypass-client', asyncHandler(async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
-    await logCOActivity(id, 'client_bypassed', bypassed_by, { bypass_reason });
+    await logCOActivity(id, 'client_bypassed', bypassed_by, { bypass_reason }, builderId);
     res.json(co);
 }));
 
 // Reject
 router.post('/:id/reject', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { rejection_reason, rejected_by } = req.body;
 
-    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).single();
+    const { data: existing } = await supabase.from('v2_job_change_orders').select('status').eq('id', id).eq('builder_id', builderId).single();
     if (!existing) return res.status(404).json({ error: 'Change order not found' });
     if (!['pending_approval', 'approved'].includes(existing.status)) {
       return res.status(400).json({ error: 'Invalid status for rejection' });
@@ -350,11 +374,12 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
     if (error) throw error;
-    await logCOActivity(id, 'rejected', rejected_by, { rejection_reason });
+    await logCOActivity(id, 'rejected', rejected_by, { rejection_reason }, builderId);
     res.json(co);
 }));
 
@@ -364,6 +389,7 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
 
 // Get invoices linked to CO
 router.get('/:id/invoices', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { data, error } = await supabase
       .from('v2_change_order_invoices')
       .select(`
@@ -371,6 +397,7 @@ router.get('/:id/invoices', asyncHandler(async (req, res) => {
         invoice:v2_invoices(id, invoice_number, amount, invoice_date, vendor:v2_vendors(id, name))
       `)
       .eq('change_order_id', req.params.id)
+      .eq('builder_id', builderId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -379,6 +406,7 @@ router.get('/:id/invoices', asyncHandler(async (req, res) => {
 
 // Link invoice to CO
 router.post('/:id/link-invoice', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { invoice_id, amount, notes } = req.body;
 
@@ -389,6 +417,7 @@ router.post('/:id/link-invoice', asyncHandler(async (req, res) => {
       .select('id')
       .eq('change_order_id', id)
       .eq('invoice_id', invoice_id)
+      .eq('builder_id', builderId)
       .single();
 
     if (existing) {
@@ -401,7 +430,8 @@ router.post('/:id/link-invoice', asyncHandler(async (req, res) => {
         change_order_id: id,
         invoice_id,
         amount: amount ? parseFloat(amount) : null,
-        notes
+        notes,
+        builder_id: builderId
       })
       .select(`
         id, amount, notes, created_at, invoice_id,
@@ -410,22 +440,24 @@ router.post('/:id/link-invoice', asyncHandler(async (req, res) => {
       .single();
 
     if (error) throw error;
-    await logCOActivity(id, 'invoice_linked', 'System', { invoice_id, amount });
+    await logCOActivity(id, 'invoice_linked', 'System', { invoice_id, amount }, builderId);
     res.status(201).json(link);
 }));
 
 // Unlink invoice from CO
 router.delete('/:id/unlink-invoice/:invoiceId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id, invoiceId } = req.params;
 
     const { error } = await supabase
       .from('v2_change_order_invoices')
       .delete()
       .eq('change_order_id', id)
-      .eq('invoice_id', invoiceId);
+      .eq('invoice_id', invoiceId)
+      .eq('builder_id', builderId);
 
     if (error) throw error;
-    await logCOActivity(id, 'invoice_unlinked', 'System', { invoice_id: invoiceId });
+    await logCOActivity(id, 'invoice_unlinked', 'System', { invoice_id: invoiceId }, builderId);
     res.json({ success: true });
 }));
 
@@ -434,10 +466,12 @@ router.delete('/:id/unlink-invoice/:invoiceId', asyncHandler(async (req, res) =>
 // ============================================================
 
 router.get('/:id/cost-codes', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { data, error } = await supabase
       .from('v2_change_order_cost_codes')
       .select('*, cost_code:v2_cost_codes(id, code, name)')
       .eq('change_order_id', req.params.id)
+      .eq('builder_id', builderId)
       .order('created_at');
 
     if (error) throw error;
@@ -445,24 +479,26 @@ router.get('/:id/cost-codes', asyncHandler(async (req, res) => {
 }));
 
 router.put('/:id/cost-codes', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { cost_codes } = req.body;
 
-    await supabase.from('v2_change_order_cost_codes').delete().eq('change_order_id', id);
+    await supabase.from('v2_change_order_cost_codes').delete().eq('change_order_id', id).eq('builder_id', builderId);
 
     if (cost_codes && cost_codes.length > 0) {
       const toInsert = cost_codes.map(cc => ({
         change_order_id: id,
         cost_code_id: cc.cost_code_id,
         amount: parseFloat(cc.amount) || 0,
-        description: cc.description || null
+        description: cc.description || null,
+        builder_id: builderId
       }));
 
       const { error } = await supabase.from('v2_change_order_cost_codes').insert(toInsert);
       if (error) throw error;
     }
 
-    await logCOActivity(id, 'cost_codes_updated', 'System', { count: cost_codes?.length || 0 });
+    await logCOActivity(id, 'cost_codes_updated', 'System', { count: cost_codes?.length || 0 }, builderId);
     res.json({ success: true });
 }));
 
@@ -472,12 +508,14 @@ router.put('/:id/cost-codes', asyncHandler(async (req, res) => {
 
 // Get revision history for a change order
 router.get('/:id/revisions', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data, error } = await supabase
       .from('v2_change_order_revisions')
       .select('*')
       .eq('change_order_id', id)
+      .eq('builder_id', builderId)
       .order('revision_number', { ascending: false });
 
     if (error) throw error;
@@ -486,6 +524,7 @@ router.get('/:id/revisions', asyncHandler(async (req, res) => {
 
 // Get a specific revision
 router.get('/:id/revisions/:revisionNumber', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id, revisionNumber } = req.params;
 
     const { data, error } = await supabase
@@ -493,6 +532,7 @@ router.get('/:id/revisions/:revisionNumber', asyncHandler(async (req, res) => {
       .select('*')
       .eq('change_order_id', id)
       .eq('revision_number', parseInt(revisionNumber))
+      .eq('builder_id', builderId)
       .single();
 
     if (error && error.code !== 'PGRST116') throw error;
@@ -503,6 +543,7 @@ router.get('/:id/revisions/:revisionNumber', asyncHandler(async (req, res) => {
 
 // Create a new revision (snapshot current state before making changes)
 router.post('/:id/revisions', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { revision_reason, revised_by } = req.body;
 
@@ -511,6 +552,7 @@ router.post('/:id/revisions', asyncHandler(async (req, res) => {
       .from('v2_job_change_orders')
       .select('*')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (coError) throw coError;
@@ -520,7 +562,8 @@ router.post('/:id/revisions', asyncHandler(async (req, res) => {
     const { data: lineItems } = await supabase
       .from('v2_change_order_line_items')
       .select('*')
-      .eq('change_order_id', id);
+      .eq('change_order_id', id)
+      .eq('builder_id', builderId);
 
     // Get current revision number and increment
     const currentRevision = co.revision_number || 0;
@@ -554,6 +597,7 @@ router.post('/:id/revisions', asyncHandler(async (req, res) => {
         line_items: lineItems || [],
         revision_reason: revision_reason || 'Revision created',
         revised_by: revised_by || 'System',
+        builder_id: builderId
       })
       .select()
       .single();
@@ -568,6 +612,7 @@ router.post('/:id/revisions', asyncHandler(async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -577,7 +622,7 @@ router.post('/:id/revisions', asyncHandler(async (req, res) => {
       revision_number: currentRevision,
       new_revision_number: newRevisionNumber,
       reason: revision_reason
-    });
+    }, builderId);
 
     res.status(201).json({
       revision,
@@ -587,12 +632,14 @@ router.post('/:id/revisions', asyncHandler(async (req, res) => {
 
 // Compare two revisions
 router.get('/:id/revisions/compare/:rev1/:rev2', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id, rev1, rev2 } = req.params;
 
     const { data, error } = await supabase
       .from('v2_change_order_revisions')
       .select('*')
       .eq('change_order_id', id)
+      .eq('builder_id', builderId)
       .in('revision_number', [parseInt(rev1), parseInt(rev2)]);
 
     if (error) throw error;

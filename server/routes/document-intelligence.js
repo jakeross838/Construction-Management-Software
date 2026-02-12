@@ -22,6 +22,7 @@ const {
   scheduleExpirationAlerts
 } = require('../services/document-intelligence');
 const { supabase } = require('../../config');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // TEXT EXTRACTION
@@ -34,12 +35,14 @@ const { supabase } = require('../../config');
 router.post('/:id/extract', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { force } = req.body;
+  const builderId = getBuilderId(req);
 
   // Check if document exists
   const { data: doc, error: docError } = await supabase
     .from('v2_documents')
     .select('id, status, file_url, mime_type')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (docError || !doc) {
@@ -52,6 +55,7 @@ router.post('/:id/extract', asyncHandler(async (req, res) => {
       .from('v2_document_metadata')
       .select('id, extracted_at')
       .eq('document_id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (existing && existing.extracted_at) {
@@ -79,11 +83,13 @@ router.post('/:id/extract', asyncHandler(async (req, res) => {
  */
 router.get('/:id/metadata', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data, error } = await supabase
     .from('v2_document_metadata')
     .select('*')
     .eq('document_id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error && error.code !== 'PGRST116') {
@@ -103,6 +109,7 @@ router.get('/:id/metadata', asyncHandler(async (req, res) => {
  */
 router.patch('/:id/metadata', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const {
     expiration_date,
     expiration_type,
@@ -125,6 +132,7 @@ router.patch('/:id/metadata', asyncHandler(async (req, res) => {
     .from('v2_document_metadata')
     .update(updateData)
     .eq('document_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -139,6 +147,7 @@ router.patch('/:id/metadata', asyncHandler(async (req, res) => {
       .from('v2_document_alerts')
       .delete()
       .eq('document_id', id)
+      .eq('builder_id', builderId)
       .in('alert_type', ['expiring_soon', 'expired']);
 
     // Schedule new alerts
@@ -158,12 +167,14 @@ router.patch('/:id/metadata', asyncHandler(async (req, res) => {
  */
 router.get('/search', asyncHandler(async (req, res) => {
   const { q, job_id, category, expiration_type, limit = 50 } = req.query;
+  const builderId = getBuilderId(req);
 
   if (!q || q.trim().length < 2) {
     return res.json({ results: [], message: 'Query must be at least 2 characters' });
   }
 
   const results = await searchDocuments(q, {
+    builderId,
     jobId: job_id,
     category,
     expirationType: expiration_type,
@@ -188,8 +199,10 @@ router.get('/search', asyncHandler(async (req, res) => {
  */
 router.get('/expiring', asyncHandler(async (req, res) => {
   const { days = 30, job_id, expiration_type } = req.query;
+  const builderId = getBuilderId(req);
 
   const documents = await getExpiringDocuments(parseInt(days), {
+    builderId,
     jobId: job_id,
     expirationType: expiration_type
   });
@@ -218,8 +231,9 @@ router.get('/expiring', asyncHandler(async (req, res) => {
  */
 router.get('/expiring/summary', asyncHandler(async (req, res) => {
   const { days = 90 } = req.query;
+  const builderId = getBuilderId(req);
 
-  const documents = await getExpiringDocuments(parseInt(days));
+  const documents = await getExpiringDocuments(parseInt(days), { builderId });
 
   // Group by type
   const byType = {};
@@ -260,8 +274,10 @@ router.get('/expiring/summary', asyncHandler(async (req, res) => {
  */
 router.get('/alerts', asyncHandler(async (req, res) => {
   const { document_id, alert_type, limit = 100 } = req.query;
+  const builderId = getBuilderId(req);
 
   const alerts = await getActiveAlerts({
+    builderId,
     documentId: document_id,
     alertType: alert_type,
     limit: parseInt(limit)
@@ -293,9 +309,12 @@ router.get('/alerts', asyncHandler(async (req, res) => {
  * Get count of active alerts (for badges/notifications)
  */
 router.get('/alerts/count', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
   const { data, error } = await supabase
     .from('v2_document_alerts')
     .select('severity', { count: 'exact' })
+    .eq('builder_id', builderId)
     .eq('acknowledged', false)
     .eq('dismissed', false);
 
@@ -323,9 +342,10 @@ router.get('/alerts/count', asyncHandler(async (req, res) => {
  */
 router.patch('/alerts/:id/acknowledge', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const { acknowledged_by = 'User' } = req.body;
 
-  const alert = await acknowledgeAlert(id, acknowledged_by);
+  const alert = await acknowledgeAlert(id, acknowledged_by, builderId);
 
   res.json({
     success: true,
@@ -339,8 +359,9 @@ router.patch('/alerts/:id/acknowledge', asyncHandler(async (req, res) => {
  */
 router.patch('/alerts/:id/dismiss', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
-  const alert = await dismissAlert(id);
+  const alert = await dismissAlert(id, builderId);
 
   res.json({
     success: true,
@@ -354,6 +375,7 @@ router.patch('/alerts/:id/dismiss', asyncHandler(async (req, res) => {
  */
 router.post('/alerts/acknowledge-bulk', asyncHandler(async (req, res) => {
   const { alert_ids, acknowledged_by = 'User' } = req.body;
+  const builderId = getBuilderId(req);
 
   if (!alert_ids || !Array.isArray(alert_ids) || alert_ids.length === 0) {
     throw new AppError('VALIDATION_ERROR', 'alert_ids array is required');
@@ -367,6 +389,7 @@ router.post('/alerts/acknowledge-bulk', asyncHandler(async (req, res) => {
       acknowledged_at: new Date().toISOString()
     })
     .in('id', alert_ids)
+    .eq('builder_id', builderId)
     .select();
 
   if (error) {
@@ -402,6 +425,7 @@ router.post('/generate-alerts', asyncHandler(async (req, res) => {
  */
 router.post('/process-batch', asyncHandler(async (req, res) => {
   const { document_ids, job_id } = req.body;
+  const builderId = getBuilderId(req);
 
   let documentsToProcess = [];
 
@@ -413,6 +437,7 @@ router.post('/process-batch', asyncHandler(async (req, res) => {
       .from('v2_documents')
       .select('id')
       .eq('job_id', job_id)
+      .eq('builder_id', builderId)
       .eq('mime_type', 'application/pdf')
       .is('deleted_at', null)
       .not('status', 'eq', 'processed')
@@ -458,6 +483,8 @@ router.post('/process-batch', asyncHandler(async (req, res) => {
  * Get document intelligence statistics
  */
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
   // Get counts
   const [
     { count: totalDocuments },
@@ -465,16 +492,17 @@ router.get('/stats', asyncHandler(async (req, res) => {
     { count: withExpiration },
     { count: activeAlerts }
   ] = await Promise.all([
-    supabase.from('v2_documents').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-    supabase.from('v2_document_metadata').select('*', { count: 'exact', head: true }),
-    supabase.from('v2_document_metadata').select('*', { count: 'exact', head: true }).not('expiration_date', 'is', null),
-    supabase.from('v2_document_alerts').select('*', { count: 'exact', head: true }).eq('acknowledged', false).eq('dismissed', false)
+    supabase.from('v2_documents').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).is('deleted_at', null),
+    supabase.from('v2_document_metadata').select('*', { count: 'exact', head: true }).eq('builder_id', builderId),
+    supabase.from('v2_document_metadata').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).not('expiration_date', 'is', null),
+    supabase.from('v2_document_alerts').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).eq('acknowledged', false).eq('dismissed', false)
   ]);
 
   // Get category breakdown
   const { data: categoryData } = await supabase
     .from('v2_document_metadata')
-    .select('ai_category');
+    .select('ai_category')
+    .eq('builder_id', builderId);
 
   const byCategory = {};
   for (const row of categoryData || []) {
@@ -486,6 +514,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
   const { data: expTypeData } = await supabase
     .from('v2_document_metadata')
     .select('expiration_type')
+    .eq('builder_id', builderId)
     .not('expiration_type', 'is', null);
 
   const byExpirationType = {};

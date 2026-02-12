@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError, notFoundError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Helper: Map database status to frontend status
 function mapTaskStatus(dbStatus) {
@@ -17,14 +18,15 @@ function mapTaskStatus(dbStatus) {
 }
 
 // Helper: Log schedule activity
-async function logScheduleActivity(scheduleId, taskId, action, performedBy, details = {}) {
+async function logScheduleActivity(scheduleId, taskId, action, performedBy, details = {}, builderId = null) {
   try {
     await supabase.from('v2_schedule_activity').insert({
       schedule_id: scheduleId,
       task_id: taskId,
       action,
       performed_by: performedBy,
-      details
+      details,
+      builder_id: builderId
     });
   } catch (err) {
     console.error('Failed to log schedule activity:', err);
@@ -37,6 +39,7 @@ async function logScheduleActivity(scheduleId, taskId, action, performedBy, deta
 
 // List schedules (optionally filtered by job)
 router.get('/', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { job_id } = req.query;
 
     let query = supabase
@@ -46,6 +49,7 @@ router.get('/', asyncHandler(async (req, res) => {
         job:v2_jobs(id, name, address),
         tasks:v2_schedule_tasks(id, name, status, percent_complete)
       `)
+            .eq('builder_id', builderId)
             .order('created_at', { ascending: false });
 
     if (job_id) {
@@ -70,6 +74,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Get schedule by job ID (convenience endpoint)
 router.get('/by-job/:jobId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { jobId } = req.params;
 
     const { data: schedule, error } = await supabase
@@ -85,6 +90,7 @@ router.get('/by-job/:jobId', asyncHandler(async (req, res) => {
                     cost_code_id
         )
       `)
+      .eq('builder_id', builderId)
       .eq('job_id', jobId)
             .single();
 
@@ -104,12 +110,14 @@ router.get('/by-job/:jobId', asyncHandler(async (req, res) => {
 
 // List all tasks (optionally filtered by job_id) - MUST BE BEFORE /:id route
 router.get('/tasks', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { job_id } = req.query;
 
     // Simple query without problematic joins
     let query = supabase
       .from('v2_schedule_tasks')
       .select('*')
+      .eq('builder_id', builderId)
       .order('planned_start', { ascending: true })
       .order('sort_order', { ascending: true });
 
@@ -118,6 +126,7 @@ router.get('/tasks', asyncHandler(async (req, res) => {
       const { data: schedules } = await supabase
         .from('v2_schedules')
         .select('id')
+        .eq('builder_id', builderId)
         .eq('job_id', job_id);
 
       if (!schedules || schedules.length === 0) {
@@ -138,6 +147,7 @@ router.get('/tasks', asyncHandler(async (req, res) => {
       const { data: schedules } = await supabase
         .from('v2_schedules')
         .select('id, job_id, job:v2_jobs(id, name)')
+        .eq('builder_id', builderId)
         .in('id', scheduleIds);
 
       if (schedules) {
@@ -176,6 +186,7 @@ router.get('/tasks', asyncHandler(async (req, res) => {
 
 // Create task (accepts job_id - creates schedule if needed)
 router.post('/tasks', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const {
       job_id,
       name,
@@ -210,6 +221,7 @@ router.post('/tasks', asyncHandler(async (req, res) => {
     const { data: existingSchedule } = await supabase
       .from('v2_schedules')
       .select('id')
+      .eq('builder_id', builderId)
       .eq('job_id', job_id)
       .single();
 
@@ -223,7 +235,8 @@ router.post('/tasks', asyncHandler(async (req, res) => {
           job_id,
           name: 'Master Schedule',
           status: 'draft',
-          created_by: created_by || 'System'
+          created_by: created_by || 'System',
+          builder_id: builderId
         })
         .select()
         .single();
@@ -238,6 +251,7 @@ router.post('/tasks', asyncHandler(async (req, res) => {
       const { data: lastTask } = await supabase
         .from('v2_schedule_tasks')
         .select('sort_order')
+        .eq('builder_id', builderId)
         .eq('schedule_id', schedule.id)
         .order('sort_order', { ascending: false })
         .limit(1)
@@ -272,14 +286,15 @@ router.post('/tasks', asyncHandler(async (req, res) => {
         percent_complete: 0,
         is_milestone: isMilestone,
         task_type: task_type || 'work',
-        predecessors: predecessors || []
+        predecessors: predecessors || [],
+        builder_id: builderId
       })
       .select('*')
       .single();
 
     if (error) throw error;
 
-    await logScheduleActivity(schedule.id, task.id, 'task_added', created_by, { name });
+    await logScheduleActivity(schedule.id, task.id, 'task_added', created_by, { name }, builderId);
 
     // Map response to frontend format
     res.status(201).json({
@@ -295,6 +310,7 @@ router.post('/tasks', asyncHandler(async (req, res) => {
 
 // Get single schedule with all tasks
 router.get('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data: schedule, error } = await supabase
@@ -310,6 +326,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
                     cost_code_id
         )
       `)
+      .eq('builder_id', builderId)
       .eq('id', id)
             .single();
 
@@ -329,6 +346,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     const { data: activity } = await supabase
       .from('v2_schedule_activity')
       .select('*')
+      .eq('builder_id', builderId)
       .eq('schedule_id', id)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -341,6 +359,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Create schedule for a job
 router.post('/', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { job_id, name, start_date, target_end_date, created_by } = req.body;
 
     if (!job_id) {
@@ -351,6 +370,7 @@ router.post('/', asyncHandler(async (req, res) => {
     const { data: existing } = await supabase
       .from('v2_schedules')
       .select('id')
+      .eq('builder_id', builderId)
       .eq('job_id', job_id)
             .single();
 
@@ -369,7 +389,8 @@ router.post('/', asyncHandler(async (req, res) => {
         start_date,
         target_end_date,
         status: 'draft',
-        created_by
+        created_by,
+        builder_id: builderId
       })
       .select(`
         *,
@@ -379,13 +400,14 @@ router.post('/', asyncHandler(async (req, res) => {
 
     if (error) throw error;
 
-    await logScheduleActivity(schedule.id, null, 'created', created_by, { name: schedule.name });
+    await logScheduleActivity(schedule.id, null, 'created', created_by, { name: schedule.name }, builderId);
 
     res.status(201).json(schedule);
 }));
 
 // Update schedule
 router.patch('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { name, status, start_date, target_end_date, actual_end_date, updated_by } = req.body;
 
@@ -399,27 +421,30 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     const { data: schedule, error } = await supabase
       .from('v2_schedules')
       .update(updates)
+      .eq('builder_id', builderId)
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
 
-    await logScheduleActivity(id, null, 'updated', updated_by, updates);
+    await logScheduleActivity(id, null, 'updated', updated_by, updates, builderId);
 
     res.json(schedule);
 }));
 
 // Delete schedule (hard delete - tasks cascade via FK)
 router.delete('/:id', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
     const { deleted_by } = req.body;
 
-    await logScheduleActivity(id, null, 'deleted', deleted_by);
+    await logScheduleActivity(id, null, 'deleted', deleted_by, {}, builderId);
 
     const { error } = await supabase
       .from('v2_schedules')
       .delete()
+      .eq('builder_id', builderId)
       .eq('id', id);
 
     if (error) throw error;
@@ -433,6 +458,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Get tasks for a job (for daily log task picker)
 router.get('/tasks/by-job/:jobId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { jobId } = req.params;
     const { trade, status } = req.query;
 
@@ -440,6 +466,7 @@ router.get('/tasks/by-job/:jobId', asyncHandler(async (req, res) => {
     const { data: schedule } = await supabase
       .from('v2_schedules')
       .select('id')
+      .eq('builder_id', builderId)
       .eq('job_id', jobId)
             .single();
 
@@ -450,6 +477,7 @@ router.get('/tasks/by-job/:jobId', asyncHandler(async (req, res) => {
     let query = supabase
       .from('v2_schedule_tasks')
       .select('id, name, status, percent_complete')
+      .eq('builder_id', builderId)
       .eq('schedule_id', schedule.id)
       .order('sort_order', { ascending: true });
 
@@ -474,6 +502,7 @@ router.get('/tasks/by-job/:jobId', asyncHandler(async (req, res) => {
 
 // Add task to schedule
 router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { scheduleId } = req.params;
     const {
       name,
@@ -501,6 +530,7 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
       const { data: lastTask } = await supabase
         .from('v2_schedule_tasks')
         .select('sort_order')
+        .eq('builder_id', builderId)
         .eq('schedule_id', scheduleId)
         .order('sort_order', { ascending: false })
         .limit(1)
@@ -529,7 +559,8 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
         status: 'not_started',
         percent_complete: 0,
         is_milestone: isMilestone,
-        task_type: task_type || 'work'
+        task_type: task_type || 'work',
+        builder_id: builderId
       })
       .select(`
         *,
@@ -539,13 +570,14 @@ router.post('/:scheduleId/tasks', asyncHandler(async (req, res) => {
 
     if (error) throw error;
 
-    await logScheduleActivity(scheduleId, task.id, 'task_added', created_by, { name });
+    await logScheduleActivity(scheduleId, task.id, 'task_added', created_by, { name }, builderId);
 
     res.status(201).json(task);
 }));
 
 // Update task
 router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { taskId } = req.params;
     const {
       name,
@@ -618,12 +650,14 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
     const { data: existingTask } = await supabase
       .from('v2_schedule_tasks')
       .select('schedule_id')
+      .eq('builder_id', builderId)
       .eq('id', taskId)
       .single();
 
     const { data: task, error } = await supabase
       .from('v2_schedule_tasks')
       .update(updates)
+      .eq('builder_id', builderId)
       .eq('id', taskId)
       .select(`
         *,
@@ -634,7 +668,7 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
     if (error) throw error;
 
     if (existingTask) {
-      await logScheduleActivity(existingTask.schedule_id, taskId, 'task_updated', updated_by, updates);
+      await logScheduleActivity(existingTask.schedule_id, taskId, 'task_updated', updated_by, updates, builderId);
     }
 
     res.json(task);
@@ -642,6 +676,7 @@ router.patch('/tasks/:taskId', asyncHandler(async (req, res) => {
 
 // Delete task
 router.delete('/tasks/:taskId', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { taskId } = req.params;
     const { deleted_by } = req.body;
 
@@ -649,6 +684,7 @@ router.delete('/tasks/:taskId', asyncHandler(async (req, res) => {
     const { data: task } = await supabase
       .from('v2_schedule_tasks')
       .select('schedule_id, name')
+      .eq('builder_id', builderId)
       .eq('id', taskId)
       .single();
 
@@ -656,23 +692,26 @@ router.delete('/tasks/:taskId', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_schedule_activity')
       .update({ task_id: null })
+      .eq('builder_id', builderId)
       .eq('task_id', taskId);
 
     // Also clear any dependency references to this task
     await supabase
       .from('v2_schedule_tasks')
       .update({ depends_on: [] })
+      .eq('builder_id', builderId)
       .contains('depends_on', [taskId]);
 
     const { error } = await supabase
       .from('v2_schedule_tasks')
       .delete()
+      .eq('builder_id', builderId)
       .eq('id', taskId);
 
     if (error) throw error;
 
     if (task) {
-      await logScheduleActivity(task.schedule_id, null, 'task_deleted', deleted_by, { name: task.name });
+      await logScheduleActivity(task.schedule_id, null, 'task_deleted', deleted_by, { name: task.name }, builderId);
     }
 
     res.json({ success: true });
@@ -680,6 +719,7 @@ router.delete('/tasks/:taskId', asyncHandler(async (req, res) => {
 
 // Reorder tasks
 router.post('/:scheduleId/tasks/reorder', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { scheduleId } = req.params;
     const { task_order, updated_by } = req.body; // Array of { id, sort_order }
 
@@ -692,11 +732,12 @@ router.post('/:scheduleId/tasks/reorder', asyncHandler(async (req, res) => {
       await supabase
         .from('v2_schedule_tasks')
         .update({ sort_order: item.sort_order })
+        .eq('builder_id', builderId)
         .eq('id', item.id)
         .eq('schedule_id', scheduleId);
     }
 
-    await logScheduleActivity(scheduleId, null, 'tasks_reordered', updated_by);
+    await logScheduleActivity(scheduleId, null, 'tasks_reordered', updated_by, {}, builderId);
 
     res.json({ success: true });
 }));
@@ -707,6 +748,7 @@ router.post('/:scheduleId/tasks/reorder', asyncHandler(async (req, res) => {
 
 // Get Gantt chart data (optimized format)
 router.get('/:id/gantt', asyncHandler(async (req, res) => {
+    const builderId = getBuilderId(req);
     const { id } = req.params;
 
     const { data: schedule, error } = await supabase
@@ -721,6 +763,7 @@ router.get('/:id/gantt', asyncHandler(async (req, res) => {
           status, percent_complete, sort_order
         )
       `)
+      .eq('builder_id', builderId)
       .eq('id', id)
             .single();
 
@@ -768,6 +811,7 @@ router.get('/:id/gantt', asyncHandler(async (req, res) => {
 
 // Set baseline snapshot
 router.post('/:id/set-baseline', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { set_by, force } = req.body;
 
@@ -775,6 +819,7 @@ router.post('/:id/set-baseline', asyncHandler(async (req, res) => {
   const { data: schedule, error: fetchError } = await supabase
     .from('v2_schedules')
     .select('baseline_set_at, baseline_set_by')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -809,13 +854,14 @@ router.post('/:id/set-baseline', asyncHandler(async (req, res) => {
   const { data: updated } = await supabase
     .from('v2_schedules')
     .select('baseline_set_at, baseline_set_by')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
   await logScheduleActivity(id, null, 'baseline_set', set_by, {
     force: !!force,
     previous_baseline: schedule.baseline_set_at
-  });
+  }, builderId);
 
   res.json({
     success: true,
@@ -826,12 +872,14 @@ router.post('/:id/set-baseline', asyncHandler(async (req, res) => {
 
 // Get baseline variance comparison
 router.get('/:id/baseline', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get schedule info
   const { data: schedule, error: scheduleError } = await supabase
     .from('v2_schedules')
     .select('id, baseline_set_at, baseline_set_by')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -853,6 +901,7 @@ router.get('/:id/baseline', asyncHandler(async (req, res) => {
   const { data: tasks, error: tasksError } = await supabase
     .from('v2_schedule_tasks')
     .select('id, name, baseline_start, baseline_end, planned_start, planned_end, status, percent_complete, sort_order')
+    .eq('builder_id', builderId)
     .eq('schedule_id', id)
     .order('sort_order');
 
@@ -898,6 +947,7 @@ router.get('/:id/baseline', asyncHandler(async (req, res) => {
 
 // Capture baseline using the capture_schedule_baseline RPC function
 router.post('/:id/capture-baseline', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { captured_by } = req.body;
 
@@ -905,6 +955,7 @@ router.post('/:id/capture-baseline', asyncHandler(async (req, res) => {
   const { data: schedule, error: fetchError } = await supabase
     .from('v2_schedules')
     .select('id, name, baseline_captured_at')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -925,13 +976,14 @@ router.post('/:id/capture-baseline', asyncHandler(async (req, res) => {
   await logScheduleActivity(id, null, 'baseline_captured', captured_by || 'System', {
     previous_baseline: schedule.baseline_captured_at,
     tasks_captured: data?.tasks_captured
-  });
+  }, builderId);
 
   res.json(data);
 }));
 
 // Get schedule variance using the get_schedule_variance RPC function
 router.get('/:id/variance', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Call get_schedule_variance RPC
@@ -963,12 +1015,14 @@ router.get('/:id/variance', asyncHandler(async (req, res) => {
 
 // Get templates (list)
 router.get('/templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data: templates, error } = await supabase
     .from('v2_schedule_templates')
     .select(`
       *,
       task_count:v2_schedule_template_tasks(count)
     `)
+    .eq('builder_id', builderId)
     .order('is_default', { ascending: false })
     .order('name');
 
@@ -985,11 +1039,13 @@ router.get('/templates', asyncHandler(async (req, res) => {
 
 // Get single template with tasks
 router.get('/templates/:templateId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { templateId } = req.params;
 
   const { data: template, error: templateError } = await supabase
     .from('v2_schedule_templates')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', templateId)
     .single();
 
@@ -1004,6 +1060,7 @@ router.get('/templates/:templateId', asyncHandler(async (req, res) => {
   const { data: tasks } = await supabase
     .from('v2_schedule_template_tasks')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('template_id', templateId)
     .order('sort_order');
 
@@ -1011,6 +1068,7 @@ router.get('/templates/:templateId', asyncHandler(async (req, res) => {
   const { data: dependencies } = await supabase
     .from('v2_schedule_template_dependencies')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('template_id', templateId);
 
   res.json({
@@ -1022,6 +1080,7 @@ router.get('/templates/:templateId', asyncHandler(async (req, res) => {
 
 // Save schedule as template
 router.post('/templates/from-schedule', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { source_schedule_id, name, description, project_type, created_by } = req.body;
 
   if (!source_schedule_id) {
@@ -1046,6 +1105,7 @@ router.post('/templates/from-schedule', asyncHandler(async (req, res) => {
   const { data: taskCount } = await supabase
     .from('v2_schedule_template_tasks')
     .select('id', { count: 'exact' })
+    .eq('builder_id', builderId)
     .eq('template_id', templateId);
 
   res.status(201).json({
@@ -1057,6 +1117,7 @@ router.post('/templates/from-schedule', asyncHandler(async (req, res) => {
 
 // Apply template to job
 router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { templateId } = req.params;
   const { job_id, start_date, created_by } = req.body;
 
@@ -1071,6 +1132,7 @@ router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
   const { data: existing } = await supabase
     .from('v2_schedules')
     .select('id')
+    .eq('builder_id', builderId)
     .eq('job_id', job_id)
     .single();
 
@@ -1100,6 +1162,7 @@ router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       tasks:v2_schedule_tasks(id, name, planned_start, planned_end)
     `)
+    .eq('builder_id', builderId)
     .eq('id', scheduleId)
     .single();
 
@@ -1113,12 +1176,14 @@ router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
 
 // Delete template
 router.delete('/templates/:templateId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { templateId } = req.params;
 
   // Cascade deletes template_tasks and template_dependencies due to FK constraints
   const { error } = await supabase
     .from('v2_schedule_templates')
     .delete()
+    .eq('builder_id', builderId)
     .eq('id', templateId);
 
   if (error) throw error;
@@ -1129,6 +1194,7 @@ router.delete('/templates/:templateId', asyncHandler(async (req, res) => {
 // Generate schedule from selections
 // Generate schedule from selections
 router.post('/jobs/:jobId/generate-from-selections', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
   const { start_date, created_by } = req.body;
 
@@ -1148,12 +1214,14 @@ router.post('/jobs/:jobId/generate-from-selections', asyncHandler(async (req, re
       *,
       job:v2_jobs(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('id', scheduleId)
     .single();
 
   const { data: tasks } = await supabase
     .from('v2_schedule_tasks')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('schedule_id', scheduleId)
     .order('sort_order');
 
@@ -1173,6 +1241,7 @@ router.post('/jobs/:jobId/generate-from-selections', asyncHandler(async (req, re
 
 // Add dependency
 router.post('/:scheduleId/dependencies', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scheduleId } = req.params;
   const { predecessor_id, successor_id, dependency_type, lag_days, created_by } = req.body;
 
@@ -1191,7 +1260,8 @@ router.post('/:scheduleId/dependencies', asyncHandler(async (req, res) => {
       successor_id,
       dependency_type: dependency_type || 'FS',
       lag_days: lag_days || 0,
-      source: 'manual'
+      source: 'manual',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -1206,19 +1276,21 @@ router.post('/:scheduleId/dependencies', asyncHandler(async (req, res) => {
   // Recalculate schedule
   await supabase.rpc('recalculate_schedule', { p_schedule_id: scheduleId });
 
-  await logScheduleActivity(scheduleId, null, 'dependency_added', created_by, { dependency_type });
+  await logScheduleActivity(scheduleId, null, 'dependency_added', created_by, { dependency_type }, builderId);
 
   res.status(201).json(dependency);
 }));
 
 // Get dependencies for schedule
 router.get('/:scheduleId/dependencies', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scheduleId } = req.params;
 
   // Get all task IDs for this schedule
   const { data: tasks } = await supabase
     .from('v2_schedule_tasks')
     .select('id')
+    .eq('builder_id', builderId)
     .eq('schedule_id', scheduleId);
 
   const taskIds = (tasks || []).map(t => t.id);
@@ -1234,6 +1306,7 @@ router.get('/:scheduleId/dependencies', asyncHandler(async (req, res) => {
       predecessor:v2_schedule_tasks!predecessor_id(id, name),
       successor:v2_schedule_tasks!successor_id(id, name)
     `)
+    .eq('builder_id', builderId)
     .in('predecessor_id', taskIds);
 
   if (error) throw error;
@@ -1243,12 +1316,14 @@ router.get('/:scheduleId/dependencies', asyncHandler(async (req, res) => {
 
 // Delete dependency
 router.delete('/:scheduleId/dependencies/:depId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scheduleId, depId } = req.params;
   const { deleted_by } = req.body;
 
   const { error } = await supabase
     .from('v2_schedule_dependencies')
     .delete()
+    .eq('builder_id', builderId)
     .eq('id', depId);
 
   if (error) throw error;
@@ -1256,7 +1331,7 @@ router.delete('/:scheduleId/dependencies/:depId', asyncHandler(async (req, res) 
   // Recalculate schedule
   await supabase.rpc('recalculate_schedule', { p_schedule_id: scheduleId });
 
-  await logScheduleActivity(scheduleId, null, 'dependency_removed', deleted_by);
+  await logScheduleActivity(scheduleId, null, 'dependency_removed', deleted_by, {}, builderId);
 
   res.json({ success: true });
 }));
@@ -1267,6 +1342,7 @@ router.delete('/:scheduleId/dependencies/:depId', asyncHandler(async (req, res) 
 
 // Get milestones
 router.get('/:scheduleId/milestones', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scheduleId } = req.params;
 
   const { data: milestones, error } = await supabase
@@ -1275,6 +1351,7 @@ router.get('/:scheduleId/milestones', asyncHandler(async (req, res) => {
       *,
       linked_task:v2_schedule_tasks(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('schedule_id', scheduleId)
     .order('target_date');
 
@@ -1285,6 +1362,7 @@ router.get('/:scheduleId/milestones', asyncHandler(async (req, res) => {
 
 // Add milestone
 router.post('/:scheduleId/milestones', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scheduleId } = req.params;
   const { name, description, target_date, linked_task_id, notify_days_before, created_by } = req.body;
 
@@ -1299,20 +1377,22 @@ router.post('/:scheduleId/milestones', asyncHandler(async (req, res) => {
       description,
       target_date,
       linked_task_id,
-      notify_days_before: notify_days_before || 7
+      notify_days_before: notify_days_before || 7,
+      builder_id: builderId
     })
     .select()
     .single();
 
   if (error) throw error;
 
-  await logScheduleActivity(scheduleId, null, 'milestone_added', created_by, { name });
+  await logScheduleActivity(scheduleId, null, 'milestone_added', created_by, { name }, builderId);
 
   res.status(201).json(milestone);
 }));
 
 // Update milestone
 router.patch('/:scheduleId/milestones/:msId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scheduleId, msId } = req.params;
   const { name, description, target_date, actual_date, status, linked_task_id, updated_by } = req.body;
 
@@ -1327,6 +1407,7 @@ router.patch('/:scheduleId/milestones/:msId', asyncHandler(async (req, res) => {
   const { data: milestone, error } = await supabase
     .from('v2_schedule_milestones')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', msId)
     .eq('schedule_id', scheduleId)
     .select()
@@ -1334,18 +1415,20 @@ router.patch('/:scheduleId/milestones/:msId', asyncHandler(async (req, res) => {
 
   if (error) throw error;
 
-  await logScheduleActivity(scheduleId, null, 'milestone_updated', updated_by, { updates });
+  await logScheduleActivity(scheduleId, null, 'milestone_updated', updated_by, { updates }, builderId);
 
   res.json(milestone);
 }));
 
 // Delete milestone
 router.delete('/:scheduleId/milestones/:msId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { scheduleId, msId } = req.params;
 
   const { error } = await supabase
     .from('v2_schedule_milestones')
     .delete()
+    .eq('builder_id', builderId)
     .eq('id', msId)
     .eq('schedule_id', scheduleId);
 
@@ -1359,12 +1442,14 @@ router.delete('/:scheduleId/milestones/:msId', asyncHandler(async (req, res) => 
 // ============================================================
 
 router.get('/:id/critical-path', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get critical tasks
   const { data: criticalTasks, error } = await supabase
     .from('v2_schedule_tasks')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('schedule_id', id)
     .eq('is_critical', true)
     .order('earliest_start');
@@ -1375,6 +1460,7 @@ router.get('/:id/critical-path', asyncHandler(async (req, res) => {
   const { data: schedule } = await supabase
     .from('v2_schedules')
     .select('critical_path_days, start_date, target_end_date')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -1392,6 +1478,7 @@ router.get('/:id/critical-path', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/recalculate', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { updated_by } = req.body;
 
@@ -1404,12 +1491,13 @@ router.post('/:id/recalculate', asyncHandler(async (req, res) => {
   const { data: schedule } = await supabase
     .from('v2_schedules')
     .select('critical_path_days')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
   await logScheduleActivity(id, null, 'recalculated', updated_by, {
     critical_path_days: schedule?.critical_path_days
-  });
+  }, builderId);
 
   res.json({
     success: true,
@@ -1422,11 +1510,13 @@ router.post('/:id/recalculate', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id/gantt-enhanced', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: schedule, error } = await supabase
     .from('v2_schedules')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -1441,6 +1531,7 @@ router.get('/:id/gantt-enhanced', asyncHandler(async (req, res) => {
   const { data: tasks } = await supabase
     .from('v2_schedule_tasks')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('schedule_id', id)
     .order('sort_order');
 
@@ -1449,12 +1540,14 @@ router.get('/:id/gantt-enhanced', asyncHandler(async (req, res) => {
   const { data: dependencies } = await supabase
     .from('v2_schedule_dependencies')
     .select('*')
+    .eq('builder_id', builderId)
     .in('predecessor_id', taskIds.length > 0 ? taskIds : ['00000000-0000-0000-0000-000000000000']);
 
   // Get milestones
   const { data: milestones } = await supabase
     .from('v2_schedule_milestones')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('schedule_id', id);
 
   // Format for Gantt chart
@@ -1512,12 +1605,14 @@ router.get('/:id/gantt-enhanced', asyncHandler(async (req, res) => {
 
 // Export schedule/Gantt to PDF
 router.get('/jobs/:jobId/export-pdf', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
 
   // Get job info
   const { data: job, error: jobError } = await supabase
     .from('v2_jobs')
     .select('id, name, address, client_name')
+    .eq('builder_id', builderId)
     .eq('id', jobId)
     .single();
 
@@ -1532,6 +1627,7 @@ router.get('/jobs/:jobId/export-pdf', asyncHandler(async (req, res) => {
   const { data: schedule } = await supabase
     .from('v2_schedules')
     .select('id, name, start_date, target_end_date, status')
+    .eq('builder_id', builderId)
     .eq('job_id', jobId)
     .single();
 
@@ -1548,6 +1644,7 @@ router.get('/jobs/:jobId/export-pdf', asyncHandler(async (req, res) => {
         is_milestone, is_critical, task_type,
         predecessors, trade_id
       `)
+      .eq('builder_id', builderId)
       .eq('schedule_id', schedule.id)
       .order('sort_order', { ascending: true });
 
@@ -1581,6 +1678,7 @@ router.get('/jobs/:jobId/export-pdf', asyncHandler(async (req, res) => {
 
 // Alternative endpoint using schedule ID directly
 router.get('/:id/export-pdf', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get schedule with job info
@@ -1590,6 +1688,7 @@ router.get('/:id/export-pdf', asyncHandler(async (req, res) => {
       id, name, start_date, target_end_date, status,
       job:v2_jobs(id, name, address, client_name)
     `)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -1611,6 +1710,7 @@ router.get('/:id/export-pdf', asyncHandler(async (req, res) => {
       is_milestone, is_critical, task_type,
       predecessors, trade_id
     `)
+    .eq('builder_id', builderId)
     .eq('schedule_id', id)
     .order('sort_order', { ascending: true });
 

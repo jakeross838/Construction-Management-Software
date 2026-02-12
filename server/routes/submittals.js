@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { getUserName } = require('../utils/shared');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Async handler wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -21,6 +22,7 @@ const asyncHandler = fn => (req, res, next) =>
  * List submittals with optional filters
  */
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, status, type, spec_section } = req.query;
 
   let query = supabase
@@ -30,6 +32,7 @@ router.get('/', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       cost_code:v2_cost_codes(id, code, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -48,11 +51,13 @@ router.get('/', asyncHandler(async (req, res) => {
  * Get submittal statistics
  */
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   let query = supabase
     .from('v2_submittals')
     .select('status, type')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) query = query.eq('job_id', job_id);
@@ -82,6 +87,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
  * Get a single submittal with items, attachments, and log
  */
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get submittal
@@ -93,6 +99,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -105,6 +112,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: items } = await supabase
     .from('v2_submittal_items')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('submittal_id', id)
     .order('item_number');
 
@@ -112,6 +120,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: attachments } = await supabase
     .from('v2_submittal_attachments')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('submittal_id', id)
     .order('created_at');
 
@@ -119,6 +128,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: log } = await supabase
     .from('v2_submittal_log')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('submittal_id', id)
     .order('created_at', { ascending: false });
 
@@ -135,6 +145,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
  * Create a new submittal
  */
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     title,
@@ -160,6 +171,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_submittals')
     .insert({
+      builder_id: builderId,
       job_id,
       title,
       type: type || 'shop_drawing',
@@ -186,6 +198,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   // Log creation
   await supabase.from('v2_submittal_log').insert({
+    builder_id: builderId,
     submittal_id: data.id,
     action: 'created',
     new_status: 'draft',
@@ -200,6 +213,7 @@ router.post('/', asyncHandler(async (req, res) => {
  * Update a submittal
  */
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = req.body;
 
@@ -211,6 +225,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_submittals')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select(`
       *,
@@ -232,6 +247,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
  * Submit for review
  */
 router.post('/:id/submit', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { submitted_by } = req.body;
 
@@ -240,6 +256,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
     .from('v2_submittals')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   const { data, error } = await supabase
@@ -249,6 +266,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
       date_submitted: new Date().toISOString().split('T')[0]
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select()
     .single();
@@ -260,6 +278,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
 
   // Log submission
   await supabase.from('v2_submittal_log').insert({
+    builder_id: builderId,
     submittal_id: id,
     action: 'submitted',
     old_status: current?.status,
@@ -275,6 +294,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
  * Review a submittal (approve, reject, etc.)
  */
 router.post('/:id/review', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { status, review_comments, reviewed_by } = req.body;
 
@@ -290,6 +310,7 @@ router.post('/:id/review', asyncHandler(async (req, res) => {
     .from('v2_submittals')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   const { data, error } = await supabase
@@ -302,6 +323,7 @@ router.post('/:id/review', asyncHandler(async (req, res) => {
       date_returned: new Date().toISOString().split('T')[0]
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select()
     .single();
@@ -313,6 +335,7 @@ router.post('/:id/review', asyncHandler(async (req, res) => {
 
   // Log review
   await supabase.from('v2_submittal_log').insert({
+    builder_id: builderId,
     submittal_id: id,
     action: 'reviewed',
     old_status: current?.status,
@@ -329,6 +352,7 @@ router.post('/:id/review', asyncHandler(async (req, res) => {
  * Create a revision of a submittal
  */
 router.post('/:id/revise', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get original submittal
@@ -336,6 +360,7 @@ router.post('/:id/revise', asyncHandler(async (req, res) => {
     .from('v2_submittals')
     .select('*')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError) throw fetchError;
@@ -351,6 +376,7 @@ router.post('/:id/revise', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_submittals')
     .insert({
+      builder_id: builderId,
       job_id: original.job_id,
       submittal_number: original.submittal_number,
       revision: nextRev,
@@ -379,6 +405,7 @@ router.post('/:id/revise', asyncHandler(async (req, res) => {
 
   // Log revision
   await supabase.from('v2_submittal_log').insert({
+    builder_id: builderId,
     submittal_id: data.id,
     action: 'revised',
     new_status: 'draft',
@@ -394,12 +421,14 @@ router.post('/:id/revise', asyncHandler(async (req, res) => {
  * Soft delete a submittal
  */
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_submittals')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select()
     .single();
@@ -421,6 +450,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
  * Add item to submittal
  */
 router.post('/:id/items', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { description, quantity, unit, manufacturer, model_number, notes } = req.body;
 
@@ -432,6 +462,7 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
   const { data: existing } = await supabase
     .from('v2_submittal_items')
     .select('item_number')
+    .eq('builder_id', builderId)
     .eq('submittal_id', id)
     .order('item_number', { ascending: false })
     .limit(1);
@@ -441,6 +472,7 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_submittal_items')
     .insert({
+      builder_id: builderId,
       submittal_id: id,
       item_number: nextNum,
       description,
@@ -462,12 +494,14 @@ router.post('/:id/items', asyncHandler(async (req, res) => {
  * Delete an item
  */
 router.delete('/:submittalId/items/:itemId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { itemId } = req.params;
 
   const { error } = await supabase
     .from('v2_submittal_items')
     .delete()
-    .eq('id', itemId);
+    .eq('id', itemId)
+    .eq('builder_id', builderId);
 
   if (error) throw error;
   res.json({ success: true, message: 'Item deleted' });
@@ -482,6 +516,7 @@ router.delete('/:submittalId/items/:itemId', asyncHandler(async (req, res) => {
  * Add an attachment to a submittal
  */
 router.post('/:id/attachments', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { name, file_url, file_type, file_size, attachment_type, uploaded_by } = req.body;
 
@@ -492,6 +527,7 @@ router.post('/:id/attachments', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_submittal_attachments')
     .insert({
+      builder_id: builderId,
       submittal_id: id,
       name,
       file_url,
@@ -512,12 +548,14 @@ router.post('/:id/attachments', asyncHandler(async (req, res) => {
  * Delete an attachment
  */
 router.delete('/:submittalId/attachments/:attachmentId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { attachmentId } = req.params;
 
   const { error } = await supabase
     .from('v2_submittal_attachments')
     .delete()
-    .eq('id', attachmentId);
+    .eq('id', attachmentId)
+    .eq('builder_id', builderId);
 
   if (error) throw error;
   res.json({ success: true, message: 'Attachment deleted' });

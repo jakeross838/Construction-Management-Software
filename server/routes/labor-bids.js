@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // LABOR CATEGORIES
@@ -17,11 +18,13 @@ const { AppError, asyncHandler } = require('../core/errors');
  * Get all labor categories (trades) with their specs
  */
 router.get('/categories', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { active_only = 'true' } = req.query;
 
   let query = supabase
     .from('v2_labor_categories')
     .select('*')
+    .eq('builder_id', builderId)
     .order('sort_order');
 
   if (active_only === 'true') {
@@ -39,12 +42,13 @@ router.get('/categories', asyncHandler(async (req, res) => {
  * Get a single category with its specifications and scope templates
  */
 router.get('/categories/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const [categoryResult, specsResult, templatesResult] = await Promise.all([
-    supabase.from('v2_labor_categories').select('*').eq('id', id).single(),
-    supabase.from('v2_labor_specifications').select('*').eq('category_id', id).eq('is_active', true).order('spec_type').order('sort_order'),
-    supabase.from('v2_scope_templates').select('*').eq('category_id', id).eq('is_active', true).order('sort_order')
+    supabase.from('v2_labor_categories').select('*').eq('id', id).eq('builder_id', builderId).single(),
+    supabase.from('v2_labor_specifications').select('*').eq('category_id', id).eq('builder_id', builderId).eq('is_active', true).order('spec_type').order('sort_order'),
+    supabase.from('v2_scope_templates').select('*').eq('category_id', id).eq('builder_id', builderId).eq('is_active', true).order('sort_order')
   ]);
 
   if (categoryResult.error) throw new AppError('Category not found', 404);
@@ -65,11 +69,13 @@ router.get('/categories/:id', asyncHandler(async (req, res) => {
  * Get labor specifications (finish levels, materials, etc.)
  */
 router.get('/specifications', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, spec_type } = req.query;
 
   let query = supabase
     .from('v2_labor_specifications')
     .select('*, category:v2_labor_categories(name)')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('category_id')
     .order('spec_type')
@@ -94,6 +100,7 @@ router.get('/specifications', asyncHandler(async (req, res) => {
  * Create a new specification
  */
 router.post('/specifications', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, spec_type, spec_name, spec_description, price_multiplier, is_default, sort_order } = req.body;
 
   if (!category_id || !spec_type || !spec_name) {
@@ -103,6 +110,7 @@ router.post('/specifications', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_labor_specifications')
     .insert({
+      builder_id: builderId,
       category_id,
       spec_type,
       spec_name,
@@ -128,11 +136,13 @@ router.post('/specifications', asyncHandler(async (req, res) => {
  * Get standard scope items by trade
  */
 router.get('/scope-templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, standard_only } = req.query;
 
   let query = supabase
     .from('v2_scope_templates')
     .select('*, category:v2_labor_categories(name)')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('category_id')
     .order('sort_order');
@@ -160,6 +170,7 @@ router.get('/scope-templates', asyncHandler(async (req, res) => {
  * List labor bids with filters
  */
 router.get('/bids', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, vendor_id, category_id, status, limit = 100, offset = 0 } = req.query;
   const limitInt = Math.min(parseInt(limit) || 100, 500);
   const offsetInt = parseInt(offset) || 0;
@@ -172,12 +183,14 @@ router.get('/bids', asyncHandler(async (req, res) => {
       vendor:v2_vendors(id, name),
       category:v2_labor_categories(id, name, code, primary_metric)
     `)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false })
     .range(offsetInt, offsetInt + limitInt - 1);
 
   let countQuery = supabase
     .from('v2_labor_bids')
-    .select('*', { count: 'exact', head: true });
+    .select('*', { count: 'exact', head: true })
+    .eq('builder_id', builderId);
 
   if (job_id) {
     query = query.eq('job_id', job_id);
@@ -218,6 +231,7 @@ router.get('/bids', asyncHandler(async (req, res) => {
  * Get a single bid with all details
  */
 router.get('/bids/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get bid with related data
@@ -230,6 +244,7 @@ router.get('/bids/:id', asyncHandler(async (req, res) => {
       category:v2_labor_categories(id, name, code, primary_metric, typical_low, typical_high)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) throw new AppError('Bid not found', 404);
@@ -239,13 +254,15 @@ router.get('/bids/:id', asyncHandler(async (req, res) => {
     .from('v2_labor_bid_items')
     .select('*, scope_template:v2_scope_templates(item_name, is_standard)')
     .eq('bid_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order');
 
   // Get bid specs
   const { data: specs } = await supabase
     .from('v2_labor_bid_specs')
     .select('*, spec:v2_labor_specifications(spec_type, spec_name, price_multiplier)')
-    .eq('bid_id', id);
+    .eq('bid_id', id)
+    .eq('builder_id', builderId);
 
   // Get vendor performance for this category
   const { data: performance } = await supabase
@@ -253,12 +270,14 @@ router.get('/bids/:id', asyncHandler(async (req, res) => {
     .select('*')
     .eq('vendor_id', bid.vendor_id)
     .eq('category_id', bid.category_id)
+    .eq('builder_id', builderId)
     .single();
 
   // Get other bids for comparison
   const { data: otherBids } = await supabase
     .from('v2_labor_bids')
     .select('id, vendor_id, total_amount, normalized_amount, status, is_lowest, vendor:v2_vendors(name)')
+    .eq('builder_id', builderId)
     .eq('job_id', bid.job_id)
     .eq('category_id', bid.category_id)
     .neq('id', id)
@@ -278,6 +297,7 @@ router.get('/bids/:id', asyncHandler(async (req, res) => {
  * Create a new labor bid
  */
 router.post('/bids', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     vendor_id,
@@ -309,6 +329,7 @@ router.post('/bids', asyncHandler(async (req, res) => {
   const { data: bid, error } = await supabase
     .from('v2_labor_bids')
     .insert({
+      builder_id: builderId,
       job_id,
       vendor_id,
       category_id,
@@ -337,6 +358,7 @@ router.post('/bids', asyncHandler(async (req, res) => {
   // Add items if provided
   if (items && Array.isArray(items) && items.length > 0) {
     const bidItems = items.map((item, index) => ({
+      builder_id: builderId,
       bid_id: bid.id,
       scope_template_id: item.scope_template_id || null,
       description: item.description,
@@ -353,6 +375,7 @@ router.post('/bids', asyncHandler(async (req, res) => {
   // Add specs if provided
   if (spec_ids && Array.isArray(spec_ids) && spec_ids.length > 0) {
     const bidSpecs = spec_ids.map(spec_id => ({
+      builder_id: builderId,
       bid_id: bid.id,
       spec_id
     }));
@@ -365,6 +388,7 @@ router.post('/bids', asyncHandler(async (req, res) => {
     .from('v2_labor_bids')
     .select('*, job:v2_jobs(name), vendor:v2_vendors(name), category:v2_labor_categories(name)')
     .eq('id', bid.id)
+    .eq('builder_id', builderId)
     .single();
 
   res.status(201).json(fullBid);
@@ -375,6 +399,7 @@ router.post('/bids', asyncHandler(async (req, res) => {
  * Update a labor bid
  */
 router.patch('/bids/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = { ...req.body };
 
@@ -391,6 +416,7 @@ router.patch('/bids/:id', asyncHandler(async (req, res) => {
     .from('v2_labor_bids')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -404,6 +430,7 @@ router.patch('/bids/:id', asyncHandler(async (req, res) => {
  * Accept/select a bid
  */
 router.post('/bids/:id/accept', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get the bid to find job/category
@@ -411,6 +438,7 @@ router.post('/bids/:id/accept', asyncHandler(async (req, res) => {
     .from('v2_labor_bids')
     .select('job_id, category_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (bidError) throw new AppError('Bid not found', 404);
@@ -419,6 +447,7 @@ router.post('/bids/:id/accept', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_labor_bids')
     .update({ is_selected: false })
+    .eq('builder_id', builderId)
     .eq('job_id', bid.job_id)
     .eq('category_id', bid.category_id);
 
@@ -431,6 +460,7 @@ router.post('/bids/:id/accept', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -444,6 +474,7 @@ router.post('/bids/:id/accept', asyncHandler(async (req, res) => {
  * Reject a bid
  */
 router.post('/bids/:id/reject', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { reason } = req.body;
 
@@ -455,6 +486,7 @@ router.post('/bids/:id/reject', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -468,12 +500,14 @@ router.post('/bids/:id/reject', asyncHandler(async (req, res) => {
  * Delete a bid (hard delete)
  */
 router.delete('/bids/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { error } = await supabase
     .from('v2_labor_bids')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError(error.message, 500);
 
@@ -489,6 +523,7 @@ router.delete('/bids/:id', asyncHandler(async (req, res) => {
  * Add items to a bid
  */
 router.post('/bids/:id/items', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { items } = req.body;
 
@@ -497,6 +532,7 @@ router.post('/bids/:id/items', asyncHandler(async (req, res) => {
   }
 
   const bidItems = items.map((item, index) => ({
+    builder_id: builderId,
     bid_id: id,
     scope_template_id: item.scope_template_id || null,
     description: item.description,
@@ -522,12 +558,14 @@ router.post('/bids/:id/items', asyncHandler(async (req, res) => {
  * Remove an item from a bid
  */
 router.delete('/items/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { error } = await supabase
     .from('v2_labor_bid_items')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError(error.message, 500);
 
@@ -543,6 +581,7 @@ router.delete('/items/:id', asyncHandler(async (req, res) => {
  * Add specifications to a bid
  */
 router.post('/bids/:id/specs', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { spec_ids } = req.body;
 
@@ -551,6 +590,7 @@ router.post('/bids/:id/specs', asyncHandler(async (req, res) => {
   }
 
   const bidSpecs = spec_ids.map(spec_id => ({
+    builder_id: builderId,
     bid_id: id,
     spec_id
   }));
@@ -570,13 +610,15 @@ router.post('/bids/:id/specs', asyncHandler(async (req, res) => {
  * Remove a specification from a bid
  */
 router.delete('/bids/:id/specs/:specId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, specId } = req.params;
 
   const { error } = await supabase
     .from('v2_labor_bid_specs')
     .delete()
     .eq('bid_id', id)
-    .eq('spec_id', specId);
+    .eq('spec_id', specId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError(error.message, 500);
 
@@ -592,6 +634,7 @@ router.delete('/bids/:id/specs/:specId', asyncHandler(async (req, res) => {
  * Get job metrics for bid normalization
  */
 router.get('/jobs/:id/metrics', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
@@ -604,6 +647,7 @@ router.get('/jobs/:id/metrics', asyncHandler(async (req, res) => {
       plumbing_fixtures, hvac_tons
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) throw new AppError('Job not found', 404);
@@ -616,6 +660,7 @@ router.get('/jobs/:id/metrics', asyncHandler(async (req, res) => {
  * Update job metrics
  */
 router.patch('/jobs/:id/metrics', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const metrics = req.body;
 
@@ -642,6 +687,7 @@ router.patch('/jobs/:id/metrics', asyncHandler(async (req, res) => {
     .from('v2_jobs')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -659,12 +705,14 @@ router.patch('/jobs/:id/metrics', asyncHandler(async (req, res) => {
  * Get bid comparison for a job
  */
 router.get('/jobs/:id/comparison', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { category_id } = req.query;
 
   let query = supabase
     .from('v2_bid_comparison_detail')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('job_id', id);
 
   if (category_id) {
@@ -714,10 +762,11 @@ router.get('/jobs/:id/comparison', asyncHandler(async (req, res) => {
  * Get bid analysis/recommendations for a job
  */
 router.get('/jobs/:id/analysis', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Call the analysis function
-  const { data, error } = await supabase.rpc('analyze_bids', { p_job_id: id });
+  const { data, error } = await supabase.rpc('analyze_bids', { p_job_id: id, p_builder_id: builderId });
 
   if (error) throw new AppError(error.message, 500);
 
@@ -733,11 +782,13 @@ router.get('/jobs/:id/analysis', asyncHandler(async (req, res) => {
  * Get performance metrics for a vendor across categories
  */
 router.get('/vendors/:id/performance', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_sub_performance')
     .select('*, category:v2_labor_categories(name, code)')
+    .eq('builder_id', builderId)
     .eq('vendor_id', id);
 
   if (error) throw new AppError(error.message, 500);
@@ -750,11 +801,13 @@ router.get('/vendors/:id/performance', asyncHandler(async (req, res) => {
  * Get performance leaderboard by category
  */
 router.get('/performance', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, min_jobs = 1 } = req.query;
 
   let query = supabase
     .from('v2_sub_performance')
     .select('*, vendor:v2_vendors(name), category:v2_labor_categories(name, code)')
+    .eq('builder_id', builderId)
     .gte('total_jobs', parseInt(min_jobs))
     .order('avg_quality_score', { ascending: false });
 
@@ -777,11 +830,13 @@ router.get('/performance', asyncHandler(async (req, res) => {
  * Get historical labor pricing data
  */
 router.get('/history', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, vendor_id, job_type, year, limit = 100 } = req.query;
 
   let query = supabase
     .from('v2_labor_history')
     .select('*, job:v2_jobs(name), vendor:v2_vendors(name), category:v2_labor_categories(name)')
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false })
     .limit(parseInt(limit));
 
@@ -812,6 +867,7 @@ router.get('/history', asyncHandler(async (req, res) => {
  * Record a completed job to labor history
  */
 router.post('/history', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     vendor_id,
@@ -836,6 +892,7 @@ router.post('/history', asyncHandler(async (req, res) => {
     .from('v2_jobs')
     .select('conditioned_sf, total_sf, job_type')
     .eq('id', job_id)
+    .eq('builder_id', builderId)
     .single();
 
   const bidDate = new Date();
@@ -843,6 +900,7 @@ router.post('/history', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_labor_history')
     .insert({
+      builder_id: builderId,
       job_id,
       vendor_id,
       category_id,
@@ -882,16 +940,17 @@ router.post('/history', asyncHandler(async (req, res) => {
  * Get overall labor bids statistics
  */
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const [
     { count: bidCount },
     { count: activeJobCount },
     { count: vendorCount },
     { count: categoryCount }
   ] = await Promise.all([
-    supabase.from('v2_labor_bids').select('*', { count: 'exact', head: true }),
-    supabase.from('v2_labor_bids').select('*', { count: 'exact', head: true }).in('status', ['received', 'reviewing']),
-    supabase.from('v2_sub_performance').select('vendor_id', { count: 'exact', head: true }),
-    supabase.from('v2_labor_categories').select('*', { count: 'exact', head: true }).eq('is_active', true)
+    supabase.from('v2_labor_bids').select('*', { count: 'exact', head: true }).eq('builder_id', builderId),
+    supabase.from('v2_labor_bids').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).in('status', ['received', 'reviewing']),
+    supabase.from('v2_sub_performance').select('vendor_id', { count: 'exact', head: true }).eq('builder_id', builderId),
+    supabase.from('v2_labor_categories').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).eq('is_active', true)
   ]);
 
   // Get recent bid trend
@@ -901,6 +960,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
   const { data: recentBids } = await supabase
     .from('v2_labor_bids')
     .select('id, created_at')
+    .eq('builder_id', builderId)
     .gte('created_at', thirtyDaysAgo.toISOString());
 
   res.json({

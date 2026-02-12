@@ -12,6 +12,9 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { OfflineIndicator } from "@/components/common/OfflineIndicator";
 import { PWAInstallBanner } from "@/components/mobile/common/PWAInstallBanner";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
+import { SidebarProvider } from "@/contexts/SidebarContext";
+import { SearchProvider } from "@/components/search/SearchContext";
+import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { Loader2 } from 'lucide-react';
 
 // Loading component for lazy-loaded pages
@@ -160,6 +163,9 @@ const App = () => (
       <OfflineIndicator />
       <PWAInstallBanner />
       <BrowserRouter>
+        <SidebarProvider>
+        <SearchProvider>
+        <GlobalSearch />
         <Routes>
           {/* Public auth routes - not lazy loaded for fast auth */}
           <Route path="/login" element={
@@ -257,6 +263,8 @@ const App = () => (
 
           <Route path="*" element={<LazyRoute><NotFound /></LazyRoute>} />
         </Routes>
+        </SearchProvider>
+        </SidebarProvider>
       </BrowserRouter>
     </TooltipProvider>
   </UserProvider>

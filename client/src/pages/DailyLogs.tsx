@@ -178,7 +178,7 @@ const DailyLogs = () => {
             value={statusFilter} 
             onValueChange={(v) => setStatusFilter(v as LogStatus | 'all')}
           >
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-full md:w-[150px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -192,7 +192,7 @@ const DailyLogs = () => {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-[150px]"
+              className="w-full sm:w-[150px]"
               placeholder="From"
             />
             <span className="text-muted-foreground">to</span>
@@ -200,7 +200,7 @@ const DailyLogs = () => {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-[150px]"
+              className="w-full sm:w-[150px]"
               placeholder="To"
             />
           </div>

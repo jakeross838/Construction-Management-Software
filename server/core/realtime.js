@@ -30,6 +30,18 @@ function sseHandler(req, res) {
     'Access-Control-Allow-Origin': '*'
   });
 
+  // Evict oldest connections if at limit (prevent Chrome 6-connection exhaustion)
+  const MAX_SSE_CLIENTS = 4;
+  while (clients.size >= MAX_SSE_CLIENTS) {
+    const oldestKey = clients.keys().next().value;
+    const oldest = clients.get(oldestKey);
+    if (oldest && oldest.res) {
+      try { oldest.res.end(); } catch (_) { /* ignore */ }
+    }
+    clients.delete(oldestKey);
+    logger.info('SSE client evicted (limit reached)', { component: 'sse', clientId: oldestKey, totalClients: clients.size });
+  }
+
   // Generate client ID
   const clientId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 

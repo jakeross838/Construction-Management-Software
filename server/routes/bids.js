@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Multer for document uploads
 const upload = multer({
@@ -44,12 +45,13 @@ const TRADE_CATEGORIES = [
 // ACTIVITY LOGGING HELPER
 // ============================================================
 
-async function logBidActivity(bidId, action, performedBy, details = {}) {
+async function logBidActivity(bidId, action, performedBy, details = {}, builderId) {
   await supabase.from('v2_bid_activity').insert({
     bid_id: bidId,
     action,
     performed_by: performedBy,
-    details
+    details,
+    builder_id: builderId
   });
 }
 
@@ -58,6 +60,7 @@ async function logBidActivity(bidId, action, performedBy, details = {}) {
 // ============================================================
 
 router.post('/suggest-trade', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { title, description, scope_of_work } = req.body;
 
   if (!title) throw new AppError('VALIDATION_ERROR', 'Title is required');
@@ -157,12 +160,14 @@ Choose "Other" only if none of the specific categories fit well.`
 // ============================================================
 
 router.get('/analytics', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, date_from, date_to } = req.query;
 
   // Base query for bid packages
   let packagesQuery = supabase
     .from('v2_bids')
     .select('id, status, trade_category, awarded_amount, awarded_vendor_id, created_at, job_id')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) packagesQuery = packagesQuery.eq('job_id', job_id);
@@ -177,6 +182,7 @@ router.get('/analytics', asyncHandler(async (req, res) => {
   const { data: allBids } = await supabase
     .from('v2_subcontractor_bids')
     .select('id, bid_package_id, vendor_id, bid_amount, status, submitted_at')
+    .eq('builder_id', builderId)
     .in('bid_package_id', packageIds);
 
   // Get vendor names for awarded packages
@@ -188,6 +194,7 @@ router.get('/analytics', asyncHandler(async (req, res) => {
   const { data: vendors } = await supabase
     .from('v2_vendors')
     .select('id, name')
+    .eq('builder_id', builderId)
     .in('id', vendorIds);
 
   const vendorMap = Object.fromEntries((vendors || []).map(v => [v.id, v.name]));
@@ -328,11 +335,13 @@ router.get('/analytics', asyncHandler(async (req, res) => {
 }));
 
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   let query = supabase
     .from('v2_bids')
     .select('id, status, bid_amount')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) {
@@ -370,6 +379,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, vendor_id, status, search, trade_category } = req.query;
 
   let query = supabase
@@ -381,6 +391,7 @@ router.get('/', asyncHandler(async (req, res) => {
       awarded_vendor:v2_vendors!v2_bids_awarded_vendor_id_fkey(id, name),
       documents:v2_bid_documents(id, file_name, file_url)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -402,12 +413,14 @@ router.get('/', asyncHandler(async (req, res) => {
   const { data: inviteCounts } = await supabase
     .from('v2_bid_package_invites')
     .select('bid_package_id')
+    .eq('builder_id', builderId)
     .in('bid_package_id', packageIds);
 
   // Get subcontractor bid counts
   const { data: bidCounts } = await supabase
     .from('v2_subcontractor_bids')
     .select('bid_package_id')
+    .eq('builder_id', builderId)
     .in('bid_package_id', packageIds);
 
   // Build count maps
@@ -437,6 +450,7 @@ router.get('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: bid, error } = await supabase
@@ -448,6 +462,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       awarded_vendor:v2_vendors!v2_bids_awarded_vendor_id_fkey(id, name, email, phone)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -458,6 +473,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .from('v2_bid_documents')
     .select('*')
     .eq('bid_id', id)
+    .eq('builder_id', builderId)
     .order('uploaded_at', { ascending: false });
 
   // Get activity
@@ -465,6 +481,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .from('v2_bid_activity')
     .select('*')
     .eq('bid_id', id)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   // Check if already converted to PO
@@ -472,6 +489,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .from('v2_purchase_orders')
     .select('id, po_number, status')
     .eq('source_bid_id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -487,6 +505,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     vendor_id,
@@ -516,7 +535,8 @@ router.post('/', asyncHandler(async (req, res) => {
       due_date: due_date || null,
       notes: notes || null,
       created_by: created_by || 'System',
-      status: 'received'
+      status: 'received',
+      builder_id: builderId
     })
     .select(`
       *,
@@ -527,7 +547,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logBidActivity(bid.id, 'created', created_by || 'System', { title });
+  await logBidActivity(bid.id, 'created', created_by || 'System', { title }, builderId);
 
   res.status(201).json(bid);
 }));
@@ -537,6 +557,7 @@ router.post('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     vendor_id,
@@ -565,6 +586,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select(`
       *,
@@ -576,7 +598,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   if (!bid) throw new AppError('NOT_FOUND', 'Bid not found');
 
-  await logBidActivity(id, 'updated', updated_by || 'System', { updates });
+  await logBidActivity(id, 'updated', updated_by || 'System', { updates }, builderId);
 
   res.json(bid);
 }));
@@ -586,6 +608,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { deleted_by } = req.body;
 
@@ -593,6 +616,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select()
     .single();
@@ -600,7 +624,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   if (!bid) throw new AppError('NOT_FOUND', 'Bid not found');
 
-  await logBidActivity(id, 'deleted', deleted_by || 'System', {});
+  await logBidActivity(id, 'deleted', deleted_by || 'System', {}, builderId);
 
   res.json({ success: true, message: 'Bid deleted' });
 }));
@@ -618,6 +642,7 @@ const STATUS_TRANSITIONS = {
 };
 
 router.post('/:id/status', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { status: newStatus, performed_by, notes } = req.body;
 
@@ -628,6 +653,7 @@ router.post('/:id/status', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .select('status, job_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -649,6 +675,7 @@ router.post('/:id/status', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name),
@@ -662,15 +689,15 @@ router.post('/:id/status', asyncHandler(async (req, res) => {
     from: bid.status,
     to: newStatus,
     notes: notes || null
-  });
+  }, builderId);
 
   // Auto-update budget when bid is accepted
   if (newStatus === 'accepted') {
     try {
-      await updateBudgetFromAcceptedBid(id, bid.job_id);
+      await updateBudgetFromAcceptedBid(id, bid.job_id, builderId);
       await logBidActivity(id, 'budget_updated', 'System', {
         message: 'Budget lines auto-updated from accepted bid'
-      });
+      }, builderId);
     } catch (budgetErr) {
       console.error('Error updating budget from bid:', budgetErr);
       // Don't fail the status change if budget update fails
@@ -685,6 +712,7 @@ router.post('/:id/status', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/documents', upload.single('document'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { uploaded_by } = req.body;
 
@@ -695,6 +723,7 @@ router.post('/:id/documents', upload.single('document'), asyncHandler(async (req
     .from('v2_bids')
     .select('id, title')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -723,7 +752,8 @@ router.post('/:id/documents', upload.single('document'), asyncHandler(async (req
       file_url: publicUrl,
       file_name: req.file.originalname,
       file_size: req.file.size,
-      uploaded_by: uploaded_by || 'System'
+      uploaded_by: uploaded_by || 'System',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -732,7 +762,7 @@ router.post('/:id/documents', upload.single('document'), asyncHandler(async (req
 
   await logBidActivity(id, 'document_uploaded', uploaded_by || 'System', {
     file_name: req.file.originalname
-  });
+  }, builderId);
 
   res.status(201).json(doc);
 }));
@@ -742,6 +772,7 @@ router.post('/:id/documents', upload.single('document'), asyncHandler(async (req
 // ============================================================
 
 router.delete('/documents/:docId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { docId } = req.params;
   const { deleted_by } = req.body;
 
@@ -750,6 +781,7 @@ router.delete('/documents/:docId', asyncHandler(async (req, res) => {
     .from('v2_bid_documents')
     .select('*, bid:v2_bids(id)')
     .eq('id', docId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !doc) throw new AppError('NOT_FOUND', 'Document not found');
@@ -763,13 +795,14 @@ router.delete('/documents/:docId', asyncHandler(async (req, res) => {
   const { error: deleteError } = await supabase
     .from('v2_bid_documents')
     .delete()
-    .eq('id', docId);
+    .eq('id', docId)
+    .eq('builder_id', builderId);
 
   if (deleteError) throw new AppError('DATABASE_ERROR', deleteError.message);
 
   await logBidActivity(doc.bid_id, 'document_deleted', deleted_by || 'System', {
     file_name: doc.file_name
-  });
+  }, builderId);
 
   res.json({ success: true, message: 'Document deleted' });
 }));
@@ -779,6 +812,7 @@ router.delete('/documents/:docId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/documents/:docId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { docId } = req.params;
   const { bid_id: newBidId, moved_by } = req.body;
 
@@ -789,6 +823,7 @@ router.patch('/documents/:docId', asyncHandler(async (req, res) => {
     .from('v2_bid_documents')
     .select('*, bid:v2_bids(id, title, job_id)')
     .eq('id', docId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !doc) throw new AppError('NOT_FOUND', 'Document not found');
@@ -798,6 +833,7 @@ router.patch('/documents/:docId', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .select('id, title, job_id')
     .eq('id', newBidId)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -808,6 +844,7 @@ router.patch('/documents/:docId', asyncHandler(async (req, res) => {
     .from('v2_bid_documents')
     .update({ bid_id: newBidId })
     .eq('id', docId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -818,13 +855,13 @@ router.patch('/documents/:docId', asyncHandler(async (req, res) => {
     file_name: doc.file_name,
     moved_to_bid_id: newBidId,
     moved_to_bid_title: targetBid.title
-  });
+  }, builderId);
 
   await logBidActivity(newBidId, 'document_moved_in', moved_by || 'System', {
     file_name: doc.file_name,
     moved_from_bid_id: doc.bid_id,
     moved_from_bid_title: doc.bid?.title
-  });
+  }, builderId);
 
   res.json(updated);
 }));
@@ -834,6 +871,7 @@ router.patch('/documents/:docId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { created_by, po_description, line_items } = req.body;
 
@@ -846,6 +884,7 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -860,6 +899,7 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
     .from('v2_purchase_orders')
     .select('id, po_number')
     .eq('source_bid_id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -874,6 +914,7 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
     .from('v2_purchase_orders')
     .select('po_number')
     .eq('job_id', bid.job_id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   const poCount = (existingPOs?.length || 0) + 1;
@@ -895,7 +936,8 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
       status_detail: 'pending',
       approval_status: 'pending',
       source_bid_id: id,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      builder_id: builderId
     })
     .select()
     .single();
@@ -907,6 +949,7 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
     .from('v2_bid_lines')
     .select('*')
     .eq('bid_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order');
 
   if (bidLines?.length > 0) {
@@ -914,7 +957,8 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
       po_id: po.id,
       cost_code_id: bl.cost_code_id,
       description: bl.description,
-      amount: bl.amount
+      amount: bl.amount,
+      builder_id: builderId
     }));
     await supabase.from('v2_po_line_items').insert(lineItemsToInsert);
   } else if (line_items?.length > 0) {
@@ -922,7 +966,8 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
       po_id: po.id,
       cost_code_id: li.cost_code_id,
       description: li.description,
-      amount: li.amount
+      amount: li.amount,
+      builder_id: builderId
     }));
     await supabase.from('v2_po_line_items').insert(lineItemsToInsert);
   }
@@ -931,7 +976,7 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
   await logBidActivity(id, 'converted_to_po', created_by || 'System', {
     po_id: po.id,
     po_number: poNumber
-  });
+  }, builderId);
 
   res.status(201).json({
     success: true,
@@ -946,6 +991,7 @@ router.post('/:id/convert-to-po', asyncHandler(async (req, res) => {
 
 // Get bid lines
 router.get('/:id/lines', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: lines, error } = await supabase
@@ -955,6 +1001,7 @@ router.get('/:id/lines', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name, category)
     `)
     .eq('bid_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: true });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -964,6 +1011,7 @@ router.get('/:id/lines', asyncHandler(async (req, res) => {
 
 // Add bid line
 router.post('/:id/lines', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { cost_code_id, description, quantity, unit, unit_cost, amount, created_by } = req.body;
 
@@ -972,6 +1020,7 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .select('id, status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -982,6 +1031,7 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
     .from('v2_bid_lines')
     .select('sort_order')
     .eq('bid_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order', { ascending: false })
     .limit(1);
 
@@ -1002,7 +1052,8 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
       unit: unit || null,
       unit_cost: cost,
       amount: lineAmount,
-      sort_order: sortOrder
+      sort_order: sortOrder,
+      builder_id: builderId
     })
     .select(`
       *,
@@ -1016,13 +1067,14 @@ router.post('/:id/lines', asyncHandler(async (req, res) => {
     line_id: line.id,
     description: line.description,
     amount: line.amount
-  });
+  }, builderId);
 
   res.status(201).json(line);
 }));
 
 // Update bid line
 router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, lineId } = req.params;
   const { cost_code_id, description, quantity, unit, unit_cost, amount, sort_order, updated_by } = req.body;
 
@@ -1046,6 +1098,7 @@ router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
         .from('v2_bid_lines')
         .select('quantity, unit_cost')
         .eq('id', lineId)
+        .eq('builder_id', builderId)
         .single();
       if (currentLine) {
         updates.amount = (qty ?? currentLine.quantity) * (cost ?? currentLine.unit_cost);
@@ -1060,6 +1113,7 @@ router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', lineId)
     .eq('bid_id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       cost_code:v2_cost_codes(id, code, name, category)
@@ -1069,13 +1123,14 @@ router.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   if (!line) throw new AppError('NOT_FOUND', 'Line item not found');
 
-  await logBidActivity(id, 'line_updated', updated_by || 'System', { line_id: lineId, updates });
+  await logBidActivity(id, 'line_updated', updated_by || 'System', { line_id: lineId, updates }, builderId);
 
   res.json(line);
 }));
 
 // Delete bid line
 router.delete('/:id/lines/:lineId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, lineId } = req.params;
   const { deleted_by } = req.body;
 
@@ -1084,6 +1139,7 @@ router.delete('/:id/lines/:lineId', asyncHandler(async (req, res) => {
     .delete()
     .eq('id', lineId)
     .eq('bid_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1094,19 +1150,21 @@ router.delete('/:id/lines/:lineId', asyncHandler(async (req, res) => {
     line_id: lineId,
     description: line.description,
     amount: line.amount
-  });
+  }, builderId);
 
   res.json({ success: true, message: 'Line item deleted' });
 }));
 
 // Get bid lines total (for validation)
 router.get('/:id/lines/total', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: lines, error } = await supabase
     .from('v2_bid_lines')
     .select('amount')
-    .eq('bid_id', id);
+    .eq('bid_id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -1117,6 +1175,7 @@ router.get('/:id/lines/total', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .select('bid_amount')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   res.json({
@@ -1135,18 +1194,20 @@ router.get('/:id/lines/total', asyncHandler(async (req, res) => {
  * Update budget lines when a bid is accepted
  * Called internally when status changes to 'accepted'
  */
-async function updateBudgetFromAcceptedBid(bidId, jobId) {
+async function updateBudgetFromAcceptedBid(bidId, jobId, builderId) {
   // Get bid lines
   const { data: bidLines } = await supabase
     .from('v2_bid_lines')
     .select('*')
-    .eq('bid_id', bidId);
+    .eq('bid_id', bidId)
+    .eq('builder_id', builderId);
 
   // Get the bid itself for lump sum handling
   const { data: bid } = await supabase
     .from('v2_bids')
     .select('bid_amount, primary_cost_code_id')
     .eq('id', bidId)
+    .eq('builder_id', builderId)
     .single();
 
   // If bid has line items, update budget for each
@@ -1160,6 +1221,7 @@ async function updateBudgetFromAcceptedBid(bidId, jobId) {
         .select('id, source_locked')
         .eq('job_id', jobId)
         .eq('cost_code_id', line.cost_code_id)
+        .eq('builder_id', builderId)
         .single();
 
       if (existing?.source_locked) continue;
@@ -1174,7 +1236,8 @@ async function updateBudgetFromAcceptedBid(bidId, jobId) {
             source_ai_estimate_id: null,
             source_estimate_id: null
           })
-          .eq('id', existing.id);
+          .eq('id', existing.id)
+          .eq('builder_id', builderId);
       } else {
         await supabase
           .from('v2_budget_lines')
@@ -1186,7 +1249,8 @@ async function updateBudgetFromAcceptedBid(bidId, jobId) {
             billed_amount: 0,
             paid_amount: 0,
             source_type: 'accepted_bid',
-            source_bid_id: bidId
+            source_bid_id: bidId,
+            builder_id: builderId
           });
       }
     }
@@ -1197,6 +1261,7 @@ async function updateBudgetFromAcceptedBid(bidId, jobId) {
       .select('id, source_locked')
       .eq('job_id', jobId)
       .eq('cost_code_id', bid.primary_cost_code_id)
+      .eq('builder_id', builderId)
       .single();
 
     if (!existing?.source_locked) {
@@ -1210,7 +1275,8 @@ async function updateBudgetFromAcceptedBid(bidId, jobId) {
             source_ai_estimate_id: null,
             source_estimate_id: null
           })
-          .eq('id', existing.id);
+          .eq('id', existing.id)
+          .eq('builder_id', builderId);
       } else {
         await supabase
           .from('v2_budget_lines')
@@ -1222,7 +1288,8 @@ async function updateBudgetFromAcceptedBid(bidId, jobId) {
             billed_amount: 0,
             paid_amount: 0,
             source_type: 'accepted_bid',
-            source_bid_id: bidId
+            source_bid_id: bidId,
+            builder_id: builderId
           });
       }
     }
@@ -1235,6 +1302,7 @@ async function updateBudgetFromAcceptedBid(bidId, jobId) {
 
 // Get all invites for a bid package
 router.get('/:id/invites', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: invites, error } = await supabase
@@ -1244,6 +1312,7 @@ router.get('/:id/invites', asyncHandler(async (req, res) => {
       vendor:v2_vendors(id, name, email, phone)
     `)
     .eq('bid_package_id', id)
+    .eq('builder_id', builderId)
     .order('invited_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -1261,6 +1330,7 @@ router.get('/:id/invites', asyncHandler(async (req, res) => {
 
 // Add invite to bid package
 router.post('/:id/invites', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { vendor_id, invited_by } = req.body;
 
@@ -1271,6 +1341,7 @@ router.post('/:id/invites', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .select('id, title')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1282,6 +1353,7 @@ router.post('/:id/invites', asyncHandler(async (req, res) => {
     .select('id')
     .eq('bid_package_id', id)
     .eq('vendor_id', vendor_id)
+    .eq('builder_id', builderId)
     .single();
 
   if (existing) throw new AppError('VALIDATION_ERROR', 'Vendor already invited');
@@ -1293,7 +1365,8 @@ router.post('/:id/invites', asyncHandler(async (req, res) => {
       vendor_id,
       invited_at: new Date().toISOString(),
       invite_sent: false,
-      declined: false
+      declined: false,
+      builder_id: builderId
     })
     .select(`
       *,
@@ -1306,7 +1379,7 @@ router.post('/:id/invites', asyncHandler(async (req, res) => {
   await logBidActivity(id, 'vendor_invited', invited_by || 'System', {
     vendor_id,
     vendor_name: invite.vendor?.name
-  });
+  }, builderId);
 
   res.status(201).json({
     ...invite,
@@ -1318,6 +1391,7 @@ router.post('/:id/invites', asyncHandler(async (req, res) => {
 
 // Remove invite from bid package
 router.delete('/:id/invites/:inviteId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, inviteId } = req.params;
   const { removed_by } = req.body;
 
@@ -1326,6 +1400,7 @@ router.delete('/:id/invites/:inviteId', asyncHandler(async (req, res) => {
     .delete()
     .eq('id', inviteId)
     .eq('bid_package_id', id)
+    .eq('builder_id', builderId)
     .select(`*, vendor:v2_vendors(name)`)
     .single();
 
@@ -1334,13 +1409,14 @@ router.delete('/:id/invites/:inviteId', asyncHandler(async (req, res) => {
 
   await logBidActivity(id, 'invite_removed', removed_by || 'System', {
     vendor_name: invite.vendor?.name
-  });
+  }, builderId);
 
   res.json({ success: true, message: 'Invite removed' });
 }));
 
 // Send invite email to vendor
 router.post('/:id/invites/:inviteId/send', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id, inviteId } = req.params;
   const { sent_by } = req.body;
 
@@ -1354,6 +1430,7 @@ router.post('/:id/invites/:inviteId/send', asyncHandler(async (req, res) => {
     `)
     .eq('id', inviteId)
     .eq('bid_package_id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (inviteError || !invite) throw new AppError('NOT_FOUND', 'Invite not found');
@@ -1397,14 +1474,15 @@ ${req.builder?.name || 'Your Company'}`;
       invite_sent: true,
       invite_sent_at: new Date().toISOString()
     })
-    .eq('id', inviteId);
+    .eq('id', inviteId)
+    .eq('builder_id', builderId);
 
   if (updateError) throw new AppError('DATABASE_ERROR', updateError.message);
 
   await logBidActivity(id, 'invite_sent', sent_by || 'System', {
     vendor_name: vendor.name,
     vendor_email: vendor.email
-  });
+  }, builderId);
 
   res.json({
     success: true,
@@ -1424,6 +1502,7 @@ ${req.builder?.name || 'Your Company'}`;
 
 // Get all submissions for a bid package
 router.get('/:id/submissions', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: bids, error } = await supabase
@@ -1433,6 +1512,7 @@ router.get('/:id/submissions', asyncHandler(async (req, res) => {
       vendor:v2_vendors(id, name, email, phone)
     `)
     .eq('bid_package_id', id)
+    .eq('builder_id', builderId)
     .order('bid_amount', { ascending: true });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -1442,6 +1522,7 @@ router.get('/:id/submissions', asyncHandler(async (req, res) => {
   const { data: docCounts } = await supabase
     .from('v2_subcontractor_bid_documents')
     .select('subcontractor_bid_id')
+    .eq('builder_id', builderId)
     .in('subcontractor_bid_id', submissionIds);
 
   const docCountMap = {};
@@ -1464,6 +1545,7 @@ router.get('/:id/submissions', asyncHandler(async (req, res) => {
 
 // Get single submission with documents
 router.get('/submissions/:submissionId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { submissionId } = req.params;
 
   const { data: bid, error } = await supabase
@@ -1474,6 +1556,7 @@ router.get('/submissions/:submissionId', asyncHandler(async (req, res) => {
       package:v2_bids(id, title, job_id)
     `)
     .eq('id', submissionId)
+    .eq('builder_id', builderId)
     .single();
 
   if (error || !bid) throw new AppError('NOT_FOUND', 'Submission not found');
@@ -1483,6 +1566,7 @@ router.get('/submissions/:submissionId', asyncHandler(async (req, res) => {
     .from('v2_subcontractor_bid_documents')
     .select('*')
     .eq('subcontractor_bid_id', submissionId)
+    .eq('builder_id', builderId)
     .order('uploaded_at', { ascending: false });
 
   res.json({
@@ -1496,6 +1580,7 @@ router.get('/submissions/:submissionId', asyncHandler(async (req, res) => {
 
 // Record a new subcontractor bid
 router.post('/:id/submissions', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     vendor_id,
@@ -1524,6 +1609,7 @@ router.post('/:id/submissions', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .select('id, title')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1552,7 +1638,8 @@ router.post('/:id/submissions', asyncHandler(async (req, res) => {
       valid_until: valid_until || null,
       notes: notes || null,
       status: 'submitted',
-      submitted_at: new Date().toISOString()
+      submitted_at: new Date().toISOString(),
+      builder_id: builderId
     })
     .select(`
       *,
@@ -1566,7 +1653,7 @@ router.post('/:id/submissions', asyncHandler(async (req, res) => {
     vendor_id,
     vendor_name: submission.vendor?.name,
     bid_amount: parseFloat(bid_amount)
-  });
+  }, builderId);
 
   res.status(201).json({
     ...submission,
@@ -1577,6 +1664,7 @@ router.post('/:id/submissions', asyncHandler(async (req, res) => {
 
 // Update a subcontractor bid
 router.patch('/submissions/:submissionId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { submissionId } = req.params;
   const {
     bid_amount,
@@ -1627,6 +1715,7 @@ router.patch('/submissions/:submissionId', asyncHandler(async (req, res) => {
     .from('v2_subcontractor_bids')
     .update(updates)
     .eq('id', submissionId)
+    .eq('builder_id', builderId)
     .select(`
       *,
       vendor:v2_vendors(id, name, email)
@@ -1641,7 +1730,7 @@ router.patch('/submissions/:submissionId', asyncHandler(async (req, res) => {
     submission_id: submissionId,
     vendor_name: submission.vendor?.name,
     updates
-  });
+  }, builderId);
 
   res.json({
     ...submission,
@@ -1652,6 +1741,7 @@ router.patch('/submissions/:submissionId', asyncHandler(async (req, res) => {
 
 // Delete a subcontractor bid
 router.delete('/submissions/:submissionId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { submissionId } = req.params;
   const { deleted_by } = req.body;
 
@@ -1659,6 +1749,7 @@ router.delete('/submissions/:submissionId', asyncHandler(async (req, res) => {
     .from('v2_subcontractor_bids')
     .delete()
     .eq('id', submissionId)
+    .eq('builder_id', builderId)
     .select(`*, vendor:v2_vendors(name)`)
     .single();
 
@@ -1668,7 +1759,7 @@ router.delete('/submissions/:submissionId', asyncHandler(async (req, res) => {
   await logBidActivity(submission.bid_package_id, 'bid_deleted', deleted_by || 'System', {
     vendor_name: submission.vendor?.name,
     bid_amount: submission.bid_amount
-  });
+  }, builderId);
 
   res.json({ success: true, message: 'Submission deleted' });
 }));
@@ -1679,12 +1770,14 @@ router.delete('/submissions/:submissionId', asyncHandler(async (req, res) => {
 
 // Get documents for a subcontractor bid
 router.get('/submissions/:submissionId/documents', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { submissionId } = req.params;
 
   const { data: docs, error } = await supabase
     .from('v2_subcontractor_bid_documents')
     .select('*')
     .eq('subcontractor_bid_id', submissionId)
+    .eq('builder_id', builderId)
     .order('uploaded_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -1694,6 +1787,7 @@ router.get('/submissions/:submissionId/documents', asyncHandler(async (req, res)
 
 // Upload document to subcontractor bid
 router.post('/submissions/:submissionId/documents', upload.single('document'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { submissionId } = req.params;
   const { uploaded_by, document_type } = req.body;
 
@@ -1704,6 +1798,7 @@ router.post('/submissions/:submissionId/documents', upload.single('document'), a
     .from('v2_subcontractor_bids')
     .select('id, bid_package_id, vendor:v2_vendors(name)')
     .eq('id', submissionId)
+    .eq('builder_id', builderId)
     .single();
 
   if (subError || !submission) throw new AppError('NOT_FOUND', 'Submission not found');
@@ -1732,7 +1827,8 @@ router.post('/submissions/:submissionId/documents', upload.single('document'), a
       file_name: req.file.originalname,
       file_size: req.file.size,
       document_type: document_type || 'proposal',
-      uploaded_by: uploaded_by || 'System'
+      uploaded_by: uploaded_by || 'System',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -1742,13 +1838,14 @@ router.post('/submissions/:submissionId/documents', upload.single('document'), a
   await logBidActivity(submission.bid_package_id, 'submission_document_uploaded', uploaded_by || 'System', {
     vendor_name: submission.vendor?.name,
     file_name: req.file.originalname
-  });
+  }, builderId);
 
   res.status(201).json(doc);
 }));
 
 // Delete document from subcontractor bid
 router.delete('/submissions/:submissionId/documents/:docId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { submissionId, docId } = req.params;
   const { deleted_by } = req.body;
 
@@ -1758,6 +1855,7 @@ router.delete('/submissions/:submissionId/documents/:docId', asyncHandler(async 
     .select('*')
     .eq('id', docId)
     .eq('subcontractor_bid_id', submissionId)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !doc) throw new AppError('NOT_FOUND', 'Document not found');
@@ -1767,6 +1865,7 @@ router.delete('/submissions/:submissionId/documents/:docId', asyncHandler(async 
     .from('v2_subcontractor_bids')
     .select('bid_package_id, vendor:v2_vendors(name)')
     .eq('id', submissionId)
+    .eq('builder_id', builderId)
     .single();
 
   // Delete from storage
@@ -1778,7 +1877,8 @@ router.delete('/submissions/:submissionId/documents/:docId', asyncHandler(async 
   const { error: deleteError } = await supabase
     .from('v2_subcontractor_bid_documents')
     .delete()
-    .eq('id', docId);
+    .eq('id', docId)
+    .eq('builder_id', builderId);
 
   if (deleteError) throw new AppError('DATABASE_ERROR', deleteError.message);
 
@@ -1786,7 +1886,7 @@ router.delete('/submissions/:submissionId/documents/:docId', asyncHandler(async 
     await logBidActivity(submission.bid_package_id, 'submission_document_deleted', deleted_by || 'System', {
       vendor_name: submission.vendor?.name,
       file_name: doc.file_name
-    });
+    }, builderId);
   }
 
   res.json({ success: true, message: 'Document deleted' });
@@ -1797,6 +1897,7 @@ router.delete('/submissions/:submissionId/documents/:docId', asyncHandler(async 
 // ============================================================
 
 router.post('/:id/award', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { vendor_id, amount, submission_id, awarded_by, notes } = req.body;
 
@@ -1808,6 +1909,7 @@ router.post('/:id/award', asyncHandler(async (req, res) => {
     .from('v2_bids')
     .select('id, title, status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1824,6 +1926,7 @@ router.post('/:id/award', asyncHandler(async (req, res) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       awarded_vendor:v2_vendors!v2_bids_awarded_vendor_id_fkey(id, name)
@@ -1837,12 +1940,14 @@ router.post('/:id/award', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_subcontractor_bids')
       .update({ status: 'selected', is_lowest_bid: true })
-      .eq('id', submission_id);
+      .eq('id', submission_id)
+      .eq('builder_id', builderId);
 
     await supabase
       .from('v2_subcontractor_bids')
       .update({ status: 'rejected' })
       .eq('bid_package_id', id)
+      .eq('builder_id', builderId)
       .neq('id', submission_id)
       .not('status', 'in', '("withdrawn")');
   }
@@ -1852,6 +1957,7 @@ router.post('/:id/award', asyncHandler(async (req, res) => {
     .from('v2_vendors')
     .select('name')
     .eq('id', vendor_id)
+    .eq('builder_id', builderId)
     .single();
 
   await logBidActivity(id, 'awarded', awarded_by || 'System', {
@@ -1859,7 +1965,7 @@ router.post('/:id/award', asyncHandler(async (req, res) => {
     vendor_name: vendor?.name,
     amount: parseFloat(amount),
     notes: notes || null
-  });
+  }, builderId);
 
   res.json({
     ...updatedPkg,
@@ -1872,6 +1978,7 @@ router.post('/:id/award', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/submissions/:submissionId/extract', upload.single('document'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { submissionId } = req.params;
 
   if (!req.file) throw new AppError('VALIDATION_ERROR', 'No file uploaded');
@@ -1881,6 +1988,7 @@ router.post('/submissions/:submissionId/extract', upload.single('document'), asy
     .from('v2_subcontractor_bids')
     .select('id, bid_package_id, vendor:v2_vendors(name), package:v2_bids(title, square_footage)')
     .eq('id', submissionId)
+    .eq('builder_id', builderId)
     .single();
 
   if (subError || !submission) throw new AppError('NOT_FOUND', 'Submission not found');
@@ -1951,7 +2059,7 @@ Only include fields you can confidently extract from the document. Return ONLY t
       vendor_name: submission.vendor?.name,
       extracted_amount: extracted.bid_amount,
       confidence: extracted.confidence
-    });
+    }, builderId);
 
     res.json({
       success: true,
@@ -1971,6 +2079,7 @@ Only include fields you can confidently extract from the document. Return ONLY t
 
 // AI extraction without file (from existing document URL)
 router.post('/submissions/:submissionId/documents/:docId/extract', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { submissionId, docId } = req.params;
 
   // Get the document
@@ -1979,6 +2088,7 @@ router.post('/submissions/:submissionId/documents/:docId/extract', asyncHandler(
     .select('*')
     .eq('id', docId)
     .eq('subcontractor_bid_id', submissionId)
+    .eq('builder_id', builderId)
     .single();
 
   if (docError || !doc) throw new AppError('NOT_FOUND', 'Document not found');
@@ -1988,6 +2098,7 @@ router.post('/submissions/:submissionId/documents/:docId/extract', asyncHandler(
     .from('v2_subcontractor_bids')
     .select('id, bid_package_id, vendor:v2_vendors(name), package:v2_bids(title, square_footage)')
     .eq('id', submissionId)
+    .eq('builder_id', builderId)
     .single();
 
   try {
@@ -2067,7 +2178,7 @@ Only include fields you can confidently extract from the document. Return ONLY t
         document_id: docId,
         extracted_amount: extracted.bid_amount,
         confidence: extracted.confidence
-      });
+      }, builderId);
     }
 
     res.json({
@@ -2092,11 +2203,13 @@ Only include fields you can confidently extract from the document. Return ONLY t
 
 // List all templates
 router.get('/templates/list', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { trade_category, active_only } = req.query;
 
   let query = supabase
     .from('v2_bid_package_templates')
     .select('*')
+    .eq('builder_id', builderId)
     .order('usage_count', { ascending: false });
 
   if (trade_category) {
@@ -2115,12 +2228,14 @@ router.get('/templates/list', asyncHandler(async (req, res) => {
 
 // Get single template with checklist
 router.get('/templates/:templateId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { templateId } = req.params;
 
   const { data: template, error } = await supabase
     .from('v2_bid_package_templates')
     .select('*')
     .eq('id', templateId)
+    .eq('builder_id', builderId)
     .single();
 
   if (error || !template) throw new AppError('NOT_FOUND', 'Template not found');
@@ -2130,6 +2245,7 @@ router.get('/templates/:templateId', asyncHandler(async (req, res) => {
     .from('v2_bid_template_checklist')
     .select('*')
     .eq('template_id', templateId)
+    .eq('builder_id', builderId)
     .order('sort_order');
 
   template.checklist = checklist || [];
@@ -2139,6 +2255,7 @@ router.get('/templates/:templateId', asyncHandler(async (req, res) => {
 
 // Create template
 router.post('/templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     name,
     description,
@@ -2166,7 +2283,8 @@ router.post('/templates', asyncHandler(async (req, res) => {
       special_requirements,
       default_duration_days,
       typical_square_footage,
-      created_by: created_by || 'System'
+      created_by: created_by || 'System',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -2179,7 +2297,8 @@ router.post('/templates', asyncHandler(async (req, res) => {
       template_id: template.id,
       item_text: item.item_text || item,
       is_required: item.is_required || false,
-      sort_order: idx
+      sort_order: idx,
+      builder_id: builderId
     }));
 
     await supabase.from('v2_bid_template_checklist').insert(checklistItems);
@@ -2190,6 +2309,7 @@ router.post('/templates', asyncHandler(async (req, res) => {
 
 // Create template from existing bid package
 router.post('/templates/from-package/:packageId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { packageId } = req.params;
   const { name, created_by } = req.body;
 
@@ -2198,6 +2318,7 @@ router.post('/templates/from-package/:packageId', asyncHandler(async (req, res) 
     .from('v2_bids')
     .select('*')
     .eq('id', packageId)
+    .eq('builder_id', builderId)
     .single();
 
   if (pkgError || !pkg) throw new AppError('NOT_FOUND', 'Bid package not found');
@@ -2214,7 +2335,8 @@ router.post('/templates/from-package/:packageId', asyncHandler(async (req, res) 
       specs_summary: pkg.specs_summary,
       special_requirements: pkg.special_requirements,
       typical_square_footage: pkg.square_footage,
-      created_by: created_by || 'System'
+      created_by: created_by || 'System',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -2226,6 +2348,7 @@ router.post('/templates/from-package/:packageId', asyncHandler(async (req, res) 
 
 // Update template
 router.patch('/templates/:templateId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { templateId } = req.params;
   const {
     name,
@@ -2255,6 +2378,7 @@ router.patch('/templates/:templateId', asyncHandler(async (req, res) => {
     .from('v2_bid_package_templates')
     .update(updates)
     .eq('id', templateId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -2266,12 +2390,14 @@ router.patch('/templates/:templateId', asyncHandler(async (req, res) => {
 
 // Delete template
 router.delete('/templates/:templateId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { templateId } = req.params;
 
   const { error } = await supabase
     .from('v2_bid_package_templates')
     .delete()
-    .eq('id', templateId);
+    .eq('id', templateId)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -2280,6 +2406,7 @@ router.delete('/templates/:templateId', asyncHandler(async (req, res) => {
 
 // Apply template to new bid package (increment usage count)
 router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { templateId } = req.params;
 
   // Get template
@@ -2287,6 +2414,7 @@ router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
     .from('v2_bid_package_templates')
     .select('*')
     .eq('id', templateId)
+    .eq('builder_id', builderId)
     .single();
 
   if (tplError || !template) throw new AppError('NOT_FOUND', 'Template not found');
@@ -2295,7 +2423,8 @@ router.post('/templates/:templateId/apply', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_bid_package_templates')
     .update({ usage_count: (template.usage_count || 0) + 1 })
-    .eq('id', templateId);
+    .eq('id', templateId)
+    .eq('builder_id', builderId);
 
   // Return template data for form population
   res.json({

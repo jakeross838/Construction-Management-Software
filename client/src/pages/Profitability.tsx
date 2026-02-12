@@ -38,6 +38,7 @@ import {
   parseNumeric,
   type JobProfitability,
 } from '@/hooks/useProfitability';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // NAHB benchmarks
 const BENCHMARK_GROSS_MARGIN = 0.22; // 22%
@@ -113,9 +114,41 @@ const Profitability = () => {
   if (isLoading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-2 text-muted-foreground">Loading profitability data...</span>
+        <div className="space-y-6">
+          {/* Header skeleton */}
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-52" />
+              <Skeleton className="h-4 w-72" />
+            </div>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-40" />
+              <Skeleton className="h-10 w-40" />
+              <Skeleton className="h-10 w-10" />
+              <Skeleton className="h-10 w-24" />
+            </div>
+          </div>
+          {/* Metric cards skeleton */}
+          <div className="grid gap-4 md:grid-cols-4">
+            {[...Array(4)].map((_, i) => (
+              <Card key={i} className="border-l-4 border-l-muted">
+                <CardContent className="p-4 space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-32" />
+                  <Skeleton className="h-3 w-16" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          {/* Table skeleton */}
+          <Card>
+            <div className="p-1">
+              <Skeleton className="h-10 w-full" />
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full mt-1" />
+              ))}
+            </div>
+          </Card>
         </div>
       </AppLayout>
     );

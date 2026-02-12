@@ -30,6 +30,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useJob } from '@/contexts/JobContext';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useContracts, useContractStats, Contract } from '@/hooks/useContracts';
 import { ContractBuilder } from '@/components/contracts/ContractBuilder';
 
@@ -176,8 +177,13 @@ const Contracts = () => {
         {/* Contracts Table */}
         <Card>
           {isLoading ? (
-            <div className="flex items-center justify-center h-48">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="p-1">
+              {/* Table header skeleton */}
+              <Skeleton className="h-10 w-full" />
+              {/* Table rows skeleton */}
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full mt-1" />
+              ))}
             </div>
           ) : filteredContracts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">

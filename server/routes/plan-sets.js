@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -56,13 +57,14 @@ const MARKUP_TYPES = ['revision_cloud', 'comment', 'dimension', 'arrow', 'text',
 // ACTIVITY LOGGING
 // ============================================================
 
-async function logPlanSetActivity(planSetId, action, performedBy, details = {}) {
+async function logPlanSetActivity(planSetId, action, performedBy, details = {}, builderId = null) {
   try {
     await supabase.from('v2_plan_set_activity').insert({
       plan_set_id: planSetId,
       action,
       performed_by: performedBy,
-      details
+      details,
+      builder_id: builderId
     });
   } catch (err) {
     console.error('Failed to log plan set activity:', err);
@@ -75,10 +77,12 @@ async function logPlanSetActivity(planSetId, action, performedBy, details = {}) 
 
 router.get('/stats', asyncHandler(async (req, res) => {
   const { job_id } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_plan_sets')
-    .select('id, status, total_sheets');
+    .select('id, status, total_sheets')
+    .eq('builder_id', builderId);
 
   if (job_id) {
     query = query.eq('job_id', job_id);
@@ -124,6 +128,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 
 router.get('/', asyncHandler(async (req, res) => {
   const { job_id, status, search, include_superseded } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_plan_sets')
@@ -131,6 +136,7 @@ router.get('/', asyncHandler(async (req, res) => {
       *,
       job:v2_jobs(id, name)
     `)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (job_id) {
@@ -189,6 +195,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: planSet, error } = await supabase
     .from('v2_plan_sets')
@@ -198,6 +205,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       parent:v2_plan_sets!v2_plan_sets_parent_plan_set_id_fkey(id, name, version)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error || !planSet) throw new AppError('NOT_FOUND', 'Plan set not found');
@@ -245,6 +253,7 @@ router.post('/', asyncHandler(async (req, res) => {
     notes,
     created_by
   } = req.body;
+  const builderId = getBuilderId(req);
 
   if (!job_id) throw new AppError('VALIDATION_ERROR', 'Job is required');
   if (!name) throw new AppError('VALIDATION_ERROR', 'Name is required');
@@ -254,6 +263,7 @@ router.post('/', asyncHandler(async (req, res) => {
     .from('v2_plan_sets')
     .select('version')
     .eq('job_id', job_id)
+    .eq('builder_id', builderId)
     .ilike('name', name)
     .order('version', { ascending: false })
     .limit(1);
@@ -270,7 +280,8 @@ router.post('/', asyncHandler(async (req, res) => {
       issue_date: issue_date || new Date().toISOString().split('T')[0],
       notes: notes || null,
       status: 'current',
-      created_by: created_by || 'System'
+      created_by: created_by || 'System',
+      builder_id: builderId
     })
     .select(`
       *,
@@ -280,7 +291,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
-  await logPlanSetActivity(planSet.id, 'created', created_by || 'System', { name, version: nextVersion });
+  await logPlanSetActivity(planSet.id, 'created', created_by || 'System', { name, version: nextVersion }, builderId);
 
   res.status(201).json(planSet);
 }));
@@ -291,6 +302,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 router.patch('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const {
     name,
     description,
@@ -318,6 +330,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     .from('v2_plan_sets')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       job:v2_jobs(id, name)
@@ -327,7 +340,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
   if (!planSet) throw new AppError('NOT_FOUND', 'Plan set not found');
 
-  await logPlanSetActivity(id, 'updated', updated_by || 'System', { updates });
+  await logPlanSetActivity(id, 'updated', updated_by || 'System', { updates }, builderId);
 
   res.json(planSet);
 }));
@@ -338,6 +351,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
 router.delete('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const { deleted_by } = req.body;
 
   // Get plan set info for logging
@@ -345,6 +359,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     .from('v2_plan_sets')
     .select('name, version')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (fetchError || !planSet) throw new AppError('NOT_FOUND', 'Plan set not found');
@@ -353,7 +368,8 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('v2_plan_sets')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
@@ -366,6 +382,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 router.post('/:id/new-version', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const { description, issue_date, notes, created_by } = req.body;
 
   // Get the parent plan set
@@ -373,6 +390,7 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
     .from('v2_plan_sets')
     .select('*')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (parentError || !parent) throw new AppError('NOT_FOUND', 'Plan set not found');
@@ -381,7 +399,8 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_plan_sets')
     .update({ status: 'superseded', updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   // Create new version
   const newVersion = parent.version + 1;
@@ -437,12 +456,12 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
     parent_version: parent.version,
     new_version: newVersion,
     sheets_copied: parentSheets?.length || 0
-  });
+  }, builderId);
 
   await logPlanSetActivity(id, 'superseded', created_by || 'System', {
     new_version_id: newPlanSet.id,
     new_version: newVersion
-  });
+  }, builderId);
 
   // Fetch complete plan set with job info
   const { data: completePlanSet } = await supabase
@@ -452,6 +471,7 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name)
     `)
     .eq('id', newPlanSet.id)
+    .eq('builder_id', builderId)
     .single();
 
   res.status(201).json(completePlanSet);
@@ -463,12 +483,14 @@ router.post('/:id/new-version', asyncHandler(async (req, res) => {
 
 router.get('/:id/sheets', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const { discipline } = req.query;
 
   let query = supabase
     .from('v2_plan_sheets')
     .select('*')
     .eq('plan_set_id', id)
+    .eq('builder_id', builderId)
     .order('sort_order')
     .order('sheet_number');
 
@@ -512,6 +534,7 @@ router.get('/:id/sheets', asyncHandler(async (req, res) => {
 
 router.post('/:id/sheets', upload.single('file'), asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const {
     sheet_number,
     sheet_name,
@@ -534,6 +557,7 @@ router.post('/:id/sheets', upload.single('file'), asyncHandler(async (req, res) 
     .from('v2_plan_sets')
     .select('id, name, job_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (psError || !planSet) throw new AppError('NOT_FOUND', 'Plan set not found');
@@ -588,7 +612,8 @@ router.post('/:id/sheets', upload.single('file'), asyncHandler(async (req, res) 
       revision_notes: revision_notes || null,
       page_size: page_size || null,
       scale: scale || null,
-      sort_order: finalSortOrder
+      sort_order: finalSortOrder,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -611,7 +636,7 @@ router.post('/:id/sheets', upload.single('file'), asyncHandler(async (req, res) 
     sheet_id: sheet.id,
     sheet_number,
     sheet_name
-  });
+  }, builderId);
 
   res.status(201).json(sheet);
 }));
@@ -622,6 +647,7 @@ router.post('/:id/sheets', upload.single('file'), asyncHandler(async (req, res) 
 
 router.patch('/:id/sheets/:sheetId', asyncHandler(async (req, res) => {
   const { id, sheetId } = req.params;
+  const builderId = getBuilderId(req);
   const {
     sheet_number,
     sheet_name,
@@ -658,6 +684,7 @@ router.patch('/:id/sheets/:sheetId', asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', sheetId)
     .eq('plan_set_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -667,7 +694,7 @@ router.patch('/:id/sheets/:sheetId', asyncHandler(async (req, res) => {
   await logPlanSetActivity(id, 'sheet_updated', updated_by || 'System', {
     sheet_id: sheetId,
     updates
-  });
+  }, builderId);
 
   res.json(sheet);
 }));
@@ -678,6 +705,7 @@ router.patch('/:id/sheets/:sheetId', asyncHandler(async (req, res) => {
 
 router.delete('/:id/sheets/:sheetId', asyncHandler(async (req, res) => {
   const { id, sheetId } = req.params;
+  const builderId = getBuilderId(req);
   const { deleted_by } = req.body;
 
   const { data: sheet, error } = await supabase
@@ -685,6 +713,7 @@ router.delete('/:id/sheets/:sheetId', asyncHandler(async (req, res) => {
     .delete()
     .eq('id', sheetId)
     .eq('plan_set_id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -704,7 +733,7 @@ router.delete('/:id/sheets/:sheetId', asyncHandler(async (req, res) => {
     sheet_id: sheetId,
     sheet_number: sheet.sheet_number,
     sheet_name: sheet.sheet_name
-  });
+  }, builderId);
 
   res.json({ success: true, message: 'Sheet deleted' });
 }));
@@ -715,6 +744,7 @@ router.delete('/:id/sheets/:sheetId', asyncHandler(async (req, res) => {
 
 router.post('/:id/sheets/:sheetId/thumbnail', upload.single('thumbnail'), asyncHandler(async (req, res) => {
   const { id, sheetId } = req.params;
+  const builderId = getBuilderId(req);
 
   if (!req.file) throw new AppError('VALIDATION_ERROR', 'Thumbnail file is required');
 
@@ -724,6 +754,7 @@ router.post('/:id/sheets/:sheetId/thumbnail', upload.single('thumbnail'), asyncH
     .select('id, plan_set_id')
     .eq('id', sheetId)
     .eq('plan_set_id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (sheetError || !sheet) throw new AppError('NOT_FOUND', 'Sheet not found');
@@ -733,6 +764,7 @@ router.post('/:id/sheets/:sheetId/thumbnail', upload.single('thumbnail'), asyncH
     .from('v2_plan_sets')
     .select('job_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   // Upload thumbnail
@@ -760,6 +792,7 @@ router.post('/:id/sheets/:sheetId/thumbnail', upload.single('thumbnail'), asyncH
       updated_at: new Date().toISOString()
     })
     .eq('id', sheetId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -774,11 +807,13 @@ router.post('/:id/sheets/:sheetId/thumbnail', upload.single('thumbnail'), asyncH
 
 router.get('/:id/distributions', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: distributions, error } = await supabase
     .from('v2_plan_distributions')
     .select('*')
     .eq('plan_set_id', id)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -811,6 +846,7 @@ router.get('/:id/distributions', asyncHandler(async (req, res) => {
 
 router.post('/:id/distribute', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const {
     recipients,  // Array of { recipient_type, recipient_id?, recipient_email, recipient_name, recipient_company }
     delivery_method,
@@ -827,6 +863,7 @@ router.post('/:id/distribute', asyncHandler(async (req, res) => {
     .from('v2_plan_sets')
     .select('id, name, version')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (psError || !planSet) throw new AppError('NOT_FOUND', 'Plan set not found');
@@ -846,7 +883,8 @@ router.post('/:id/distribute', asyncHandler(async (req, res) => {
       sent_at: new Date().toISOString(),
       delivery_method: delivery_method || 'email',
       notes: notes || null,
-      sent_by: sent_by || 'System'
+      sent_by: sent_by || 'System',
+      builder_id: builderId
     };
   });
 
@@ -861,7 +899,7 @@ router.post('/:id/distribute', asyncHandler(async (req, res) => {
     recipient_count: recipients.length,
     delivery_method: delivery_method || 'email',
     recipients: recipients.map(r => r.recipient_name || r.recipient_email)
-  });
+  }, builderId);
 
   res.status(201).json({
     success: true,
@@ -876,6 +914,7 @@ router.post('/:id/distribute', asyncHandler(async (req, res) => {
 
 router.patch('/distributions/:distributionId', asyncHandler(async (req, res) => {
   const { distributionId } = req.params;
+  const builderId = getBuilderId(req);
   const { viewed_at, acknowledged_at, download_count } = req.body;
 
   const updates = {};
@@ -887,6 +926,7 @@ router.patch('/distributions/:distributionId', asyncHandler(async (req, res) => 
     .from('v2_plan_distributions')
     .update(updates)
     .eq('id', distributionId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -902,11 +942,13 @@ router.patch('/distributions/:distributionId', asyncHandler(async (req, res) => 
 
 router.delete('/distributions/:distributionId', asyncHandler(async (req, res) => {
   const { distributionId } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: distribution, error } = await supabase
     .from('v2_plan_distributions')
     .delete()
     .eq('id', distributionId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -922,12 +964,14 @@ router.delete('/distributions/:distributionId', asyncHandler(async (req, res) =>
 
 router.get('/sheets/:sheetId/markups', asyncHandler(async (req, res) => {
   const { sheetId } = req.params;
+  const builderId = getBuilderId(req);
   const { markup_type, resolved } = req.query;
 
   let query = supabase
     .from('v2_plan_markups')
     .select('*')
     .eq('sheet_id', sheetId)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (markup_type) {
@@ -950,6 +994,7 @@ router.get('/sheets/:sheetId/markups', asyncHandler(async (req, res) => {
 
 router.post('/sheets/:sheetId/markups', asyncHandler(async (req, res) => {
   const { sheetId } = req.params;
+  const builderId = getBuilderId(req);
   const {
     markup_type,
     markup_data,
@@ -978,7 +1023,8 @@ router.post('/sheets/:sheetId/markups', asyncHandler(async (req, res) => {
       markup_type,
       markup_data: markup_data || {},
       revision: revision || null,
-      created_by: created_by || 'System'
+      created_by: created_by || 'System',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -990,7 +1036,7 @@ router.post('/sheets/:sheetId/markups', asyncHandler(async (req, res) => {
     sheet_number: sheet.sheet_number,
     markup_type,
     markup_id: markup.id
-  });
+  }, builderId);
 
   res.status(201).json(markup);
 }));
@@ -1001,6 +1047,7 @@ router.post('/sheets/:sheetId/markups', asyncHandler(async (req, res) => {
 
 router.patch('/markups/:markupId', asyncHandler(async (req, res) => {
   const { markupId } = req.params;
+  const builderId = getBuilderId(req);
   const {
     markup_type,
     markup_data,
@@ -1035,6 +1082,7 @@ router.patch('/markups/:markupId', asyncHandler(async (req, res) => {
     .from('v2_plan_markups')
     .update(updates)
     .eq('id', markupId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1050,11 +1098,13 @@ router.patch('/markups/:markupId', asyncHandler(async (req, res) => {
 
 router.delete('/markups/:markupId', asyncHandler(async (req, res) => {
   const { markupId } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: markup, error } = await supabase
     .from('v2_plan_markups')
     .delete()
     .eq('id', markupId)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1070,12 +1120,14 @@ router.delete('/markups/:markupId', asyncHandler(async (req, res) => {
 
 router.get('/:id/versions', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   // Get the current plan set
   const { data: current, error: currentError } = await supabase
     .from('v2_plan_sets')
     .select('id, name, job_id, parent_plan_set_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (currentError || !current) throw new AppError('NOT_FOUND', 'Plan set not found');
@@ -1089,6 +1141,7 @@ router.get('/:id/versions', asyncHandler(async (req, res) => {
       .from('v2_plan_sets')
       .select('id, parent_plan_set_id')
       .eq('id', checkId)
+      .eq('builder_id', builderId)
       .single();
     checkId = parent?.parent_plan_set_id;
   }
@@ -1098,6 +1151,7 @@ router.get('/:id/versions', asyncHandler(async (req, res) => {
     .from('v2_plan_sets')
     .select('id, name, version, status, issue_date, total_sheets, created_at, created_by')
     .eq('job_id', current.job_id)
+    .eq('builder_id', builderId)
     .eq('name', current.name)
     .order('version', { ascending: false });
 
@@ -1112,12 +1166,14 @@ router.get('/:id/versions', asyncHandler(async (req, res) => {
 
 router.get('/:id/activity', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
   const { limit = 50 } = req.query;
 
   const { data: activity, error } = await supabase
     .from('v2_plan_set_activity')
     .select('*')
     .eq('plan_set_id', id)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false })
     .limit(parseInt(limit));
 

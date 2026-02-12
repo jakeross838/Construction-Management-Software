@@ -11,6 +11,7 @@ const pdfFonts = require('pdfmake/build/vfs_fonts');
 pdfMake.vfs = pdfFonts.vfs;
 const { supabase } = require('../../config');
 const { asyncHandler, AppError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // JOB COST REPORT
@@ -18,6 +19,7 @@ const { asyncHandler, AppError } = require('../core/errors');
 // ============================================================
 
 router.get('/job-cost/:jobId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
   const { startDate, endDate } = req.query;
 
@@ -26,6 +28,7 @@ router.get('/job-cost/:jobId', asyncHandler(async (req, res) => {
     .from('v2_jobs')
     .select('id, name')
     .eq('id', jobId)
+    .eq('builder_id', builderId)
     .single();
 
   if (jobError || !job) {
@@ -40,7 +43,8 @@ router.get('/job-cost/:jobId', asyncHandler(async (req, res) => {
       budgeted_amount,
       cost_code:v2_cost_codes(id, code, name, category)
     `)
-    .eq('job_id', jobId);
+    .eq('job_id', jobId)
+    .eq('builder_id', builderId);
 
   if (budgetError) {
     throw new AppError('DATABASE_ERROR', budgetError.message);
@@ -56,6 +60,7 @@ router.get('/job-cost/:jobId', asyncHandler(async (req, res) => {
       purchase_order:v2_purchase_orders!inner(id, job_id, status)
     `)
     .eq('purchase_order.job_id', jobId)
+    .eq('purchase_order.builder_id', builderId)
     .neq('purchase_order.status', 'cancelled');
 
   const { data: poLineItems, error: poError } = await poQuery;
@@ -74,6 +79,7 @@ router.get('/job-cost/:jobId', asyncHandler(async (req, res) => {
       invoice:v2_invoices!inner(id, status, invoice_date)
     `)
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .in('invoice.status', ['approved', 'in_draw', 'paid']);
 
   // Apply date filters if provided
@@ -212,6 +218,7 @@ router.get('/job-cost/:jobId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/job-cost/:jobId/excel', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
   const { startDate, endDate } = req.query;
 
@@ -220,6 +227,7 @@ router.get('/job-cost/:jobId/excel', asyncHandler(async (req, res) => {
     .from('v2_jobs')
     .select('id, name')
     .eq('id', jobId)
+    .eq('builder_id', builderId)
     .single();
 
   if (jobError || !job) {
@@ -234,7 +242,8 @@ router.get('/job-cost/:jobId/excel', asyncHandler(async (req, res) => {
       budgeted_amount,
       cost_code:v2_cost_codes(id, code, name, category)
     `)
-    .eq('job_id', jobId);
+    .eq('job_id', jobId)
+    .eq('builder_id', builderId);
 
   if (budgetError) {
     throw new AppError('DATABASE_ERROR', budgetError.message);
@@ -250,6 +259,7 @@ router.get('/job-cost/:jobId/excel', asyncHandler(async (req, res) => {
       purchase_order:v2_purchase_orders!inner(id, job_id, status)
     `)
     .eq('purchase_order.job_id', jobId)
+    .eq('purchase_order.builder_id', builderId)
     .neq('purchase_order.status', 'cancelled');
 
   const { data: poLineItems, error: poError } = await poQuery;
@@ -268,6 +278,7 @@ router.get('/job-cost/:jobId/excel', asyncHandler(async (req, res) => {
       invoice:v2_invoices!inner(id, status, invoice_date)
     `)
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .in('invoice.status', ['approved', 'in_draw', 'paid']);
 
   // Apply date filters if provided
@@ -536,6 +547,7 @@ router.get('/job-cost/:jobId/excel', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/job-cost/:jobId/pdf', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
   const { startDate, endDate } = req.query;
 
@@ -544,6 +556,7 @@ router.get('/job-cost/:jobId/pdf', asyncHandler(async (req, res) => {
     .from('v2_jobs')
     .select('id, name')
     .eq('id', jobId)
+    .eq('builder_id', builderId)
     .single();
 
   if (jobError || !job) {
@@ -558,7 +571,8 @@ router.get('/job-cost/:jobId/pdf', asyncHandler(async (req, res) => {
       budgeted_amount,
       cost_code:v2_cost_codes(id, code, name, category)
     `)
-    .eq('job_id', jobId);
+    .eq('job_id', jobId)
+    .eq('builder_id', builderId);
 
   if (budgetError) {
     throw new AppError('DATABASE_ERROR', budgetError.message);
@@ -574,6 +588,7 @@ router.get('/job-cost/:jobId/pdf', asyncHandler(async (req, res) => {
       purchase_order:v2_purchase_orders!inner(id, job_id, status)
     `)
     .eq('purchase_order.job_id', jobId)
+    .eq('purchase_order.builder_id', builderId)
     .neq('purchase_order.status', 'cancelled');
 
   const { data: poLineItems, error: poError } = await poQuery;
@@ -592,6 +607,7 @@ router.get('/job-cost/:jobId/pdf', asyncHandler(async (req, res) => {
       invoice:v2_invoices!inner(id, status, invoice_date)
     `)
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .in('invoice.status', ['approved', 'in_draw', 'paid']);
 
   // Apply date filters if provided
@@ -839,6 +855,7 @@ router.get('/job-cost/:jobId/pdf', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/vendor-spend', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId, startDate, endDate } = req.query;
 
   // Build query for invoices with vendor info
@@ -851,6 +868,7 @@ router.get('/vendor-spend', asyncHandler(async (req, res) => {
       vendor_id,
       vendor:v2_vendors(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .in('status', ['approved', 'in_draw', 'paid']);
 
@@ -878,6 +896,7 @@ router.get('/vendor-spend', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -949,6 +968,7 @@ router.get('/vendor-spend', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/vendor-spend/excel', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId, startDate, endDate } = req.query;
 
   // Build query for invoices with vendor info
@@ -961,6 +981,7 @@ router.get('/vendor-spend/excel', asyncHandler(async (req, res) => {
       vendor_id,
       vendor:v2_vendors(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .in('status', ['approved', 'in_draw', 'paid']);
 
@@ -988,6 +1009,7 @@ router.get('/vendor-spend/excel', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -1152,6 +1174,7 @@ router.get('/vendor-spend/excel', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/vendor-spend/pdf', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId, startDate, endDate } = req.query;
 
   // Build query for invoices with vendor info
@@ -1164,6 +1187,7 @@ router.get('/vendor-spend/pdf', asyncHandler(async (req, res) => {
       vendor_id,
       vendor:v2_vendors(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .in('status', ['approved', 'in_draw', 'paid']);
 
@@ -1191,6 +1215,7 @@ router.get('/vendor-spend/pdf', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -1357,6 +1382,7 @@ router.get('/vendor-spend/pdf', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/category-spend', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId, startDate, endDate } = req.query;
 
   // Build query for invoice allocations with cost code info
@@ -1368,6 +1394,7 @@ router.get('/category-spend', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name, category),
       invoice:v2_invoices!inner(id, status, invoice_date, job_id)
     `)
+    .eq('builder_id', builderId)
     .in('invoice.status', ['approved', 'in_draw', 'paid']);
 
   // Apply filters
@@ -1394,6 +1421,7 @@ router.get('/category-spend', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -1472,6 +1500,7 @@ router.get('/category-spend', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/category-spend/excel', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId, startDate, endDate } = req.query;
 
   // Build query for invoice allocations with cost code info
@@ -1483,6 +1512,7 @@ router.get('/category-spend/excel', asyncHandler(async (req, res) => {
       cost_code:v2_cost_codes(id, code, name, category),
       invoice:v2_invoices!inner(id, status, invoice_date, job_id)
     `)
+    .eq('builder_id', builderId)
     .in('invoice.status', ['approved', 'in_draw', 'paid']);
 
   // Apply filters
@@ -1509,6 +1539,7 @@ router.get('/category-spend/excel', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -1673,6 +1704,7 @@ router.get('/category-spend/excel', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/schedule-performance', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId, startDate, endDate } = req.query;
 
   // Get job info if filtered
@@ -1682,6 +1714,7 @@ router.get('/schedule-performance', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -1700,7 +1733,8 @@ router.get('/schedule-performance', asyncHandler(async (req, res) => {
       on_schedule,
       critical_path_days,
       job:v2_jobs(id, name)
-    `);
+    `)
+    .eq('builder_id', builderId);
 
   if (jobId) {
     scheduleQuery = scheduleQuery.eq('job_id', jobId);
@@ -1738,6 +1772,7 @@ router.get('/schedule-performance', asyncHandler(async (req, res) => {
       delays_issues,
       status
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (jobId) {
@@ -1878,6 +1913,7 @@ router.get('/schedule-performance', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/revenue-per-worker', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId, startDate, endDate } = req.query;
 
   // Get job info if filtered
@@ -1887,6 +1923,7 @@ router.get('/revenue-per-worker', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -1909,6 +1946,7 @@ router.get('/revenue-per-worker', asyncHandler(async (req, res) => {
       ),
       job:v2_jobs(name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (jobId) {
@@ -1939,6 +1977,7 @@ router.get('/revenue-per-worker', asyncHandler(async (req, res) => {
       status,
       job:v2_jobs(name)
     `)
+    .eq('builder_id', builderId)
     .eq('status', 'funded');
 
   if (jobId) {
@@ -2065,6 +2104,7 @@ router.get('/revenue-per-worker', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/labor-cost-analysis', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId, startDate, endDate } = req.query;
 
   // Get job info if filtered
@@ -2074,6 +2114,7 @@ router.get('/labor-cost-analysis', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -2095,6 +2136,7 @@ router.get('/labor-cost-analysis', asyncHandler(async (req, res) => {
       ),
       job:v2_jobs(name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (jobId) {
@@ -2126,7 +2168,8 @@ router.get('/labor-cost-analysis', asyncHandler(async (req, res) => {
       hourly_rate,
       total_pay,
       employee:v2_employees(name, trade)
-    `);
+    `)
+    .eq('builder_id', builderId);
 
   if (jobId) {
     timesheetsQuery = timesheetsQuery.eq('job_id', jobId);
@@ -2149,7 +2192,8 @@ router.get('/labor-cost-analysis', asyncHandler(async (req, res) => {
       id,
       budgeted_amount,
       cost_code:v2_cost_codes(id, code, name, category)
-    `);
+    `)
+    .eq('builder_id', builderId);
 
   if (jobId) {
     budgetQuery = budgetQuery.eq('job_id', jobId);
@@ -2251,6 +2295,7 @@ router.get('/labor-cost-analysis', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/invoice-aging', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.query;
 
   // Get job info if filtered
@@ -2260,6 +2305,7 @@ router.get('/invoice-aging', asyncHandler(async (req, res) => {
       .from('v2_jobs')
       .select('name')
       .eq('id', jobId)
+      .eq('builder_id', builderId)
       .single();
     jobName = job?.name || null;
   }
@@ -2277,6 +2323,7 @@ router.get('/invoice-aging', asyncHandler(async (req, res) => {
       vendor:v2_vendors(id, name),
       job:v2_jobs(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .in('status', ['approved', 'in_draw', 'needs_approval']);
 
@@ -2367,6 +2414,7 @@ router.get('/invoice-aging', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/budget-variance', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.query;
 
   if (!jobId) {
@@ -2378,6 +2426,7 @@ router.get('/budget-variance', asyncHandler(async (req, res) => {
     .from('v2_jobs')
     .select('id, name, contract_amount')
     .eq('id', jobId)
+    .eq('builder_id', builderId)
     .single();
 
   if (jobError || !job) {
@@ -2395,7 +2444,8 @@ router.get('/budget-variance', asyncHandler(async (req, res) => {
       paid_amount,
       cost_code:v2_cost_codes(id, code, name, category)
     `)
-    .eq('job_id', jobId);
+    .eq('job_id', jobId)
+    .eq('builder_id', builderId);
 
   if (budgetError) {
     throw new AppError('DATABASE_ERROR', budgetError.message);
@@ -2411,6 +2461,7 @@ router.get('/budget-variance', asyncHandler(async (req, res) => {
       invoice:v2_invoices!inner(id, status)
     `)
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .in('invoice.status', ['approved', 'in_draw', 'paid']);
 
   if (allocError) {
@@ -2545,8 +2596,6 @@ function getCategoryName(divisionCode) {
 // ============================================================
 // CUSTOM REPORT BUILDER - TEMPLATE CRUD
 // ============================================================
-
-const { getBuilderId } = require('../core/multi-tenant');
 
 /**
  * Entity schema definitions for the report builder
@@ -3051,7 +3100,7 @@ router.post('/execute', asyncHandler(async (req, res) => {
   // Apply builder filter if table supports it
   if (builderId) {
     // Check if table has builder_id column
-    const tablesWithBuilderId = ['v2_jobs', 'v2_invoices', 'v2_vendors', 'v2_purchase_orders', 'v2_draws', 'v2_expenses', 'v2_daily_logs'];
+    const tablesWithBuilderId = ['v2_jobs', 'v2_invoices', 'v2_vendors', 'v2_purchase_orders', 'v2_draws', 'v2_expenses', 'v2_daily_logs', 'v2_budget_lines'];
     if (tablesWithBuilderId.includes(schema.table)) {
       query = query.eq('builder_id', builderId);
     }
@@ -3281,7 +3330,7 @@ router.post('/preview', asyncHandler(async (req, res) => {
 
   // Apply builder filter
   if (builderId) {
-    const tablesWithBuilderId = ['v2_jobs', 'v2_invoices', 'v2_vendors', 'v2_purchase_orders', 'v2_draws', 'v2_expenses', 'v2_daily_logs'];
+    const tablesWithBuilderId = ['v2_jobs', 'v2_invoices', 'v2_vendors', 'v2_purchase_orders', 'v2_draws', 'v2_expenses', 'v2_daily_logs', 'v2_budget_lines'];
     if (tablesWithBuilderId.includes(schema.table)) {
       query = query.eq('builder_id', builderId);
     }

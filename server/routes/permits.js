@@ -7,11 +7,13 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============ PERMITS ============
 
 // Get all permits
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, status, type } = req.query;
 
   let query = supabase
@@ -20,6 +22,7 @@ router.get('/', asyncHandler(async (req, res) => {
       *,
       job:v2_jobs(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -35,11 +38,13 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Get permit stats
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   let query = supabase
     .from('v2_permits')
     .select('status, permit_type')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) query = query.eq('job_id', job_id);
@@ -67,6 +72,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 
 // Get single permit with all details
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
@@ -75,6 +81,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       *,
       job:v2_jobs(id, name, address)
     `)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -88,6 +95,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       *,
       inspector:v2_contacts(id, name, phone, email)
     `)
+    .eq('builder_id', builderId)
     .eq('permit_id', id)
     .order('scheduled_date');
 
@@ -95,6 +103,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: documents } = await supabase
     .from('v2_permit_documents')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('permit_id', id)
     .order('uploaded_at', { ascending: false });
 
@@ -102,6 +111,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: activity } = await supabase
     .from('v2_permit_activity')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('permit_id', id)
     .order('created_at', { ascending: false });
 
@@ -115,6 +125,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Create permit
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     permit_number,
@@ -142,7 +153,8 @@ router.post('/', asyncHandler(async (req, res) => {
       expiration_date,
       issued_by,
       fee_amount,
-      notes
+      notes,
+      builder_id: builderId
     }])
     .select(`
       *,
@@ -156,7 +168,8 @@ router.post('/', asyncHandler(async (req, res) => {
   await supabase.from('v2_permit_activity').insert([{
     permit_id: data.id,
     action: 'created',
-    description: `Permit created: ${permit_type}`
+    description: `Permit created: ${permit_type}`,
+    builder_id: builderId
   }]);
 
   res.status(201).json(data);
@@ -164,6 +177,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // Update permit
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = { ...req.body, updated_at: new Date().toISOString() };
 
@@ -171,12 +185,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const oldPermit = await supabase
     .from('v2_permits')
     .select('status')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
   const { data, error } = await supabase
     .from('v2_permits')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .select(`
@@ -193,7 +209,8 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     await supabase.from('v2_permit_activity').insert([{
       permit_id: id,
       action: 'status_changed',
-      description: `Status changed from ${oldPermit.data.status} to ${req.body.status}`
+      description: `Status changed from ${oldPermit.data.status} to ${req.body.status}`,
+      builder_id: builderId
     }]);
   }
 
@@ -202,6 +219,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
 // Submit permit
 router.post('/:id/submit', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
@@ -211,6 +229,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
       submission_date: new Date().toISOString().split('T')[0],
       updated_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .select()
@@ -222,7 +241,8 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
   await supabase.from('v2_permit_activity').insert([{
     permit_id: id,
     action: 'submitted',
-    description: 'Permit submitted for review'
+    description: 'Permit submitted for review',
+    builder_id: builderId
   }]);
 
   res.json(data);
@@ -230,6 +250,7 @@ router.post('/:id/submit', asyncHandler(async (req, res) => {
 
 // Approve permit
 router.post('/:id/approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { permit_number, expiration_date } = req.body;
 
@@ -242,6 +263,7 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
       expiration_date: expiration_date || undefined,
       updated_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .select()
@@ -253,7 +275,8 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
   await supabase.from('v2_permit_activity').insert([{
     permit_id: id,
     action: 'approved',
-    description: `Permit approved${permit_number ? `: ${permit_number}` : ''}`
+    description: `Permit approved${permit_number ? `: ${permit_number}` : ''}`,
+    builder_id: builderId
   }]);
 
   res.json(data);
@@ -261,11 +284,13 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
 
 // Delete permit (soft)
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { error } = await supabase
     .from('v2_permits')
     .update({ deleted_at: new Date().toISOString() })
+    .eq('builder_id', builderId)
     .eq('id', id);
 
   if (error) throw new AppError(error.message, 500);
@@ -277,6 +302,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // Get all inspections
 router.get('/inspections/all', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { status, start_date, end_date } = req.query;
 
   let query = supabase
@@ -286,6 +312,7 @@ router.get('/inspections/all', asyncHandler(async (req, res) => {
       permit:v2_permits(id, permit_number, permit_type, job:v2_jobs(id, name)),
       inspector:v2_contacts(id, name, phone, email)
     `)
+    .eq('builder_id', builderId)
     .order('scheduled_date');
 
   if (status) query = query.eq('status', status);
@@ -300,6 +327,7 @@ router.get('/inspections/all', asyncHandler(async (req, res) => {
 
 // Schedule inspection
 router.post('/:id/inspections', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id: permit_id } = req.params;
   const {
     inspection_type,
@@ -319,6 +347,7 @@ router.post('/:id/inspections', asyncHandler(async (req, res) => {
   const { data: permit } = await supabase
     .from('v2_permits')
     .select('job_id')
+    .eq('builder_id', builderId)
     .eq('id', permit_id)
     .single();
 
@@ -333,7 +362,8 @@ router.post('/:id/inspections', asyncHandler(async (req, res) => {
       scheduled_time,
       inspector_contact_id,
       inspector_name,
-      inspector_phone
+      inspector_phone,
+      builder_id: builderId
     }])
     .select(`
       *,
@@ -346,7 +376,8 @@ router.post('/:id/inspections', asyncHandler(async (req, res) => {
   await supabase.from('v2_permit_activity').insert([{
     permit_id,
     action: 'inspection_scheduled',
-    description: `${inspection_type} inspection scheduled for ${scheduled_date}`
+    description: `${inspection_type} inspection scheduled for ${scheduled_date}`,
+    builder_id: builderId
   }]);
 
   res.status(201).json(data);
@@ -354,12 +385,14 @@ router.post('/:id/inspections', asyncHandler(async (req, res) => {
 
 // Update inspection
 router.patch('/inspections/:inspectionId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { inspectionId } = req.params;
   const updates = { ...req.body, updated_at: new Date().toISOString() };
 
   const { data, error } = await supabase
     .from('v2_permit_inspections')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', inspectionId)
     .select(`
       *,
@@ -375,6 +408,7 @@ router.patch('/inspections/:inspectionId', asyncHandler(async (req, res) => {
 
 // Complete inspection
 router.post('/inspections/:inspectionId/complete', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { inspectionId } = req.params;
   const { status, result_notes, follow_up_required, follow_up_notes } = req.body;
 
@@ -392,6 +426,7 @@ router.post('/inspections/:inspectionId/complete', asyncHandler(async (req, res)
       completed_date: new Date().toISOString().split('T')[0],
       updated_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('id', inspectionId)
     .select('*, permit_id')
     .single();
@@ -402,7 +437,8 @@ router.post('/inspections/:inspectionId/complete', asyncHandler(async (req, res)
   await supabase.from('v2_permit_activity').insert([{
     permit_id: data.permit_id,
     action: 'inspection_completed',
-    description: `${data.inspection_type} inspection ${status}`
+    description: `${data.inspection_type} inspection ${status}`,
+    builder_id: builderId
   }]);
 
   res.json(data);
@@ -410,6 +446,7 @@ router.post('/inspections/:inspectionId/complete', asyncHandler(async (req, res)
 
 // Cancel inspection
 router.post('/inspections/:inspectionId/cancel', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { inspectionId } = req.params;
 
   const { data, error } = await supabase
@@ -418,6 +455,7 @@ router.post('/inspections/:inspectionId/cancel', asyncHandler(async (req, res) =
       status: 'cancelled',
       updated_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('id', inspectionId)
     .select()
     .single();
@@ -432,6 +470,7 @@ router.post('/inspections/:inspectionId/cancel', asyncHandler(async (req, res) =
 
 // Upload permit document
 router.post('/:id/documents', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id: permit_id } = req.params;
   const { document_type, name, description, file_url, file_size, mime_type, uploaded_by } = req.body;
 
@@ -449,7 +488,8 @@ router.post('/:id/documents', asyncHandler(async (req, res) => {
       file_url,
       file_size,
       mime_type,
-      uploaded_by
+      uploaded_by,
+      builder_id: builderId
     }])
     .select()
     .single();
@@ -459,7 +499,8 @@ router.post('/:id/documents', asyncHandler(async (req, res) => {
   await supabase.from('v2_permit_activity').insert([{
     permit_id,
     action: 'document_uploaded',
-    description: `Document uploaded: ${name}`
+    description: `Document uploaded: ${name}`,
+    builder_id: builderId
   }]);
 
   res.status(201).json(data);
@@ -467,11 +508,13 @@ router.post('/:id/documents', asyncHandler(async (req, res) => {
 
 // Delete permit document
 router.delete('/documents/:documentId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { documentId } = req.params;
 
   const { error } = await supabase
     .from('v2_permit_documents')
     .delete()
+    .eq('builder_id', builderId)
     .eq('id', documentId);
 
   if (error) throw new AppError(error.message, 500);

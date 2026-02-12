@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../../config');
+const { getBuilderId } = require('../../core/multi-tenant');
 
 // Helper to get authenticated user ID
 const getUserId = (req) => {
@@ -22,6 +23,7 @@ router.get('/status', async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const builderId = getBuilderId(req);
 
     // Get active time clock entry (not clocked out)
     const { data: entry, error } = await supabase
@@ -32,6 +34,7 @@ router.get('/status', async (req, res) => {
         breaks:v2_time_clock_breaks(*)
       `)
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .is('clock_out_time', null)
       .order('clock_in_time', { ascending: false })
       .limit(1)
@@ -94,6 +97,7 @@ router.post('/clock-in', async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const builderId = getBuilderId(req);
 
     const { job_id, latitude, longitude, notes } = req.body;
 
@@ -102,6 +106,7 @@ router.post('/clock-in', async (req, res) => {
       .from('v2_time_clock_entries')
       .select('id')
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .is('clock_out_time', null)
       .limit(1);
 
@@ -122,6 +127,7 @@ router.post('/clock-in', async (req, res) => {
         last_location_update: latitude ? new Date().toISOString() : null,
         notes: notes || null,
         tracking_status: 'active',
+        builder_id: builderId,
       })
       .select(`
         *,
@@ -137,6 +143,7 @@ router.post('/clock-in', async (req, res) => {
         time_clock_entry_id: entry.id,
         latitude,
         longitude,
+        builder_id: builderId,
       });
     }
 
@@ -157,6 +164,7 @@ router.post('/clock-out', async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const builderId = getBuilderId(req);
 
     const { entry_id, latitude, longitude, notes } = req.body;
 
@@ -165,6 +173,7 @@ router.post('/clock-out', async (req, res) => {
       .from('v2_time_clock_entries')
       .select('*')
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .is('clock_out_time', null);
 
     if (entry_id) {
@@ -214,6 +223,7 @@ router.post('/clock-out', async (req, res) => {
         time_clock_entry_id: entry.id,
         latitude,
         longitude,
+        builder_id: builderId,
       });
     }
 
@@ -234,6 +244,7 @@ router.post('/break/start', async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const builderId = getBuilderId(req);
 
     const { entry_id, break_type = 'lunch' } = req.body;
 
@@ -242,6 +253,7 @@ router.post('/break/start', async (req, res) => {
       .from('v2_time_clock_entries')
       .select('id')
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .is('clock_out_time', null);
 
     if (entry_id) {
@@ -274,6 +286,7 @@ router.post('/break/start', async (req, res) => {
       .insert({
         time_clock_entry_id: timeClockEntryId,
         break_type,
+        builder_id: builderId,
       })
       .select()
       .single();
@@ -303,6 +316,7 @@ router.post('/break/end', async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const builderId = getBuilderId(req);
 
     const { break_id } = req.body;
 
@@ -365,6 +379,7 @@ router.post('/location', async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const builderId = getBuilderId(req);
 
     const { entry_id, latitude, longitude, accuracy } = req.body;
 
@@ -377,6 +392,7 @@ router.post('/location', async (req, res) => {
       .from('v2_time_clock_entries')
       .select('id')
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .is('clock_out_time', null);
 
     if (entry_id) {
@@ -407,6 +423,7 @@ router.post('/location', async (req, res) => {
       latitude,
       longitude,
       accuracy: accuracy || null,
+      builder_id: builderId,
     });
 
     res.json({ success: true });
@@ -426,6 +443,7 @@ router.get('/history', async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const builderId = getBuilderId(req);
 
     const { start_date, end_date, job_id, limit = 50, offset = 0 } = req.query;
 
@@ -437,6 +455,7 @@ router.get('/history', async (req, res) => {
         breaks:v2_time_clock_breaks(*)
       `, { count: 'exact' })
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .order('clock_in_time', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -471,6 +490,7 @@ router.get('/summary', async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const builderId = getBuilderId(req);
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -482,6 +502,7 @@ router.get('/summary', async (req, res) => {
       .from('v2_time_clock_entries')
       .select('total_hours, clock_in_time, clock_out_time')
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .gte('clock_in_time', today.toISOString());
 
     // Get week's entries
@@ -489,6 +510,7 @@ router.get('/summary', async (req, res) => {
       .from('v2_time_clock_entries')
       .select('total_hours')
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .gte('clock_in_time', weekStart.toISOString())
       .not('clock_out_time', 'is', null);
 

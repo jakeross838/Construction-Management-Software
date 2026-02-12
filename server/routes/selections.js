@@ -7,16 +7,14 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
+const { asyncHandler, AppError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Configure multer for image uploads
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
-
-// Async handler wrapper
-const asyncHandler = fn => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
 
 /**
  * Filter selection response for client role
@@ -59,6 +57,7 @@ function filterSelectionsForRole(selections, role = 'admin') {
  * Query params: job_id (filters through allowance relationship)
  */
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   let data = [];
@@ -72,6 +71,7 @@ router.get('/', asyncHandler(async (req, res) => {
         *,
         allowance:v2_allowances!inner(id, job_id)
       `)
+      .eq('builder_id', builderId)
       .eq('allowance.job_id', job_id)
       .order('created_at', { ascending: false });
 
@@ -82,6 +82,7 @@ router.get('/', asyncHandler(async (req, res) => {
     const result = await supabase
       .from('selections')
       .select('*')
+      .eq('builder_id', builderId)
       .order('created_at', { ascending: false });
 
     data = result.data;
@@ -112,9 +113,10 @@ router.get('/', asyncHandler(async (req, res) => {
  * Create a new selection
  */
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('selections')
-    .insert(req.body)
+    .insert({ ...req.body, builder_id: builderId })
     .select()
     .single();
 
@@ -127,12 +129,14 @@ router.post('/', asyncHandler(async (req, res) => {
  * Update a selection
  */
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('selections')
     .update(req.body)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -145,12 +149,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
  * Delete a selection
  */
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { error } = await supabase
     .from('selections')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw error;
   res.status(204).send();
@@ -166,11 +172,13 @@ router.delete('/:id', asyncHandler(async (req, res) => {
  * Query params: parent_id (for subcategories), flat (to get all without nesting)
  */
 router.get('/categories', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { parent_id, flat } = req.query;
 
   let query = supabase
     .from('v2_selection_categories')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('display_order');
 
@@ -206,6 +214,7 @@ router.get('/categories', asyncHandler(async (req, res) => {
  * Create a new selection category
  */
 router.post('/categories', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { name, description, icon, display_order } = req.body;
 
   if (!name) {
@@ -218,7 +227,8 @@ router.post('/categories', asyncHandler(async (req, res) => {
       name,
       description,
       icon,
-      display_order: display_order || 50
+      display_order: display_order || 50,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -232,6 +242,7 @@ router.post('/categories', asyncHandler(async (req, res) => {
  * Update a category
  */
 router.patch('/categories/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = req.body;
 
@@ -239,6 +250,7 @@ router.patch('/categories/:id', asyncHandler(async (req, res) => {
     .from('v2_selection_categories')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -259,6 +271,7 @@ router.patch('/categories/:id', asyncHandler(async (req, res) => {
  * Query params: job_id, category_id, status
  */
 router.get('/allowances', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id, category_id, status } = req.query;
 
   let query = supabase
@@ -268,6 +281,7 @@ router.get('/allowances', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name),
       category:v2_selection_categories(id, name, icon)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -285,6 +299,7 @@ router.get('/allowances', asyncHandler(async (req, res) => {
  * Get a single allowance with its selections
  */
 router.get('/allowances/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get allowance
@@ -296,6 +311,7 @@ router.get('/allowances/:id', asyncHandler(async (req, res) => {
       category:v2_selection_categories(id, name, icon)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -312,6 +328,7 @@ router.get('/allowances/:id', asyncHandler(async (req, res) => {
       catalog_item:v2_selection_catalog(id, name, image_url)
     `)
     .eq('allowance_id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at');
 
@@ -328,6 +345,7 @@ router.get('/allowances/:id', asyncHandler(async (req, res) => {
  * Create a new allowance
  */
 router.post('/allowances', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     job_id,
     category_id,
@@ -358,7 +376,8 @@ router.post('/allowances', asyncHandler(async (req, res) => {
       allowance_type: allowance_type || 'material_only',
       deadline,
       deadline_notes,
-      notes
+      notes,
+      builder_id: builderId
     })
     .select(`
       *,
@@ -384,6 +403,7 @@ router.post('/allowances', asyncHandler(async (req, res) => {
  * Update an allowance
  */
 router.patch('/allowances/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = req.body;
 
@@ -397,6 +417,7 @@ router.patch('/allowances/:id', asyncHandler(async (req, res) => {
     .from('v2_allowances')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select(`
       *,
@@ -418,12 +439,14 @@ router.patch('/allowances/:id', asyncHandler(async (req, res) => {
  * Soft delete an allowance
  */
 router.delete('/allowances/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_allowances')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select()
     .single();
@@ -441,11 +464,13 @@ router.delete('/allowances/:id', asyncHandler(async (req, res) => {
  * Get allowance summary for a job (totals, variance)
  */
 router.get('/allowances/job/:jobId/summary', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
 
   const { data, error } = await supabase
     .from('v2_allowances')
     .select('budgeted_amount, selected_amount, variance, status')
+    .eq('builder_id', builderId)
     .eq('job_id', jobId)
     .is('deleted_at', null);
 
@@ -482,6 +507,7 @@ router.get('/allowances/job/:jobId/summary', asyncHandler(async (req, res) => {
  * Query params: category_id, vendor_id, search, room, min_price, max_price, tags, limit, offset
  */
 router.get('/catalog', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, vendor_id, search, room, min_price, max_price, tags, limit, offset } = req.query;
 
   let query = supabase
@@ -492,6 +518,7 @@ router.get('/catalog', asyncHandler(async (req, res) => {
       vendor:v2_vendors(id, name),
       images:v2_catalog_images!catalog_item_id(id, storage_path, thumbnail_path, thumb_hash, is_primary, display_order, caption)
     `)
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('name');
 
@@ -501,6 +528,7 @@ router.get('/catalog', asyncHandler(async (req, res) => {
     const { data: subcats } = await supabase
       .from('v2_selection_categories')
       .select('id')
+      .eq('builder_id', builderId)
       .eq('parent_id', category_id);
 
     const categoryIds = [category_id, ...(subcats || []).map(s => s.id)];
@@ -546,6 +574,7 @@ router.get('/catalog', asyncHandler(async (req, res) => {
  * Get a single catalog item with all images, trades, and dependencies
  */
 router.get('/catalog/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
@@ -557,6 +586,7 @@ router.get('/catalog/:id', asyncHandler(async (req, res) => {
       images:v2_catalog_images!catalog_item_id(id, storage_path, thumbnail_path, thumb_hash, is_primary, display_order, caption, alt_text, file_name, width, height)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) throw error;
@@ -611,7 +641,20 @@ router.get('/catalog/:id', asyncHandler(async (req, res) => {
  * Get all images for a catalog item
  */
 router.get('/catalog/:id/images', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   const { data, error } = await supabase
     .from('v2_catalog_images')
@@ -628,6 +671,7 @@ router.get('/catalog/:id/images', asyncHandler(async (req, res) => {
  * Add image to catalog item
  */
 router.post('/catalog/:id/images', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     storage_path,
@@ -646,6 +690,18 @@ router.post('/catalog/:id/images', asyncHandler(async (req, res) => {
 
   if (!storage_path || !file_name) {
     return res.status(400).json({ error: 'storage_path and file_name are required' });
+  }
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
   }
 
   // Get max display_order
@@ -688,7 +744,20 @@ router.post('/catalog/:id/images', asyncHandler(async (req, res) => {
  * Remove image from catalog item
  */
 router.delete('/catalog/:catalogId/images/:imageId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { catalogId, imageId } = req.params;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', catalogId)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   const { data, error } = await supabase
     .from('v2_catalog_images')
@@ -711,6 +780,7 @@ router.delete('/catalog/:catalogId/images/:imageId', asyncHandler(async (req, re
  * Update image metadata or set as primary
  */
 router.patch('/catalog/:catalogId/images/:imageId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { catalogId, imageId } = req.params;
   const updates = req.body;
 
@@ -718,6 +788,18 @@ router.patch('/catalog/:catalogId/images/:imageId', asyncHandler(async (req, res
   delete updates.catalog_item_id;
   delete updates.created_at;
   delete updates.storage_path;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', catalogId)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   const { data, error } = await supabase
     .from('v2_catalog_images')
@@ -743,7 +825,20 @@ router.post('/catalog/:id/upload-image', upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   if (!req.files?.image?.[0]) {
     return res.status(400).json({ error: 'No image file provided' });
@@ -830,9 +925,11 @@ router.post('/catalog/:id/upload-image', upload.fields([
  * List all active trades (from labor categories) for linking to catalog items
  */
 router.get('/trades', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_labor_categories')
     .select('id, name, code, primary_metric, metric_label, typical_low, typical_high')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('sort_order');
 
@@ -845,7 +942,20 @@ router.get('/trades', asyncHandler(async (req, res) => {
  * Get all trades linked to a catalog item
  */
 router.get('/catalog/:id/trades', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   const { data, error } = await supabase
     .from('v2_catalog_trades')
@@ -871,11 +981,24 @@ router.get('/catalog/:id/trades', asyncHandler(async (req, res) => {
  * Link a trade to a catalog item
  */
 router.post('/catalog/:id/trades', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { trade_id, is_primary, labor_hours_override, hourly_rate_override, notes } = req.body;
 
   if (!trade_id) {
     return res.status(400).json({ error: 'trade_id is required' });
+  }
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
   }
 
   // If setting as primary, unset other primaries first
@@ -922,8 +1045,21 @@ router.post('/catalog/:id/trades', asyncHandler(async (req, res) => {
  * Update a catalog-trade link
  */
 router.patch('/catalog/:catalogId/trades/:linkId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { catalogId, linkId } = req.params;
   const { is_primary, labor_hours_override, hourly_rate_override, notes } = req.body;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', catalogId)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   // If setting as primary, unset others first
   if (is_primary) {
@@ -963,7 +1099,20 @@ router.patch('/catalog/:catalogId/trades/:linkId', asyncHandler(async (req, res)
  * Remove a trade link from a catalog item
  */
 router.delete('/catalog/:catalogId/trades/:linkId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { catalogId, linkId } = req.params;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', catalogId)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   const { data, error } = await supabase
     .from('v2_catalog_trades')
@@ -990,7 +1139,20 @@ router.delete('/catalog/:catalogId/trades/:linkId', asyncHandler(async (req, res
  * Get all dependencies for a catalog item
  */
 router.get('/catalog/:id/dependencies', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   const { data, error } = await supabase
     .from('v2_catalog_dependencies')
@@ -1017,8 +1179,21 @@ router.get('/catalog/:id/dependencies', asyncHandler(async (req, res) => {
  * dependency_type: 'must_precede' | 'must_follow' | 'incompatible'
  */
 router.post('/catalog/:id/dependencies', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { dependency_type, depends_on_item_id, depends_on_category_id, gap_days, notes } = req.body;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   // Validation
   if (!dependency_type) {
@@ -1070,8 +1245,21 @@ router.post('/catalog/:id/dependencies', asyncHandler(async (req, res) => {
  * Update a dependency
  */
 router.patch('/catalog/:catalogId/dependencies/:depId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { catalogId, depId } = req.params;
   const updates = req.body;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', catalogId)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   // Validate dependency_type if provided
   if (updates.dependency_type && !['must_precede', 'must_follow', 'incompatible'].includes(updates.dependency_type)) {
@@ -1115,7 +1303,20 @@ router.patch('/catalog/:catalogId/dependencies/:depId', asyncHandler(async (req,
  * Remove a dependency from a catalog item
  */
 router.delete('/catalog/:catalogId/dependencies/:depId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { catalogId, depId } = req.params;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', catalogId)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   const { data, error } = await supabase
     .from('v2_catalog_dependencies')
@@ -1142,6 +1343,7 @@ router.delete('/catalog/:catalogId/dependencies/:depId', asyncHandler(async (req
  * Get all knowledge for a catalog item (item-specific + category-level)
  */
 router.get('/catalog/:id/knowledge', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get the catalog item's category
@@ -1149,6 +1351,7 @@ router.get('/catalog/:id/knowledge', asyncHandler(async (req, res) => {
     .from('v2_selection_catalog')
     .select('category_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (itemError || !item) {
@@ -1180,6 +1383,7 @@ router.get('/catalog/:id/knowledge', asyncHandler(async (req, res) => {
  * Add knowledge to a catalog item
  */
 router.post('/catalog/:id/knowledge', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     knowledge_type,
@@ -1194,6 +1398,18 @@ router.post('/catalog/:id/knowledge', asyncHandler(async (req, res) => {
     show_in_daily_log,
     created_by
   } = req.body;
+
+  // Verify catalog item belongs to builder
+  const { data: catalogItem, error: catalogError } = await supabase
+    .from('v2_selection_catalog')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catalogError || !catalogItem) {
+    return res.status(404).json({ error: 'Catalog item not found' });
+  }
 
   if (!knowledge_type || !title) {
     return res.status(400).json({ error: 'knowledge_type and title are required' });
@@ -1232,6 +1448,7 @@ router.post('/catalog/:id/knowledge', asyncHandler(async (req, res) => {
  * Add knowledge to a category (applies to all items in category)
  */
 router.post('/categories/:id/knowledge', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const {
     knowledge_type,
@@ -1246,6 +1463,18 @@ router.post('/categories/:id/knowledge', asyncHandler(async (req, res) => {
     show_in_daily_log,
     created_by
   } = req.body;
+
+  // Verify category belongs to builder
+  const { data: category, error: catError } = await supabase
+    .from('v2_selection_categories')
+    .select('id')
+    .eq('id', id)
+    .eq('builder_id', builderId)
+    .single();
+
+  if (catError || !category) {
+    return res.status(404).json({ error: 'Category not found' });
+  }
 
   if (!knowledge_type || !title) {
     return res.status(400).json({ error: 'knowledge_type and title are required' });
@@ -1279,6 +1508,7 @@ router.post('/categories/:id/knowledge', asyncHandler(async (req, res) => {
  * Update a knowledge item
  */
 router.patch('/knowledge/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = req.body;
 
@@ -1311,6 +1541,7 @@ router.patch('/knowledge/:id', asyncHandler(async (req, res) => {
  * Delete a knowledge item
  */
 router.delete('/knowledge/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
@@ -1333,6 +1564,7 @@ router.delete('/knowledge/:id', asyncHandler(async (req, res) => {
  * Get punch list suggestions based on job selections
  */
 router.get('/jobs/:jobId/punch-list-suggestions', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
   const { room } = req.query;
 
@@ -1346,6 +1578,7 @@ router.get('/jobs/:jobId/punch-list-suggestions', asyncHandler(async (req, res) 
       allowance:v2_allowances!inner(job_id),
       catalog_item:v2_selection_catalog(id, category_id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('allowance.job_id', jobId)
     .is('deleted_at', null);
 
@@ -1391,6 +1624,7 @@ router.get('/jobs/:jobId/punch-list-suggestions', asyncHandler(async (req, res) 
  * Get inspection checklist based on job selections
  */
 router.get('/jobs/:jobId/inspection-checklist', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
 
   // Get all selections for this job
@@ -1401,6 +1635,7 @@ router.get('/jobs/:jobId/inspection-checklist', asyncHandler(async (req, res) =>
       allowance:v2_allowances!inner(job_id),
       catalog_item:v2_selection_catalog(category_id)
     `)
+    .eq('builder_id', builderId)
     .eq('allowance.job_id', jobId)
     .is('deleted_at', null);
 
@@ -1439,6 +1674,7 @@ router.get('/jobs/:jobId/inspection-checklist', asyncHandler(async (req, res) =>
  * Add item to catalog
  */
 router.post('/catalog', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     category_id,
     vendor_id,
@@ -1468,7 +1704,8 @@ router.post('/catalog', asyncHandler(async (req, res) => {
       unit_price,
       unit: unit || 'each',
       image_url,
-      spec_sheet_url
+      spec_sheet_url,
+      builder_id: builderId
     })
     .select(`
       *,
@@ -1486,6 +1723,7 @@ router.post('/catalog', asyncHandler(async (req, res) => {
  * Update a catalog item
  */
 router.patch('/catalog/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = req.body;
 
@@ -1496,6 +1734,7 @@ router.patch('/catalog/:id', asyncHandler(async (req, res) => {
     .from('v2_selection_catalog')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       category:v2_selection_categories(id, name),
@@ -1515,12 +1754,14 @@ router.patch('/catalog/:id', asyncHandler(async (req, res) => {
  * Deactivate a catalog item
  */
 router.delete('/catalog/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_selection_catalog')
     .update({ is_active: false })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -1542,6 +1783,7 @@ router.delete('/catalog/:id', asyncHandler(async (req, res) => {
  * Query params: allowance_id, status, role
  */
 router.get('/items', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { allowance_id, status, role } = req.query;
 
   let query = supabase
@@ -1551,6 +1793,7 @@ router.get('/items', asyncHandler(async (req, res) => {
       allowance:v2_allowances(id, name, job_id),
       catalog_item:v2_selection_catalog(id, name, image_url)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -1571,6 +1814,7 @@ router.get('/items', asyncHandler(async (req, res) => {
  * Query params: role
  */
 router.get('/items/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { role } = req.query;
 
@@ -1583,6 +1827,7 @@ router.get('/items/:id', asyncHandler(async (req, res) => {
       catalog_item:v2_selection_catalog(id, name, image_url)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1596,6 +1841,7 @@ router.get('/items/:id', asyncHandler(async (req, res) => {
     .from('v2_selection_status_history')
     .select('*')
     .eq('selection_id', id)
+    .eq('builder_id', builderId)
     .order('changed_at', { ascending: false });
 
   if (historyError) throw historyError;
@@ -1612,6 +1858,7 @@ router.get('/items/:id', asyncHandler(async (req, res) => {
  * Create a new selection
  */
 router.post('/items', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     allowance_id,
     catalog_item_id,
@@ -1661,7 +1908,8 @@ router.post('/items', asyncHandler(async (req, res) => {
       final_price,
       image_url,
       client_notes,
-      internal_notes
+      internal_notes,
+      builder_id: builderId
     })
     .select(`
       *,
@@ -1675,7 +1923,8 @@ router.post('/items', asyncHandler(async (req, res) => {
   await supabase.from('v2_selection_status_history').insert({
     selection_id: data.id,
     to_status: 'pending',
-    notes: 'Selection created'
+    notes: 'Selection created',
+    builder_id: builderId
   });
 
   res.status(201).json(data);
@@ -1686,6 +1935,7 @@ router.post('/items', asyncHandler(async (req, res) => {
  * Update a selection
  */
 router.patch('/items/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = req.body;
 
@@ -1701,6 +1951,7 @@ router.patch('/items/:id', asyncHandler(async (req, res) => {
       .from('v2_selections')
       .select('quantity, unit_price, markup_percent')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     const qty = updates.quantity !== undefined ? parseFloat(updates.quantity) : parseFloat(current.quantity);
@@ -1719,6 +1970,7 @@ router.patch('/items/:id', asyncHandler(async (req, res) => {
     .from('v2_selections')
     .update(updates)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select(`
       *,
@@ -1739,6 +1991,7 @@ router.patch('/items/:id', asyncHandler(async (req, res) => {
  * Change selection status
  */
 router.post('/items/:id/status', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { status, notes, changed_by } = req.body;
 
@@ -1754,6 +2007,7 @@ router.post('/items/:id/status', asyncHandler(async (req, res) => {
     .from('v2_selections')
     .select('status')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1785,6 +2039,7 @@ router.post('/items/:id/status', asyncHandler(async (req, res) => {
     .from('v2_selections')
     .update(update)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       allowance:v2_allowances(id, name, job_id)
@@ -1799,7 +2054,8 @@ router.post('/items/:id/status', asyncHandler(async (req, res) => {
     from_status: oldStatus,
     to_status: status,
     changed_by,
-    notes
+    notes,
+    builder_id: builderId
   });
 
   res.json(data);
@@ -1815,6 +2071,7 @@ router.post('/items/:id/status', asyncHandler(async (req, res) => {
  * Records approval timestamp, method, IP, and optional notes
  */
 router.post('/items/:id/client-approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { approved_by, notes, ip_address } = req.body;
 
@@ -1827,6 +2084,7 @@ router.post('/items/:id/client-approve', asyncHandler(async (req, res) => {
     .from('v2_selections')
     .select('status, client_approved_at, allowance_id')
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -1854,6 +2112,7 @@ router.post('/items/:id/client-approve', asyncHandler(async (req, res) => {
       client_approval_notes: notes || null
     })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select(`
       *,
       allowance:v2_allowances(id, name, job_id, budgeted_amount)
@@ -1868,7 +2127,8 @@ router.post('/items/:id/client-approve', asyncHandler(async (req, res) => {
     from_status: current.status,
     to_status: 'approved',
     changed_by: approved_by,
-    notes: 'Client approved selection'
+    notes: 'Client approved selection',
+    builder_id: builderId
   });
 
   res.json(data);
@@ -1880,6 +2140,7 @@ router.post('/items/:id/client-approve', asyncHandler(async (req, res) => {
  * Body: { selection_ids: UUID[], approved_by: string, ip_address?: string }
  */
 router.post('/items/bulk-approve', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { selection_ids, approved_by, ip_address } = req.body;
 
   if (!Array.isArray(selection_ids) || selection_ids.length === 0) {
@@ -1894,6 +2155,7 @@ router.post('/items/bulk-approve', asyncHandler(async (req, res) => {
   const { data: existing, error: fetchError } = await supabase
     .from('v2_selections')
     .select('id, status, client_approved_at')
+    .eq('builder_id', builderId)
     .in('id', selection_ids)
     .is('deleted_at', null);
 
@@ -1920,6 +2182,7 @@ router.post('/items/bulk-approve', asyncHandler(async (req, res) => {
       client_approval_method: 'checkbox',
       client_approval_notes: 'Bulk approved'
     })
+    .eq('builder_id', builderId)
     .in('id', selection_ids)
     .select();
 
@@ -1931,7 +2194,8 @@ router.post('/items/bulk-approve', asyncHandler(async (req, res) => {
     from_status: s.status,
     to_status: 'approved',
     changed_by: approved_by,
-    notes: 'Client bulk approved selections'
+    notes: 'Client bulk approved selections',
+    builder_id: builderId
   }));
 
   await supabase.from('v2_selection_status_history').insert(historyRecords);
@@ -1948,12 +2212,14 @@ router.post('/items/bulk-approve', asyncHandler(async (req, res) => {
  * Soft delete a selection
  */
 router.delete('/items/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_selections')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .select()
     .single();
@@ -1971,6 +2237,7 @@ router.delete('/items/:id', asyncHandler(async (req, res) => {
  * Create change order from selection overage
  */
 router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { markup_percent, description, created_by } = req.body;
 
@@ -1982,6 +2249,7 @@ router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
       allowance:v2_allowances(id, name, job_id, budgeted_amount, category:v2_selection_categories(name))
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 
@@ -2009,6 +2277,7 @@ router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
   const { data: pos } = await supabase
     .from('v2_purchase_orders')
     .select('id')
+    .eq('builder_id', builderId)
     .eq('job_id', selection.allowance.job_id)
     .is('deleted_at', null)
     .limit(1);
@@ -2026,6 +2295,7 @@ router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
     .from('v2_purchase_orders')
     .select('total_amount, change_order_total')
     .eq('id', poId)
+    .eq('builder_id', builderId)
     .single();
 
   const previousTotal = parseFloat(poData?.total_amount) || 0;
@@ -2036,6 +2306,7 @@ router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
   const { data: existingCOs } = await supabase
     .from('v2_change_orders')
     .select('change_order_number')
+    .eq('builder_id', builderId)
     .eq('po_id', poId)
     .order('change_order_number', { ascending: false })
     .limit(1);
@@ -2056,7 +2327,8 @@ router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
       previous_total: previousTotal + existingCOTotal,
       new_total: newTotal,
       status: 'pending',
-      created_by
+      created_by,
+      builder_id: builderId
     })
     .select()
     .single();
@@ -2067,13 +2339,15 @@ router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_purchase_orders')
     .update({ change_order_total: existingCOTotal + coAmount })
-    .eq('id', poId);
+    .eq('id', poId)
+    .eq('builder_id', builderId);
 
   // Link CO to selection
   await supabase
     .from('v2_selections')
     .update({ change_order_id: co.id })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   res.status(201).json({
     change_order: co,
@@ -2092,12 +2366,14 @@ router.post('/items/:id/create-co', asyncHandler(async (req, res) => {
  * Get selection statistics
  */
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { job_id } = req.query;
 
   // Get allowances
   let allowanceQuery = supabase
     .from('v2_allowances')
     .select('budgeted_amount, selected_amount, variance, status')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) allowanceQuery = allowanceQuery.eq('job_id', job_id);
@@ -2109,6 +2385,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
   let selectionQuery = supabase
     .from('v2_selections')
     .select('status, final_price')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (job_id) {
@@ -2116,6 +2393,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
     selectionQuery = supabase
       .from('v2_selections')
       .select('status, final_price, allowance:v2_allowances!inner(job_id)')
+      .eq('builder_id', builderId)
       .is('deleted_at', null)
       .eq('allowance.job_id', job_id);
   }
@@ -2169,11 +2447,13 @@ router.get('/stats', asyncHandler(async (req, res) => {
  * Get popular catalog items, optionally by category
  */
 router.get('/catalog/popular', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, limit = 20 } = req.query;
 
   let query = supabase
     .from('v2_catalog_popular')
     .select('*')
+    .eq('builder_id', builderId)
     .limit(parseInt(limit));
 
   if (category_id) {
@@ -2191,6 +2471,7 @@ router.get('/catalog/popular', asyncHandler(async (req, res) => {
  * Get featured catalog items
  */
 router.get('/catalog/featured', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, limit = 20 } = req.query;
 
   let query = supabase
@@ -2199,6 +2480,7 @@ router.get('/catalog/featured', asyncHandler(async (req, res) => {
       *,
       category:v2_selection_categories(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .eq('is_featured', true)
     .order('times_selected', { ascending: false })
@@ -2219,6 +2501,7 @@ router.get('/catalog/featured', asyncHandler(async (req, res) => {
  * Get newly added catalog items
  */
 router.get('/catalog/new', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id, limit = 20 } = req.query;
 
   let query = supabase
@@ -2227,6 +2510,7 @@ router.get('/catalog/new', asyncHandler(async (req, res) => {
       *,
       category:v2_selection_categories(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .eq('is_new', true)
     .order('created_at', { ascending: false })
@@ -2247,6 +2531,7 @@ router.get('/catalog/new', asyncHandler(async (req, res) => {
  * Get catalog items by brand
  */
 router.get('/catalog/by-brand/:brand', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { brand } = req.params;
   const { category_id, limit = 50 } = req.query;
 
@@ -2256,6 +2541,7 @@ router.get('/catalog/by-brand/:brand', asyncHandler(async (req, res) => {
       *,
       category:v2_selection_categories(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .ilike('brand', brand)
     .order('times_selected', { ascending: false })
@@ -2276,6 +2562,7 @@ router.get('/catalog/by-brand/:brand', asyncHandler(async (req, res) => {
  * Get catalog items by tag
  */
 router.get('/catalog/by-tag/:tag', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { tag } = req.params;
   const { category_id, limit = 50 } = req.query;
 
@@ -2285,6 +2572,7 @@ router.get('/catalog/by-tag/:tag', asyncHandler(async (req, res) => {
       *,
       category:v2_selection_categories(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .contains('tags', [tag])
     .order('times_selected', { ascending: false })
@@ -2305,6 +2593,7 @@ router.get('/catalog/by-tag/:tag', asyncHandler(async (req, res) => {
  * Track when a catalog item is selected
  */
 router.post('/catalog/:id/track', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { user_id, job_id } = req.body;
 
@@ -2323,6 +2612,7 @@ router.post('/catalog/:id/track', asyncHandler(async (req, res) => {
  * Get product recommendations based on selected items
  */
 router.get('/catalog/recommendations', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { items, limit = 10 } = req.query;
 
   if (!items) {
@@ -2349,11 +2639,13 @@ router.get('/catalog/recommendations', asyncHandler(async (req, res) => {
  * Get all brands, optionally filtered by category
  */
 router.get('/brands', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category, preferred_only } = req.query;
 
   let query = supabase
     .from('v2_catalog_brands')
     .select('*')
+    .eq('builder_id', builderId)
     .order('name');
 
   if (category) {
@@ -2375,9 +2667,10 @@ router.get('/brands', asyncHandler(async (req, res) => {
  * Add a new brand
  */
 router.post('/brands', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_catalog_brands')
-    .insert(req.body)
+    .insert({ ...req.body, builder_id: builderId })
     .select()
     .single();
 
@@ -2394,6 +2687,7 @@ router.post('/brands', asyncHandler(async (req, res) => {
  * Get selection bundles
  */
 router.get('/bundles', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { style, tier, room_type, featured_only } = req.query;
 
   let query = supabase
@@ -2406,6 +2700,7 @@ router.get('/bundles', asyncHandler(async (req, res) => {
         category:v2_selection_categories(id, name)
       )
     `)
+    .eq('builder_id', builderId)
     .order('times_used', { ascending: false });
 
   if (style) query = query.eq('style', style);
@@ -2424,6 +2719,7 @@ router.get('/bundles', asyncHandler(async (req, res) => {
  * Get single bundle with items
  */
 router.get('/bundles/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
@@ -2437,6 +2733,7 @@ router.get('/bundles/:id', asyncHandler(async (req, res) => {
       )
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error) throw error;
@@ -2448,12 +2745,13 @@ router.get('/bundles/:id', asyncHandler(async (req, res) => {
  * Create a new bundle
  */
 router.post('/bundles', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { items, ...bundleData } = req.body;
 
   // Create bundle
   const { data: bundle, error: bundleError } = await supabase
     .from('v2_selection_bundles')
-    .insert(bundleData)
+    .insert({ ...bundleData, builder_id: builderId })
     .select()
     .single();
 
@@ -2463,7 +2761,8 @@ router.post('/bundles', asyncHandler(async (req, res) => {
   if (items && items.length > 0) {
     const bundleItems = items.map(item => ({
       bundle_id: bundle.id,
-      ...item
+      ...item,
+      builder_id: builderId
     }));
 
     const { error: itemsError } = await supabase
@@ -2481,12 +2780,14 @@ router.post('/bundles', asyncHandler(async (req, res) => {
  * Track when a bundle is used
  */
 router.post('/bundles/:id/use', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_selection_bundles')
     .update({ times_used: supabase.raw('times_used + 1') })
     .eq('id', id)
+    .eq('builder_id', builderId)
     .select()
     .single();
 
@@ -2496,12 +2797,14 @@ router.post('/bundles/:id/use', asyncHandler(async (req, res) => {
       .from('v2_selection_bundles')
       .select('times_used')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     const { data: updated, error: updateError } = await supabase
       .from('v2_selection_bundles')
       .update({ times_used: (current?.times_used || 0) + 1 })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -2521,6 +2824,7 @@ router.post('/bundles/:id/use', asyncHandler(async (req, res) => {
  * Get user's favorite catalog items
  */
 router.get('/favorites', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { user_id, company_id } = req.query;
 
   let query = supabase
@@ -2532,6 +2836,7 @@ router.get('/favorites', asyncHandler(async (req, res) => {
         category:v2_selection_categories(id, name)
       )
     `)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (user_id) query = query.eq('user_id', user_id);
@@ -2548,11 +2853,12 @@ router.get('/favorites', asyncHandler(async (req, res) => {
  * Add a catalog item to favorites
  */
 router.post('/favorites', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { catalog_item_id, user_id, company_id, notes } = req.body;
 
   const { data, error } = await supabase
     .from('v2_catalog_favorites')
-    .insert({ catalog_item_id, user_id, company_id, notes })
+    .insert({ catalog_item_id, user_id, company_id, notes, builder_id: builderId })
     .select()
     .single();
 
@@ -2565,12 +2871,14 @@ router.post('/favorites', asyncHandler(async (req, res) => {
  * Remove from favorites
  */
 router.delete('/favorites/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { error } = await supabase
     .from('v2_catalog_favorites')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('builder_id', builderId);
 
   if (error) throw error;
   res.json({ success: true });
@@ -2585,6 +2893,7 @@ router.delete('/favorites/:id', asyncHandler(async (req, res) => {
  * Get user's recently used catalog items
  */
 router.get('/recent', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { user_id, limit = 20 } = req.query;
 
   if (!user_id) {
@@ -2600,6 +2909,7 @@ router.get('/recent', asyncHandler(async (req, res) => {
         category:v2_selection_categories(id, name)
       )
     `)
+    .eq('builder_id', builderId)
     .eq('user_id', user_id)
     .order('used_at', { ascending: false })
     .limit(parseInt(limit));
@@ -2618,6 +2928,7 @@ router.get('/recent', asyncHandler(async (req, res) => {
  * Search catalog with advanced filters
  */
 router.get('/catalog/search', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     q,
     category_id,
@@ -2638,6 +2949,7 @@ router.get('/catalog/search', asyncHandler(async (req, res) => {
       *,
       category:v2_selection_categories(id, name)
     `)
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('times_selected', { ascending: false })
     .limit(parseInt(limit));
@@ -2676,12 +2988,14 @@ router.get('/catalog/search', asyncHandler(async (req, res) => {
  * Get available filter options for catalog
  */
 router.get('/catalog/filters', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id } = req.query;
 
   // Get distinct brands
   let brandQuery = supabase
     .from('v2_selection_catalog')
     .select('brand')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .not('brand', 'is', null);
 
@@ -2694,6 +3008,7 @@ router.get('/catalog/filters', asyncHandler(async (req, res) => {
   let finishQuery = supabase
     .from('v2_selection_catalog')
     .select('finish')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .not('finish', 'is', null);
 
@@ -2706,6 +3021,7 @@ router.get('/catalog/filters', asyncHandler(async (req, res) => {
   let materialQuery = supabase
     .from('v2_selection_catalog')
     .select('material')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .not('material', 'is', null);
 
@@ -2718,6 +3034,7 @@ router.get('/catalog/filters', asyncHandler(async (req, res) => {
   let tagQuery = supabase
     .from('v2_selection_catalog')
     .select('tags')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .not('tags', 'is', null);
 
@@ -2731,6 +3048,7 @@ router.get('/catalog/filters', asyncHandler(async (req, res) => {
   let priceQuery = supabase
     .from('v2_selection_catalog')
     .select('unit_price')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .not('unit_price', 'is', null);
 
@@ -2761,9 +3079,11 @@ router.get('/catalog/filters', asyncHandler(async (req, res) => {
  * Get categories as a hierarchical tree with subcategories
  */
 router.get('/categories/hierarchy', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data: categories, error } = await supabase
     .from('v2_selection_categories')
     .select('id, name, parent_id, display_order, icon')
+    .eq('builder_id', builderId)
     .order('display_order');
 
   if (error) throw error;
@@ -2771,6 +3091,7 @@ router.get('/categories/hierarchy', asyncHandler(async (req, res) => {
   const { data: products } = await supabase
     .from('v2_selection_catalog')
     .select('category_id')
+    .eq('builder_id', builderId)
     .eq('is_active', true);
 
   const productCounts = {};
@@ -2805,11 +3126,13 @@ router.get('/categories/hierarchy', asyncHandler(async (req, res) => {
  * Get paint colors with color chips grouped by brand
  */
 router.get('/catalog/paints', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { brand, type, search, popular_only } = req.query;
 
   const { data: paintCategories } = await supabase
     .from('v2_selection_categories')
     .select('id, name')
+    .eq('builder_id', builderId)
     .in('name', ['Interior Paint', 'Exterior Paint', 'Wood Stain']);
 
   const paintCategoryIds = (paintCategories || []).map(c => c.id);
@@ -2817,6 +3140,7 @@ router.get('/catalog/paints', asyncHandler(async (req, res) => {
   let query = supabase
     .from('v2_selection_catalog')
     .select('id, name, description, brand, unit_price, color_hex, is_popular, is_featured, category_id')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .in('category_id', paintCategoryIds)
     .not('color_hex', 'is', null)
@@ -2861,16 +3185,19 @@ router.get('/catalog/paints', asyncHandler(async (req, res) => {
  * Get all brands with product counts
  */
 router.get('/catalog/brands', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { category_id } = req.query;
 
   const { data: brandInfo } = await supabase
     .from('v2_catalog_brands')
     .select('name, logo_url, website_url, is_preferred, tier')
+    .eq('builder_id', builderId)
     .order('name');
 
   let productQuery = supabase
     .from('v2_selection_catalog')
     .select('brand')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .not('brand', 'is', null);
 
@@ -2908,6 +3235,7 @@ router.get('/catalog/brands', asyncHandler(async (req, res) => {
  * Body: { estimate_id: UUID }
  */
 router.post('/convert-estimate-allowances', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { estimate_id } = req.body;
 
   if (!estimate_id) {
@@ -2919,6 +3247,7 @@ router.post('/convert-estimate-allowances', asyncHandler(async (req, res) => {
     .from('v2_estimates')
     .select('id, job_id, status')
     .eq('id', estimate_id)
+    .eq('builder_id', builderId)
     .single();
 
   if (estError || !estimate) {
@@ -2959,6 +3288,7 @@ router.post('/convert-estimate-allowances', asyncHandler(async (req, res) => {
  * Get variance summary for job allowances
  */
 router.get('/allowances/job/:jobId/variance-summary', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { jobId } = req.params;
 
   const { data, error } = await supabase.rpc('get_allowance_variance_summary', {
@@ -2985,6 +3315,7 @@ router.get('/allowances/job/:jobId/variance-summary', asyncHandler(async (req, r
  * Returns: { is_post_contract: boolean, has_overage: boolean, overage_amount: number }
  */
 router.get('/items/:id/check-post-contract', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   // Get selection with allowance and job info
@@ -2999,6 +3330,7 @@ router.get('/items/:id/check-post-contract', asyncHandler(async (req, res) => {
       )
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .single();
 

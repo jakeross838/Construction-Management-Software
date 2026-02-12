@@ -346,6 +346,221 @@ const jobIdParamSchema = z.object({
   jobId: uuidSchema
 });
 
+// ============================================================
+// CHANGE ORDER SCHEMAS
+// ============================================================
+
+const changeOrderStatusSchema = z.enum(['draft', 'pending_approval', 'approved', 'rejected']);
+
+const changeOrderReasonSchema = z.enum([
+  'scope_change', 'owner_request', 'unforeseen_conditions', 'design_change', 'other'
+]);
+
+const changeOrderCreateSchema = z.object({
+  job_id: uuidSchema,
+  change_order_number: z.coerce.number().int().positive(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(5000).optional(),
+  reason: changeOrderReasonSchema.optional(),
+  amount: moneySchema,
+  base_amount: moneySchema.optional(),
+  gc_fee_percent: z.coerce.number().min(0).max(100).optional(),
+  gc_fee_amount: moneySchema.optional(),
+  admin_hours: z.coerce.number().min(0).optional(),
+  admin_rate: moneySchema.optional(),
+  admin_cost: moneySchema.optional(),
+  days_added: z.coerce.number().int().min(0).optional(),
+  created_by: z.string().max(100).optional()
+});
+
+const changeOrderUpdateSchema = z.object({
+  change_order_number: z.coerce.number().int().positive().optional(),
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).optional().nullable(),
+  reason: changeOrderReasonSchema.optional(),
+  amount: moneySchema.optional(),
+  base_amount: moneySchema.optional(),
+  gc_fee_percent: z.coerce.number().min(0).max(100).optional(),
+  gc_fee_amount: moneySchema.optional(),
+  admin_hours: z.coerce.number().min(0).optional(),
+  admin_rate: moneySchema.optional(),
+  admin_cost: moneySchema.optional(),
+  days_added: z.coerce.number().int().min(0).optional(),
+  status: changeOrderStatusSchema.optional(),
+  first_billed_draw_number: z.coerce.number().int().optional(),
+  updated_by: z.string().max(100).optional()
+});
+
+// ============================================================
+// ESTIMATE SCHEMAS
+// ============================================================
+
+const estimateStatusSchema = z.enum(['draft', 'submitted', 'approved', 'rejected', 'converted']);
+
+const estimateCreateSchema = z.object({
+  job_id: uuidSchema.optional(),
+  name: z.string().min(1).max(200),
+  description: z.string().max(5000).optional(),
+  status: estimateStatusSchema.optional().default('draft'),
+  total_amount: moneySchema.optional()
+});
+
+const estimateUpdateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).optional().nullable(),
+  status: estimateStatusSchema.optional(),
+  total_amount: moneySchema.optional()
+});
+
+const estimateLineSchema = z.object({
+  cost_code_id: uuidSchema.optional(),
+  description: z.string().max(500).optional(),
+  quantity: z.coerce.number().min(0).optional(),
+  unit: z.string().max(20).optional(),
+  unit_cost: moneySchema.optional(),
+  amount: moneySchema,
+  notes: z.string().max(1000).optional()
+});
+
+// ============================================================
+// BID SCHEMAS
+// ============================================================
+
+const bidStatusSchema = z.enum(['draft', 'open', 'evaluating', 'awarded', 'closed', 'cancelled']);
+
+const bidCreateSchema = z.object({
+  job_id: uuidSchema,
+  title: z.string().min(1).max(200),
+  description: z.string().max(5000).optional(),
+  trade_category: z.string().max(100).optional(),
+  due_date: dateSchema.optional(),
+  status: bidStatusSchema.optional().default('draft')
+});
+
+const bidUpdateSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).optional().nullable(),
+  trade_category: z.string().max(100).optional(),
+  due_date: dateSchema.optional().nullable(),
+  status: bidStatusSchema.optional()
+});
+
+// ============================================================
+// LEAD SCHEMAS
+// ============================================================
+
+const leadStageSchema = z.enum([
+  'new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'
+]);
+
+const leadCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  email: z.string().email().optional().or(z.literal('')),
+  phone: z.string().max(20).optional().or(z.literal('')),
+  source: z.string().max(100).optional(),
+  stage: leadStageSchema.optional().default('new'),
+  estimated_value: moneySchema.optional(),
+  notes: z.string().max(5000).optional(),
+  address: z.string().max(500).optional()
+});
+
+const leadUpdateSchema = leadCreateSchema.partial();
+
+// ============================================================
+// DAILY LOG SCHEMAS
+// ============================================================
+
+const dailyLogCreateSchema = z.object({
+  job_id: uuidSchema,
+  log_date: dateSchema,
+  weather: z.string().max(100).optional(),
+  temperature_high: z.coerce.number().optional(),
+  temperature_low: z.coerce.number().optional(),
+  summary: z.string().max(5000).optional(),
+  work_performed: z.string().max(10000).optional(),
+  safety_notes: z.string().max(5000).optional(),
+  delays: z.string().max(5000).optional(),
+  visitors: z.string().max(2000).optional()
+});
+
+const dailyLogUpdateSchema = dailyLogCreateSchema.partial().omit({ job_id: true });
+
+// ============================================================
+// SELECTION SCHEMAS
+// ============================================================
+
+const selectionStatusSchema = z.enum([
+  'pending', 'in_progress', 'selected', 'approved', 'ordered', 'received', 'installed'
+]);
+
+const selectionCreateSchema = z.object({
+  allowance_id: uuidSchema.optional(),
+  category: z.string().max(100).optional(),
+  name: z.string().min(1).max(200),
+  description: z.string().max(5000).optional(),
+  status: selectionStatusSchema.optional().default('pending'),
+  budget_amount: moneySchema.optional(),
+  selected_amount: moneySchema.optional()
+});
+
+const selectionUpdateSchema = selectionCreateSchema.partial();
+
+// ============================================================
+// SCHEDULE SCHEMAS
+// ============================================================
+
+const scheduleCreateSchema = z.object({
+  job_id: uuidSchema,
+  name: z.string().min(1).max(200),
+  description: z.string().max(5000).optional(),
+  start_date: dateSchema.optional(),
+  end_date: dateSchema.optional()
+});
+
+// ============================================================
+// EXPENSE SCHEMAS
+// ============================================================
+
+const expenseCreateSchema = z.object({
+  job_id: uuidSchema.optional(),
+  vendor_id: uuidSchema.optional(),
+  category: z.string().max(100).optional(),
+  description: z.string().max(1000).optional(),
+  amount: moneySchema,
+  date: dateSchema.optional(),
+  receipt_url: z.string().url().optional()
+});
+
+const expenseUpdateSchema = expenseCreateSchema.partial();
+
+// ============================================================
+// TIMESHEET SCHEMAS
+// ============================================================
+
+const timesheetCreateSchema = z.object({
+  employee_id: uuidSchema,
+  job_id: uuidSchema.optional(),
+  date: dateSchema,
+  hours: z.coerce.number().min(0).max(24),
+  overtime_hours: z.coerce.number().min(0).max(24).optional().default(0),
+  cost_code_id: uuidSchema.optional(),
+  notes: z.string().max(1000).optional()
+});
+
+// ============================================================
+// PERMIT SCHEMAS
+// ============================================================
+
+const permitCreateSchema = z.object({
+  job_id: uuidSchema,
+  permit_type: z.string().min(1).max(100),
+  permit_number: z.string().max(100).optional(),
+  status: z.enum(['pending', 'submitted', 'approved', 'denied', 'expired']).optional().default('pending'),
+  issued_date: dateSchema.optional(),
+  expiration_date: dateSchema.optional(),
+  notes: z.string().max(2000).optional()
+});
+
 module.exports = {
   validate,
   formatZodErrors,
@@ -376,6 +591,34 @@ module.exports = {
     // Vendor
     vendorCreate: { body: vendorCreateSchema },
     vendorUpdate: { body: vendorUpdateSchema, params: idParamSchema },
+    // Change Order
+    changeOrderCreate: { body: changeOrderCreateSchema },
+    changeOrderUpdate: { body: changeOrderUpdateSchema, params: idParamSchema },
+    // Estimate
+    estimateCreate: { body: estimateCreateSchema },
+    estimateUpdate: { body: estimateUpdateSchema, params: idParamSchema },
+    estimateLine: { body: estimateLineSchema },
+    // Bid
+    bidCreate: { body: bidCreateSchema },
+    bidUpdate: { body: bidUpdateSchema, params: idParamSchema },
+    // Lead
+    leadCreate: { body: leadCreateSchema },
+    leadUpdate: { body: leadUpdateSchema, params: idParamSchema },
+    // Daily Log
+    dailyLogCreate: { body: dailyLogCreateSchema },
+    dailyLogUpdate: { body: dailyLogUpdateSchema, params: idParamSchema },
+    // Selection
+    selectionCreate: { body: selectionCreateSchema },
+    selectionUpdate: { body: selectionUpdateSchema, params: idParamSchema },
+    // Schedule
+    scheduleCreate: { body: scheduleCreateSchema },
+    // Expense
+    expenseCreate: { body: expenseCreateSchema },
+    expenseUpdate: { body: expenseUpdateSchema, params: idParamSchema },
+    // Timesheet
+    timesheetCreate: { body: timesheetCreateSchema },
+    // Permit
+    permitCreate: { body: permitCreateSchema },
     // Common params
     idParam: { params: idParamSchema },
     jobIdParam: { params: jobIdParamSchema }

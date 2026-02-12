@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // ============================================================
 // HISTORICAL PRICING AGGREGATION
@@ -16,11 +17,12 @@ const { AppError, asyncHandler } = require('../core/errors');
  * Refresh historical pricing cache for all cost codes
  * Aggregates data from PO line items and accepted bids
  */
-async function refreshHistoricalPricing() {
+async function refreshHistoricalPricing(builderId) {
   // Get all cost codes
   const { data: costCodes, error: ccError } = await supabase
     .from('v2_cost_codes')
-    .select('id, code, name');
+    .select('id, code, name')
+    .eq('builder_id', builderId);
 
   if (ccError) throw new AppError('DATABASE_ERROR', ccError.message);
 
@@ -32,6 +34,7 @@ async function refreshHistoricalPricing() {
       .from('v2_po_line_items')
       .select('amount')
       .eq('cost_code_id', cc.id)
+      .eq('builder_id', builderId)
       .gt('amount', 0);
 
     // Get amounts from bid lines
@@ -42,6 +45,7 @@ async function refreshHistoricalPricing() {
         bid:v2_bids!inner(status)
       `)
       .eq('cost_code_id', cc.id)
+      .eq('builder_id', builderId)
       .eq('bid.status', 'accepted')
       .gt('amount', 0);
 
@@ -53,6 +57,7 @@ async function refreshHistoricalPricing() {
         estimate:v2_estimates!inner(status)
       `)
       .eq('cost_code_id', cc.id)
+      .eq('builder_id', builderId)
       .in('estimate.status', ['approved', 'converted'])
       .gt('amount', 0);
 
@@ -72,7 +77,8 @@ async function refreshHistoricalPricing() {
       max_amount: Math.max(...allAmounts),
       sample_count: allAmounts.length,
       avg_per_sqft: 0, // Would need job sqft data to calculate
-      last_refreshed: new Date().toISOString()
+      last_refreshed: new Date().toISOString(),
+      builder_id: builderId
     };
 
     // Upsert into historical_pricing
@@ -90,7 +96,8 @@ async function refreshHistoricalPricing() {
 
 // Endpoint to refresh historical pricing
 router.post('/refresh-pricing', asyncHandler(async (req, res) => {
-  const results = await refreshHistoricalPricing();
+  const builderId = getBuilderId(req);
+  const results = await refreshHistoricalPricing(builderId);
   res.json({
     success: true,
     message: `Updated pricing for ${results.length} cost codes`,
@@ -101,11 +108,13 @@ router.post('/refresh-pricing', asyncHandler(async (req, res) => {
 // Get historical pricing for a cost code
 router.get('/pricing/:costCodeId', asyncHandler(async (req, res) => {
   const { costCodeId } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: pricing, error } = await supabase
     .from('v2_historical_pricing')
     .select('*')
     .eq('cost_code_id', costCodeId)
+    .eq('builder_id', builderId)
     .single();
 
   if (error && error.code !== 'PGRST116') {
@@ -124,12 +133,15 @@ router.get('/pricing/:costCodeId', asyncHandler(async (req, res) => {
 
 // Get all historical pricing
 router.get('/pricing', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
   const { data: pricing, error } = await supabase
     .from('v2_historical_pricing')
     .select(`
       *,
       cost_code:v2_cost_codes(id, code, name, category)
     `)
+    .eq('builder_id', builderId)
     .order('avg_amount', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -147,6 +159,7 @@ router.get('/pricing', asyncHandler(async (req, res) => {
  */
 router.post('/jobs/:id/generate', asyncHandler(async (req, res) => {
   const { id: jobId } = req.params;
+  const builderId = getBuilderId(req);
   const { generated_by, scope_description, job_sqft, job_type } = req.body;
 
   // Get job details
@@ -154,6 +167,7 @@ router.post('/jobs/:id/generate', asyncHandler(async (req, res) => {
     .from('v2_jobs')
     .select('id, name, address, contract_amount')
     .eq('id', jobId)
+    .eq('builder_id', builderId)
     .single();
 
   if (jobError || !job) throw new AppError('NOT_FOUND', 'Job not found');
@@ -163,6 +177,7 @@ router.post('/jobs/:id/generate', asyncHandler(async (req, res) => {
     .from('v2_ai_estimates')
     .update({ status: 'superseded', updated_at: new Date().toISOString() })
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .eq('status', 'active');
 
   // Get historical pricing for all cost codes
@@ -172,12 +187,14 @@ router.post('/jobs/:id/generate', asyncHandler(async (req, res) => {
       *,
       cost_code:v2_cost_codes(id, code, name, category)
     `)
+    .eq('builder_id', builderId)
     .gt('sample_count', 0);
 
   // Get cost codes to estimate
   const { data: costCodes } = await supabase
     .from('v2_cost_codes')
     .select('id, code, name, category')
+    .eq('builder_id', builderId)
     .order('code');
 
   // Build pricing map
@@ -231,7 +248,8 @@ router.post('/jobs/:id/generate', asyncHandler(async (req, res) => {
       confidence: overallConfidence,
       similar_jobs_used: 0,
       status: 'active',
-      generated_by: generated_by || 'System'
+      generated_by: generated_by || 'System',
+      builder_id: builderId
     })
     .select()
     .single();
@@ -242,7 +260,8 @@ router.post('/jobs/:id/generate', asyncHandler(async (req, res) => {
   if (estimateLines.length > 0) {
     const linesToInsert = estimateLines.map(line => ({
       ai_estimate_id: aiEstimate.id,
-      ...line
+      ...line,
+      builder_id: builderId
     }));
 
     await supabase.from('v2_ai_estimate_lines').insert(linesToInsert);
@@ -276,6 +295,7 @@ router.post('/jobs/:id/generate', asyncHandler(async (req, res) => {
 // Get active AI estimate for a job
 router.get('/jobs/:id', asyncHandler(async (req, res) => {
   const { id: jobId } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: estimate, error } = await supabase
     .from('v2_ai_estimates')
@@ -284,6 +304,7 @@ router.get('/jobs/:id', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name, address)
     `)
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .eq('status', 'active')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -316,11 +337,13 @@ router.get('/jobs/:id', asyncHandler(async (req, res) => {
 // Get all AI estimates for a job (including superseded)
 router.get('/jobs/:id/history', asyncHandler(async (req, res) => {
   const { id: jobId } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: estimates, error } = await supabase
     .from('v2_ai_estimates')
     .select('id, total_amount, confidence, status, created_at, generated_by')
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .order('created_at', { ascending: false });
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -331,6 +354,7 @@ router.get('/jobs/:id/history', asyncHandler(async (req, res) => {
 // Get specific AI estimate by ID
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const builderId = getBuilderId(req);
 
   const { data: estimate, error } = await supabase
     .from('v2_ai_estimates')
@@ -339,6 +363,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       job:v2_jobs(id, name, address)
     `)
     .eq('id', id)
+    .eq('builder_id', builderId)
     .single();
 
   if (error || !estimate) throw new AppError('NOT_FOUND', 'AI estimate not found');
@@ -365,6 +390,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 router.post('/jobs/:id/refresh', asyncHandler(async (req, res) => {
   const { id: jobId } = req.params;
+  const builderId = getBuilderId(req);
   const { generated_by } = req.body;
 
   // Get existing estimate for context
@@ -372,6 +398,7 @@ router.post('/jobs/:id/refresh', asyncHandler(async (req, res) => {
     .from('v2_ai_estimates')
     .select('scope_description, job_sqft, job_type')
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .eq('status', 'active')
     .single();
 
@@ -403,10 +430,12 @@ router.post('/jobs/:id/refresh', asyncHandler(async (req, res) => {
 
 router.get('/stats', asyncHandler(async (req, res) => {
   const { job_id } = req.query;
+  const builderId = getBuilderId(req);
 
   let query = supabase
     .from('v2_ai_estimates')
-    .select('id, status, total_amount, confidence');
+    .select('id, status, total_amount, confidence')
+    .eq('builder_id', builderId);
 
   if (job_id) {
     query = query.eq('job_id', job_id);

@@ -64,6 +64,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Combobox } from '@/components/ui/combobox';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useCostCodes } from '@/hooks/useFinancialData';
 import { Database, Eye, ArrowRightCircle, CheckCircle, Clock, FileCheck, Loader2, Trash2, Edit, Send, FileCheck2, ArrowRight, PlusCircle, Pencil } from 'lucide-react';
 
@@ -291,11 +292,19 @@ const Estimates = () => {
                   </TableHeader>
                   <TableBody>
                     {dbLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          Loading estimates...
-                        </TableCell>
-                      </TableRow>
+                      <>
+                        {[...Array(4)].map((_, i) => (
+                          <TableRow key={i}>
+                            <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                            <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                            <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                            <TableCell className="text-right"><Skeleton className="h-5 w-24 ml-auto" /></TableCell>
+                            <TableCell className="text-right"><Skeleton className="h-5 w-8 ml-auto" /></TableCell>
+                            <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                            <TableCell><Skeleton className="h-8 w-16" /></TableCell>
+                          </TableRow>
+                        ))}
+                      </>
                     ) : dbEstimates.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
@@ -372,7 +381,7 @@ const Estimates = () => {
           <TabsContent value="estimates" className="mt-4 space-y-4">
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1 max-w-sm">
+              <div className="relative w-full sm:flex-1 sm:max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search estimates..."
@@ -382,7 +391,7 @@ const Estimates = () => {
                 />
               </div>
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as EstimateStatus | 'all')}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-full sm:w-40">
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>

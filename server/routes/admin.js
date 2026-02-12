@@ -8,6 +8,7 @@ const router = express.Router();
 const { supabase } = require('../../config');
 const { asyncHandler, AppError } = require('../core/errors');
 const { requireAdmin } = require('../middleware/auth');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Protect all admin routes - admin only
 router.use(requireAdmin);
@@ -19,6 +20,7 @@ router.use(requireAdmin);
 // Run full reconciliation check and optionally fix issues
 router.post('/reconcile', asyncHandler(async (req, res) => {
   const { job_id, fix = false } = req.body;
+  const builderId = getBuilderId(req);
 
   const results = {
     timestamp: new Date().toISOString(),
@@ -28,7 +30,7 @@ router.post('/reconcile', asyncHandler(async (req, res) => {
   };
 
   // Get jobs to process
-  let jobQuery = supabase.from('v2_jobs').select('id, name');
+  let jobQuery = supabase.from('v2_jobs').select('id, name').eq('builder_id', builderId);
   if (job_id) {
     jobQuery = jobQuery.eq('id', job_id);
   }
@@ -124,6 +126,7 @@ router.post('/reconcile', asyncHandler(async (req, res) => {
 // Get integrity status for a job
 router.get('/jobs/:id/integrity', asyncHandler(async (req, res) => {
   const jobId = req.params.id;
+  const builderId = getBuilderId(req);
 
   // Quick integrity check
   const checks = {
@@ -138,6 +141,7 @@ router.get('/jobs/:id/integrity', asyncHandler(async (req, res) => {
     .from('v2_invoices')
     .select('id, allocations:v2_invoice_allocations(amount)')
     .eq('job_id', jobId)
+    .eq('builder_id', builderId)
     .in('status', ['approved', 'in_draw', 'paid'])
     .is('deleted_at', null);
 
@@ -153,7 +157,8 @@ router.get('/jobs/:id/integrity', asyncHandler(async (req, res) => {
   const { data: draws } = await supabase
     .from('v2_draws')
     .select('id, total_amount')
-    .eq('job_id', jobId);
+    .eq('job_id', jobId)
+    .eq('builder_id', builderId);
 
   for (const draw of (draws || [])) {
     const { data: drawInvoices } = await supabase
@@ -197,6 +202,8 @@ router.delete('/locks/:entityType/:entityId', asyncHandler(async (req, res) => {
 
 // Get system statistics
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
+
   const [
     { count: invoiceCount },
     { count: poCount },
@@ -204,11 +211,11 @@ router.get('/stats', asyncHandler(async (req, res) => {
     { count: vendorCount },
     { count: jobCount }
   ] = await Promise.all([
-    supabase.from('v2_invoices').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-    supabase.from('v2_purchase_orders').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-    supabase.from('v2_draws').select('*', { count: 'exact', head: true }),
-    supabase.from('v2_vendors').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-    supabase.from('v2_jobs').select('*', { count: 'exact', head: true })
+    supabase.from('v2_invoices').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).is('deleted_at', null),
+    supabase.from('v2_purchase_orders').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).is('deleted_at', null),
+    supabase.from('v2_draws').select('*', { count: 'exact', head: true }).eq('builder_id', builderId),
+    supabase.from('v2_vendors').select('*', { count: 'exact', head: true }).eq('builder_id', builderId).is('deleted_at', null),
+    supabase.from('v2_jobs').select('*', { count: 'exact', head: true }).eq('builder_id', builderId)
   ]);
 
   res.json({

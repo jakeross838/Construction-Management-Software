@@ -41,6 +41,16 @@ jest.mock('../../../server/middleware/validate', () => ({
   }
 }));
 
+jest.mock('../../../server/core/errors', () => {
+  const original = jest.requireActual('../../../server/core/errors');
+  return {
+    ...original,
+    asyncHandler: (fn) => (req, res, next) => {
+      return Promise.resolve(fn(req, res, next)).catch(next);
+    }
+  };
+});
+
 jest.mock('../../../server/routes/webhooks', () => ({
   triggerWebhooks: jest.fn().mockResolvedValue(true)
 }));

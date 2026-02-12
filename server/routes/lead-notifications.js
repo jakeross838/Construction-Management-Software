@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../config');
+const { asyncHandler, AppError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 
 // Get user's notification preferences
-router.get('/preferences', async (req, res) => {
+router.get('/preferences', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const userId = req.query.user_id || 'default-user';
 
@@ -11,6 +14,7 @@ router.get('/preferences', async (req, res) => {
       .from('v2_lead_notification_preferences')
       .select('*')
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .single();
 
     if (error && error.code === 'PGRST116') {
@@ -37,13 +41,15 @@ router.get('/preferences', async (req, res) => {
     console.error('Error fetching notification preferences:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Update user's notification preferences
-router.put('/preferences', async (req, res) => {
+router.put('/preferences', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const userId = req.body.user_id || 'default-user';
     const preferences = {
+      builder_id: builderId,
       user_id: userId,
       notify_new_lead: req.body.notify_new_lead,
       notify_stage_change: req.body.notify_stage_change,
@@ -70,10 +76,11 @@ router.put('/preferences', async (req, res) => {
     console.error('Error updating notification preferences:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get user's notifications
-router.get('/', async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const userId = req.query.user_id || 'default-user';
     const unreadOnly = req.query.unread === 'true';
@@ -86,6 +93,7 @@ router.get('/', async (req, res) => {
         lead:v2_leads(id, first_name, last_name, email, stage)
       `)
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -101,10 +109,11 @@ router.get('/', async (req, res) => {
     console.error('Error fetching notifications:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get unread notification count
-router.get('/count', async (req, res) => {
+router.get('/count', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const userId = req.query.user_id || 'default-user';
 
@@ -112,6 +121,7 @@ router.get('/count', async (req, res) => {
       .from('v2_lead_notifications')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .eq('is_read', false);
 
     if (error) throw error;
@@ -120,10 +130,11 @@ router.get('/count', async (req, res) => {
     console.error('Error fetching notification count:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Mark notification as read
-router.patch('/:id/read', async (req, res) => {
+router.patch('/:id/read', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
 
@@ -134,6 +145,7 @@ router.patch('/:id/read', async (req, res) => {
         read_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -143,10 +155,11 @@ router.patch('/:id/read', async (req, res) => {
     console.error('Error marking notification as read:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Mark all notifications as read
-router.patch('/read-all', async (req, res) => {
+router.patch('/read-all', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const userId = req.body.user_id || 'default-user';
 
@@ -157,6 +170,7 @@ router.patch('/read-all', async (req, res) => {
         read_at: new Date().toISOString(),
       })
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .eq('is_read', false)
       .select();
 
@@ -166,12 +180,14 @@ router.patch('/read-all', async (req, res) => {
     console.error('Error marking all notifications as read:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Create a notification (internal use)
-router.post('/', async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const notification = {
+      builder_id: builderId,
       lead_id: req.body.lead_id,
       user_id: req.body.user_id || 'default-user',
       notification_type: req.body.notification_type,
@@ -192,10 +208,11 @@ router.post('/', async (req, res) => {
     console.error('Error creating notification:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get reminders for a lead
-router.get('/reminders', async (req, res) => {
+router.get('/reminders', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const userId = req.query.user_id || 'default-user';
     const leadId = req.query.lead_id;
@@ -207,6 +224,7 @@ router.get('/reminders', async (req, res) => {
         lead:v2_leads(id, first_name, last_name, email, stage)
       `)
       .eq('user_id', userId)
+      .eq('builder_id', builderId)
       .eq('is_dismissed', false)
       .order('reminder_at', { ascending: true });
 
@@ -222,12 +240,14 @@ router.get('/reminders', async (req, res) => {
     console.error('Error fetching reminders:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Create a reminder
-router.post('/reminders', async (req, res) => {
+router.post('/reminders', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const reminder = {
+      builder_id: builderId,
       lead_id: req.body.lead_id,
       user_id: req.body.user_id || 'default-user',
       reminder_type: req.body.reminder_type || 'custom',
@@ -247,10 +267,11 @@ router.post('/reminders', async (req, res) => {
     console.error('Error creating reminder:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Dismiss a reminder
-router.patch('/reminders/:id/dismiss', async (req, res) => {
+router.patch('/reminders/:id/dismiss', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
 
@@ -261,6 +282,7 @@ router.patch('/reminders/:id/dismiss', async (req, res) => {
         dismissed_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -270,10 +292,11 @@ router.patch('/reminders/:id/dismiss', async (req, res) => {
     console.error('Error dismissing reminder:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get due reminders (for scheduled job)
-router.get('/reminders/due', async (req, res) => {
+router.get('/reminders/due', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { data, error } = await supabase
       .from('v2_lead_reminders')
@@ -281,6 +304,7 @@ router.get('/reminders/due', async (req, res) => {
         *,
         lead:v2_leads(id, first_name, last_name, email, stage)
       `)
+      .eq('builder_id', builderId)
       .eq('is_sent', false)
       .eq('is_dismissed', false)
       .lte('reminder_at', new Date().toISOString())
@@ -292,10 +316,11 @@ router.get('/reminders/due', async (req, res) => {
     console.error('Error fetching due reminders:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get stale leads (for alerts)
-router.get('/stale-leads', async (req, res) => {
+router.get('/stale-leads', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const days = parseInt(req.query.days) || 7;
     const cutoffDate = new Date();
@@ -304,6 +329,7 @@ router.get('/stale-leads', async (req, res) => {
     const { data, error } = await supabase
       .from('v2_leads')
       .select('*')
+      .eq('builder_id', builderId)
       .not('stage', 'in', '(won,lost)')
       .lt('updated_at', cutoffDate.toISOString())
       .order('updated_at', { ascending: true });
@@ -314,14 +340,16 @@ router.get('/stale-leads', async (req, res) => {
     console.error('Error fetching stale leads:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Get email templates
-router.get('/templates', async (req, res) => {
+router.get('/templates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { data, error } = await supabase
       .from('v2_lead_email_templates')
       .select('*')
+      .eq('builder_id', builderId)
       .order('name');
 
     if (error) throw error;
@@ -330,10 +358,11 @@ router.get('/templates', async (req, res) => {
     console.error('Error fetching email templates:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // Update email template
-router.put('/templates/:id', async (req, res) => {
+router.put('/templates/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
     const template = {
@@ -348,6 +377,7 @@ router.put('/templates/:id', async (req, res) => {
       .from('v2_lead_email_templates')
       .update(template)
       .eq('id', id)
+      .eq('builder_id', builderId)
       .select()
       .single();
 
@@ -357,6 +387,6 @@ router.put('/templates/:id', async (req, res) => {
     console.error('Error updating email template:', error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 module.exports = router;

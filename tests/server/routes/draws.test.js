@@ -32,7 +32,7 @@ jest.mock('../../../server/core/errors', () => {
   return {
     ...original,
     asyncHandler: (fn) => (req, res, next) => {
-      Promise.resolve(fn(req, res, next)).catch(next);
+      return Promise.resolve(fn(req, res, next)).catch(next);
     },
     validateRequest: () => (req, res, next) => next()
   };
@@ -206,7 +206,8 @@ describe('Draws Routes', () => {
     });
 
     it('should return 404 for non-existent draw', async () => {
-      mockSupabase.__setTableError('v2_draws', { code: 'PGRST116', message: 'Not found' });
+      // Set empty data so .single() returns { data: null, error: null }
+      mockSupabase.__setTableData('v2_draws', []);
 
       const req = createMockRequest({
         params: { id: 'non-existent-draw' }
@@ -420,7 +421,7 @@ describe('Draws Routes', () => {
     });
 
     it('should correctly handle CO cost code allocations', () => {
-      const isCOCostCode = (code) => code && /C$/i.test(code.trim());
+      const isCOCostCode = (code) => !!(code && /C$/i.test(code.trim()));
 
       expect(isCOCostCode('06100C')).toBe(true);
       expect(isCOCostCode('06100c')).toBe(true);

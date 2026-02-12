@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
 const { AppError, asyncHandler } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 const { getUserName } = require('../utils/shared');
 
 // Multer for document uploads
@@ -39,9 +40,11 @@ const PIPELINE_STAGES = [
 // ============================================================
 
 router.get('/stages', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_pipeline_stages')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('stage_order', { ascending: true });
 
@@ -52,13 +55,15 @@ router.get('/stages', asyncHandler(async (req, res) => {
 // ============================================================
 // HELPER: Log stage change
 // ============================================================
-async function logStageChange(leadId, fromStage, toStage, changedBy) {
-  await supabase.from('v2_lead_stage_history').insert({
+async function logStageChange(leadId, fromStage, toStage, changedBy, builderId = null) {
+  const record = {
     lead_id: leadId,
     from_stage: fromStage,
     to_stage: toStage,
     changed_by: changedBy
-  });
+  };
+  if (builderId) record.builder_id = builderId;
+  await supabase.from('v2_lead_stage_history').insert(record);
 }
 
 // ============================================================
@@ -66,9 +71,11 @@ async function logStageChange(leadId, fromStage, toStage, changedBy) {
 // ============================================================
 
 router.get('/sources', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_lead_sources')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('display_order');
 
@@ -81,9 +88,11 @@ router.get('/sources', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/lost-reasons', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data, error } = await supabase
     .from('v2_lost_lead_reasons')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('is_active', true)
     .order('display_order');
 
@@ -96,10 +105,12 @@ router.get('/lost-reasons', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/lost-analytics', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   // Get all lost leads with their reasons
   const { data: lostLeads, error } = await supabase
     .from('v2_leads')
     .select('id, lost_reason, lost_competitor, lost_at, estimated_value, stage_entered_at, created_at')
+    .eq('builder_id', builderId)
     .eq('outcome', 'lost')
     .is('deleted_at', null);
 
@@ -154,9 +165,11 @@ router.get('/lost-analytics', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/stats', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { data: leads, error } = await supabase
     .from('v2_leads')
     .select('id, stage, outcome, budget_range, qualification_score')
+    .eq('builder_id', builderId)
     .is('deleted_at', null);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -212,6 +225,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { stage, source_id, outcome, search, assigned_to } = req.query;
 
   let query = supabase
@@ -221,6 +235,7 @@ router.get('/', asyncHandler(async (req, res) => {
       source:v2_lead_sources(id, name, category),
       job:v2_jobs!job_id(id, name)
     `)
+    .eq('builder_id', builderId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -241,6 +256,7 @@ router.get('/', asyncHandler(async (req, res) => {
     const { data: tasks } = await supabase
       .from('v2_lead_tasks')
       .select('lead_id, status')
+      .eq('builder_id', builderId)
       .in('lead_id', leadIds);
 
     const taskCounts = {};
@@ -268,6 +284,7 @@ router.get('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data: lead, error } = await supabase
@@ -277,6 +294,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       source:v2_lead_sources(id, name, category),
       job:v2_jobs!job_id(id, name, address, status)
     `)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -287,6 +305,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: activities } = await supabase
     .from('v2_lead_activities')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('performed_at', { ascending: false });
 
@@ -294,6 +313,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: tasks } = await supabase
     .from('v2_lead_tasks')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('due_date', { ascending: true });
 
@@ -301,6 +321,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: documents } = await supabase
     .from('v2_lead_documents')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('created_at', { ascending: false });
 
@@ -308,6 +329,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const { data: stageHistory } = await supabase
     .from('v2_lead_stage_history')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('changed_at', { ascending: false });
 
@@ -325,6 +347,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const {
     first_name,
     last_name,
@@ -360,6 +383,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const { data: lead, error } = await supabase
     .from('v2_leads')
     .insert({
+      builder_id: builderId,
       first_name,
       last_name,
       email,
@@ -394,7 +418,7 @@ router.post('/', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log initial stage
-  await logStageChange(lead.id, null, 'new_inquiry', 'System');
+  await logStageChange(lead.id, null, 'new_inquiry', 'System', builderId);
 
   res.status(201).json(lead);
 }));
@@ -404,6 +428,7 @@ router.post('/', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const updates = { ...req.body };
 
@@ -418,12 +443,13 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     const { data: current } = await supabase
       .from('v2_leads')
       .select('stage')
+      .eq('builder_id', builderId)
       .eq('id', id)
       .single();
 
     if (current && current.stage !== updates.stage) {
       updates.stage_entered_at = new Date().toISOString();
-      await logStageChange(id, current.stage, updates.stage, updates.changed_by || 'User');
+      await logStageChange(id, current.stage, updates.stage, updates.changed_by || 'User', builderId);
     }
     delete updates.changed_by;
   }
@@ -431,6 +457,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const { data: lead, error } = await supabase
     .from('v2_leads')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .select()
@@ -447,11 +474,13 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_leads')
     .update({ deleted_at: new Date().toISOString() })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .select()
@@ -468,6 +497,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/stage', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { stage, changed_by } = req.body;
 
@@ -479,6 +509,7 @@ router.post('/:id/stage', asyncHandler(async (req, res) => {
   const { data: current, error: fetchError } = await supabase
     .from('v2_leads')
     .select('stage, outcome')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -499,6 +530,7 @@ router.post('/:id/stage', asyncHandler(async (req, res) => {
       stage,
       stage_entered_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -506,7 +538,7 @@ router.post('/:id/stage', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log stage change
-  await logStageChange(id, fromStage, stage, changed_by || 'User');
+  await logStageChange(id, fromStage, stage, changed_by || 'User', builderId);
 
   res.json(lead);
 }));
@@ -516,6 +548,7 @@ router.post('/:id/stage', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/convert', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { converted_by } = req.body;
 
@@ -523,6 +556,7 @@ router.post('/:id/convert', asyncHandler(async (req, res) => {
   const { data: lead, error: fetchError } = await supabase
     .from('v2_leads')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -539,6 +573,7 @@ router.post('/:id/convert', asyncHandler(async (req, res) => {
   const { data: job, error: jobError } = await supabase
     .from('v2_jobs')
     .insert({
+      builder_id: builderId,
       name: jobName,
       address: lead.project_address,
       client_name: `${lead.first_name} ${lead.last_name}`,
@@ -560,6 +595,7 @@ router.post('/:id/convert', asyncHandler(async (req, res) => {
       job_id: job.id,
       converted_at: new Date().toISOString()
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -567,7 +603,7 @@ router.post('/:id/convert', asyncHandler(async (req, res) => {
   if (updateError) throw new AppError('DATABASE_ERROR', updateError.message);
 
   // Log stage change
-  await logStageChange(id, lead.stage, 'won', converted_by || 'User');
+  await logStageChange(id, lead.stage, 'won', converted_by || 'User', builderId);
 
   res.json({
     lead: updatedLead,
@@ -580,6 +616,7 @@ router.post('/:id/convert', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/lost', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { lost_reason, lost_competitor, changed_by, notes } = req.body;
 
@@ -587,6 +624,7 @@ router.post('/:id/lost', asyncHandler(async (req, res) => {
   const { data: current, error: fetchError } = await supabase
     .from('v2_leads')
     .select('stage, notes')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -609,6 +647,7 @@ router.post('/:id/lost', asyncHandler(async (req, res) => {
       lost_at: new Date().toISOString(),
       notes: updatedNotes
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -616,10 +655,11 @@ router.post('/:id/lost', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log stage change
-  await logStageChange(id, current.stage, 'lost', changed_by || 'User');
+  await logStageChange(id, current.stage, 'lost', changed_by || 'User', builderId);
 
   // Log activity
   await supabase.from('v2_lead_activities').insert({
+    builder_id: builderId,
     lead_id: id,
     activity_type: 'note',
     subject: 'Lead Marked as Lost',
@@ -636,6 +676,7 @@ router.post('/:id/lost', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/revive', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { notes, changed_by, target_stage } = req.body;
 
@@ -643,6 +684,7 @@ router.post('/:id/revive', asyncHandler(async (req, res) => {
   const { data: current, error: fetchError } = await supabase
     .from('v2_leads')
     .select('stage, outcome, notes, lost_reason, lost_competitor')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -671,6 +713,7 @@ router.post('/:id/revive', asyncHandler(async (req, res) => {
       revival_notes: notes,
       notes: newNotes
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -678,10 +721,11 @@ router.post('/:id/revive', asyncHandler(async (req, res) => {
   if (error) throw new AppError('DATABASE_ERROR', error.message);
 
   // Log stage change
-  await logStageChange(id, 'lost', reviveStage, changed_by || 'User');
+  await logStageChange(id, 'lost', reviveStage, changed_by || 'User', builderId);
 
   // Log activity
   await supabase.from('v2_lead_activities').insert({
+    builder_id: builderId,
     lead_id: id,
     activity_type: 'note',
     subject: 'Lead Revived',
@@ -698,11 +742,13 @@ router.post('/:id/revive', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id/contacts', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_lead_contacts')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('is_primary', { ascending: false });
 
@@ -711,6 +757,7 @@ router.get('/:id/contacts', asyncHandler(async (req, res) => {
 }));
 
 router.post('/:id/contacts', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { first_name, last_name, email, phone, role, is_primary, notes } = req.body;
 
@@ -723,12 +770,14 @@ router.post('/:id/contacts', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_lead_contacts')
       .update({ is_primary: false })
+      .eq('builder_id', builderId)
       .eq('lead_id', id);
   }
 
   const { data, error } = await supabase
     .from('v2_lead_contacts')
     .insert({
+      builder_id: builderId,
       lead_id: id,
       first_name,
       last_name,
@@ -746,6 +795,7 @@ router.post('/:id/contacts', asyncHandler(async (req, res) => {
 }));
 
 router.patch('/:leadId/contacts/:contactId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { leadId, contactId } = req.params;
   const updates = { ...req.body };
 
@@ -758,12 +808,14 @@ router.patch('/:leadId/contacts/:contactId', asyncHandler(async (req, res) => {
     await supabase
       .from('v2_lead_contacts')
       .update({ is_primary: false })
+      .eq('builder_id', builderId)
       .eq('lead_id', leadId);
   }
 
   const { data, error } = await supabase
     .from('v2_lead_contacts')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', contactId)
     .eq('lead_id', leadId)
     .select()
@@ -775,11 +827,13 @@ router.patch('/:leadId/contacts/:contactId', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/:leadId/contacts/:contactId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { contactId } = req.params;
 
   const { error } = await supabase
     .from('v2_lead_contacts')
     .delete()
+    .eq('builder_id', builderId)
     .eq('id', contactId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -791,6 +845,7 @@ router.delete('/:leadId/contacts/:contactId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.post('/:id/score', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { override_score, score_notes } = req.body;
 
@@ -798,6 +853,7 @@ router.post('/:id/score', asyncHandler(async (req, res) => {
   const { data: lead, error: fetchError } = await supabase
     .from('v2_leads')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -877,6 +933,7 @@ router.post('/:id/score', asyncHandler(async (req, res) => {
       qualification_score: finalScore,
       score_breakdown: breakdown,
     })
+    .eq('builder_id', builderId)
     .eq('id', id)
     .select()
     .single();
@@ -914,11 +971,13 @@ function parseBudgetRange(range) {
 // ============================================================
 
 router.get('/:id/activities', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_lead_activities')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('performed_at', { ascending: false });
 
@@ -927,6 +986,7 @@ router.get('/:id/activities', asyncHandler(async (req, res) => {
 }));
 
 router.post('/:id/activities', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { activity_type, direction, subject, description, outcome, duration_minutes, performed_by, performed_at } = req.body;
 
@@ -937,6 +997,7 @@ router.post('/:id/activities', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_lead_activities')
     .insert({
+      builder_id: builderId,
       lead_id: id,
       activity_type,
       direction,
@@ -959,12 +1020,14 @@ router.post('/:id/activities', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id/tasks', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { status } = req.query;
 
   let query = supabase
     .from('v2_lead_tasks')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('due_date', { ascending: true });
 
@@ -976,6 +1039,7 @@ router.get('/:id/tasks', asyncHandler(async (req, res) => {
 }));
 
 router.post('/:id/tasks', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { task_type, title, description, due_date, due_time, priority, assigned_to } = req.body;
 
@@ -986,6 +1050,7 @@ router.post('/:id/tasks', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_lead_tasks')
     .insert({
+      builder_id: builderId,
       lead_id: id,
       task_type,
       title,
@@ -1003,6 +1068,7 @@ router.post('/:id/tasks', asyncHandler(async (req, res) => {
 }));
 
 router.patch('/:leadId/tasks/:taskId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { taskId } = req.params;
   const updates = { ...req.body };
 
@@ -1013,6 +1079,7 @@ router.patch('/:leadId/tasks/:taskId', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('v2_lead_tasks')
     .update(updates)
+    .eq('builder_id', builderId)
     .eq('id', taskId)
     .select()
     .single();
@@ -1023,6 +1090,7 @@ router.patch('/:leadId/tasks/:taskId', asyncHandler(async (req, res) => {
 }));
 
 router.post('/:leadId/tasks/:taskId/complete', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { taskId } = req.params;
   const { completed_by } = req.body;
 
@@ -1033,6 +1101,7 @@ router.post('/:leadId/tasks/:taskId/complete', asyncHandler(async (req, res) => 
       completed_at: new Date().toISOString(),
       completed_by
     })
+    .eq('builder_id', builderId)
     .eq('id', taskId)
     .select()
     .single();
@@ -1043,11 +1112,13 @@ router.post('/:leadId/tasks/:taskId/complete', asyncHandler(async (req, res) => 
 }));
 
 router.delete('/:leadId/tasks/:taskId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { taskId } = req.params;
 
   const { error } = await supabase
     .from('v2_lead_tasks')
     .delete()
+    .eq('builder_id', builderId)
     .eq('id', taskId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -1059,11 +1130,13 @@ router.delete('/:leadId/tasks/:taskId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id/documents', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_lead_documents')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('created_at', { ascending: false });
 
@@ -1072,6 +1145,7 @@ router.get('/:id/documents', asyncHandler(async (req, res) => {
 }));
 
 router.post('/:id/documents', upload.single('file'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { category, uploaded_by } = req.body;
 
@@ -1101,6 +1175,7 @@ router.post('/:id/documents', upload.single('file'), asyncHandler(async (req, re
   const { data, error } = await supabase
     .from('v2_lead_documents')
     .insert({
+      builder_id: builderId,
       lead_id: id,
       name: req.file.originalname,
       file_url: urlData.publicUrl,
@@ -1117,12 +1192,14 @@ router.post('/:id/documents', upload.single('file'), asyncHandler(async (req, re
 }));
 
 router.delete('/:leadId/documents/:docId', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { docId } = req.params;
 
   // Get document to find file URL
   const { data: doc, error: fetchError } = await supabase
     .from('v2_lead_documents')
     .select('file_url')
+    .eq('builder_id', builderId)
     .eq('id', docId)
     .single();
 
@@ -1140,6 +1217,7 @@ router.delete('/:leadId/documents/:docId', asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('v2_lead_documents')
     .delete()
+    .eq('builder_id', builderId)
     .eq('id', docId);
 
   if (error) throw new AppError('DATABASE_ERROR', error.message);
@@ -1151,11 +1229,13 @@ router.delete('/:leadId/documents/:docId', asyncHandler(async (req, res) => {
 // ============================================================
 
 router.get('/:id/history', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_lead_stage_history')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .order('changed_at', { ascending: false });
 
@@ -1169,11 +1249,13 @@ router.get('/:id/history', asyncHandler(async (req, res) => {
 
 // Get estimates linked to a lead
 router.get('/:id/estimates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('v2_estimates')
     .select('id, estimate_number, title, total_amount, status, version, created_at, updated_at')
+    .eq('builder_id', builderId)
     .eq('lead_id', id)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -1184,6 +1266,7 @@ router.get('/:id/estimates', asyncHandler(async (req, res) => {
 
 // Create estimate from lead
 router.post('/:id/estimates', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { title } = req.body;
 
@@ -1191,6 +1274,7 @@ router.post('/:id/estimates', asyncHandler(async (req, res) => {
   const { data: lead, error: leadError } = await supabase
     .from('v2_leads')
     .select('first_name, last_name, project_name, project_address, project_description, estimated_value, square_footage')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -1200,6 +1284,7 @@ router.post('/:id/estimates', asyncHandler(async (req, res) => {
   const { data: lastEstimate } = await supabase
     .from('v2_estimates')
     .select('estimate_number')
+    .eq('builder_id', builderId)
     .like('estimate_number', `EST-${new Date().getFullYear()}%`)
     .order('estimate_number', { ascending: false })
     .limit(1);
@@ -1216,6 +1301,7 @@ router.post('/:id/estimates', asyncHandler(async (req, res) => {
   const { data: estimate, error } = await supabase
     .from('v2_estimates')
     .insert({
+      builder_id: builderId,
       lead_id: id,
       estimate_number: estimateNumber,
       title: estimateTitle,
@@ -1232,6 +1318,7 @@ router.post('/:id/estimates', asyncHandler(async (req, res) => {
 
   // Log activity
   await supabase.from('v2_lead_activities').insert({
+    builder_id: builderId,
     lead_id: id,
     activity_type: 'note',
     subject: 'Estimate Created',
@@ -1249,6 +1336,7 @@ router.post('/:id/estimates', asyncHandler(async (req, res) => {
 
 // Convert lead to job
 router.post('/:id/convert-to-job', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   const { id } = req.params;
   const { contract_amount } = req.body;
 
@@ -1256,6 +1344,7 @@ router.post('/:id/convert-to-job', asyncHandler(async (req, res) => {
   const { data: lead, error: leadError } = await supabase
     .from('v2_leads')
     .select('*')
+    .eq('builder_id', builderId)
     .eq('id', id)
     .single();
 
@@ -1272,6 +1361,7 @@ router.post('/:id/convert-to-job', asyncHandler(async (req, res) => {
   const { data: job, error: jobError } = await supabase
     .from('v2_jobs')
     .insert({
+      builder_id: builderId,
       name: jobName,
       address: lead.project_address,
       client_name: `${lead.first_name} ${lead.last_name}`,
@@ -1295,6 +1385,7 @@ router.post('/:id/convert-to-job', asyncHandler(async (req, res) => {
       converted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
+    .eq('builder_id', builderId)
     .eq('id', id);
 
   if (updateError) throw new AppError('DATABASE_ERROR', updateError.message);
@@ -1303,10 +1394,12 @@ router.post('/:id/convert-to-job', asyncHandler(async (req, res) => {
   await supabase
     .from('v2_estimates')
     .update({ job_id: job.id })
+    .eq('builder_id', builderId)
     .eq('lead_id', id);
 
   // Log activity
   await supabase.from('v2_lead_activities').insert({
+    builder_id: builderId,
     lead_id: id,
     activity_type: 'note',
     subject: 'Converted to Job',
@@ -1316,7 +1409,7 @@ router.post('/:id/convert-to-job', asyncHandler(async (req, res) => {
   });
 
   // Log stage change
-  await logStageChange(id, lead.stage, 'won', getUserName(req));
+  await logStageChange(id, lead.stage, 'won', getUserName(req), builderId);
 
   res.status(201).json({
     success: true,

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -34,12 +35,14 @@ import { useInvoices, useVendors, useJobs, usePurchaseOrders, useUpdateInvoice, 
 import { formatCurrency, formatDate, invoiceStatusConfig } from '@/types/financial';
 import { UnifiedAIUpload } from '@/components/ai/UnifiedAIUpload';
 import { CompactStats } from '@/components/ui/compact-stats';
+import { Skeleton } from '@/components/ui/skeleton';
 import { InvoiceDetailDialog } from '@/components/invoices/InvoiceDetailDialog';
 import { ReviewFlagsList } from '@/components/invoices/ReviewFlagsBadges';
 import { AIConfidenceBadge } from '@/components/invoices/AIConfidenceBadge';
 import { InvoiceBulkActions } from '@/components/invoices/InvoiceBulkActions';
 
 const Invoices = () => {
+  const isMobile = useIsMobile();
   const { selectedJobId } = useJob();
   const { data: invoices = [], isLoading } = useInvoices();
   const { data: vendors = [] } = useVendors();
@@ -159,6 +162,40 @@ const Invoices = () => {
     setDetailDialogOpen(true);
   };
 
+  if (isLoading) {
+    return (
+      <AppLayout>
+        <div className="space-y-6">
+          {/* Header skeleton */}
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-4 w-56" />
+            </div>
+            <Skeleton className="h-10 w-40" />
+          </div>
+          {/* Filters & stats skeleton */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center">
+              <Skeleton className="h-10 w-full max-w-sm" />
+              <Skeleton className="h-10 w-44" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[...Array(4)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
+            </div>
+          </div>
+          {/* Table skeleton */}
+          <Skeleton className="h-10 w-full" />
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full" />
+          ))}
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="space-y-6 animate-fade-in">
@@ -248,96 +285,156 @@ const Invoices = () => {
                   </span>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40px]">
-                      <Checkbox
-                        checked={statusInvoices.every(inv => selectedIds.includes(inv.id)) && statusInvoices.length > 0}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedIds(prev => [...new Set([...prev, ...statusInvoices.map(inv => inv.id)])]);
-                          } else {
-                            setSelectedIds(prev => prev.filter(id => !statusInvoices.some(inv => inv.id === id)));
-                          }
-                        }}
-                      />
-                    </TableHead>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Vendor</TableHead>
-                    <TableHead className="hidden md:table-cell">Job</TableHead>
-                    <TableHead className="hidden lg:table-cell">PO #</TableHead>
-                    <TableHead className="hidden lg:table-cell">Budget Standing</TableHead>
-                    <TableHead className="hidden xl:table-cell">AI Confidence</TableHead>
-                    <TableHead className="hidden sm:table-cell">Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              {isMobile ? (
+                /* Mobile: Card-based list */
+                <div className="divide-y">
                   {statusInvoices.map((invoice) => {
-                    const po = getPO(invoice.po_id);
-                    const budgetCtx = getBudgetContext(invoice);
-                    
+                    const statusCfg = invoiceStatusConfig[invoice.status as keyof typeof invoiceStatusConfig];
                     return (
-                      <TableRow 
-                        key={invoice.id} 
-                        className="cursor-pointer hover:bg-muted/50"
+                      <div
+                        key={invoice.id}
+                        className="flex items-start gap-3 p-4 min-h-[44px] cursor-pointer active:bg-muted/50"
                         onClick={() => handleViewInvoice(invoice.id)}
                       >
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Checkbox 
+                        <div
+                          className="pt-1 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Checkbox
                             checked={selectedIds.includes(invoice.id)}
                             onCheckedChange={(checked) => handleSelectOne(invoice.id, !!checked)}
                           />
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {invoice.invoice_number}
-                            {invoice.needs_review && (
-                              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                            )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm truncate">
+                                  {invoice.invoice_number || 'No #'}
+                                </span>
+                                {invoice.needs_review && (
+                                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                )}
+                              </div>
+                              <p className="text-sm text-foreground truncate">
+                                {getVendorName(invoice.vendor_id)}
+                              </p>
+                            </div>
+                            <span className="font-semibold text-sm whitespace-nowrap">
+                              {formatCurrency(invoice.amount)}
+                            </span>
                           </div>
-                        </TableCell>
-                        <TableCell>{getVendorName(invoice.vendor_id)}</TableCell>
-                        <TableCell className="hidden md:table-cell">{getJobName(invoice.job_id)}</TableCell>
-                        <TableCell className="hidden lg:table-cell text-muted-foreground">{po?.po_number || '—'}</TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          {budgetCtx ? (
-                            <div className="flex flex-col">
-                              <span className={budgetCtx.isOverBudget ? 'text-destructive font-medium' : 'text-foreground'}>
-                                {formatCurrency(budgetCtx.remaining)} left
-                                {budgetCtx.isOverBudget && ' ⚠️'}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {formatCurrency(budgetCtx.invoiced)} / {formatCurrency(budgetCtx.committed)}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="hidden xl:table-cell">
-                          {invoice.matched_confidence?.overall ? (
-                            <div className="flex items-center gap-1">
-                              <Sparkles className="h-3 w-3 text-primary" />
-                              <AIConfidenceBadge
-                                confidence={invoice.matched_confidence.overall}
-                                showPercent={false}
-                              />
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell">{formatDate(invoice.invoice_date)}</TableCell>
-                        <TableCell className="font-medium text-right">{formatCurrency(invoice.amount)}</TableCell>
-                      </TableRow>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                              {getJobName(invoice.job_id)}
+                            </span>
+                            {statusCfg && (
+                              <Badge className={`${statusCfg.bgColor} ${statusCfg.color} border-0 text-[10px] px-1.5 py-0`}>
+                                {statusCfg.label}
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              {formatDate(invoice.invoice_date)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
-                </TableBody>
-              </Table>
-              </div>
+                </div>
+              ) : (
+                /* Desktop: Table view */
+                <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40px]">
+                        <Checkbox
+                          checked={statusInvoices.every(inv => selectedIds.includes(inv.id)) && statusInvoices.length > 0}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedIds(prev => [...new Set([...prev, ...statusInvoices.map(inv => inv.id)])]);
+                            } else {
+                              setSelectedIds(prev => prev.filter(id => !statusInvoices.some(inv => inv.id === id)));
+                            }
+                          }}
+                        />
+                      </TableHead>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead className="hidden md:table-cell">Job</TableHead>
+                      <TableHead className="hidden lg:table-cell">PO #</TableHead>
+                      <TableHead className="hidden lg:table-cell">Budget Standing</TableHead>
+                      <TableHead className="hidden xl:table-cell">AI Confidence</TableHead>
+                      <TableHead className="hidden sm:table-cell">Date</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {statusInvoices.map((invoice) => {
+                      const po = getPO(invoice.po_id);
+                      const budgetCtx = getBudgetContext(invoice);
+
+                      return (
+                        <TableRow
+                          key={invoice.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleViewInvoice(invoice.id)}
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedIds.includes(invoice.id)}
+                              onCheckedChange={(checked) => handleSelectOne(invoice.id, !!checked)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {invoice.invoice_number}
+                              {invoice.needs_review && (
+                                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{getVendorName(invoice.vendor_id)}</TableCell>
+                          <TableCell className="hidden md:table-cell">{getJobName(invoice.job_id)}</TableCell>
+                          <TableCell className="hidden lg:table-cell text-muted-foreground">{po?.po_number || '—'}</TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            {budgetCtx ? (
+                              <div className="flex flex-col">
+                                <span className={budgetCtx.isOverBudget ? 'text-destructive font-medium' : 'text-foreground'}>
+                                  {formatCurrency(budgetCtx.remaining)} left
+                                  {budgetCtx.isOverBudget && ' ⚠️'}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {formatCurrency(budgetCtx.invoiced)} / {formatCurrency(budgetCtx.committed)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="hidden xl:table-cell">
+                            {invoice.matched_confidence?.overall ? (
+                              <div className="flex items-center gap-1">
+                                <Sparkles className="h-3 w-3 text-primary" />
+                                <AIConfidenceBadge
+                                  confidence={invoice.matched_confidence.overall}
+                                  showPercent={false}
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell">{formatDate(invoice.invoice_date)}</TableCell>
+                          <TableCell className="font-medium text-right">{formatCurrency(invoice.amount)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+                </div>
+              )}
             </Card>
           );
         })}

@@ -8,6 +8,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { supabase } = require('../../config');
+const { asyncHandler, AppError } = require('../core/errors');
+const { getBuilderId } = require('../core/multi-tenant');
 const {
   processDocument,
   confirmAndRoute,
@@ -51,7 +53,8 @@ router.get('/types', (req, res) => {
  * Classify a document without storing or processing it
  * Used by the unified upload UI to determine document type
  */
-router.post('/classify', upload.single('file'), async (req, res) => {
+router.post('/classify', upload.single('file'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file provided' });
@@ -214,14 +217,15 @@ router.post('/classify', upload.single('file'), async (req, res) => {
     console.error('Classification error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * POST /api/document-hub/upload
  * Upload a document for processing
  */
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file provided' });
@@ -254,6 +258,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const { data: doc, error: docError } = await supabase
       .from('v2_document_queue')
       .insert({
+        builder_id: builderId,
         file_name: req.file.originalname,
         file_url: fileUrl,
         file_size: req.file.size,
@@ -281,14 +286,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     console.error('Document upload error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * POST /api/document-hub/process/:id
  * Trigger processing for a document
  */
-router.post('/process/:id', async (req, res) => {
+router.post('/process/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
     const companyName = req.builder?.name || 'your company';
@@ -311,14 +317,15 @@ router.post('/process/:id', async (req, res) => {
     console.error('Document processing error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * POST /api/document-hub/upload-and-process
  * Upload and immediately process a document
  */
-router.post('/upload-and-process', upload.single('file'), async (req, res) => {
+router.post('/upload-and-process', upload.single('file'), asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file provided' });
@@ -350,6 +357,7 @@ router.post('/upload-and-process', upload.single('file'), async (req, res) => {
     const { data: doc, error: docError } = await supabase
       .from('v2_document_queue')
       .insert({
+        builder_id: builderId,
         file_name: req.file.originalname,
         file_url: fileUrl,
         file_size: req.file.size,
@@ -381,14 +389,15 @@ router.post('/upload-and-process', upload.single('file'), async (req, res) => {
     console.error('Upload and process error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * GET /api/document-hub/queue
  * Get documents in the queue
  */
-router.get('/queue', async (req, res) => {
+router.get('/queue', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { status, document_type, job_id, limit = 50 } = req.query;
 
@@ -399,6 +408,7 @@ router.get('/queue', async (req, res) => {
         job:v2_jobs(id, name),
         vendor:v2_vendors(id, name)
       `)
+      .eq('builder_id', builderId)
       .order('created_at', { ascending: false })
       .limit(parseInt(limit));
 
@@ -422,17 +432,18 @@ router.get('/queue', async (req, res) => {
     console.error('Queue fetch error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * GET /api/document-hub/pending-review
  * Get documents pending user review
  */
-router.get('/pending-review', async (req, res) => {
+router.get('/pending-review', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { job_id } = req.query;
-    const documents = await getDocumentsPendingReview(job_id || null);
+    const documents = await getDocumentsPendingReview(job_id || null, builderId);
 
     res.json({ success: true, documents });
 
@@ -440,14 +451,15 @@ router.get('/pending-review', async (req, res) => {
     console.error('Pending review fetch error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * GET /api/document-hub/:id
  * Get a specific document with extraction data
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
 
@@ -461,6 +473,7 @@ router.get('/:id', async (req, res) => {
         routing_logs:v2_document_routing_log(*)
       `)
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (docError) throw docError;
@@ -471,14 +484,15 @@ router.get('/:id', async (req, res) => {
     console.error('Document fetch error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * POST /api/document-hub/:id/confirm-route
  * Confirm and route extracted data to a destination
  */
-router.post('/:id/confirm-route', async (req, res) => {
+router.post('/:id/confirm-route', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
     const { extraction_id, destination, data, confirmed_by } = req.body;
@@ -501,14 +515,15 @@ router.post('/:id/confirm-route', async (req, res) => {
     console.error('Confirm route error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * POST /api/document-hub/:id/skip-route
  * Skip routing to a specific destination
  */
-router.post('/:id/skip-route', async (req, res) => {
+router.post('/:id/skip-route', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
     const { destination, reason } = req.body;
@@ -520,7 +535,8 @@ router.post('/:id/skip-route', async (req, res) => {
         error_message: reason || 'Skipped by user'
       })
       .eq('document_id', id)
-      .eq('destination', destination);
+      .eq('destination', destination)
+      .eq('builder_id', builderId);
 
     res.json({ success: true });
 
@@ -528,21 +544,23 @@ router.post('/:id/skip-route', async (req, res) => {
     console.error('Skip route error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * GET /api/document-hub/stats
  * Get processing statistics
  */
-router.get('/stats/overview', async (req, res) => {
+router.get('/stats/overview', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
-    const stats = await getProcessingStats();
+    const stats = await getProcessingStats(builderId);
 
     // Also get recent activity
     const { data: recent } = await supabase
       .from('v2_document_queue')
       .select('id, file_name, document_type, status, created_at')
+      .eq('builder_id', builderId)
       .order('created_at', { ascending: false })
       .limit(10);
 
@@ -550,6 +568,7 @@ router.get('/stats/overview', async (req, res) => {
     const { data: statusCounts } = await supabase
       .from('v2_document_queue')
       .select('status')
+      .eq('builder_id', builderId)
       .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
 
     const counts = statusCounts?.reduce((acc, row) => {
@@ -568,14 +587,15 @@ router.get('/stats/overview', async (req, res) => {
     console.error('Stats fetch error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 /**
  * DELETE /api/document-hub/:id
  * Delete a document from the queue
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const builderId = getBuilderId(req);
   try {
     const { id } = req.params;
 
@@ -584,6 +604,7 @@ router.delete('/:id', async (req, res) => {
       .from('v2_document_queue')
       .select('file_url')
       .eq('id', id)
+      .eq('builder_id', builderId)
       .single();
 
     if (doc?.file_url) {
@@ -598,7 +619,8 @@ router.delete('/:id', async (req, res) => {
     await supabase
       .from('v2_document_queue')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('builder_id', builderId);
 
     res.json({ success: true });
 
@@ -606,7 +628,7 @@ router.delete('/:id', async (req, res) => {
     console.error('Document delete error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
-});
+}));
 
 
 module.exports = router;
