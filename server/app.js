@@ -6,8 +6,9 @@
  */
 
 // Sentry must be initialized before any other imports
-const Sentry = require('@sentry/node');
+let Sentry;
 if (process.env.SENTRY_DSN) {
+  Sentry = require('@sentry/node');
   const pkg = require('../package.json');
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
@@ -38,7 +39,7 @@ function createApp() {
   const app = express();
 
   // Sentry request handler must be the first middleware
-  if (process.env.SENTRY_DSN) {
+  if (Sentry) {
     app.use(Sentry.Handlers.requestHandler());
   }
 
